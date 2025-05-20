@@ -366,22 +366,51 @@ analyze_survival <- function(data, time_var, event_var, group_var = "treatment_g
         ggtheme = theme_bw()
     )
 
-    surv_summary <- summary(surv_fit)
-    median_times <- data.frame(
-        strata = rownames(surv_summary$table),
-        records = surv_summary$table[, "records"],
-        events = surv_summary$table[, "events"],
-        n_risk = surv_summary$table[, "n.risk"],
-        rate = surv_summary$table[, "n.event"] / surv_summary$table[, "n.risk"] * 100,
-        median_survival = surv_summary$table[, "median"],
-        conf.lower = surv_summary$table[, "0.95LCL"],
-        conf.upper = surv_summary$table[, "0.95UCL"]
-    )
+    # surv_summary <- summary(surv_fit)
+    # print(surv_summary$table)
+    # median_times <- data.frame(
+    #     strata = rownames(surv_summary$table),
+    #     records = surv_summary$table[, "records"],
+    #     events = surv_summary$table[, "events"],
+    #     median_survival = surv_summary$table[, "median"],
+    #     conf.lower = surv_summary$table[, "0.95LCL"],
+    #     conf.upper = surv_summary$table[, "0.95UCL"]
+    # )
+
+    # Define time points in days (e.g., 1, 3, 5 years)
+    time_points <- c(1, 3, 5, 10, 15) * DAYS_IN_YEAR
+
+    # Get survival probabilities at those time points
+    surv_summary <- summary(surv_fit, times = time_points)
+
+    # Build a data frame directly from the summary output
+    surv_rates <- as.data.frame(surv_summary[c("strata", "time", "surv", "lower", "upper")]) %>%
+        mutate(
+            Treatment_Group = sub(".*=", "", strata),
+            Time_Years = round(time / DAYS_IN_YEAR, 3)
+        ) %>%
+        mutate(
+            across(c(surv, lower, upper), ~ round(100 * ., 1), .names = "{.col}_pct")
+        ) %>%
+        select(Treatment_Group, Time_Years, surv_pct, lower_pct, upper_pct)
+
+    # Wide format for easier viewing
+    surv_rates_wide <- surv_rates %>%
+        mutate(Time_Label = paste0(Time_Years, "-year")) %>%
+        select(Treatment_Group, Time_Label, surv_pct) %>%
+        tidyr::pivot_wider(
+            names_from = Time_Label,
+            values_from = surv_pct,
+        )
 
     # Save high-level summary table of median survival times
     writexl::write_xlsx(
-        median_times,
-        path = file.path(tables_dir, paste0(prefix, ylab, "_median_survival.xlsx"))
+        surv_rates,
+        path = file.path(tables_dir, paste0(prefix, ylab, "_survival_rates.xlsx"))
+    )
+    writexl::write_xlsx(
+        surv_rates_wide,
+        path = file.path(tables_dir, paste0(prefix, ylab, "_survival_rates_wide.xlsx"))
     )
 
     # Cox model: use original data, not new_data
@@ -459,7 +488,8 @@ analyze_survival <- function(data, time_var, event_var, group_var = "treatment_g
     return(list(
         fit = surv_fit,
         plot = surv_plot,
-        median_times = median_times,
+        survival_rates = surv_rates,
+        survival_rates_wide = surv_rates_wide,
         cox_model = cox_model,
         cox_table = cox_table
     ))

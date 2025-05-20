@@ -54,6 +54,7 @@ run_my_analysis <- function(dataset_name) {
     # dataset_name <- "uveal_melanoma_gksrs_only_cohort"
 
     # Get cohort info for file paths
+    message(dataset_name)
     cohort_info <- get_cohort_info(dataset_name)
     tables_dir <<- file.path(cohort_info$dir, "tables")
     figures_dir <<- file.path(cohort_info$dir, "figures")
@@ -72,7 +73,8 @@ run_my_analysis <- function(dataset_name) {
     print(confounders)
 
     # 1a. Rates of recurrence
-    print(tables_dir)
+    # print(tables_dir)
+    message(dataset_name)
     log_message("Calculating recurrence rates")
     recurrence_rates <- calculate_rates(
         data,
