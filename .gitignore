@@ -9,4 +9,4 @@ scripts/poster_scripts/
 .*
 
 # Ignore original files
-final_data/Original Files/*
+final_data/*
