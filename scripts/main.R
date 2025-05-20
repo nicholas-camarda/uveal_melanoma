@@ -55,9 +55,9 @@ run_my_analysis <- function(dataset_name) {
 
     # Get cohort info for file paths
     cohort_info <- get_cohort_info(dataset_name)
-    tables_dir <- file.path(cohort_info$dir, "tables")
-    figures_dir <- file.path(cohort_info$dir, "figures")
-    prefix <- cohort_info$prefix
+    tables_dir <<- file.path(cohort_info$dir, "tables")
+    figures_dir <<- file.path(cohort_info$dir, "figures")
+    prefix <<- cohort_info$prefix
 
     # Load analytic dataset
     log_message("Loading analytic dataset")
@@ -72,6 +72,7 @@ run_my_analysis <- function(dataset_name) {
     print(confounders)
 
     # 1a. Rates of recurrence
+    print(tables_dir)
     log_message("Calculating recurrence rates")
     recurrence_rates <- calculate_rates(
         data,

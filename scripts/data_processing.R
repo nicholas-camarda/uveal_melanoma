@@ -761,6 +761,8 @@ create_summary_tables <- function(data_list) {
         # Get cohort directory and file prefix
         cohort_info <- get_cohort_info(cohort_name)
         tables_dir <- file.path(cohort_info$dir, "tables")
+        treatment_duration_dir <- file.path(tables_dir, "treatment_duration")
+        walk(list(tables_dir, treatment_duration_dir), ~dir.create(., showWarnings = FALSE, recursive = TRUE))
         prefix <- cohort_info$prefix
 
         # Calculate treatment duration metrics
@@ -771,14 +773,14 @@ create_summary_tables <- function(data_list) {
         log_message("Saving treatment duration metrics")
         write.csv(
             duration_metrics$interval_metrics,
-            file.path(tables_dir, paste0(prefix, "treatment_duration_metrics.csv")),
+            file.path(treatment_duration_dir, paste0(prefix, "treatment_duration_metrics.csv")),
             row.names = FALSE
         )
 
         # Save summary statistics
         write.csv(
             duration_metrics$summary_stats,
-            file.path(tables_dir, paste0(prefix, "treatment_duration_summary.csv")),
+            file.path(treatment_duration_dir, paste0(prefix, "treatment_duration_summary.csv")),
             row.names = FALSE
         )
 
@@ -896,12 +898,12 @@ create_summary_tables <- function(data_list) {
         log_message("Saving tables")
         duration_tbl %>%
             gt::gtsave(
-                filename = file.path(tables_dir, paste0(prefix, "treatment_duration.html"))
+                filename = file.path(treatment_duration_dir, paste0(prefix, "treatment_duration.html"))
             )
 
         summary_tbl %>%
             gt::gtsave(
-                filename = file.path(tables_dir, paste0(prefix, "treatment_duration_summary.html"))
+                filename = file.path(treatment_duration_dir, paste0(prefix, "treatment_duration_summary.html"))
             )
 
         tbl %>%
