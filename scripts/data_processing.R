@@ -41,6 +41,8 @@ ANALYSIS_DIR <- file.path(DATA_DIR, "Analysis")
 # Define constants
 SPECIFIC_PATIENTS_TO_EXCLUDE <- c(271) # Patient 271 was excluded because all of their supporting documentation was lost
 DAYS_IN_YEAR <- 365.25
+DAYS_IN_MONTH <- 30.44
+UNITS_OF_TIME <- "months" # "days" or "months" or "years"
 TUMOR_HEIGHT_THRESHOLD <- 10 # mm
 TUMOR_DIAMETER_THRESHOLD <- 20 # mm
 FOLLOW_UP_YEARS <- 5 # For 5-year outcomes
@@ -244,8 +246,8 @@ load_and_clean_data <- function(filename) {
             )
         )
     
-    log_message("eligible_both: include initial_tumor_diameter <= 20mm, initial_tumor_height <= 10mm, optic_nerve == 'N'")
-    log_message("gksrs_only: exclude initial_tumor_diameter > 20mm, initial_tumor_height > 10mm, optic_nerve == 'Y'")
+    log_message("eligible_both: initial_tumor_diameter <= 20mm, initial_tumor_height <= 10mm, optic_nerve == 'N'")
+    log_message("gksrs_only: initial_tumor_diameter > 20mm, initial_tumor_height > 10mm, optic_nerve == 'Y'")
     log_message("other: catch-all for any other cases")
     message("\n")
     log_message(sprintf("Found %d patients in full cohort", nrow(cleaned_data)))
@@ -332,7 +334,8 @@ create_derived_variables <- function(data) {
     data <- data %>%
         mutate(
             follow_up_days = as.numeric(difftime(last_known_alive_date, date_diagnosis, units = "days")),
-            follow_up_years = follow_up_days / DAYS_IN_YEAR
+            follow_up_years = follow_up_days / DAYS_IN_YEAR,
+            follow_up_months = follow_up_days / DAYS_IN_MONTH
         )
 
     log_message("Setting treatment dates")
@@ -353,17 +356,42 @@ create_derived_variables <- function(data) {
     log_message("Calculating time-to-event (ie, tt_) variables")
     data <- data %>%
         mutate(
+            # Depending on UNITS_OF_TIME, convert days to whatever UNITS_OF_TIME is set to
             tt_recurrence = case_when(
                 recurrence1 == "Y" ~ as.numeric(difftime(recurrence1_date, treatment_date, units = "days")),
                 TRUE ~ as.numeric(difftime(last_known_alive_date, treatment_date, units = "days"))
+            ),
+            tt_recurrence_months = case_when(
+                recurrence1 == "Y" ~ time_length(interval(treatment_date, recurrence1_date), "months"),
+                TRUE ~ time_length(interval(treatment_date, last_known_alive_date), "months")
+            ),
+            tt_recurrence_years = case_when(
+                recurrence1 == "Y" ~ time_length(interval(treatment_date, recurrence1_date), "years"),
+                TRUE ~ time_length(interval(treatment_date, last_known_alive_date), "years")
             ),
             tt_mets = case_when(
                 mets_progression == "Y" ~ as.numeric(difftime(mets_progression_date, treatment_date, units = "days")),
                 TRUE ~ as.numeric(difftime(last_known_alive_date, treatment_date, units = "days"))
             ),
+            tt_mets_months = case_when(
+                mets_progression == "Y" ~ time_length(interval(treatment_date, mets_progression_date), "months"),
+                TRUE ~ time_length(interval(treatment_date, last_known_alive_date), "months")
+            ),
+            tt_mets_years = case_when(
+                mets_progression == "Y" ~ time_length(interval(treatment_date, mets_progression_date), "years"),
+                TRUE ~ time_length(interval(treatment_date, last_known_alive_date), "years")
+            ),
             tt_death = case_when(
                 !is.na(dod) ~ as.numeric(difftime(dod, treatment_date, units = "days")),
                 TRUE ~ as.numeric(difftime(last_known_alive_date, treatment_date, units = "days"))
+            ),
+            tt_death_months = case_when(
+                !is.na(dod) ~ time_length(interval(treatment_date, dod), "months"),
+                TRUE ~ time_length(interval(treatment_date, last_known_alive_date), "months")
+            ),
+            tt_death_years = case_when(
+                !is.na(dod) ~ time_length(interval(treatment_date, dod), "years"),
+                TRUE ~ time_length(interval(treatment_date, last_known_alive_date), "years")
             )
         )
 

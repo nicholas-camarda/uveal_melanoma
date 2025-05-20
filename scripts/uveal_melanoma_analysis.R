@@ -203,16 +203,21 @@ calculate_rates <- function(data, outcome_var, time_var, event_var, group_var = 
         group_by(!!sym(group_var)) %>%
         summarise(
             n = n(),
-            events = sum(!!sym(event_var)),
+            events = sum(!!sym(event_var), na.rm = TRUE),
             rate = events / n * 100,
             .groups = "drop"
         )
+
+    # Save high-level summary table of event rates
+    writexl::write_xlsx(
+        rates,
+        path = file.path(tables_dir, paste0(prefix, outcome_var, "_rates_summary.xlsx"))
+    )
     
     # check factor levels of all variables in formula
-    fix_event_data %>%
-        select(all_of(c(outcome_var, group_var, valid_confounders))) %>%
-        # map(levels)
-        map(~ table(.) %>% .[. > 5])
+    # fix_event_data %>%
+    #     select(all_of(c(outcome_var, group_var, valid_confounders))) %>%
+    #     map(~ table(.) %>% .[. > THRESHOLD_RARITY])
     
     # Then use valid_confounders in your formula
     if (length(valid_confounders) == 0) {
@@ -366,9 +371,17 @@ analyze_survival <- function(data, time_var, event_var, group_var = "treatment_g
         strata = rownames(surv_summary$table),
         records = surv_summary$table[, "records"],
         events = surv_summary$table[, "events"],
-        median = surv_summary$table[, "median"],
+        n_risk = surv_summary$table[, "n.risk"],
+        rate = surv_summary$table[, "n.event"] / surv_summary$table[, "n.risk"] * 100,
+        median_survival = surv_summary$table[, "median"],
         conf.lower = surv_summary$table[, "0.95LCL"],
         conf.upper = surv_summary$table[, "0.95UCL"]
+    )
+
+    # Save high-level summary table of median survival times
+    writexl::write_xlsx(
+        median_times,
+        path = file.path(tables_dir, paste0(prefix, ylab, "_median_survival.xlsx"))
     )
 
     # Cox model: use original data, not new_data
@@ -971,247 +984,250 @@ summarize_data <- function(data) {
     }
 }
 
-#' Workflow analysis function for uveal melanoma dataset
-#'
-#' Runs the full analysis pipeline for a given dataset, including rates, survival, tumor height, and subgroup analyses.
-#'
-#' @param dataset_name Name of the dataset (character, e.g., 'full_cohort').
-#'
-#' @return List of analysis results.
-#' @examples
-#' run_analysis("full_cohort")
-run_analysis <- function(dataset_name) {
-    # DEBUGGING:
-    # dataset_name = "uveal_melanoma_full_cohort"
 
-    log_message(sprintf("Starting analysis for dataset: %s", dataset_name))
+
+#' DEPRECATED FOR NOW
+# #' Workflow analysis function for uveal melanoma dataset
+# #'
+# #' Runs the full analysis pipeline for a given dataset, including rates, survival, tumor height, and subgroup analyses.
+# #'
+# #' @param dataset_name Name of the dataset (character, e.g., 'full_cohort').
+# #'
+# #' @return List of analysis results.
+# #' @examples
+# #' run_analysis("full_cohort")
+# run_analysis <- function(dataset_name) {
+#     # DEBUGGING:
+#     # dataset_name = "uveal_melanoma_full_cohort"
+
+#     log_message(sprintf("Starting analysis for dataset: %s", dataset_name))
     
-    # Get cohort info for file paths
-    cohort_info <- get_cohort_info(dataset_name)
-    tables_dir <- file.path(cohort_info$dir, "tables")
-    figures_dir <- file.path(cohort_info$dir, "figures")
-    prefix <- cohort_info$prefix
+#     # Get cohort info for file paths
+#     cohort_info <- get_cohort_info(dataset_name)
+#     tables_dir <- file.path(cohort_info$dir, "tables")
+#     figures_dir <- file.path(cohort_info$dir, "figures")
+#     prefix <- cohort_info$prefix
 
-    # Load analytic dataset
-    log_message("Loading analytic dataset")
-    data <- readRDS(file.path(PROCESSED_DATA_DIR, paste0(dataset_name, ".rds")))
-    log_message(sprintf("Loaded %d patients", nrow(data)))
+#     # Load analytic dataset
+#     log_message("Loading analytic dataset")
+#     data <- readRDS(file.path(PROCESSED_DATA_DIR, paste0(dataset_name, ".rds")))
+#     log_message(sprintf("Loaded %d patients", nrow(data)))
     
-    # Summarize key variables before analysis
-    summarize_data(data)
+#     # Summarize key variables before analysis
+#     summarize_data(data)
 
-    # Show confounders
-    log_message(sprintf("Using %d confounders for adjustment", length(confounders)))
+#     # Show confounders
+#     log_message(sprintf("Using %d confounders for adjustment", length(confounders)))
 
-    # 1a. Rates of recurrence
-    log_message("Calculating recurrence rates")
-    recurrence_rates <- calculate_rates(
-        data,
-        outcome_var = "recurrence1",
-        time_var = "tt_recurrence",
-        event_var = "recurrence_event",
-        confounders = confounders
-    )
+#     # 1a. Rates of recurrence
+#     log_message("Calculating recurrence rates")
+#     recurrence_rates <- calculate_rates(
+#         data,
+#         outcome_var = "recurrence1",
+#         time_var = "tt_recurrence",
+#         event_var = "recurrence_event",
+#         confounders = confounders
+#     )
 
-    # 1b. Rates of metastatic progression
-    log_message("Calculating metastatic progression rates")
-    mets_rates <- calculate_rates(
-        data,
-        outcome_var = "mets_progression",
-        time_var = "tt_mets",
-        event_var = "mets_event",
-        confounders = confounders
-    )
+#     # 1b. Rates of metastatic progression
+#     log_message("Calculating metastatic progression rates")
+#     mets_rates <- calculate_rates(
+#         data,
+#         outcome_var = "mets_progression",
+#         time_var = "tt_mets",
+#         event_var = "mets_event",
+#         confounders = confounders
+#     )
 
-    # 1c. Overall Survival
-    log_message("Analyzing overall survival")
-    os_analysis <- analyze_survival(
-        data,
-        time_var = "tt_death",
-        event_var = "death_event",
-        confounders = confounders,
-        ylab = "Overall Survival Probability"
-    )
+#     # 1c. Overall Survival
+#     log_message("Analyzing overall survival")
+#     os_analysis <- analyze_survival(
+#         data,
+#         time_var = "tt_death",
+#         event_var = "death_event",
+#         confounders = confounders,
+#         ylab = "Overall Survival Probability"
+#     )
 
-    # 1d. Progression Free Survival
-    log_message("Analyzing progression-free survival")
-    pfs_analysis <- analyze_survival(
-        data,
-        time_var = "tt_recurrence",
-        event_var = "recurrence_event",
-        confounders = confounders,
-        ylab = "Progression-Free Survival Probability"
-    )
+#     # 1d. Progression Free Survival
+#     log_message("Analyzing progression-free survival")
+#     pfs_analysis <- analyze_survival(
+#         data,
+#         time_var = "tt_recurrence",
+#         event_var = "recurrence_event",
+#         confounders = confounders,
+#         ylab = "Progression-Free Survival Probability"
+#     )
 
-    # 1e. Tumor height changes
-    log_message("Analyzing tumor height changes")
-    height_changes <- analyze_tumor_height_changes(data)
+#     # 1e. Tumor height changes
+#     log_message("Analyzing tumor height changes")
+#     height_changes <- analyze_tumor_height_changes(data)
 
-    # 1f. Subgroup analyses (run for all requested variables, but ignore optic_nerve if not looking atoverall group)
-    # forest plot of subgroup analyses for overall survival
-    subgroup_analyses_overall_survival <- list()
-    for (var in subgroup_vars) {
-        subgroup_analyses_overall_survival[[var]] <- subgroup_effects(
-            data,
-            subgroup_var = var,
-            outcome_var = "overall_survival",
-            time_var = "tt_death",
-            event_var = "death_event"
-        )
-    }
-    plot_subgroup_forest(subgroup_analyses_overall_survival, "overall_survival", figures_dir, prefix)
+#     # 1f. Subgroup analyses (run for all requested variables, but ignore optic_nerve if not looking atoverall group)
+#     # forest plot of subgroup analyses for overall survival
+#     subgroup_analyses_overall_survival <- list()
+#     for (var in subgroup_vars) {
+#         subgroup_analyses_overall_survival[[var]] <- subgroup_effects(
+#             data,
+#             subgroup_var = var,
+#             outcome_var = "overall_survival",
+#             time_var = "tt_death",
+#             event_var = "death_event"
+#         )
+#     }
+#     plot_subgroup_forest(subgroup_analyses_overall_survival, "overall_survival", figures_dir, prefix)
 
-    # forest plot of subgroup analyses for PFS
-    subgroup_analyses_recurrence <- list()
-    for (var in subgroup_vars) {
-        subgroup_analyses_recurrence[[var]] <- subgroup_effects(
-            data,
-            subgroup_var = var,
-            outcome_var = "recurrence1",
-            time_var = "tt_recurrence",
-            event_var = "recurrence_event"
-        )
-    }
-    plot_subgroup_forest(subgroup_analyses_recurrence, "recurrence", figures_dir, prefix)
+#     # forest plot of subgroup analyses for PFS
+#     subgroup_analyses_recurrence <- list()
+#     for (var in subgroup_vars) {
+#         subgroup_analyses_recurrence[[var]] <- subgroup_effects(
+#             data,
+#             subgroup_var = var,
+#             outcome_var = "recurrence1",
+#             time_var = "tt_recurrence",
+#             event_var = "recurrence_event"
+#         )
+#     }
+#     plot_subgroup_forest(subgroup_analyses_recurrence, "recurrence", figures_dir, prefix)
 
-    # forest plot of subgroup analyses for metastasis
-    subgroup_analyses_metastasis <- list()
-    for (var in subgroup_vars) {
-        subgroup_analyses_metastasis[[var]] <- subgroup_effects(
-            data,
-            subgroup_var = var,
-            outcome_var = "mets_progression",
-            time_var = "tt_mets",
-            event_var = "mets_event"
-        )
-    }
-    plot_subgroup_forest(subgroup_analyses_metastasis, "metastasis", figures_dir, prefix)
+#     # forest plot of subgroup analyses for metastasis
+#     subgroup_analyses_metastasis <- list()
+#     for (var in subgroup_vars) {
+#         subgroup_analyses_metastasis[[var]] <- subgroup_effects(
+#             data,
+#             subgroup_var = var,
+#             outcome_var = "mets_progression",
+#             time_var = "tt_mets",
+#             event_var = "mets_event"
+#         )
+#     }
+#     plot_subgroup_forest(subgroup_analyses_metastasis, "metastasis", figures_dir, prefix)
 
-    # Save results
-    log_message("Saving analysis results")
+#     # Save results
+#     log_message("Saving analysis results")
 
-    mets_rates$table %>%
-        as_gt() %>%
-        gt::gtsave(
-            filename = file.path(tables_dir, paste0(prefix, "metastatic_progression_rates.html"))
-        )
+#     mets_rates$table %>%
+#         as_gt() %>%
+#         gt::gtsave(
+#             filename = file.path(tables_dir, paste0(prefix, "metastatic_progression_rates.html"))
+#         )
 
-    height_changes$table %>%
-        as_gt() %>%
-        gt::gtsave(
-            filename = file.path(tables_dir, paste0(prefix, "tumor_height_changes.html"))
-        )
+#     height_changes$table %>%
+#         as_gt() %>%
+#         gt::gtsave(
+#             filename = file.path(tables_dir, paste0(prefix, "tumor_height_changes.html"))
+#         )
 
-    # Save Cox model tables
-    os_analysis$cox_table %>%
-        as_gt() %>%
-        gt::gtsave(
-            filename = file.path(tables_dir, paste0(prefix, "overall_survival_cox.html"))
-        )
+#     # Save Cox model tables
+#     os_analysis$cox_table %>%
+#         as_gt() %>%
+#         gt::gtsave(
+#             filename = file.path(tables_dir, paste0(prefix, "overall_survival_cox.html"))
+#         )
 
-    pfs_analysis$cox_table %>%
-        as_gt() %>%
-        gt::gtsave(
-            filename = file.path(tables_dir, paste0(prefix, "progression_free_survival_cox.html"))
-        )
+#     pfs_analysis$cox_table %>%
+#         as_gt() %>%
+#         gt::gtsave(
+#             filename = file.path(tables_dir, paste0(prefix, "progression_free_survival_cox.html"))
+#         )
 
-    # Save plots
+#     # Save plots
 
-    log_message("Saving survival plots")
-    # pdf(file.path(figures_dir, paste0(prefix, "overall_survival.pdf")))
-    # print(os_analysis$plot)
-    # dev.off()
-        ggsave(
-            filename = file.path(figures_dir, paste0(prefix, "overall_survival.pdf")),
-            plot = os_analysis$plot$plot, # note the $plot!
-            width = 7, height = 7
-        )
+#     log_message("Saving survival plots")
+#     # pdf(file.path(figures_dir, paste0(prefix, "overall_survival.pdf")))
+#     # print(os_analysis$plot)
+#     # dev.off()
+#         ggsave(
+#             filename = file.path(figures_dir, paste0(prefix, "overall_survival.pdf")),
+#             plot = os_analysis$plot$plot, # note the $plot!
+#             width = 7, height = 7
+#         )
 
-    # pdf(file.path(figures_dir, paste0(prefix, "progression_free_survival.pdf")))
-    # print(pfs_analysis$plot)
-    # dev.off()
-    ggsave(
-        filename = file.path(figures_dir, paste0(prefix, "progression_free_survival.pdf")),
-        plot = pfs_analysis$plot$plot, # note the $plot!
-        width = 7, height = 7
-    )
+#     # pdf(file.path(figures_dir, paste0(prefix, "progression_free_survival.pdf")))
+#     # print(pfs_analysis$plot)
+#     # dev.off()
+#     ggsave(
+#         filename = file.path(figures_dir, paste0(prefix, "progression_free_survival.pdf")),
+#         plot = pfs_analysis$plot$plot, # note the $plot!
+#         width = 7, height = 7
+#     )
 
-    # Save subgroup analysis plots
-    # for (var in subgroup_vars) {
-    #     pdf(file.path(figures_dir, paste0(prefix, "subgroup_analysis_", var, ".pdf")))
-    #     for (result in subgroup_analyses[[var]]) {
-    #         if (!is.null(result)) {
-    #             print(result$plot)
-    #         }
-    #     }
-    #     dev.off()
-    # }
+#     # Save subgroup analysis plots
+#     # for (var in subgroup_vars) {
+#     #     pdf(file.path(figures_dir, paste0(prefix, "subgroup_analysis_", var, ".pdf")))
+#     #     for (result in subgroup_analyses[[var]]) {
+#     #         if (!is.null(result)) {
+#     #             print(result$plot)
+#     #         }
+#     #     }
+#     #     dev.off()
+#     # }
 
-    # Save median survival times
-    write.csv(
-        os_analysis$median_times,
-        file.path(tables_dir, paste0(prefix, "overall_survival_medians.csv")),
-        row.names = FALSE
-    )
+#     # Save median survival times
+#     write.csv(
+#         os_analysis$median_times,
+#         file.path(tables_dir, paste0(prefix, "overall_survival_medians.csv")),
+#         row.names = FALSE
+#     )
 
-    write.csv(
-        pfs_analysis$median_times,
-        file.path(tables_dir, paste0(prefix, "progression_free_survival_medians.csv")),
-        row.names = FALSE
-    )
+#     write.csv(
+#         pfs_analysis$median_times,
+#         file.path(tables_dir, paste0(prefix, "progression_free_survival_medians.csv")),
+#         row.names = FALSE
+#     )
 
-    log_message(sprintf("Analysis complete for dataset: %s", dataset_name))
-    return(list(
-        recurrence_rates = recurrence_rates,
-        mets_rates = mets_rates,
-        os_analysis = os_analysis,
-        pfs_analysis = pfs_analysis,
-        height_changes = height_changes,
-        subgroup_analyses = subgroup_analyses
-    ))
-}
-
-# # =====================
-# # TEST: Mock data for perform_subgroup_analysis
-# # =====================
-# if (interactive() || ("test_subgroup" %in% commandArgs(trailingOnly = TRUE))) {
-#   # Create mock data
-#   set.seed(123)
-#   mock_data <- tibble(
-#     id = 1:20,
-#     treatment_group = rep(c("Plaque", "GKSRS"), each = 10),
-#     age_at_diagnosis = c(rnorm(10, 60, 5), rnorm(10, 65, 5)),
-#     sex = rep(c("Male", "Female"), 10),
-#     location = rep(c("Choroidal", "Ciliary_Body"), 10),
-#     initial_tumor_height = runif(20, 3, 10),
-#     initial_tumor_diameter = runif(20, 8, 20),
-#     biopsy1_gep = sample(c("Class_1A_PRAME_negative", "Class_2_PRAME_positive"), 20, replace = TRUE),
-#     optic_nerve = sample(c("Yes", "No"), 20, replace = TRUE),
-#     tt_recurrence = rexp(20, 0.1),
-#     recurrence_event = rbinom(20, 1, 0.5),
-#     recurrence1 = ifelse(recurrence_event == 1, "Y", "N")
-#   )
-
-#   # Test with a continuous variable (age_at_diagnosis)
-#   cat("\n--- Subgroup analysis by age_at_diagnosis (continuous, binned) ---\n")
-#   res_age <- subgroup_effects(
-#     mock_data,
-#     subgroup_var = "age_at_diagnosis",
-#     outcome_var = "recurrence1",
-#     time_var = "tt_recurrence",
-#     event_var = "recurrence_event"
-#   )
-#   print(res_age)
-
-#   # Test with a categorical variable (sex)
-#   cat("\n--- Subgroup analysis by sex (categorical) ---\n")
-#   res_sex <- perform_subgroup_analysis(
-#     mock_data,
-#     outcome_var = "recurrence1",
-#     time_var = "tt_recurrence",
-#     event_var = "recurrence_event",
-#     subgroup_var = "sex"
-#   )
-#   print(res_sex)
+#     log_message(sprintf("Analysis complete for dataset: %s", dataset_name))
+#     return(list(
+#         recurrence_rates = recurrence_rates,
+#         mets_rates = mets_rates,
+#         os_analysis = os_analysis,
+#         pfs_analysis = pfs_analysis,
+#         height_changes = height_changes,
+#         subgroup_analyses = subgroup_analyses
+#     ))
 # }
+
+# # # =====================
+# # # TEST: Mock data for perform_subgroup_analysis
+# # # =====================
+# # if (interactive() || ("test_subgroup" %in% commandArgs(trailingOnly = TRUE))) {
+# #   # Create mock data
+# #   set.seed(123)
+# #   mock_data <- tibble(
+# #     id = 1:20,
+# #     treatment_group = rep(c("Plaque", "GKSRS"), each = 10),
+# #     age_at_diagnosis = c(rnorm(10, 60, 5), rnorm(10, 65, 5)),
+# #     sex = rep(c("Male", "Female"), 10),
+# #     location = rep(c("Choroidal", "Ciliary_Body"), 10),
+# #     initial_tumor_height = runif(20, 3, 10),
+# #     initial_tumor_diameter = runif(20, 8, 20),
+# #     biopsy1_gep = sample(c("Class_1A_PRAME_negative", "Class_2_PRAME_positive"), 20, replace = TRUE),
+# #     optic_nerve = sample(c("Yes", "No"), 20, replace = TRUE),
+# #     tt_recurrence = rexp(20, 0.1),
+# #     recurrence_event = rbinom(20, 1, 0.5),
+# #     recurrence1 = ifelse(recurrence_event == 1, "Y", "N")
+# #   )
+
+# #   # Test with a continuous variable (age_at_diagnosis)
+# #   cat("\n--- Subgroup analysis by age_at_diagnosis (continuous, binned) ---\n")
+# #   res_age <- subgroup_effects(
+# #     mock_data,
+# #     subgroup_var = "age_at_diagnosis",
+# #     outcome_var = "recurrence1",
+# #     time_var = "tt_recurrence",
+# #     event_var = "recurrence_event"
+# #   )
+# #   print(res_age)
+
+# #   # Test with a categorical variable (sex)
+# #   cat("\n--- Subgroup analysis by sex (categorical) ---\n")
+# #   res_sex <- perform_subgroup_analysis(
+# #     mock_data,
+# #     outcome_var = "recurrence1",
+# #     time_var = "tt_recurrence",
+# #     event_var = "recurrence_event",
+# #     subgroup_var = "sex"
+# #   )
+# #   print(res_sex)
+# # }
 
