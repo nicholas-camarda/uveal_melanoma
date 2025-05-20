@@ -81,7 +81,6 @@ install.packages(c(
 ### 1. Prepare Data
 
 - Place your raw Excel data file(s) in `final_data/Original Files/`.
-- (Optional) Review the data dictionary in `final_data/Original Files/Data Dictionary.xlsx` for variable definitions.
 
 ### 2. Run the Pipeline
 
