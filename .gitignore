@@ -3,3 +3,10 @@ data/
 
 # ignore generated poster scripts
 scripts/poster_scripts/
+
+# Ignore history and .* files
+.Rhistory
+.*
+
+# Ignore original files
+final_data/Original Files/*
