@@ -1,0 +1,5 @@
+# ignore raw data files
+data/
+
+# ignore generated poster scripts
+scripts/poster_scripts/

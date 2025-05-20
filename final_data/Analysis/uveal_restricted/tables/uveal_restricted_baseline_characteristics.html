@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<style>body{background-color:white;}</style>
+
+
+</head>
+<body>
+<div id="bkarizapvm" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+  <style>#bkarizapvm table {
+  font-family: system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#bkarizapvm thead, #bkarizapvm tbody, #bkarizapvm tfoot, #bkarizapvm tr, #bkarizapvm td, #bkarizapvm th {
+  border-style: none;
+}
+
+#bkarizapvm p {
+  margin: 0;
+  padding: 0;
+}
+
+#bkarizapvm .gt_table {
+  display: table;
+  border-collapse: collapse;
+  line-height: normal;
+  margin-left: auto;
+  margin-right: auto;
+  color: #333333;
+  font-size: 16px;
+  font-weight: normal;
+  font-style: normal;
+  background-color: #FFFFFF;
+  width: auto;
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: #A8A8A8;
+  border-right-style: none;
+  border-right-width: 2px;
+  border-right-color: #D3D3D3;
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #A8A8A8;
+  border-left-style: none;
+  border-left-width: 2px;
+  border-left-color: #D3D3D3;
+}
+
+#bkarizapvm .gt_caption {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+#bkarizapvm .gt_title {
+  color: #333333;
+  font-size: 125%;
+  font-weight: initial;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  padding-left: 5px;
+  padding-right: 5px;
+  border-bottom-color: #FFFFFF;
+  border-bottom-width: 0;
+}
+
+#bkarizapvm .gt_subtitle {
+  color: #333333;
+  font-size: 85%;
+  font-weight: initial;
+  padding-top: 3px;
+  padding-bottom: 5px;
+  padding-left: 5px;
+  padding-right: 5px;
+  border-top-color: #FFFFFF;
+  border-top-width: 0;
+}
+
+#bkarizapvm .gt_heading {
+  background-color: #FFFFFF;
+  text-align: center;
+  border-bottom-color: #FFFFFF;
+  border-left-style: none;
+  border-left-width: 1px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 1px;
+  border-right-color: #D3D3D3;
+}
+
+#bkarizapvm .gt_bottom_border {
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+}
+
+#bkarizapvm .gt_col_headings {
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: #D3D3D3;
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  border-left-style: none;
+  border-left-width: 1px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 1px;
+  border-right-color: #D3D3D3;
+}
+
+#bkarizapvm .gt_col_heading {
+  color: #333333;
+  background-color: #FFFFFF;
+  font-size: 100%;
+  font-weight: normal;
+  text-transform: inherit;
+  border-left-style: none;
+  border-left-width: 1px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 1px;
+  border-right-color: #D3D3D3;
+  vertical-align: bottom;
+  padding-top: 5px;
+  padding-bottom: 6px;
+  padding-left: 5px;
+  padding-right: 5px;
+  overflow-x: hidden;
+}
+
+#bkarizapvm .gt_column_spanner_outer {
+  color: #333333;
+  background-color: #FFFFFF;
+  font-size: 100%;
+  font-weight: normal;
+  text-transform: inherit;
+  padding-top: 0;
+  padding-bottom: 0;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+#bkarizapvm .gt_column_spanner_outer:first-child {
+  padding-left: 0;
+}
+
+#bkarizapvm .gt_column_spanner_outer:last-child {
+  padding-right: 0;
+}
+
+#bkarizapvm .gt_column_spanner {
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  vertical-align: bottom;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  overflow-x: hidden;
+  display: inline-block;
+  width: 100%;
+}
+
+#bkarizapvm .gt_spanner_row {
+  border-bottom-style: hidden;
+}
+
+#bkarizapvm .gt_group_heading {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+  color: #333333;
+  background-color: #FFFFFF;
+  font-size: 100%;
+  font-weight: initial;
+  text-transform: inherit;
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: #D3D3D3;
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  border-left-style: none;
+  border-left-width: 1px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 1px;
+  border-right-color: #D3D3D3;
+  vertical-align: middle;
+  text-align: left;
+}
+
+#bkarizapvm .gt_empty_group_heading {
+  padding: 0.5px;
+  color: #333333;
+  background-color: #FFFFFF;
+  font-size: 100%;
+  font-weight: initial;
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: #D3D3D3;
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  vertical-align: middle;
+}
+
+#bkarizapvm .gt_from_md > :first-child {
+  margin-top: 0;
+}
+
+#bkarizapvm .gt_from_md > :last-child {
+  margin-bottom: 0;
+}
+
+#bkarizapvm .gt_row {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+  margin: 10px;
+  border-top-style: solid;
+  border-top-width: 1px;
+  border-top-color: #D3D3D3;
+  border-left-style: none;
+  border-left-width: 1px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 1px;
+  border-right-color: #D3D3D3;
+  vertical-align: middle;
+  overflow-x: hidden;
+}
+
+#bkarizapvm .gt_stub {
+  color: #333333;
+  background-color: #FFFFFF;
+  font-size: 100%;
+  font-weight: initial;
+  text-transform: inherit;
+  border-right-style: solid;
+  border-right-width: 2px;
+  border-right-color: #D3D3D3;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+#bkarizapvm .gt_stub_row_group {
+  color: #333333;
+  background-color: #FFFFFF;
+  font-size: 100%;
+  font-weight: initial;
+  text-transform: inherit;
+  border-right-style: solid;
+  border-right-width: 2px;
+  border-right-color: #D3D3D3;
+  padding-left: 5px;
+  padding-right: 5px;
+  vertical-align: top;
+}
+
+#bkarizapvm .gt_row_group_first td {
+  border-top-width: 2px;
+}
+
+#bkarizapvm .gt_row_group_first th {
+  border-top-width: 2px;
+}
+
+#bkarizapvm .gt_summary_row {
+  color: #333333;
+  background-color: #FFFFFF;
+  text-transform: inherit;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+#bkarizapvm .gt_first_summary_row {
+  border-top-style: solid;
+  border-top-color: #D3D3D3;
+}
+
+#bkarizapvm .gt_first_summary_row.thick {
+  border-top-width: 2px;
+}
+
+#bkarizapvm .gt_last_summary_row {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+}
+
+#bkarizapvm .gt_grand_summary_row {
+  color: #333333;
+  background-color: #FFFFFF;
+  text-transform: inherit;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+#bkarizapvm .gt_first_grand_summary_row {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+  border-top-style: double;
+  border-top-width: 6px;
+  border-top-color: #D3D3D3;
+}
+
+#bkarizapvm .gt_last_grand_summary_row_top {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+  border-bottom-style: double;
+  border-bottom-width: 6px;
+  border-bottom-color: #D3D3D3;
+}
+
+#bkarizapvm .gt_striped {
+  background-color: rgba(128, 128, 128, 0.05);
+}
+
+#bkarizapvm .gt_table_body {
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: #D3D3D3;
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+}
+
+#bkarizapvm .gt_footnotes {
+  color: #333333;
+  background-color: #FFFFFF;
+  border-bottom-style: none;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  border-left-style: none;
+  border-left-width: 2px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 2px;
+  border-right-color: #D3D3D3;
+}
+
+#bkarizapvm .gt_footnote {
+  margin: 0px;
+  font-size: 90%;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+#bkarizapvm .gt_sourcenotes {
+  color: #333333;
+  background-color: #FFFFFF;
+  border-bottom-style: none;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  border-left-style: none;
+  border-left-width: 2px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 2px;
+  border-right-color: #D3D3D3;
+}
+
+#bkarizapvm .gt_sourcenote {
+  font-size: 90%;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+#bkarizapvm .gt_left {
+  text-align: left;
+}
+
+#bkarizapvm .gt_center {
+  text-align: center;
+}
+
+#bkarizapvm .gt_right {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+#bkarizapvm .gt_font_normal {
+  font-weight: normal;
+}
+
+#bkarizapvm .gt_font_bold {
+  font-weight: bold;
+}
+
+#bkarizapvm .gt_font_italic {
+  font-style: italic;
+}
+
+#bkarizapvm .gt_super {
+  font-size: 65%;
+}
+
+#bkarizapvm .gt_footnote_marks {
+  font-size: 75%;
+  vertical-align: 0.4em;
+  position: initial;
+}
+
+#bkarizapvm .gt_asterisk {
+  font-size: 100%;
+  vertical-align: 0;
+}
+
+#bkarizapvm .gt_indent_1 {
+  text-indent: 5px;
+}
+
+#bkarizapvm .gt_indent_2 {
+  text-indent: 10px;
+}
+
+#bkarizapvm .gt_indent_3 {
+  text-indent: 15px;
+}
+
+#bkarizapvm .gt_indent_4 {
+  text-indent: 20px;
+}
+
+#bkarizapvm .gt_indent_5 {
+  text-indent: 25px;
+}
+</style>
+  <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
+  <!--/html_preserve--><caption class='gt_caption'>Table 1: Baseline Characteristics - Uveal melanoma gksrs only cohort</caption><!--html_preserve-->
+  <thead>
+    
+    <tr class="gt_col_headings">
+      <th class="gt_col_heading gt_columns_bottom_border gt_left" rowspan="1" colspan="1" scope="col" id="&lt;strong&gt;Variable&lt;/strong&gt;"><strong>Variable</strong></th>
+      <th class="gt_col_heading gt_columns_bottom_border gt_center" rowspan="1" colspan="1" scope="col" id="&lt;strong&gt;Overall&lt;/strong&gt;, N = 171&lt;span class=&quot;gt_footnote_marks&quot; style=&quot;white-space:nowrap;font-style:italic;font-weight:normal;&quot;&gt;&lt;sup&gt;1&lt;/sup&gt;&lt;/span&gt;"><strong>Overall</strong>, N = 171<span class="gt_footnote_marks" style="white-space:nowrap;font-style:italic;font-weight:normal;"><sup>1</sup></span></th>
+      <th class="gt_col_heading gt_columns_bottom_border gt_center" rowspan="1" colspan="1" scope="col" id="&lt;strong&gt;Plaque&lt;/strong&gt;, N = 106&lt;span class=&quot;gt_footnote_marks&quot; style=&quot;white-space:nowrap;font-style:italic;font-weight:normal;&quot;&gt;&lt;sup&gt;1&lt;/sup&gt;&lt;/span&gt;"><strong>Plaque</strong>, N = 106<span class="gt_footnote_marks" style="white-space:nowrap;font-style:italic;font-weight:normal;"><sup>1</sup></span></th>
+      <th class="gt_col_heading gt_columns_bottom_border gt_center" rowspan="1" colspan="1" scope="col" id="&lt;strong&gt;GKSRS&lt;/strong&gt;, N = 65&lt;span class=&quot;gt_footnote_marks&quot; style=&quot;white-space:nowrap;font-style:italic;font-weight:normal;&quot;&gt;&lt;sup&gt;1&lt;/sup&gt;&lt;/span&gt;"><strong>GKSRS</strong>, N = 65<span class="gt_footnote_marks" style="white-space:nowrap;font-style:italic;font-weight:normal;"><sup>1</sup></span></th>
+      <th class="gt_col_heading gt_columns_bottom_border gt_center" rowspan="1" colspan="1" scope="col" id="&lt;strong&gt;p-value&lt;/strong&gt;&lt;span class=&quot;gt_footnote_marks&quot; style=&quot;white-space:nowrap;font-style:italic;font-weight:normal;&quot;&gt;&lt;sup&gt;2&lt;/sup&gt;&lt;/span&gt;"><strong>p-value</strong><span class="gt_footnote_marks" style="white-space:nowrap;font-style:italic;font-weight:normal;"><sup>2</sup></span></th>
+    </tr>
+  </thead>
+  <tbody class="gt_table_body">
+    <tr><td headers="label" class="gt_row gt_left">Age at Diagnosis (years)</td>
+<td headers="stat_0" class="gt_row gt_center">63.0 (13.6)</td>
+<td headers="stat_1" class="gt_row gt_center">62.4 (13.7)</td>
+<td headers="stat_2" class="gt_row gt_center">64.0 (13.4)</td>
+<td headers="p.value" class="gt_row gt_center">0.5</td></tr>
+    <tr><td headers="label" class="gt_row gt_left">Race</td>
+<td headers="stat_0" class="gt_row gt_center"><br /></td>
+<td headers="stat_1" class="gt_row gt_center"><br /></td>
+<td headers="stat_2" class="gt_row gt_center"><br /></td>
+<td headers="p.value" class="gt_row gt_center">0.3</td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    African_American</td>
+<td headers="stat_0" class="gt_row gt_center">1.0 (0.6%)</td>
+<td headers="stat_1" class="gt_row gt_center">0.0 (0.0%)</td>
+<td headers="stat_2" class="gt_row gt_center">1.0 (1.5%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Hispanic_Latino</td>
+<td headers="stat_0" class="gt_row gt_center">2.0 (1.2%)</td>
+<td headers="stat_1" class="gt_row gt_center">2.0 (1.9%)</td>
+<td headers="stat_2" class="gt_row gt_center">0.0 (0.0%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    White</td>
+<td headers="stat_0" class="gt_row gt_center">168.0 (98.2%)</td>
+<td headers="stat_1" class="gt_row gt_center">104.0 (98.1%)</td>
+<td headers="stat_2" class="gt_row gt_center">64.0 (98.5%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">Sex</td>
+<td headers="stat_0" class="gt_row gt_center"><br /></td>
+<td headers="stat_1" class="gt_row gt_center"><br /></td>
+<td headers="stat_2" class="gt_row gt_center"><br /></td>
+<td headers="p.value" class="gt_row gt_center">0.3</td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Female</td>
+<td headers="stat_0" class="gt_row gt_center">78.0 (45.6%)</td>
+<td headers="stat_1" class="gt_row gt_center">52.0 (49.1%)</td>
+<td headers="stat_2" class="gt_row gt_center">26.0 (40.0%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Male</td>
+<td headers="stat_0" class="gt_row gt_center">93.0 (54.4%)</td>
+<td headers="stat_1" class="gt_row gt_center">54.0 (50.9%)</td>
+<td headers="stat_2" class="gt_row gt_center">39.0 (60.0%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">Eye</td>
+<td headers="stat_0" class="gt_row gt_center"><br /></td>
+<td headers="stat_1" class="gt_row gt_center"><br /></td>
+<td headers="stat_2" class="gt_row gt_center"><br /></td>
+<td headers="p.value" class="gt_row gt_center">>0.9</td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Left</td>
+<td headers="stat_0" class="gt_row gt_center">99.0 (57.9%)</td>
+<td headers="stat_1" class="gt_row gt_center">61.0 (57.5%)</td>
+<td headers="stat_2" class="gt_row gt_center">38.0 (58.5%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Right</td>
+<td headers="stat_0" class="gt_row gt_center">72.0 (42.1%)</td>
+<td headers="stat_1" class="gt_row gt_center">45.0 (42.5%)</td>
+<td headers="stat_2" class="gt_row gt_center">27.0 (41.5%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">Initial Vision</td>
+<td headers="stat_0" class="gt_row gt_center">0.3 (0.4)</td>
+<td headers="stat_1" class="gt_row gt_center">0.3 (0.5)</td>
+<td headers="stat_2" class="gt_row gt_center">0.3 (0.3)</td>
+<td headers="p.value" class="gt_row gt_center">0.7</td></tr>
+    <tr><td headers="label" class="gt_row gt_left">Tumor Location</td>
+<td headers="stat_0" class="gt_row gt_center"><br /></td>
+<td headers="stat_1" class="gt_row gt_center"><br /></td>
+<td headers="stat_2" class="gt_row gt_center"><br /></td>
+<td headers="p.value" class="gt_row gt_center">>0.9</td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Choroidal</td>
+<td headers="stat_0" class="gt_row gt_center">155.0 (90.6%)</td>
+<td headers="stat_1" class="gt_row gt_center">95.0 (89.6%)</td>
+<td headers="stat_2" class="gt_row gt_center">60.0 (92.3%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Ciliary Body</td>
+<td headers="stat_0" class="gt_row gt_center">1.0 (0.6%)</td>
+<td headers="stat_1" class="gt_row gt_center">1.0 (0.9%)</td>
+<td headers="stat_2" class="gt_row gt_center">0.0 (0.0%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Cilio-Choroidal</td>
+<td headers="stat_0" class="gt_row gt_center">13.0 (7.6%)</td>
+<td headers="stat_1" class="gt_row gt_center">8.0 (7.5%)</td>
+<td headers="stat_2" class="gt_row gt_center">5.0 (7.7%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Conjunctival</td>
+<td headers="stat_0" class="gt_row gt_center">1.0 (0.6%)</td>
+<td headers="stat_1" class="gt_row gt_center">1.0 (0.9%)</td>
+<td headers="stat_2" class="gt_row gt_center">0.0 (0.0%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Irido-Ciliary</td>
+<td headers="stat_0" class="gt_row gt_center">1.0 (0.6%)</td>
+<td headers="stat_1" class="gt_row gt_center">1.0 (0.9%)</td>
+<td headers="stat_2" class="gt_row gt_center">0.0 (0.0%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Iris</td>
+<td headers="stat_0" class="gt_row gt_center">0.0 (0.0%)</td>
+<td headers="stat_1" class="gt_row gt_center">0.0 (0.0%)</td>
+<td headers="stat_2" class="gt_row gt_center">0.0 (0.0%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">Optic Nerve Abutment</td>
+<td headers="stat_0" class="gt_row gt_center">0.0 (0.0%)</td>
+<td headers="stat_1" class="gt_row gt_center">0.0 (0.0%)</td>
+<td headers="stat_2" class="gt_row gt_center">0.0 (0.0%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">Tumor Height (mm)</td>
+<td headers="stat_0" class="gt_row gt_center">4.7 (2.1)</td>
+<td headers="stat_1" class="gt_row gt_center">4.6 (2.0)</td>
+<td headers="stat_2" class="gt_row gt_center">4.9 (2.3)</td>
+<td headers="p.value" class="gt_row gt_center">0.5</td></tr>
+    <tr><td headers="label" class="gt_row gt_left">Tumor Diameter (mm)</td>
+<td headers="stat_0" class="gt_row gt_center">11.2 (4.0)</td>
+<td headers="stat_1" class="gt_row gt_center">11.2 (3.6)</td>
+<td headers="stat_2" class="gt_row gt_center">11.3 (4.6)</td>
+<td headers="p.value" class="gt_row gt_center">>0.9</td></tr>
+    <tr><td headers="label" class="gt_row gt_left">Internal Reflectivity</td>
+<td headers="stat_0" class="gt_row gt_center"><br /></td>
+<td headers="stat_1" class="gt_row gt_center"><br /></td>
+<td headers="stat_2" class="gt_row gt_center"><br /></td>
+<td headers="p.value" class="gt_row gt_center">0.2</td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Very Low</td>
+<td headers="stat_0" class="gt_row gt_center">1.0 (0.6%)</td>
+<td headers="stat_1" class="gt_row gt_center">1.0 (1.0%)</td>
+<td headers="stat_2" class="gt_row gt_center">0.0 (0.0%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Low</td>
+<td headers="stat_0" class="gt_row gt_center">14.0 (8.4%)</td>
+<td headers="stat_1" class="gt_row gt_center">9.0 (8.8%)</td>
+<td headers="stat_2" class="gt_row gt_center">5.0 (7.8%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Low-Medium</td>
+<td headers="stat_0" class="gt_row gt_center">24.0 (14.5%)</td>
+<td headers="stat_1" class="gt_row gt_center">11.0 (10.8%)</td>
+<td headers="stat_2" class="gt_row gt_center">13.0 (20.3%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Medium</td>
+<td headers="stat_0" class="gt_row gt_center">36.0 (21.7%)</td>
+<td headers="stat_1" class="gt_row gt_center">18.0 (17.6%)</td>
+<td headers="stat_2" class="gt_row gt_center">18.0 (28.1%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Medium-High</td>
+<td headers="stat_0" class="gt_row gt_center">2.0 (1.2%)</td>
+<td headers="stat_1" class="gt_row gt_center">1.0 (1.0%)</td>
+<td headers="stat_2" class="gt_row gt_center">1.0 (1.6%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    High</td>
+<td headers="stat_0" class="gt_row gt_center">5.0 (3.0%)</td>
+<td headers="stat_1" class="gt_row gt_center">3.0 (2.9%)</td>
+<td headers="stat_2" class="gt_row gt_center">2.0 (3.1%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Unknown</td>
+<td headers="stat_0" class="gt_row gt_center">84.0 (50.6%)</td>
+<td headers="stat_1" class="gt_row gt_center">59.0 (57.8%)</td>
+<td headers="stat_2" class="gt_row gt_center">25.0 (39.1%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">Subretinal Fluid (SRF)</td>
+<td headers="stat_0" class="gt_row gt_center">113.0 (66.1%)</td>
+<td headers="stat_1" class="gt_row gt_center">68.0 (64.2%)</td>
+<td headers="stat_2" class="gt_row gt_center">45.0 (69.2%)</td>
+<td headers="p.value" class="gt_row gt_center">0.5</td></tr>
+    <tr><td headers="label" class="gt_row gt_left">Orange Pigment</td>
+<td headers="stat_0" class="gt_row gt_center">46.0 (26.9%)</td>
+<td headers="stat_1" class="gt_row gt_center">27.0 (25.5%)</td>
+<td headers="stat_2" class="gt_row gt_center">19.0 (29.2%)</td>
+<td headers="p.value" class="gt_row gt_center">0.6</td></tr>
+    <tr><td headers="label" class="gt_row gt_left">Any Symptoms</td>
+<td headers="stat_0" class="gt_row gt_center">119.0 (69.6%)</td>
+<td headers="stat_1" class="gt_row gt_center">76.0 (71.7%)</td>
+<td headers="stat_2" class="gt_row gt_center">43.0 (66.2%)</td>
+<td headers="p.value" class="gt_row gt_center">0.5</td></tr>
+    <tr><td headers="label" class="gt_row gt_left">Vision Loss/Blurred Vision</td>
+<td headers="stat_0" class="gt_row gt_center">70.0 (40.9%)</td>
+<td headers="stat_1" class="gt_row gt_center">43.0 (40.6%)</td>
+<td headers="stat_2" class="gt_row gt_center">27.0 (41.5%)</td>
+<td headers="p.value" class="gt_row gt_center">>0.9</td></tr>
+    <tr><td headers="label" class="gt_row gt_left">Visual Field Defect</td>
+<td headers="stat_0" class="gt_row gt_center">18.0 (10.5%)</td>
+<td headers="stat_1" class="gt_row gt_center">11.0 (10.4%)</td>
+<td headers="stat_2" class="gt_row gt_center">7.0 (10.8%)</td>
+<td headers="p.value" class="gt_row gt_center">>0.9</td></tr>
+    <tr><td headers="label" class="gt_row gt_left">Flashes/Photopsia</td>
+<td headers="stat_0" class="gt_row gt_center">55.0 (32.2%)</td>
+<td headers="stat_1" class="gt_row gt_center">40.0 (37.7%)</td>
+<td headers="stat_2" class="gt_row gt_center">15.0 (23.1%)</td>
+<td headers="p.value" class="gt_row gt_center">0.063</td></tr>
+    <tr><td headers="label" class="gt_row gt_left">Floaters</td>
+<td headers="stat_0" class="gt_row gt_center">40.0 (23.4%)</td>
+<td headers="stat_1" class="gt_row gt_center">31.0 (29.2%)</td>
+<td headers="stat_2" class="gt_row gt_center">9.0 (13.8%)</td>
+<td headers="p.value" class="gt_row gt_center">0.027</td></tr>
+    <tr><td headers="label" class="gt_row gt_left">Pain</td>
+<td headers="stat_0" class="gt_row gt_center">9.0 (5.3%)</td>
+<td headers="stat_1" class="gt_row gt_center">5.0 (4.7%)</td>
+<td headers="stat_2" class="gt_row gt_center">4.0 (6.2%)</td>
+<td headers="p.value" class="gt_row gt_center">0.7</td></tr>
+    <tr><td headers="label" class="gt_row gt_left">Overall Stage</td>
+<td headers="stat_0" class="gt_row gt_center"><br /></td>
+<td headers="stat_1" class="gt_row gt_center"><br /></td>
+<td headers="stat_2" class="gt_row gt_center"><br /></td>
+<td headers="p.value" class="gt_row gt_center">0.015</td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    1</td>
+<td headers="stat_0" class="gt_row gt_center">63.0 (36.8%)</td>
+<td headers="stat_1" class="gt_row gt_center">37.0 (34.9%)</td>
+<td headers="stat_2" class="gt_row gt_center">26.0 (40.0%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    2A</td>
+<td headers="stat_0" class="gt_row gt_center">62.0 (36.3%)</td>
+<td headers="stat_1" class="gt_row gt_center">47.0 (44.3%)</td>
+<td headers="stat_2" class="gt_row gt_center">15.0 (23.1%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    2B</td>
+<td headers="stat_0" class="gt_row gt_center">28.0 (16.4%)</td>
+<td headers="stat_1" class="gt_row gt_center">11.0 (10.4%)</td>
+<td headers="stat_2" class="gt_row gt_center">17.0 (26.2%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    3A</td>
+<td headers="stat_0" class="gt_row gt_center">14.0 (8.2%)</td>
+<td headers="stat_1" class="gt_row gt_center">8.0 (7.5%)</td>
+<td headers="stat_2" class="gt_row gt_center">6.0 (9.2%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    3B</td>
+<td headers="stat_0" class="gt_row gt_center">2.0 (1.2%)</td>
+<td headers="stat_1" class="gt_row gt_center">2.0 (1.9%)</td>
+<td headers="stat_2" class="gt_row gt_center">0.0 (0.0%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    4</td>
+<td headers="stat_0" class="gt_row gt_center">2.0 (1.2%)</td>
+<td headers="stat_1" class="gt_row gt_center">1.0 (0.9%)</td>
+<td headers="stat_2" class="gt_row gt_center">1.0 (1.5%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">T Stage</td>
+<td headers="stat_0" class="gt_row gt_center"><br /></td>
+<td headers="stat_1" class="gt_row gt_center"><br /></td>
+<td headers="stat_2" class="gt_row gt_center"><br /></td>
+<td headers="p.value" class="gt_row gt_center">0.012</td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    T1a</td>
+<td headers="stat_0" class="gt_row gt_center">63.0 (36.8%)</td>
+<td headers="stat_1" class="gt_row gt_center">37.0 (34.9%)</td>
+<td headers="stat_2" class="gt_row gt_center">26.0 (40.0%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    T1b</td>
+<td headers="stat_0" class="gt_row gt_center">2.0 (1.2%)</td>
+<td headers="stat_1" class="gt_row gt_center">2.0 (1.9%)</td>
+<td headers="stat_2" class="gt_row gt_center">0.0 (0.0%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    T2a</td>
+<td headers="stat_0" class="gt_row gt_center">60.0 (35.1%)</td>
+<td headers="stat_1" class="gt_row gt_center">45.0 (42.5%)</td>
+<td headers="stat_2" class="gt_row gt_center">15.0 (23.1%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    T2b</td>
+<td headers="stat_0" class="gt_row gt_center">2.0 (1.2%)</td>
+<td headers="stat_1" class="gt_row gt_center">0.0 (0.0%)</td>
+<td headers="stat_2" class="gt_row gt_center">2.0 (3.1%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    T3a</td>
+<td headers="stat_0" class="gt_row gt_center">27.0 (15.8%)</td>
+<td headers="stat_1" class="gt_row gt_center">12.0 (11.3%)</td>
+<td headers="stat_2" class="gt_row gt_center">15.0 (23.1%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    T3b</td>
+<td headers="stat_0" class="gt_row gt_center">7.0 (4.1%)</td>
+<td headers="stat_1" class="gt_row gt_center">5.0 (4.7%)</td>
+<td headers="stat_2" class="gt_row gt_center">2.0 (3.1%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    T3c</td>
+<td headers="stat_0" class="gt_row gt_center">1.0 (0.6%)</td>
+<td headers="stat_1" class="gt_row gt_center">0.0 (0.0%)</td>
+<td headers="stat_2" class="gt_row gt_center">1.0 (1.5%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    T3d</td>
+<td headers="stat_0" class="gt_row gt_center">2.0 (1.2%)</td>
+<td headers="stat_1" class="gt_row gt_center">2.0 (1.9%)</td>
+<td headers="stat_2" class="gt_row gt_center">0.0 (0.0%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    T4a</td>
+<td headers="stat_0" class="gt_row gt_center">7.0 (4.1%)</td>
+<td headers="stat_1" class="gt_row gt_center">3.0 (2.8%)</td>
+<td headers="stat_2" class="gt_row gt_center">4.0 (6.2%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">N Stage</td>
+<td headers="stat_0" class="gt_row gt_center"><br /></td>
+<td headers="stat_1" class="gt_row gt_center"><br /></td>
+<td headers="stat_2" class="gt_row gt_center"><br /></td>
+<td headers="p.value" class="gt_row gt_center">0.040</td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    N0</td>
+<td headers="stat_0" class="gt_row gt_center">109.0 (63.7%)</td>
+<td headers="stat_1" class="gt_row gt_center">61.0 (57.5%)</td>
+<td headers="stat_2" class="gt_row gt_center">48.0 (73.8%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Nx</td>
+<td headers="stat_0" class="gt_row gt_center">62.0 (36.3%)</td>
+<td headers="stat_1" class="gt_row gt_center">45.0 (42.5%)</td>
+<td headers="stat_2" class="gt_row gt_center">17.0 (26.2%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">M Stage</td>
+<td headers="stat_0" class="gt_row gt_center"><br /></td>
+<td headers="stat_1" class="gt_row gt_center"><br /></td>
+<td headers="stat_2" class="gt_row gt_center"><br /></td>
+<td headers="p.value" class="gt_row gt_center">0.002</td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    M0</td>
+<td headers="stat_0" class="gt_row gt_center">127.0 (74.3%)</td>
+<td headers="stat_1" class="gt_row gt_center">71.0 (67.0%)</td>
+<td headers="stat_2" class="gt_row gt_center">56.0 (86.2%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    M1a</td>
+<td headers="stat_0" class="gt_row gt_center">1.0 (0.6%)</td>
+<td headers="stat_1" class="gt_row gt_center">0.0 (0.0%)</td>
+<td headers="stat_2" class="gt_row gt_center">1.0 (1.5%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    M1b</td>
+<td headers="stat_0" class="gt_row gt_center">1.0 (0.6%)</td>
+<td headers="stat_1" class="gt_row gt_center">1.0 (0.9%)</td>
+<td headers="stat_2" class="gt_row gt_center">0.0 (0.0%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Mx</td>
+<td headers="stat_0" class="gt_row gt_center">42.0 (24.6%)</td>
+<td headers="stat_1" class="gt_row gt_center">34.0 (32.1%)</td>
+<td headers="stat_2" class="gt_row gt_center">8.0 (12.3%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">Initial Metastases</td>
+<td headers="stat_0" class="gt_row gt_center"><br /></td>
+<td headers="stat_1" class="gt_row gt_center"><br /></td>
+<td headers="stat_2" class="gt_row gt_center"><br /></td>
+<td headers="p.value" class="gt_row gt_center">>0.9</td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    N</td>
+<td headers="stat_0" class="gt_row gt_center">131.0 (98.5%)</td>
+<td headers="stat_1" class="gt_row gt_center">74.0 (98.7%)</td>
+<td headers="stat_2" class="gt_row gt_center">57.0 (98.3%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Y</td>
+<td headers="stat_0" class="gt_row gt_center">2.0 (1.5%)</td>
+<td headers="stat_1" class="gt_row gt_center">1.0 (1.3%)</td>
+<td headers="stat_2" class="gt_row gt_center">1.0 (1.7%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">Gene Expression Profile</td>
+<td headers="stat_0" class="gt_row gt_center"><br /></td>
+<td headers="stat_1" class="gt_row gt_center"><br /></td>
+<td headers="stat_2" class="gt_row gt_center"><br /></td>
+<td headers="p.value" class="gt_row gt_center">0.8</td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Class_1A_PRAME_negative</td>
+<td headers="stat_0" class="gt_row gt_center">22.0 (33.8%)</td>
+<td headers="stat_1" class="gt_row gt_center">15.0 (32.6%)</td>
+<td headers="stat_2" class="gt_row gt_center">7.0 (36.8%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Class_1A_PRAME_positive</td>
+<td headers="stat_0" class="gt_row gt_center">7.0 (10.8%)</td>
+<td headers="stat_1" class="gt_row gt_center">6.0 (13.0%)</td>
+<td headers="stat_2" class="gt_row gt_center">1.0 (5.3%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Class_1A_PRAME_not_reported</td>
+<td headers="stat_0" class="gt_row gt_center">0.0 (0.0%)</td>
+<td headers="stat_1" class="gt_row gt_center">0.0 (0.0%)</td>
+<td headers="stat_2" class="gt_row gt_center">0.0 (0.0%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Class_1B_PRAME_negative</td>
+<td headers="stat_0" class="gt_row gt_center">6.0 (9.2%)</td>
+<td headers="stat_1" class="gt_row gt_center">6.0 (13.0%)</td>
+<td headers="stat_2" class="gt_row gt_center">0.0 (0.0%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Class_1B_PRAME_positive</td>
+<td headers="stat_0" class="gt_row gt_center">4.0 (6.2%)</td>
+<td headers="stat_1" class="gt_row gt_center">2.0 (4.3%)</td>
+<td headers="stat_2" class="gt_row gt_center">2.0 (10.5%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Class_2_PRAME_negative</td>
+<td headers="stat_0" class="gt_row gt_center">11.0 (16.9%)</td>
+<td headers="stat_1" class="gt_row gt_center">7.0 (15.2%)</td>
+<td headers="stat_2" class="gt_row gt_center">4.0 (21.1%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Class_2_PRAME_positive</td>
+<td headers="stat_0" class="gt_row gt_center">9.0 (13.8%)</td>
+<td headers="stat_1" class="gt_row gt_center">5.0 (10.9%)</td>
+<td headers="stat_2" class="gt_row gt_center">4.0 (21.1%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Class_2_PRAME_Unknown</td>
+<td headers="stat_0" class="gt_row gt_center">1.0 (1.5%)</td>
+<td headers="stat_1" class="gt_row gt_center">1.0 (2.2%)</td>
+<td headers="stat_2" class="gt_row gt_center">0.0 (0.0%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Class_2_PRAME_not_reported</td>
+<td headers="stat_0" class="gt_row gt_center">1.0 (1.5%)</td>
+<td headers="stat_1" class="gt_row gt_center">1.0 (2.2%)</td>
+<td headers="stat_2" class="gt_row gt_center">0.0 (0.0%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Failed</td>
+<td headers="stat_0" class="gt_row gt_center">3.0 (4.6%)</td>
+<td headers="stat_1" class="gt_row gt_center">2.0 (4.3%)</td>
+<td headers="stat_2" class="gt_row gt_center">1.0 (5.3%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    Unknown</td>
+<td headers="stat_0" class="gt_row gt_center">0.0 (0.0%)</td>
+<td headers="stat_1" class="gt_row gt_center">0.0 (0.0%)</td>
+<td headers="stat_2" class="gt_row gt_center">0.0 (0.0%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+    <tr><td headers="label" class="gt_row gt_left">    DISCORDANT CASTLE RESULTS: Class 1A, PRAME not reported</td>
+<td headers="stat_0" class="gt_row gt_center">1.0 (1.5%)</td>
+<td headers="stat_1" class="gt_row gt_center">1.0 (2.2%)</td>
+<td headers="stat_2" class="gt_row gt_center">0.0 (0.0%)</td>
+<td headers="p.value" class="gt_row gt_center"><br /></td></tr>
+  </tbody>
+  
+  <tfoot class="gt_footnotes">
+    <tr>
+      <td class="gt_footnote" colspan="5"><span class="gt_footnote_marks" style="white-space:nowrap;font-style:italic;font-weight:normal;"><sup>1</sup></span> Mean (SD); n (%)</td>
+    </tr>
+    <tr>
+      <td class="gt_footnote" colspan="5"><span class="gt_footnote_marks" style="white-space:nowrap;font-style:italic;font-weight:normal;"><sup>2</sup></span> Welch Two Sample t-test; Pearson’s Chi-squared test with simulated p-value
+(based on 2000 replicates)</td>
+    </tr>
+  </tfoot>
+</table>
+</div>
+</body>
+</html>
