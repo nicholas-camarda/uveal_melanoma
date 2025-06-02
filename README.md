@@ -9,6 +9,40 @@ This project provides a complete pipeline for processing, cleaning, and analyzin
 
 ---
 
+## Cohort Definitions
+
+The analysis includes three distinct patient cohorts based on tumor characteristics and treatment eligibility:
+
+### 1. **Full Cohort** (`uveal_melanoma_full_cohort`)
+- **Definition:** All patients who received either GKSRS or plaque brachytherapy
+- **Sample Size:** ~263 patients
+- **Purpose:** Primary analysis comparing outcomes between all GKSRS and plaque patients
+- **Clinical Rationale:** Represents the real-world effectiveness comparison across all tumor sizes and locations
+
+### 2. **Restricted Cohort** (`uveal_melanoma_restricted_cohort`) 
+- **Definition:** Patients eligible for **both** GKSRS and plaque brachytherapy
+- **Inclusion Criteria:**
+  - Tumor diameter ≤ 20mm **AND**
+  - Tumor height ≤ 10mm **AND** 
+  - No optic nerve involvement
+- **Sample Size:** ~169 patients  
+- **Purpose:** Balanced comparison minimizing treatment selection bias
+- **Clinical Rationale:** These patients could have received either treatment, making the comparison more equitable and reducing confounding by tumor characteristics
+
+### 3. **GKSRS-Only Cohort** (`uveal_melanoma_gksrs_only_cohort`)
+- **Definition:** Patients who were **ineligible** for plaque brachytherapy
+- **Inclusion Criteria (any of the following):**
+  - Tumor diameter > 20mm **OR**
+  - Tumor height > 10mm **OR**
+  - Optic nerve involvement present
+- **Sample Size:** ~93 patients
+- **Purpose:** Outcomes analysis for patients with contraindications to plaque therapy
+- **Clinical Rationale:** Demonstrates GKSRS effectiveness in cases where plaque brachytherapy is not feasible due to tumor size or proximity to critical structures
+
+> **Note:** The restricted cohort provides the most methodologically rigorous comparison since both treatment groups had similar baseline tumor characteristics and treatment options. The full cohort reflects real-world practice patterns, while the GKSRS-only cohort shows outcomes in more challenging cases.
+
+---
+
 ## Directory Structure
 
 ```
@@ -17,9 +51,9 @@ project_working_directory/
 ├── final_data/
 │   ├── Analytic Dataset/        # Processed and cleaned datasets (RDS, Excel)
 │   ├── Analysis/
-│   │   ├── gksrs/
-│   │   ├── uveal_full/
-│   │   └── uveal_restricted/
+│   │   ├── gksrs/               # GKSRS-only cohort results
+│   │   ├── uveal_full/          # Full cohort results  
+│   │   └── uveal_restricted/    # Restricted cohort results
 │   └── Original Files/          # Raw, unmodified data files and documentation
 ├── scripts/
 │   ├── data_processing.R        # Data cleaning and cohort creation

@@ -686,29 +686,11 @@ create_subgroup_tables <- function(subgroup_results, dataset_name, output_dir, p
         dir.create(subgroup_dir, recursive = TRUE)
     }
     
-    # Create summary table of all interaction p-values
-    interaction_summary <- data.frame(
-        Variable = character(),
-        Interaction_P_Value = numeric(),
-        Significant = character(),
-        stringsAsFactors = FALSE
-    )
-    
     # Process each subgroup variable
     for (var_name in names(subgroup_results)) {
         result <- subgroup_results[[var_name]]
         
         if (!is.null(result$subgroup_effects) && nrow(result$subgroup_effects) > 0) {
-            
-            # Add to interaction summary
-            interaction_summary <- rbind(interaction_summary, data.frame(
-                Variable = tools::toTitleCase(gsub("_", " ", var_name)),
-                Interaction_P_Value = ifelse(is.na(result$interaction_p), "Model issue", 
-                                           sprintf("%.4f", result$interaction_p)),
-                Significant = ifelse(is.na(result$interaction_p), "—", 
-                                   ifelse(result$interaction_p < 0.05, "Yes", "No")),
-                stringsAsFactors = FALSE
-            ))
             
             # Create individual table for this variable
             effects_data <- result$subgroup_effects %>%
@@ -733,17 +715,34 @@ create_subgroup_tables <- function(subgroup_results, dataset_name, output_dir, p
                     `P-value` = P_Value
                 )
             
-            # Create gtsummary table
+            # Format interaction p-value for display
+            interaction_text <- ifelse(
+                is.na(result$interaction_p), 
+                "Model convergence issue", 
+                sprintf("%.4f", result$interaction_p)
+            )
+            
+            # Determine significance and interpretation
+            interaction_significant <- !is.na(result$interaction_p) && result$interaction_p < 0.05
+            significance_text <- ifelse(
+                is.na(result$interaction_p),
+                "Cannot determine significance due to model issues",
+                ifelse(interaction_significant,
+                       "**Significant interaction (p < 0.05):** Treatment effect differs across subgroups",
+                       "**Non-significant interaction (p ≥ 0.05):** Treatment effect is similar across subgroups")
+            )
+            
+            # Create gt table with interaction info prominently displayed
             var_table <- effects_data %>%
                 gt::gt() %>%
                 gt::tab_header(
                     title = md(sprintf("**Subgroup Analysis: %s**", tools::toTitleCase(gsub("_", " ", var_name)))),
-                    subtitle = md("Treatment Effect on Tumor Height Change by Subgroup")
+                    subtitle = md(sprintf("Treatment Effect on Tumor Height Change | **Interaction P-value: %s**", interaction_text))
                 ) %>%
                 gt::tab_source_note(
                     source_note = md(sprintf(
-                        "**Treatment Effect:** GKSRS vs Plaque (reference). Positive values indicate greater height reduction with GKSRS.\n\n**Interaction P-value:** %s\n\n**Model:** %s\n\n**Dataset:** %s",
-                        ifelse(is.na(result$interaction_p), "Model convergence issue", sprintf("%.4f", result$interaction_p)),
+                        "**Treatment Effect:** GKSRS vs Plaque (reference). Positive values indicate greater height reduction with GKSRS.\n\n%s\n\n**Model:** %s\n\n**Dataset:** %s",
+                        significance_text,
                         ifelse(is.null(result$formula_used), "Model formula not available", result$formula_used),
                         dataset_name
                     ))
@@ -763,7 +762,27 @@ create_subgroup_tables <- function(subgroup_results, dataset_name, output_dir, p
                         rows = grepl("Insufficient", `Treatment Effect (95% CI)`)
                     )
                 ) %>%
+                # Highlight significant interactions in the subtitle
+                gt::tab_style(
+                    style = list(
+                        gt::cell_fill(color = "#e8f4fd"),
+                        gt::cell_text(weight = "bold")
+                    ),
+                    locations = gt::cells_title(groups = "subtitle")
+                ) %>%
                 gt::fmt_markdown(columns = everything())
+            
+            # Apply special styling for significant interactions
+            if (interaction_significant) {
+                var_table <- var_table %>%
+                    gt::tab_style(
+                        style = list(
+                            gt::cell_fill(color = "#fff3cd"),
+                            gt::cell_text(weight = "bold")
+                        ),
+                        locations = gt::cells_title(groups = "subtitle")
+                    )
+            }
             
             # Save individual table
             var_table %>%
@@ -771,49 +790,6 @@ create_subgroup_tables <- function(subgroup_results, dataset_name, output_dir, p
                     filename = file.path(subgroup_dir, paste0(prefix, "subgroup_", var_name, ".html"))
                 )
         }
-    }
-    
-    # Create and save interaction summary table
-    if (nrow(interaction_summary) > 0) {
-        summary_table <- interaction_summary %>%
-            gt::gt() %>%
-            gt::tab_header(
-                title = md("**Subgroup Interaction Analysis Summary**"),
-                subtitle = md("Treatment × Subgroup Interactions for Tumor Height Change")
-            ) %>%
-            gt::tab_source_note(
-                source_note = md(sprintf(
-                    "**Interpretation:** P-values test whether treatment effect differs across subgroup levels.\n\n**Significant interactions (p < 0.05)** suggest treatment effectiveness varies by subgroup.\n\n**Dataset:** %s",
-                    dataset_name
-                ))
-            ) %>%
-            gt::tab_style(
-                style = list(
-                    gt::cell_text(weight = "bold")
-                ),
-                locations = gt::cells_column_labels()
-            ) %>%
-            gt::tab_style(
-                style = list(
-                    gt::cell_fill(color = "#e8f4fd"),
-                    gt::cell_text(weight = "bold")
-                ),
-                locations = gt::cells_body(
-                    columns = "Significant",
-                    rows = Significant == "Yes"
-                )
-            ) %>%
-            gt::cols_label(
-                Variable = "**Subgroup Variable**",
-                Interaction_P_Value = "**Interaction P-value**",
-                Significant = "**Significant?**"
-            )
-        
-        # Save summary table
-        summary_table %>%
-            gt::gtsave(
-                filename = file.path(subgroup_dir, paste0(prefix, "subgroup_summary.html"))
-            )
     }
     
     log_message(sprintf("Saved subgroup analysis tables to: %s", subgroup_dir))
