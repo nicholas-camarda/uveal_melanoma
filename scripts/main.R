@@ -9,6 +9,10 @@
 ############### DATA PROCESSING #######################
 ########################################################
 
+# log_con <- file("run_log.txt", open = "wt")
+# sink(log_con)
+# sink(log_con, type = "message")
+
 # Set the filename
 fn <- "Ocular Melanoma Master Spreadsheet REVISED FOR STATS (5-10-25, TJM).xlsx"
 
@@ -79,7 +83,7 @@ run_my_analysis <- function(dataset_name) {
     recurrence_rates <- calculate_rates(
         data,
         outcome_var = "recurrence1",
-        time_var = "tt_recurrence",
+        time_var = "tt_recurrence_months",
         event_var = "recurrence_event",
         confounders = confounders,
         exclude_before_treatment = TRUE,
@@ -93,7 +97,7 @@ run_my_analysis <- function(dataset_name) {
     mets_rates <- calculate_rates(
         data,
         outcome_var = "mets_progression",
-        time_var = "tt_mets",
+        time_var = "tt_mets_months",
         event_var = "mets_event",
         confounders = confounders,
         exclude_before_treatment = TRUE,
@@ -106,7 +110,7 @@ run_my_analysis <- function(dataset_name) {
     log_message("Analyzing overall survival")
     os_analysis <- analyze_survival(
         data,
-        time_var = "tt_death",
+        time_var = "tt_death_months",
         event_var = "death_event",
         confounders = confounders,
         ylab = "Overall Survival Probability",
@@ -116,12 +120,12 @@ run_my_analysis <- function(dataset_name) {
     )
     os_analysis
 
-    # 1d. Progression Free Survival
-    log_message("Analyzing progression-free survival")
+    # 1d. Progression Free Survival (includes both progression AND death)
+    log_message("Analyzing progression-free survival (progression OR death)")
     pfs_analysis <- analyze_survival(
         data,
-        time_var = "tt_recurrence",
-        event_var = "recurrence_event",
+        time_var = "tt_pfs_months",
+        event_var = "pfs_event",
         confounders = confounders,
         ylab = "Progression-Free Survival Probability",
         exclude_before_treatment = TRUE,
@@ -135,9 +139,53 @@ run_my_analysis <- function(dataset_name) {
     height_changes <- analyze_tumor_height_changes(data)
     height_changes
 
-    # 1f. Subgroup analysis
-    # DEBUG
-    # make_subgroup_tbl(data, subgroup_var = c("age_at_diagnosis", "sex", "location", "initial_t_stage"), efficacy_var = "recurrence1", group_var = "treatment_group")
+    # 1f. Subgroup analysis with interaction terms
+    log_message("Performing subgroup analysis with interaction terms for tumor height change")
+    
+    # Test treatment × subgroup interactions for tumor height change
+    subgroup_results <- list()
+    
+    for (subgroup_var in subgroup_vars) {
+        log_message(sprintf("Testing interaction for: %s", subgroup_var))
+
+        # subgroup_var <- "age_at_diagnosis"
+        
+        # Test the interaction
+        result <- test_subgroup_interaction(
+            data = data,
+            subgroup_var = subgroup_var,
+            percentile_cut = 0.5,  # Use median split
+            confounders = NULL  # Don't include confounders in subgroup analysis
+        )
+        
+        # Store results
+        subgroup_results[[subgroup_var]] <- result
+        
+        # Log the interaction p-value
+        if (!is.na(result$interaction_p)) {
+            log_message(sprintf("  Interaction p-value: %.4f", result$interaction_p))
+        } else {
+            log_message("  Interaction p-value: NA (model issue)")
+        }
+        
+        # Print subgroup effects
+        print(result$subgroup_effects)
+    }
+    
+    # Create formatted HTML tables for subgroup analysis
+    log_message("Creating formatted subgroup analysis tables")
+    create_subgroup_tables(
+        subgroup_results = subgroup_results,
+        dataset_name = tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name))),
+        output_dir = tables_dir,
+        prefix = prefix
+    )
+    
+    # Save subgroup analysis results for this dataset (keep RDS for programmatic access)
+    saveRDS(subgroup_results, 
+            file.path(tables_dir, "subgroup_analysis", paste0(prefix, "subgroup_interactions.rds")))
+    
+    log_message(sprintf("Completed subgroup analysis for %d variables", length(subgroup_vars)))
 }
 
 # # Run analysis for each dataset
@@ -148,3 +196,7 @@ for (i in seq_along(available_datasets)) {
     log_progress(i, length(available_datasets), message = sprintf("Analyzing dataset: %s", dataset))
     results[[dataset]] <- run_my_analysis(dataset)
 }
+
+# sink(type = "message")
+# sink()
+# close(log_con)

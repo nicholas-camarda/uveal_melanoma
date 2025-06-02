@@ -356,38 +356,43 @@ create_derived_variables <- function(data) {
     log_message("Calculating time-to-event (ie, tt_) variables")
     data <- data %>%
         mutate(
-            # Depending on UNITS_OF_TIME, convert days to whatever UNITS_OF_TIME is set to
-            tt_recurrence = case_when(
-                recurrence1 == "Y" ~ as.numeric(difftime(recurrence1_date, treatment_date, units = "days")),
-                TRUE ~ as.numeric(difftime(last_known_alive_date, treatment_date, units = "days"))
-            ),
+            # Primary time-to-event variables in MONTHS (oncology standard)
             tt_recurrence_months = case_when(
                 recurrence1 == "Y" ~ time_length(interval(treatment_date, recurrence1_date), "months"),
                 TRUE ~ time_length(interval(treatment_date, last_known_alive_date), "months")
-            ),
-            tt_recurrence_years = case_when(
-                recurrence1 == "Y" ~ time_length(interval(treatment_date, recurrence1_date), "years"),
-                TRUE ~ time_length(interval(treatment_date, last_known_alive_date), "years")
-            ),
-            tt_mets = case_when(
-                mets_progression == "Y" ~ as.numeric(difftime(mets_progression_date, treatment_date, units = "days")),
-                TRUE ~ as.numeric(difftime(last_known_alive_date, treatment_date, units = "days"))
             ),
             tt_mets_months = case_when(
                 mets_progression == "Y" ~ time_length(interval(treatment_date, mets_progression_date), "months"),
                 TRUE ~ time_length(interval(treatment_date, last_known_alive_date), "months")
             ),
-            tt_mets_years = case_when(
-                mets_progression == "Y" ~ time_length(interval(treatment_date, mets_progression_date), "years"),
-                TRUE ~ time_length(interval(treatment_date, last_known_alive_date), "years")
+            tt_death_months = case_when(
+                !is.na(dod) ~ time_length(interval(treatment_date, dod), "months"),
+                TRUE ~ time_length(interval(treatment_date, last_known_alive_date), "months")
+            ),
+            # Create progression-free survival time (first of recurrence OR death)
+            tt_pfs_months = pmin(tt_recurrence_months, tt_death_months, na.rm = FALSE),
+            
+            # Legacy variables in days (kept for backward compatibility)
+            tt_recurrence = case_when(
+                recurrence1 == "Y" ~ as.numeric(difftime(recurrence1_date, treatment_date, units = "days")),
+                TRUE ~ as.numeric(difftime(last_known_alive_date, treatment_date, units = "days"))
+            ),
+            tt_mets = case_when(
+                mets_progression == "Y" ~ as.numeric(difftime(mets_progression_date, treatment_date, units = "days")),
+                TRUE ~ as.numeric(difftime(last_known_alive_date, treatment_date, units = "days"))
             ),
             tt_death = case_when(
                 !is.na(dod) ~ as.numeric(difftime(dod, treatment_date, units = "days")),
                 TRUE ~ as.numeric(difftime(last_known_alive_date, treatment_date, units = "days"))
             ),
-            tt_death_months = case_when(
-                !is.na(dod) ~ time_length(interval(treatment_date, dod), "months"),
-                TRUE ~ time_length(interval(treatment_date, last_known_alive_date), "months")
+            # Years (for reference)
+            tt_recurrence_years = case_when(
+                recurrence1 == "Y" ~ time_length(interval(treatment_date, recurrence1_date), "years"),
+                TRUE ~ time_length(interval(treatment_date, last_known_alive_date), "years")
+            ),
+            tt_mets_years = case_when(
+                mets_progression == "Y" ~ time_length(interval(treatment_date, mets_progression_date), "years"),
+                TRUE ~ time_length(interval(treatment_date, last_known_alive_date), "years")
             ),
             tt_death_years = case_when(
                 !is.na(dod) ~ time_length(interval(treatment_date, dod), "years"),
@@ -399,12 +404,14 @@ create_derived_variables <- function(data) {
     #     select(id, tt_death, dod, treatment_group, age_at_diagnosis, follow_up_days, follow_up_years, treatment_date, initial_gk_date, initial_plaque_date) %>%
     #     print(n = Inf)
 
-    log_message("Creating event indicators (ie, recurrence_event, mets_event, death_event)")
+    log_message("Creating event indicators (ie, recurrence_event, mets_event, death_event, pfs_event)")
     data <- data %>%
         mutate(
             recurrence_event = if_else(recurrence1 == "Y", 1, 0, missing = 0),
             mets_event = if_else(mets_progression == "Y", 1, 0, missing = 0),
-            death_event = if_else(!is.na(dod), 1, 0, missing = 0)
+            death_event = if_else(!is.na(dod), 1, 0, missing = 0),
+            # Progression-free survival event: progression OR death (whichever comes first)
+            pfs_event = if_else(recurrence_event == 1 | death_event == 1, 1, 0)
         )
     
     # Identify patients who were mets-free at baseline
@@ -666,7 +673,7 @@ calculate_treatment_duration_metrics <- function(data) {
     log_message("\nTreatment duration summary:")
     summary_stats <- data %>%
         group_by(treatment_group) %>%
-        summarise(
+        summarize(
             n_total = n(),
             n_valid_followup = sum(!is.na(total_followup_days) & total_followup_days >= 0),
             mean_followup_years = mean(total_years[!is.na(total_years) & total_years >= 0], na.rm = TRUE),
