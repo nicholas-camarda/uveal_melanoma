@@ -257,6 +257,52 @@ run_my_analysis <- function(dataset_name) {
     
     log_message(sprintf("Completed PRIMARY and SENSITIVITY subgroup analysis for %d variables", length(subgroup_vars)))
     
+    ########################################################
+    ############### STEP 2: SAFETY/TOXICITY ###############
+    ########################################################
+    
+    log_message("=== STARTING STEP 2: SAFETY/TOXICITY ANALYSIS ===")
+    
+    # 2a. Vision changes analysis (similar to tumor height changes)
+    log_message("Analyzing vision changes")
+    vision_changes <- analyze_vision_changes(data)
+    vision_changes
+    
+    # 2b. Rates of radiation sequelae
+    log_message("Analyzing radiation sequelae rates")
+    
+    # 2b1. Retinopathy
+    log_message("Analyzing retinopathy rates")
+    retinopathy_rates <- analyze_radiation_sequelae(
+        data = data,
+        sequela_type = "retinopathy",
+        confounders = confounders,
+        dataset_name = dataset_name
+    )
+    retinopathy_rates
+    
+    # 2b2. Neovascular glaucoma (NVG)
+    log_message("Analyzing neovascular glaucoma (NVG) rates")
+    nvg_rates <- analyze_radiation_sequelae(
+        data = data,
+        sequela_type = "nvg",
+        confounders = confounders,
+        dataset_name = dataset_name
+    )
+    nvg_rates
+    
+    # 2b3. Serous retinal detachment (SRD) - only radiation-induced
+    log_message("Analyzing serous retinal detachment (SRD) rates - radiation-induced only")
+    srd_rates <- analyze_radiation_sequelae(
+        data = data,
+        sequela_type = "srd",
+        confounders = confounders,
+        dataset_name = dataset_name
+    )
+    srd_rates
+    
+    log_message("=== COMPLETED STEP 2: SAFETY/TOXICITY ANALYSIS ===")
+    
 }
 
 # Run analysis for each dataset

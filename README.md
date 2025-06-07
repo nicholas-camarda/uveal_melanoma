@@ -60,8 +60,8 @@ project_working_directory/
 │   │   │   │   │   ├── progression_free_survival/
 │   │   │   │   │   └── tumor_height_change/
 │   │   │   │   │       ├── primary_analysis/          # Main height analysis (no baseline adjustment)
-│   │   │   │   │       ├── sensitivity_analysis/      # Alternative analysis (with baseline adjustment)
-│   │   │   │   │       └── subgroup_interactions/     # Treatment effect heterogeneity testing
+│   │   │   │   │       ├── sensitivity_analysis/      # Alternative main analysis (with baseline adjustment)
+│   │   │   │   │       └── subgroup_interactions/     # Treatment effect heterogeneity testing (differ across subgroups?)
 │   │   │   │   │           ├── without_baseline_height/  # Primary subgroup analysis
 │   │   │   │   │           └── with_baseline_height/     # Sensitivity subgroup analysis
 │   │   │   │   └── treatment_duration/
@@ -105,6 +105,126 @@ Each cohort directory (`gksrs/`, `uveal_full/`, `uveal_restricted/`) contains:
 - **Tables**: HTML files with publication-ready formatted results
 - **Data**: RDS files with detailed statistical results for further analysis
 - **Figures**: Survival curves, forest plots, and other visualizations
+
+---
+
+## Objectives Accomplished and Roadmap
+
+### **✅ COMPLETED: Objective #1 - Efficacy Analysis**
+
+All efficacy analyses comparing plaque brachytherapy vs GKSRS have been implemented and are generating results:
+
+#### **1a. ✅ Recurrence Rates**
+- **Status:** COMPLETE - Time-to-event analysis with logistic regression
+- **Output:** Kaplan-Meier curves, Cox proportional hazards models, summary tables
+- **Location:** `final_data/Analysis/{cohort}/tables/primary_outcomes/recurrence/`
+
+#### **1b. ✅ Metastatic Progression Rates** 
+- **Status:** COMPLETE - Time-to-event analysis with logistic regression
+- **Output:** Kaplan-Meier curves, Cox proportional hazards models, summary tables
+- **Location:** `final_data/Analysis/{cohort}/tables/primary_outcomes/metastatic_progression/`
+
+#### **1c. ✅ Overall Survival**
+- **Status:** COMPLETE - Survival analysis with confounder adjustment
+- **Output:** Kaplan-Meier curves, Cox proportional hazards models, median survival estimates
+- **Location:** `final_data/Analysis/{cohort}/tables/primary_outcomes/overall_survival/`
+
+#### **1d. ✅ Progression-Free Survival**
+- **Status:** COMPLETE - Composite endpoint (progression OR death)
+- **Output:** Kaplan-Meier curves, Cox proportional hazards models, summary tables
+- **Location:** `final_data/Analysis/{cohort}/tables/primary_outcomes/progression_free_survival/`
+
+#### **1e. ✅ Tumor Height Changes**
+- **Status:** COMPLETE - Linear regression analysis with primary/sensitivity approaches
+- **Implementation:** 
+  - Primary analysis (without baseline height adjustment)
+  - Sensitivity analysis (with baseline height adjustment)
+  - Proper handling of pre-retreatment measurements for recurrent cases
+- **Output:** Mean changes by treatment group, regression models, publication-ready tables
+- **Location:** `final_data/Analysis/{cohort}/tables/primary_outcomes/tumor_height_change/`
+
+#### **1f. ✅ Subgroup Analysis**
+- **Status:** COMPLETE - Treatment effect heterogeneity testing across patient characteristics
+- **Subgroups Tested:** Age, sex, tumor location, T-stage, tumor height, tumor diameter, GEP class, optic nerve involvement
+- **Methods:** Interaction terms in regression models, forest plots, primary/sensitivity analyses
+- **Output:** Interaction p-values, subgroup-specific treatment effects, formatted tables
+- **Location:** `final_data/Analysis/{cohort}/tables/primary_outcomes/tumor_height_change/subgroup_interactions/`
+
+### **✅ COMPLETED: Objective #2 - Safety/Toxicity Analysis**
+
+All safety and toxicity analyses have been implemented and are generating results:
+
+#### **2a. ✅ Vision Changes**
+- **Status:** COMPLETE - Linear regression analysis comparing treatment groups
+- **Implementation:** Proper handling of pre-retreatment vision for recurrent cases
+- **Output:** Mean vision changes, statistical comparisons, regression models
+- **Location:** `final_data/Analysis/{cohort}/tables/safety_toxicity/vision_change/`
+
+#### **2b. ✅ Radiation Sequelae Rates**
+- **Status:** COMPLETE - All three radiation sequelae implemented with logistic regression
+
+**2b1. ✅ Retinopathy**
+- **Implementation:** Binary outcome analysis with confounder adjustment
+- **Output:** Rate summaries (.xlsx), descriptive tables (.html), logistic regression (.html)
+- **Location:** `final_data/Analysis/{cohort}/tables/safety_toxicity/radiation_sequelae/retinopathy/`
+
+**2b2. ✅ Neovascular Glaucoma (NVG)**
+- **Implementation:** Binary outcome analysis with confounder adjustment  
+- **Output:** Rate summaries (.xlsx), descriptive tables (.html), logistic regression (.html)
+- **Location:** `final_data/Analysis/{cohort}/tables/safety_toxicity/radiation_sequelae/nvg/`
+
+**2b3. ✅ Serous Retinal Detachment (SRD)**
+- **Implementation:** Radiation-induced cases only (excludes mass-induced), binary outcome analysis
+- **Special Filtering:** Only includes patients with `srd_cause == "Radiation"` as per objectives
+- **Output:** Rate summaries (.xlsx), descriptive tables (.html), logistic regression (.html)
+- **Location:** `final_data/Analysis/{cohort}/tables/safety_toxicity/radiation_sequelae/srg/`
+
+### **🚧 TODO: Objective #3 - Repeat Radiation Efficacy** 
+
+#### **3a. ⏳ Progression-Free Survival-2**
+- **Status:** NOT YET IMPLEMENTED
+- **Requirements:** 
+  - Filter to patients with local recurrence (`recurrence1 == "Y"`)
+  - Compare GKSRS vs enucleation vs TTT (from `recurrence1_treatment`)
+  - Calculate PFS-2 from `recurrence1_treatment_date` to `recurrence2_date` or `last_followup`
+- **Complexity:** Medium - Requires filtering recurrent patients and new time-to-event calculation
+- **Estimated Implementation:** 1-2 hours
+
+### **🚧 TODO: Objective #4 - Gene Expression Profile (GEP) Predictive Accuracy**
+
+#### **4a. ⏳ Metastasis-Free Survival (MFS) Validation**
+- **Status:** NOT YET IMPLEMENTED  
+- **Requirements:**
+  - Compare actual 5-year MFS rates vs expected rates (`biopsy1_gep_mfs`)
+  - Calibration analysis and concordance statistics
+- **Complexity:** Medium-High - Requires survival prediction validation methods
+
+#### **4b. ⏳ Melanoma-Specific Survival (MSS) Validation**
+- **Status:** NOT YET IMPLEMENTED
+- **Requirements:**
+  - Compare actual 5-year MSS rates vs expected rates (`biopsy1_gep_mss`) 
+  - Calibration analysis and concordance statistics
+- **Complexity:** Medium-High - Requires survival prediction validation methods
+
+### **🎯 Implementation Priority**
+
+1. **NEXT:** Objective #3 (Repeat Radiation) - Straightforward extension of existing survival analysis methods
+2. **THEN:** Objective #4 (GEP Validation) - More complex validation methodology required
+
+### **📊 Current Data Coverage**
+
+- **Full Cohort:** 263 patients (all analyses)
+- **Restricted Cohort:** ~169 patients (eligible for both treatments) 
+- **GKSRS-Only Cohort:** ~93 patients (ineligible for plaque therapy)
+
+### **⚙️ Technical Implementation Notes**
+
+- All analyses adjust for confounders where appropriate
+- Rare event handling implemented (threshold-based confounder selection)
+- Primary/sensitivity analysis framework for robust findings
+- Consistent Excel (.xlsx) output format throughout
+- Publication-ready HTML tables generated for all analyses
+- Proper handling of missing data and edge cases
 
 ---
 
