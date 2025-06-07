@@ -80,9 +80,14 @@ run_my_analysis <- function(dataset_name) {
     figures_dir <<- file.path(cohort_info$dir, "figures")
     prefix <<- cohort_info$prefix
     
-    # Create organized output directory structure
+    # Create organized output directory structure for tables (complex structure needed)
     output_dirs <<- create_output_structure(tables_dir)
-    figures_dirs <<- create_output_structure(figures_dir)
+    
+    # Create simple figures directory (no complex subdirs needed)
+    if (!dir.exists(figures_dir)) {
+        dir.create(figures_dir, recursive = TRUE, showWarnings = FALSE)
+        log_message(sprintf("Created figures directory: %s", figures_dir))
+    }
 
     # Load analytic dataset
     log_message("Loading analytic dataset")
