@@ -6,18 +6,41 @@
 # Main script to run the analysis
 
 ########################################################
+############### INPUT FILE ############################
+########################################################
+
+#' Set the filename, this will be loaded from the *data* directory
+fn <- "Ocular Melanoma Master Spreadsheet REVISED FOR STATS (5-10-25, TJM).xlsx"
+
+# Toggle logging functionality
+USE_LOGS <- FALSE
+
+########################################################
 ############### DATA PROCESSING #######################
 ########################################################
 
-# log_con <- file("run_log.txt", open = "wt")
-# sink(log_con)
-# sink(log_con, type = "message")
-
-# Set the filename
-fn <- "Ocular Melanoma Master Spreadsheet REVISED FOR STATS (5-10-25, TJM).xlsx"
-
-# Source the data processing script
+# Source the data processing script first
 source("scripts/data_processing.R")
+
+# Source the analysis script
+source("scripts/uveal_melanoma_analysis.R")
+
+# Create logs directory if it doesn't exist
+if (USE_LOGS) {
+    if (!dir.exists("logs")) {
+        dir.create("logs", showWarnings = FALSE)
+    }
+}
+
+# Set up logging if enabled
+if (USE_LOGS) {
+    # Create timestamp for log file
+    timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
+    log_file <- file.path("logs", paste0("run_log_", timestamp, ".txt"))
+    log_con <- file(log_file, open = "wt")
+    sink(log_con)
+    sink(log_con, type = "message")
+}
 
 # Load and clean raw data
 cleaned_data <- load_and_clean_data(filename = fn)
@@ -34,20 +57,13 @@ final_analytic_datasets_lst <- apply_criteria(factored_data)
 # Save each cohort separately
 save_cohorts(final_analytic_datasets_lst)
 
-# Create summary tables
+# Create summary tables with organized output structure
 summary_tables <- create_summary_tables(final_analytic_datasets_lst)
 
 # Create CONSORT diagram
 # TODO: Add CONSORT diagram
 # log_message("Creating CONSORT diagram")
 # create_consort_diagram(final_analytic_datasets_lst)
-
-########################################################
-############### ANALYSIS RUN ##########################
-########################################################
-
-# Source the analysis script
-source("scripts/uveal_melanoma_analysis.R")
 
 # TODO: Run analysis for each dataset
 
@@ -63,6 +79,10 @@ run_my_analysis <- function(dataset_name) {
     tables_dir <<- file.path(cohort_info$dir, "tables")
     figures_dir <<- file.path(cohort_info$dir, "figures")
     prefix <<- cohort_info$prefix
+    
+    # Create organized output directory structure
+    output_dirs <<- create_output_structure(tables_dir)
+    figures_dirs <<- create_output_structure(figures_dir)
 
     # Load analytic dataset
     log_message("Loading analytic dataset")
@@ -143,60 +163,114 @@ run_my_analysis <- function(dataset_name) {
     log_message("Performing subgroup analysis with interaction terms for tumor height change")
     
     # Test treatment × subgroup interactions for tumor height change
-    subgroup_results <- list()
+    # Run both PRIMARY (without baseline height) and SENSITIVITY (with baseline height) analyses
+    
+    # PRIMARY ANALYSIS: Without baseline height adjustment
+    log_message("=== PRIMARY SUBGROUP ANALYSIS (without baseline height adjustment) ===")
+    primary_subgroup_results <- list()
     
     for (subgroup_var in subgroup_vars) {
-        log_message(sprintf("Testing interaction for: %s", subgroup_var))
-
-        # subgroup_var <- "age_at_diagnosis"
+        log_message(sprintf("Testing PRIMARY interaction for: %s", subgroup_var))
         
-        # Test the interaction
+        # Test the interaction with confounders but without baseline height
         result <- test_subgroup_interaction(
             data = data,
             subgroup_var = subgroup_var,
             percentile_cut = 0.5,  # Use median split
-            confounders = NULL  # Don't include confounders in subgroup analysis
+            confounders = confounders,  # Pass confounders (will auto-exclude subgroup var)
+            include_baseline_height = FALSE  # PRIMARY: no baseline height adjustment
         )
         
         # Store results
-        subgroup_results[[subgroup_var]] <- result
+        primary_subgroup_results[[subgroup_var]] <- result
         
         # Log the interaction p-value
         if (!is.na(result$interaction_p)) {
-            log_message(sprintf("  Interaction p-value: %.4f", result$interaction_p))
+            log_message(sprintf("  PRIMARY Interaction p-value: %.4f", result$interaction_p))
         } else {
-            log_message("  Interaction p-value: NA (model issue)")
+            log_message("  PRIMARY Interaction p-value: NA (model issue)")
         }
         
         # Print subgroup effects
         print(result$subgroup_effects)
     }
     
-    # Create formatted HTML tables for subgroup analysis
-    log_message("Creating formatted subgroup analysis tables")
+    # SENSITIVITY ANALYSIS: With baseline height adjustment
+    log_message("=== SENSITIVITY SUBGROUP ANALYSIS (with baseline height adjustment) ===")
+    sensitivity_subgroup_results <- list()
+    
+    for (subgroup_var in subgroup_vars) {
+        log_message(sprintf("Testing SENSITIVITY interaction for: %s", subgroup_var))
+        
+        # Test the interaction with confounders including baseline height
+        result <- test_subgroup_interaction(
+            data = data,
+            subgroup_var = subgroup_var,
+            percentile_cut = 0.5,  # Use median split
+            confounders = confounders,  # Pass confounders (will auto-exclude subgroup var)
+            include_baseline_height = TRUE  # SENSITIVITY: include baseline height adjustment
+        )
+        
+        # Store results
+        sensitivity_subgroup_results[[subgroup_var]] <- result
+        
+        # Log the interaction p-value
+        if (!is.na(result$interaction_p)) {
+            log_message(sprintf("  SENSITIVITY Interaction p-value: %.4f", result$interaction_p))
+        } else {
+            log_message("  SENSITIVITY Interaction p-value: NA (model issue)")
+        }
+        
+        # Print subgroup effects
+        print(result$subgroup_effects)
+    }
+    
+    # Create formatted HTML tables for PRIMARY subgroup analysis
+    log_message("Creating formatted PRIMARY subgroup analysis tables")
     create_subgroup_tables(
-        subgroup_results = subgroup_results,
-        dataset_name = tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name))),
-        output_dir = tables_dir,
-        prefix = prefix
+        subgroup_results = primary_subgroup_results,
+        dataset_name = paste("PRIMARY -", tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name)))),
+        subgroup_dir = output_dirs$subgroup_primary,
+        prefix = paste0(prefix, "primary_")
     )
     
-    # Save subgroup analysis results for this dataset (keep RDS for programmatic access)
-    saveRDS(subgroup_results, 
-            file.path(tables_dir, "subgroup_analysis", paste0(prefix, "subgroup_interactions.rds")))
+    # Create formatted HTML tables for SENSITIVITY subgroup analysis
+    log_message("Creating formatted SENSITIVITY subgroup analysis tables")
+    create_subgroup_tables(
+        subgroup_results = sensitivity_subgroup_results,
+        dataset_name = paste("SENSITIVITY -", tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name)))),
+        subgroup_dir = output_dirs$subgroup_sensitivity,
+        prefix = paste0(prefix, "sensitivity_")
+    )
     
-    log_message(sprintf("Completed subgroup analysis for %d variables", length(subgroup_vars)))
+    # Save both sets of subgroup analysis results for this dataset
+    saveRDS(primary_subgroup_results, 
+            file.path(output_dirs$subgroup_primary, paste0(prefix, "primary_subgroup_interactions.rds")))
+    
+    saveRDS(sensitivity_subgroup_results, 
+            file.path(output_dirs$subgroup_sensitivity, paste0(prefix, "sensitivity_subgroup_interactions.rds")))
+    
+    log_message(sprintf("Completed PRIMARY and SENSITIVITY subgroup analysis for %d variables", length(subgroup_vars)))
+    
 }
 
-# # Run analysis for each dataset
+# Run analysis for each dataset
 available_datasets <- list_available_datasets()
 results <- list()
-for (i in seq_along(available_datasets)) {
-    dataset <- available_datasets[i]
-    log_progress(i, length(available_datasets), message = sprintf("Analyzing dataset: %s", dataset))
-    results[[dataset]] <- run_my_analysis(dataset)
-}
 
-# sink(type = "message")
-# sink()
-# close(log_con)
+# Wrap main execution in tryCatch to ensure proper cleanup
+tryCatch({
+    for (i in seq_along(available_datasets)) {
+        dataset <- available_datasets[i]
+        log_progress(i, length(available_datasets), message = sprintf("Analyzing dataset: %s", dataset))
+        results[[dataset]] <- run_my_analysis(dataset)
+    }
+}, finally = {
+    # Clean up logging if it was enabled
+    if (USE_LOGS) {
+        sink(type = "message")
+        sink()
+        close(log_con)
+        log_message("Log file closed successfully")
+    }
+})

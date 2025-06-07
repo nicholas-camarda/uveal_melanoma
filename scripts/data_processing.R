@@ -770,7 +770,7 @@ create_consort_diagram <- function(data_list) {
 #'
 #' @examples
 #' create_summary_tables(list(full_cohort = df1, ...))
-create_summary_tables <- function(data_list) {
+create_summary_tables <- function(data_list, output_dirs = NULL) {
     log_message("Creating summary tables")
 
     # Define variables for summary
@@ -941,10 +941,17 @@ create_summary_tables <- function(data_list) {
                 filename = file.path(treatment_duration_dir, paste0(prefix, "treatment_duration_summary.html"))
             )
 
+        # Determine where to save baseline table
+        baseline_output_dir <- if (!is.null(output_dirs) && !is.null(output_dirs$baseline)) {
+            output_dirs$baseline
+        } else {
+            tables_dir  # fallback to original behavior
+        }
+        
         tbl %>%
             as_gt() %>%
             gt::gtsave(
-                filename = file.path(tables_dir, paste0(prefix, "baseline_characteristics.html"))
+                filename = file.path(baseline_output_dir, paste0(prefix, "baseline_characteristics.html"))
             )
 
         return(list(

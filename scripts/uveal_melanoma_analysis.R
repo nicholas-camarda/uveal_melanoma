@@ -216,10 +216,19 @@ calculate_rates <- function(data, outcome_var, time_var, event_var, group_var = 
             .groups = "drop"
         )
 
+    # Determine output directory based on outcome
+    if (outcome_var == "recurrence1") {
+        output_dir <- output_dirs$recurrence
+    } else if (outcome_var == "mets_progression") {
+        output_dir <- output_dirs$mets
+    } else {
+        output_dir <- tables_dir  # fallback
+    }
+    
     # Save high-level summary table of event rates
     writexl::write_xlsx(
         rates,
-        path = file.path(tables_dir, paste0(prefix, outcome_var, "_rates_summary.xlsx"))
+        path = file.path(output_dir, paste0(prefix, outcome_var, "_rates_summary.xlsx"))
     )
     
     # check factor levels of all variables in formula
@@ -282,7 +291,7 @@ calculate_rates <- function(data, outcome_var, time_var, event_var, group_var = 
     # Save table
     gt_tbl %>%
         gt::gtsave(
-            filename = file.path(tables_dir, paste0(prefix, outcome_var, "_rates.html"))
+            filename = file.path(output_dir, paste0(prefix, outcome_var, "_rates.html"))
         )
     
     return(list(
@@ -415,14 +424,23 @@ analyze_survival <- function(data, time_var, event_var, group_var = "treatment_g
             values_from = surv_pct,
         )
 
+    # Determine output directory based on outcome
+    if (grepl("Overall Survival", ylab)) {
+        output_dir <- output_dirs$os
+    } else if (grepl("Progression", ylab)) {
+        output_dir <- output_dirs$pfs
+    } else {
+        output_dir <- tables_dir  # fallback
+    }
+    
     # Save high-level summary table of median survival times
     writexl::write_xlsx(
         surv_rates,
-        path = file.path(tables_dir, paste0(prefix, ylab, "_survival_rates.xlsx"))
+        path = file.path(output_dir, paste0(prefix, ylab, "_survival_rates.xlsx"))
     )
     writexl::write_xlsx(
         surv_rates_wide,
-        path = file.path(tables_dir, paste0(prefix, ylab, "_survival_rates_wide.xlsx"))
+        path = file.path(output_dir, paste0(prefix, ylab, "_survival_rates_wide.xlsx"))
     )
 
     # Cox model: use original data, not new_data
@@ -481,7 +499,7 @@ analyze_survival <- function(data, time_var, event_var, group_var = "treatment_g
     # Save table
     cox_table %>%
         gt::gtsave(
-            filename = file.path(tables_dir, paste0(prefix, ylab, "_cox.html"))
+            filename = file.path(output_dir, paste0(prefix, ylab, "_cox.html"))
         )
 
     combined <- plot_grid(
@@ -510,10 +528,11 @@ analyze_survival <- function(data, time_var, event_var, group_var = "treatment_g
 #' Analyze tumor height changes
 #'
 #' Calculates and summarizes changes in tumor height by treatment group, returning summary statistics and a table.
+#' Now includes both primary analysis (without baseline height adjustment) and sensitivity analysis (with baseline height adjustment).
 #'
 #' @param data Data frame with tumor height variables.
 #'
-#' @return List with elements: changes (summary data frame), table (gtsummary object), regression_model (lm object), regression_table (gtsummary object).
+#' @return List with elements: changes (summary data frame), table (gtsummary object), primary_regression_model (lm object), primary_regression_table (gtsummary object), sensitivity_regression_model (lm object), sensitivity_regression_table (gtsummary object).
 #' @examples
 #' analyze_tumor_height_changes(data)
 analyze_tumor_height_changes <- function(data) {
@@ -568,36 +587,58 @@ analyze_tumor_height_changes <- function(data) {
     # Save table
     tbl %>%
         gt::gtsave(
-            filename = file.path(tables_dir, paste0(prefix, "height_changes.html"))
+            filename = file.path(output_dirs$height_primary, paste0(prefix, "height_changes.html"))
         )
     
-    # Linear regression: adjust for treatment group, recurrence, and INITIAL tumor height
-    log_message("Fitting linear regression model for tumor height changes")
-    height_lm <- lm(height_change ~ treatment_group + recurrence1 + initial_tumor_height, data = data_with_height_change)
-    height_lm_tbl <- tbl_regression(height_lm,
+    # PRIMARY ANALYSIS: Linear regression WITHOUT initial tumor height adjustment
+    log_message("Fitting PRIMARY linear regression model for tumor height changes (without baseline height adjustment)")
+    primary_height_lm <- lm(height_change ~ treatment_group + recurrence1, data = data_with_height_change)
+    
+    primary_height_lm_tbl <- tbl_regression(primary_height_lm,
         exponentiate = FALSE,
         intercept = FALSE
     ) %>%
-        modify_caption("Linear Regression of Change in Tumor Height (Initial - Last Measured or Pre-Retreatment), Adjusted for Initial Height") %>%
+        modify_caption("PRIMARY ANALYSIS: Linear Regression of Change in Tumor Height (without baseline height adjustment)") %>%
         modify_footnote(
-            update = all_stat_cols() ~ "Adjusted for treatment group, recurrence status, and initial tumor height. Reference level: Plaque"
+            update = all_stat_cols() ~ "Adjusted for treatment group and recurrence status only. Reference level: Plaque. Primary analysis to avoid overadjustment bias."
         ) %>%
         as_gt()
     
-    # Save table
-    height_lm_tbl %>%
+    # Save primary table
+    primary_height_lm_tbl %>%
         gt::gtsave(
-            filename = file.path(tables_dir, paste0(prefix, "height_lm.html"))
+            filename = file.path(output_dirs$height_primary, paste0(prefix, "height_lm_primary.html"))
+        )
+
+    # SENSITIVITY ANALYSIS: Linear regression WITH initial tumor height adjustment
+    log_message("Fitting SENSITIVITY linear regression model for tumor height changes (with baseline height adjustment)")
+    sensitivity_height_lm <- lm(height_change ~ treatment_group + recurrence1 + initial_tumor_height, data = data_with_height_change)
+    
+    sensitivity_height_lm_tbl <- tbl_regression(sensitivity_height_lm,
+        exponentiate = FALSE,
+        intercept = FALSE
+    ) %>%
+        modify_caption("SENSITIVITY ANALYSIS: Linear Regression of Change in Tumor Height (with baseline height adjustment)") %>%
+        modify_footnote(
+            update = all_stat_cols() ~ "Adjusted for treatment group, recurrence status, and initial tumor height. Reference level: Plaque. Sensitivity analysis including baseline adjustment."
+        ) %>%
+        as_gt()
+    
+    # Save sensitivity table
+    sensitivity_height_lm_tbl %>%
+        gt::gtsave(
+            filename = file.path(output_dirs$height_sensitivity, paste0(prefix, "height_lm_sensitivity.html"))
         )
 
     return(list(
         changes = height_changes,
         table = tbl,
-        regression_model = height_lm,
-        regression_table = height_lm_tbl
+        primary_regression_model = primary_height_lm,
+        primary_regression_table = primary_height_lm_tbl,
+        sensitivity_regression_model = sensitivity_height_lm,
+        sensitivity_regression_table = sensitivity_height_lm_tbl
     ))
 }
-
 
 #' Bin continuous variables
 #'
@@ -678,10 +719,9 @@ summarize_data <- function(data) {
 #' @return None. Saves HTML tables to specified directory.
 #' @examples
 #' create_subgroup_tables(subgroup_results, "Full Cohort", tables_dir, prefix)
-create_subgroup_tables <- function(subgroup_results, dataset_name, output_dir, prefix) {
+create_subgroup_tables <- function(subgroup_results, dataset_name, subgroup_dir, prefix) {
     
-    # Create subgroup analysis subfolder
-    subgroup_dir <- file.path(output_dir, "subgroup_analysis")
+    # subgroup_dir is now passed directly from calling function
     if (!dir.exists(subgroup_dir)) {
         dir.create(subgroup_dir, recursive = TRUE)
     }
@@ -741,9 +781,12 @@ create_subgroup_tables <- function(subgroup_results, dataset_name, output_dir, p
                 ) %>%
                 gt::tab_source_note(
                     source_note = md(sprintf(
-                        "**Treatment Effect:** GKSRS vs Plaque (reference). Positive values indicate greater height reduction with GKSRS.\n\n%s\n\n**Model:** %s\n\n**Dataset:** %s",
+                        "**Treatment Effect:** GKSRS vs Plaque (reference). Positive values indicate greater height reduction with GKSRS.\n\n%s\n\n**Model:** %s\n\n**Confounders:** %s\n\n**Dataset:** %s",
                         significance_text,
                         ifelse(is.null(result$formula_used), "Model formula not available", result$formula_used),
+                        ifelse(is.null(result$confounders_used) || length(result$confounders_used) == 0, 
+                               "None", 
+                               paste(result$confounders_used, collapse = ", ")),
                         dataset_name
                     ))
                 ) %>%
@@ -799,12 +842,13 @@ create_subgroup_tables <- function(subgroup_results, dataset_name, output_dir, p
 #'
 #' Tests whether treatment effect on tumor height change differs across subgroups
 #' using interaction terms. Bins continuous variables at specified percentile.
-#' Now also creates formatted HTML tables in organized subfolder structure.
+#' Now handles confounders while automatically excluding the subgroup variable to avoid collinearity.
 #'
 #' @param data Data frame containing the analysis variables
 #' @param subgroup_var Name of the subgroup variable (character)
 #' @param percentile_cut Percentile for binning continuous variables (default: 0.5 for median split)
-#' @param confounders Character vector of confounders to adjust for
+#' @param confounders Character vector of confounders to adjust for (subgroup variable will be automatically excluded)
+#' @param include_baseline_height Logical, whether to include initial_tumor_height as a confounder (default: FALSE for primary analysis)
 #' @param create_tables Logical, whether to create formatted HTML tables (default: FALSE for individual calls)
 #'
 #' @return List containing:
@@ -813,11 +857,12 @@ create_subgroup_tables <- function(subgroup_results, dataset_name, output_dir, p
 #'   - model: The fitted linear model object
 #'   - subgroup_var_used: Name of the binned variable created
 #'   - formula_used: The formula used for the model
+#'   - confounders_used: Character vector of confounders actually used in the model
 #'
 #' @examples
-#' test_subgroup_interaction(data, "age_at_diagnosis")
-#' test_subgroup_interaction(data, "initial_tumor_height", percentile_cut = 0.75)
-test_subgroup_interaction <- function(data, subgroup_var, percentile_cut = 0.5, confounders = NULL, create_tables = FALSE) {
+#' test_subgroup_interaction(data, "age_at_diagnosis", confounders = c("sex", "location"))
+#' test_subgroup_interaction(data, "initial_tumor_height", percentile_cut = 0.75, include_baseline_height = TRUE)
+test_subgroup_interaction <- function(data, subgroup_var, percentile_cut = 0.5, confounders = NULL, include_baseline_height = FALSE, create_tables = FALSE) {
     
     # Calculate tumor height change if not already present
     if (!("height_change" %in% names(data))) {
@@ -834,7 +879,7 @@ test_subgroup_interaction <- function(data, subgroup_var, percentile_cut = 0.5, 
     if (!subgroup_var %in% names(data)) {
         warning(sprintf("Variable '%s' not found in data", subgroup_var))
         return(list(interaction_p = NA, subgroup_effects = data.frame(), 
-                   model = NULL, subgroup_var_used = NA, formula_used = NA))
+                   model = NULL, subgroup_var_used = NA, formula_used = NA, confounders_used = NA))
     }
     
     # Remove rows with missing subgroup variable
@@ -843,7 +888,36 @@ test_subgroup_interaction <- function(data, subgroup_var, percentile_cut = 0.5, 
     if (nrow(data) == 0) {
         warning(sprintf("No data remaining after removing missing values for '%s'", subgroup_var))
         return(list(interaction_p = NA, subgroup_effects = data.frame(), 
-                   model = NULL, subgroup_var_used = NA, formula_used = NA))
+                   model = NULL, subgroup_var_used = NA, formula_used = NA, confounders_used = NA))
+    }
+    
+    # Handle confounders: exclude the subgroup variable to avoid collinearity
+    confounders_to_use <- NULL
+    if (!is.null(confounders)) {
+        # Remove the subgroup variable from confounders if present
+        confounders_to_use <- confounders[confounders != subgroup_var]
+        
+        # Add initial_tumor_height if requested and not already present
+        if (include_baseline_height && !"initial_tumor_height" %in% confounders_to_use) {
+            confounders_to_use <- c(confounders_to_use, "initial_tumor_height")
+        }
+        
+        # Validate confounders using existing function
+        if (length(confounders_to_use) > 0) {
+            confounders_to_use <- generate_valid_confounders(data, confounders_to_use, threshold = THRESHOLD_RARITY)
+        }
+        
+        # Log which confounders are being used
+        if (VERBOSE) {
+            if (subgroup_var %in% confounders) {
+                log_message(sprintf("Excluded '%s' from confounders to avoid collinearity with subgroup variable", subgroup_var))
+            }
+            if (length(confounders_to_use) > 0) {
+                log_message(sprintf("Using confounders for %s interaction: %s", subgroup_var, paste(confounders_to_use, collapse = ", ")))
+            } else {
+                log_message(sprintf("No confounders used for %s interaction", subgroup_var))
+            }
+        }
     }
     
     # Track if variable was originally continuous for coefficient naming
@@ -857,7 +931,7 @@ test_subgroup_interaction <- function(data, subgroup_var, percentile_cut = 0.5, 
             warning(sprintf("Variable '%s' has insufficient variation (only %d unique values)", 
                            subgroup_var, length(unique_vals)))
             return(list(interaction_p = NA, subgroup_effects = data.frame(), 
-                       model = NULL, subgroup_var_used = NA, formula_used = NA))
+                       model = NULL, subgroup_var_used = NA, formula_used = NA, confounders_used = confounders_to_use))
         }
         
         # Calculate the percentile cutoff
@@ -899,7 +973,7 @@ test_subgroup_interaction <- function(data, subgroup_var, percentile_cut = 0.5, 
         warning(sprintf("Subgroup variable '%s' has only %d level(s) after processing", 
                        subgroup_var_to_use, length(subgroup_levels)))
         return(list(interaction_p = NA, subgroup_effects = data.frame(), 
-                   model = NULL, subgroup_var_used = subgroup_var_to_use, formula_used = NA))
+                   model = NULL, subgroup_var_used = subgroup_var_to_use, formula_used = NA, confounders_used = confounders_to_use))
     }
     
     # Check that each level has both treatment groups
@@ -914,10 +988,24 @@ test_subgroup_interaction <- function(data, subgroup_var, percentile_cut = 0.5, 
     
     # Try to fit the linear model
     tryCatch({
-        # Build model formula with interaction term
-        formula_str <- paste0("height_change ~ treatment_group * ", subgroup_var_to_use)
+        # Build model formula with interaction term and confounders
+        if (is.null(confounders_to_use) || length(confounders_to_use) == 0) {
+            formula_str <- paste0("height_change ~ treatment_group * ", subgroup_var_to_use)
+        } else {
+            formula_str <- paste0("height_change ~ treatment_group * ", subgroup_var_to_use, " + ", paste(confounders_to_use, collapse = " + "))
+        }
+        
         model_formula <- as.formula(formula_str)
         model <- lm(model_formula, data = data)
+        
+        # DEBUGGING: Print model summary and coefficient names
+        if (VERBOSE) {
+            log_message(sprintf("Model formula: %s", formula_str))
+            log_message("Available coefficients:")
+            print(names(coef(model)))
+            log_message("Model summary:")
+            print(summary(model))
+        }
         
         # Extract interaction p-value (test overall interaction significance)
         model_summary <- summary(model)
@@ -925,8 +1013,36 @@ test_subgroup_interaction <- function(data, subgroup_var, percentile_cut = 0.5, 
         # For multiple levels, we need to test the overall interaction significance
         if (length(subgroup_levels) == 2) {
             # Simple case: just one interaction term
-            interaction_term <- paste0("treatment_groupGKSRS:", subgroup_var_to_use, subgroup_levels[2])
-            if (interaction_term %in% rownames(model_summary$coefficients)) {
+            # Get the non-reference level for treatment_group
+            treatment_levels <- levels(data$treatment_group)
+            treatment_nonref <- treatment_levels[treatment_levels != treatment_levels[1]][1]  # Get first non-reference level
+            
+            # Try to find the interaction term with more flexible naming
+            possible_interaction_terms <- c(
+                paste0("treatment_group", treatment_nonref, ":", subgroup_var_to_use, subgroup_levels[2]),
+                paste0("treatment_group", treatment_nonref, ":", subgroup_var_to_use, "2"),  # R sometimes uses numeric suffixes
+                paste0("treatment_group", treatment_nonref, ":", subgroup_var_to_use, "Yes"),  # For Yes/No factors
+                paste0("treatment_group", treatment_nonref, ":", subgroup_var_to_use, "No")    # For Yes/No factors
+            )
+            
+            interaction_term <- NULL
+            for (term in possible_interaction_terms) {
+                if (term %in% rownames(model_summary$coefficients)) {
+                    interaction_term <- term
+                    break
+                }
+            }
+            
+            if (VERBOSE) {
+                log_message(sprintf("Looking for interaction terms: %s", paste(possible_interaction_terms, collapse = ", ")))
+                if (!is.null(interaction_term)) {
+                    log_message(sprintf("Found interaction term: %s", interaction_term))
+                } else {
+                    log_message("No interaction term found in model coefficients")
+                }
+            }
+            
+            if (!is.null(interaction_term)) {
                 interaction_p <- model_summary$coefficients[interaction_term, "Pr(>|t|)"]
             } else {
                 interaction_p <- NA
@@ -934,7 +1050,12 @@ test_subgroup_interaction <- function(data, subgroup_var, percentile_cut = 0.5, 
         } else {
             # Multiple levels: use F-test for overall interaction significance
             # This requires comparing models with and without interaction
-            model_no_interaction <- lm(as.formula(paste0("height_change ~ treatment_group + ", subgroup_var_to_use)), data = data)
+            if (is.null(confounders_to_use) || length(confounders_to_use) == 0) {
+                formula_no_int <- paste0("height_change ~ treatment_group + ", subgroup_var_to_use)
+            } else {
+                formula_no_int <- paste0("height_change ~ treatment_group + ", subgroup_var_to_use, " + ", paste(confounders_to_use, collapse = " + "))
+            }
+            model_no_interaction <- lm(as.formula(formula_no_int), data = data)
             interaction_test <- anova(model_no_interaction, model)
             interaction_p <- interaction_test$`Pr(>F)`[2]
         }
@@ -945,38 +1066,82 @@ test_subgroup_interaction <- function(data, subgroup_var, percentile_cut = 0.5, 
         for (i in seq_along(subgroup_levels)) {
             level <- subgroup_levels[i]
             
+            if (VERBOSE) {
+                log_message(sprintf("Processing subgroup level %d: %s", i, level))
+            }
+            
             # Get detailed sample sizes for this subgroup level
             level_data <- data[data[[subgroup_var_to_use]] == level, ]
             n_total <- nrow(level_data)
             n_plaque <- sum(level_data$treatment_group == "Plaque", na.rm = TRUE)
             n_gksrs <- sum(level_data$treatment_group == "GKSRS", na.rm = TRUE)
             
+            if (VERBOSE) {
+                log_message(sprintf("  Sample sizes - Total: %d, Plaque: %d, GKSRS: %d", n_total, n_plaque, n_gksrs))
+            }
+            
             if (i == 1) {
                 # Reference subgroup: treatment effect = β1 (main effect of treatment)
-                coef_idx <- "treatment_groupGKSRS"
+                # Get the non-reference level for treatment_group
+                treatment_levels <- levels(data$treatment_group)
+                treatment_nonref <- treatment_levels[treatment_levels != treatment_levels[1]][1]
+                coef_idx <- paste0("treatment_group", treatment_nonref)
+                
+                if (VERBOSE) {
+                    log_message(sprintf("  Reference level - Looking for coefficient: %s", coef_idx))
+                }
+                
                 if (coef_idx %in% names(coef(model))) {
                     treatment_effect <- coef(model)[coef_idx]
                     se_effect <- sqrt(vcov(model)[coef_idx, coef_idx])
                     ci_lower <- treatment_effect - 1.96 * se_effect
                     ci_upper <- treatment_effect + 1.96 * se_effect
                     p_val <- model_summary$coefficients[coef_idx, "Pr(>|t|)"]
+                    if (VERBOSE) {
+                        log_message(sprintf("  Found coefficient - Effect: %.4f, SE: %.4f, p: %.4f", treatment_effect, se_effect, p_val))
+                    }
                 } else {
+                    if (VERBOSE) {
+                        log_message(sprintf("  Coefficient '%s' not found", coef_idx))
+                    }
                     treatment_effect <- NA; ci_lower <- NA; ci_upper <- NA; p_val <- NA
                 }
             } else {
                 # Non-reference subgroup: treatment effect = β1 + β3 (main + interaction)
-                main_coef_idx <- "treatment_groupGKSRS"
+                # Get the non-reference level for treatment_group
+                treatment_levels <- levels(data$treatment_group)
+                treatment_nonref <- treatment_levels[treatment_levels != treatment_levels[1]][1]
+                main_coef_idx <- paste0("treatment_group", treatment_nonref)
                 
-                # Use different coefficient naming based on variable type
-                if (was_continuous) {
-                    # For continuous variables that were binned, use level names
-                    interaction_coef_idx <- paste0("treatment_groupGKSRS:", subgroup_var_to_use, level)
-                } else {
-                    # For categorical variables with treatment contrasts, use level indices
-                    interaction_coef_idx <- paste0("treatment_groupGKSRS:", subgroup_var_to_use, i)
+                # Try multiple possible interaction coefficient names
+                possible_interaction_coeffs <- c(
+                    paste0("treatment_group", treatment_nonref, ":", subgroup_var_to_use, level),
+                    paste0("treatment_group", treatment_nonref, ":", subgroup_var_to_use, i),  # Use level index
+                    paste0("treatment_group", treatment_nonref, ":", subgroup_var_to_use, "2"),  # R sometimes uses "2" for second level
+                    paste0("treatment_group", treatment_nonref, ":", subgroup_var_to_use, "Yes"),  # For Yes/No variables
+                    paste0("treatment_group", treatment_nonref, ":", subgroup_var_to_use, "No")    # For Yes/No variables
+                )
+                
+                interaction_coef_idx <- NULL
+                for (coef_name in possible_interaction_coeffs) {
+                    if (coef_name %in% names(coef(model))) {
+                        interaction_coef_idx <- coef_name
+                        break
+                    }
                 }
                 
-                if (main_coef_idx %in% names(coef(model)) && interaction_coef_idx %in% names(coef(model))) {
+                if (VERBOSE) {
+                    log_message(sprintf("  Non-reference level - Looking for coefficients:"))
+                    log_message(sprintf("    Main: %s", main_coef_idx))
+                    log_message(sprintf("    Interaction candidates: %s", paste(possible_interaction_coeffs, collapse = ", ")))
+                    if (!is.null(interaction_coef_idx)) {
+                        log_message(sprintf("    Found interaction: %s", interaction_coef_idx))
+                    } else {
+                        log_message("    No interaction coefficient found")
+                    }
+                }
+                
+                if (main_coef_idx %in% names(coef(model)) && !is.null(interaction_coef_idx)) {
                     # Combined effect
                     treatment_effect <- coef(model)[main_coef_idx] + coef(model)[interaction_coef_idx]
                     
@@ -993,7 +1158,16 @@ test_subgroup_interaction <- function(data, subgroup_var, percentile_cut = 0.5, 
                     t_stat <- treatment_effect / se_effect
                     df <- model$df.residual
                     p_val <- 2 * (1 - pt(abs(t_stat), df))
+                    
+                    if (VERBOSE) {
+                        log_message(sprintf("  Found both coefficients - Combined effect: %.4f, SE: %.4f, p: %.4f", treatment_effect, se_effect, p_val))
+                    }
                 } else {
+                    if (VERBOSE) {
+                        log_message(sprintf("  Missing coefficients - Main found: %s, Interaction found: %s", 
+                                          main_coef_idx %in% names(coef(model)),
+                                          !is.null(interaction_coef_idx)))
+                    }
                     treatment_effect <- NA; ci_lower <- NA; ci_upper <- NA; p_val <- NA
                 }
             }
@@ -1019,13 +1193,47 @@ test_subgroup_interaction <- function(data, subgroup_var, percentile_cut = 0.5, 
             subgroup_effects = subgroup_effects,
             model = model,
             subgroup_var_used = subgroup_var_to_use,
-            formula_used = formula_str
+            formula_used = formula_str,
+            confounders_used = confounders_to_use
         ))
         
     }, error = function(e) {
         warning(sprintf("Error fitting model for '%s': %s", subgroup_var, e$message))
         return(list(interaction_p = NA, subgroup_effects = data.frame(), 
                    model = NULL, subgroup_var_used = subgroup_var_to_use, 
-                   formula_used = formula_str))
+                   formula_used = formula_str, confounders_used = confounders_to_use))
     })
+}
+
+#' Create organized output directory structure
+#'
+#' Creates a well-organized directory structure for analysis outputs
+#'
+#' @param base_dir Base directory for outputs (e.g., tables_dir or figures_dir)
+#' @return List of created directory paths
+#' @examples
+#' create_output_structure("/path/to/tables")
+create_output_structure <- function(base_dir) {
+    # Define the directory structure
+    dirs <- list(
+        recurrence = file.path(base_dir, "primary_outcomes", "recurrence"),
+        mets = file.path(base_dir, "primary_outcomes", "metastatic_progression"),
+        os = file.path(base_dir, "primary_outcomes", "overall_survival"),
+        pfs = file.path(base_dir, "primary_outcomes", "progression_free_survival"),
+        height_primary = file.path(base_dir, "primary_outcomes", "tumor_height_change", "primary_analysis"),
+        height_sensitivity = file.path(base_dir, "primary_outcomes", "tumor_height_change", "sensitivity_analysis"),
+        subgroup_primary = file.path(base_dir, "primary_outcomes", "tumor_height_change", "subgroup_interactions", "primary"),
+        subgroup_sensitivity = file.path(base_dir, "primary_outcomes", "tumor_height_change", "subgroup_interactions", "sensitivity"),
+        treatment_duration = file.path(base_dir, "treatment_duration")
+    )
+    
+    # Create all directories
+    for (dir_path in dirs) {
+        if (!dir.exists(dir_path)) {
+            dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
+            log_message(sprintf("Created directory: %s", dir_path))
+        }
+    }
+    
+    return(dirs)
 }
