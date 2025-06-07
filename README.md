@@ -126,12 +126,12 @@ All efficacy analyses comparing plaque brachytherapy vs GKSRS have been implemen
 
 #### **1c. ✅ Overall Survival**
 - **Status:** COMPLETE - Survival analysis with confounder adjustment
-- **Output:** Kaplan-Meier curves, Cox proportional hazards models, median survival estimates
+- **Output:** Kaplan-Meier curves, Cox proportional hazards models, median survival estimates, RMST p-value progression plots
 - **Location:** `final_data/Analysis/{cohort}/tables/primary_outcomes/overall_survival/`
 
 #### **1d. ✅ Progression-Free Survival**
 - **Status:** COMPLETE - Composite endpoint (progression OR death)
-- **Output:** Kaplan-Meier curves, Cox proportional hazards models, summary tables
+- **Output:** Kaplan-Meier curves, Cox proportional hazards models, summary tables, RMST p-value progression plots
 - **Location:** `final_data/Analysis/{cohort}/tables/primary_outcomes/progression_free_survival/`
 
 #### **1e. ✅ Tumor Height Changes**
@@ -234,9 +234,42 @@ All safety and toxicity analyses have been implemented and are generating result
 - **Cohort Creation:** Automatically splits data into full, restricted (eligible for both treatments), and GKSRS-only cohorts.
 - **Derived Variables:** Calculates age at diagnosis, follow-up time, time-to-event variables, and event indicators.
 - **Summary Tables:** Generates publication-ready tables of baseline characteristics and treatment duration.
-- **Statistical Analysis:** Includes logistic regression, Kaplan-Meier survival analysis, Cox proportional hazards models, and subgroup/forest plot analyses.
+- **Statistical Analysis:** Includes logistic regression, Kaplan-Meier survival analysis, Cox proportional hazards models, Restricted Mean Survival Time (RMST) analysis, and subgroup/forest plot analyses.
 - **Reproducibility:** All steps are scripted in R and can be run end-to-end.
 - **Unit Testing:** Includes a suite of tests for core data processing functions.
+
+---
+
+## Advanced Survival Analysis Features
+
+### **Restricted Mean Survival Time (RMST) Analysis**
+
+In addition to standard Cox proportional hazards models, the pipeline includes comprehensive RMST analysis for survival endpoints:
+
+#### **What is RMST?**
+- **Definition:** Mean survival time up to a specific time point (e.g., 5 years)
+- **Advantage:** Provides clinically interpretable differences in months of survival
+- **Robustness:** Does not require proportional hazards assumption
+
+#### **RMST Outputs Generated:**
+1. **Survival Rate Tables:** 1, 3, 5, 10, and 15-year survival probabilities by treatment group
+2. **RMST Comparison Tables:** Mean survival time differences (GKSRS vs Plaque) at each time point
+3. **P-value Progression Plots:** Visual representation of statistical significance over time
+
+#### **RMST P-value Progression Plots**
+- **Purpose:** Shows how treatment differences evolve over follow-up periods
+- **Features:**
+  - P-values plotted across 1, 3, 5, 10, and 15-year time points
+  - Color-coded significance (red = significant, blue = not significant)
+  - Reference lines at p = 0.05 and p = 0.01
+  - Annotations showing exact p-values and RMST differences in months
+  - Clear indication of treatment direction (+ = GKSRS advantage, - = GKSRS disadvantage vs Plaque)
+- **Clinical Value:** Identifies optimal time points for comparing treatments and quantifies survival benefit magnitude
+- **Location:** `final_data/Analysis/{cohort}/figures/*_rmst_pvalue_progression.png`
+
+#### **Example Interpretation:**
+- **p = 0.033, +2.1 mo** at 3 years = GKSRS provides 2.1 months longer survival than Plaque (p = 0.033)
+- **p = 0.331, -1.2 mo** at 10 years = No significant difference, slight numerical disadvantage for GKSRS
 
 ---
 
@@ -256,6 +289,7 @@ All safety and toxicity analyses have been implemented and are generating result
   - gt
   - survival
   - survminer
+  - survRM2
   - forestploter
   - grid
   - cowplot
@@ -266,7 +300,7 @@ Install all required packages with:
 ```r
 install.packages(c(
   "tidyverse", "readxl", "writexl", "lubridate", "gtsummary", "janitor",
-  "DiagrammeR", "DiagrammeRsvg", "rsvg", "gt", "survival", "survminer",
+  "DiagrammeR", "DiagrammeRsvg", "rsvg", "gt", "survival", "survminer", "survRM2",
   "forestploter", "grid", "cowplot", "testthat"
 ))
 ```
