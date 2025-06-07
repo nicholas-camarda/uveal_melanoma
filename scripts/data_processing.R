@@ -869,18 +869,18 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
             add_overall() %>%
             add_p(
                 test = list(
-                    all_continuous() ~ "t.test",
-                    all_categorical() ~ "chisq.test"
-                ),
-                test.args = list(
-                    all_categorical() ~ list(simulate.p.value = TRUE, correct = TRUE)
+                    all_continuous() ~ "t.test"
+                    # Categorical variables: automatic selection (chi-squared for expected counts ≥5, Fisher's exact for <5)
                 )
             ) %>%
-            modify_header(label = "**Variable**") %>%
+            modify_header(label = "**Variable**", quiet = TRUE) %>%
             modify_caption(paste(
                 "Table 1: Baseline Characteristics -",
                 gsub("_", " ", tools::toTitleCase(cohort_name))
-            ))
+            )) %>%
+            modify_footnote(
+                update = all_stat_cols() ~ "Continuous variables: t-test; Categorical variables: Pearson's chi-squared test when expected cell counts ≥5, Fisher's exact test when expected cell counts <5"
+            )
 
         # Add treatment duration metrics to the table
         log_message("Adding treatment duration metrics to table")

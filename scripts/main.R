@@ -15,6 +15,10 @@ fn <- "Ocular Melanoma Master Spreadsheet REVISED FOR STATS (5-10-25, TJM).xlsx"
 # Toggle logging functionality
 USE_LOGS <- FALSE
 
+# Toggle to control whether to recreate analytic datasets (default: FALSE)
+# Set to TRUE if you need to reprocess raw data or if data has changed
+RECREATE_ANALYTIC_DATASETS <- FALSE
+
 ########################################################
 ############### DATA PROCESSING #######################
 ########################################################
@@ -42,28 +46,38 @@ if (USE_LOGS) {
     sink(log_con, type = "message")
 }
 
-# Load and clean raw data
-cleaned_data <- load_and_clean_data(filename = fn)
+# Check if we need to recreate analytic datasets
+if (RECREATE_ANALYTIC_DATASETS) {
+    log_message("RECREATE_ANALYTIC_DATASETS = TRUE: Creating new analytic datasets")
+    
+    # Load and clean raw data
+    cleaned_data <- load_and_clean_data(filename = fn)
 
-# Create derived variables BEFORE splitting into cohorts
-derived_data <- create_derived_variables(cleaned_data)
+    # Create derived variables BEFORE splitting into cohorts
+    derived_data <- create_derived_variables(cleaned_data)
 
-# Prepare factor levels
-factored_data <- prepare_factor_levels(derived_data)
+    # Prepare factor levels
+    factored_data <- prepare_factor_levels(derived_data)
 
-# Apply inclusion/exclusion criteria (split into cohorts)
-final_analytic_datasets_lst <- apply_criteria(factored_data)
+    # Apply inclusion/exclusion criteria (split into cohorts)
+    final_analytic_datasets_lst <- apply_criteria(factored_data)
 
-# Save each cohort separately
-save_cohorts(final_analytic_datasets_lst)
+    # Save each cohort separately
+    save_cohorts(final_analytic_datasets_lst)
 
-# Create summary tables with organized output structure
-summary_tables <- create_summary_tables(final_analytic_datasets_lst)
+    # Create summary tables with organized output structure
+    summary_tables <- create_summary_tables(final_analytic_datasets_lst)
 
-# Create CONSORT diagram
-# TODO: Add CONSORT diagram
-# log_message("Creating CONSORT diagram")
-# create_consort_diagram(final_analytic_datasets_lst)
+    # Create CONSORT diagram
+    # TODO: Add CONSORT diagram
+    # log_message("Creating CONSORT diagram")
+    # create_consort_diagram(final_analytic_datasets_lst)
+    
+} else {
+    log_message("RECREATE_ANALYTIC_DATASETS = FALSE: Skipping analytic dataset creation")
+    log_message("Using existing datasets from final_data/Analytic Dataset/")
+    log_message("Set RECREATE_ANALYTIC_DATASETS = TRUE if you need to reprocess raw data")
+}
 
 # TODO: Run analysis for each dataset
 

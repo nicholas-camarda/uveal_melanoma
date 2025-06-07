@@ -12,7 +12,7 @@
 #   └── Analysis/         # Output tables and figures
 
 # Install required packages if you don't already have them
-# install.packages(c("tidyverse", "readxl", "writexl", "gtsummary", "survival", "survminer", "gt", "forestploter", "grid", "cowplot"))
+# install.packages(c("tidyverse", "readxl", "writexl", "gtsummary", "survRM2", "survival", "survminer", "gt", "forestploter", "grid", "cowplot"))
 
 # Load required libraries
 library(tidyverse) # For data manipulation and visualization
@@ -25,6 +25,7 @@ library(gt) # For table formatting
 library(forestploter) # For forest plots
 library(grid) # for unit()
 library(cowplot) # for combining plots
+library(survRM2, quietly = TRUE)
 
 # Source the data processing script
 source("scripts/data_processing.R")
@@ -253,7 +254,8 @@ calculate_rates <- function(data, outcome_var, time_var, event_var, group_var = 
         logit_model,
         intercept = FALSE,
         exponentiate = TRUE,
-        show_single_row = group_var
+        show_single_row = group_var,
+        quiet = TRUE
     ) %>%
         # could remove this to show all p-values
         add_global_p() %>% 
@@ -261,7 +263,8 @@ calculate_rates <- function(data, outcome_var, time_var, event_var, group_var = 
         modify_header(
             label     = "**Variable**",
             estimate  = "**OR**",
-            p.value   = "**p-value**"
+            p.value   = "**p-value**",
+            quiet = TRUE
         ) %>%
         modify_caption( # shorten the caption
             md(sprintf("Adjusted Odds Ratios for **%s** by Treatment Group and Covariates", outcome_var))
@@ -375,17 +378,71 @@ analyze_survival <- function(data, time_var, event_var, group_var = "treatment_g
     surv_fit <- survival::survfit(surv_formula, data = new_data)
     surv_fit$call$formula <- surv_formula # This is necessary for non-standard evaluation
 
+    # Determine appropriate x-axis breaks (yearly intervals: 12, 24, 36, etc.)
+    max_time <- max(new_data[[time_var]], na.rm = TRUE)
+    x_breaks <- seq(0, ceiling(max_time / 12) * 12, by = 12)
+    
     surv_plot <- survminer::ggsurvplot(
         fit = surv_fit,
         data = new_data,
+        palette = c("#BC3C29FF", "#0072B5FF"),  # Use palette instead of col
         risk.table = TRUE,
-        conf.int = TRUE,
+        conf.int = FALSE,
         pval = TRUE,
+        title = paste("Kaplan-Meier Survival Curves:", ylab),  # Add descriptive title
         xlab = "Time (months)",
         ylab = ylab,
-        risk.table.height = 0.25,
-        ggtheme = theme_bw()
+        # caption = "Vertical lines (|) indicate censored patients",  # Add caption explaining censoring
+        risk.table.height = 0.10,  # Reduce height to compress rows
+        ggtheme = theme_minimal(),
+        break.time.by = 12,  # Break every 12 months (1 year)
+        xlim = c(0, max(x_breaks)),
+        legend.labs = c("Plaque", "GKSRS"),  # Clean legend labels
+        risk.table.y.text = TRUE,   # Show strata labels in risk table
+        tables.y.text = TRUE,       # Show strata labels in risk table
+        risk.table.title = "Number at risk",  # Add back the risk table title
+        # fontsize = 5,  # Smaller font size for risk table
+        # risk.table.fontsize = 3
     )
+
+    # Apply additional styling to ensure proper alignment and clean appearance
+    # Make main plot text bigger
+    surv_plot$plot <- surv_plot$plot +
+        theme(
+            plot.title = element_text(size = 16, face = "bold", hjust = 0.5),  # Bigger title
+            axis.title.x = element_text(size = 14, face = "plain"),  # Bigger x-axis label
+            axis.title.y = element_text(size = 14, face = "plain"),  # Bigger y-axis label
+            axis.text.x = element_text(size = 12),  # Bigger x-axis tick labels
+            axis.text.y = element_text(size = 12),  # Bigger y-axis tick labels
+            legend.key.height = unit(0.5, "line"), # Smaller legend key height, closer rows together
+            legend.title = element_text(size = 13, face = "bold"),  # Bigger legend title
+            legend.text = element_text(size = 12),  # Bigger legend text
+            plot.caption = element_text(size = 11, hjust = 0.5, margin = margin(t = 10))  # Bigger caption
+        )
+    
+    # Style the risk table (keep numbers at risk smaller)
+    surv_plot$table <- surv_plot$table +
+        theme_minimal() +
+        theme(
+            plot.margin = unit(c(0, 10, 0, 10), "points"),  # Reduce top margin to bring title closer
+            plot.title = element_text(
+                hjust = 0, margin = margin(t = 0, b = 0),  # Remove all margins around title
+                face = "bold", colour = "black", size = 12  # Bigger risk table title
+            ),
+            axis.text.y = element_text(size = 11, face = "plain", colour = "black", 
+                                       lineheight = 0.5), # Compress line spacing between rows
+            axis.text.x = element_blank(),  # Remove x-axis text since it's aligned with plot above
+            axis.title.x = element_blank(), # Remove x-axis title
+            axis.ticks.x = element_blank(), # Remove x-axis ticks
+            axis.ticks.y = element_blank(),
+            panel.grid = element_blank(), # Remove grid lines for cleaner look
+            panel.border = element_blank(),
+            axis.line = element_blank(),
+            panel.spacing.y = unit(0, "lines"),  # Remove vertical spacing between panels
+            strip.text = element_blank(),  # Remove strip text completely
+            legend.key.height = unit(0.5, "line")
+        ) +
+        labs(title = "Number at risk")  # Explicitly add the title to ensure it shows
 
     # surv_summary <- summary(surv_fit)
     # print(surv_summary$table)
@@ -415,7 +472,72 @@ analyze_survival <- function(data, time_var, event_var, group_var = "treatment_g
         ) %>%
         select(Treatment_Group, Time_Years, surv_pct, lower_pct, upper_pct)
 
-    # Wide format for easier viewing
+    # Perform RESTRICTED MEAN SURVIVAL TIME (RMST) ANALYSIS
+    # This compares mean survival time UP TO each specific time point
+    # Answers: "Are there significant differences in survival UP TO time X?"
+    
+    rmst_results <- data.frame(
+        Time_Point_Years = numeric(),
+        Time_Point_Months = numeric(),
+        RMST_Plaque = numeric(),
+        RMST_GKSRS = numeric(),
+        RMST_Difference = numeric(),
+        RMST_P_Value = numeric(),
+        Analysis_Type = character(),
+        stringsAsFactors = FALSE
+    )
+    
+    for (i in seq_along(time_points)) {
+        time_point <- time_points[i]
+        time_years <- round(time_point / 12, 1)
+        
+        # Perform RMST analysis up to this time point
+        rmst_result <- tryCatch({
+            # Create binary treatment indicator (0 = Plaque, 1 = GKSRS)
+            treatment_binary <- ifelse(new_data[[group_var]] == "GKSRS", 1, 0)
+            
+            # Run RMST analysis
+            rmst2(time = new_data[[time_var]], 
+                  status = new_data[[event_var]], 
+                  arm = treatment_binary, 
+                  tau = time_point)
+        }, error = function(e) {
+            return(NULL)
+        })
+        
+        if (!is.null(rmst_result)) {
+            # Extract RMST values and p-value
+            rmst_plaque <- rmst_result$RMST.arm0$rmst[1]  # Plaque (arm 0)
+            rmst_gksrs <- rmst_result$RMST.arm1$rmst[1]   # GKSRS (arm 1)
+            rmst_diff <- rmst_result$unadjusted.result[1, 1]  # Difference
+            rmst_pval <- rmst_result$unadjusted.result[1, 4]  # P-value
+            
+            rmst_results <- rbind(rmst_results, data.frame(
+                Time_Point_Years = time_years,
+                Time_Point_Months = time_point,
+                RMST_Plaque = round(rmst_plaque, 2),
+                RMST_GKSRS = round(rmst_gksrs, 2),
+                RMST_Difference = round(rmst_diff, 2),
+                RMST_P_Value = round(rmst_pval, 4),
+                Analysis_Type = paste0("Mean survival up to ", time_years, " years"),
+                stringsAsFactors = FALSE
+            ))
+        } else {
+            # Analysis failed
+            rmst_results <- rbind(rmst_results, data.frame(
+                Time_Point_Years = time_years,
+                Time_Point_Months = time_point,
+                RMST_Plaque = NA,
+                RMST_GKSRS = NA,
+                RMST_Difference = NA,
+                RMST_P_Value = NA,
+                Analysis_Type = "Analysis failed",
+                stringsAsFactors = FALSE
+            ))
+        }
+    }
+    
+    # Simple wide format for survival rates
     surv_rates_wide <- surv_rates %>%
         mutate(Time_Label = paste0(Time_Years, "-year")) %>%
         select(Treatment_Group, Time_Label, surv_pct) %>%
@@ -423,6 +545,65 @@ analyze_survival <- function(data, time_var, event_var, group_var = "treatment_g
             names_from = Time_Label,
             values_from = surv_pct,
         )
+    
+    # Add RMST p-values as a separate row
+    surv_rates_wide_char <- surv_rates_wide %>%
+        mutate(across(everything(), as.character))
+    
+    # Create RMST p-value row
+    rmst_pvalue_row <- data.frame(
+        Treatment_Group = "RMST P-Value",
+        stringsAsFactors = FALSE
+    )
+    
+    # Add RMST p-values for each time point
+    for (i in 1:nrow(rmst_results)) {
+        time_label <- paste0(rmst_results$Time_Point_Years[i], "-year")
+        p_val <- rmst_results$RMST_P_Value[i]
+        
+        # Format p-value appropriately
+        formatted_p <- if (is.na(p_val)) {
+            "Analysis failed"
+        } else if (p_val < 0.0001) {
+            "<0.0001"
+        } else {
+            sprintf("%.3f", p_val)
+        }
+        
+        # Only add if this time point exists in our survival rates
+        if (time_label %in% names(surv_rates_wide)) {
+            rmst_pvalue_row[[time_label]] <- formatted_p
+        }
+    }
+    
+    # Add RMST difference row (GKSRS - Plaque, in months)
+    rmst_diff_row <- data.frame(
+        Treatment_Group = "RMST Difference (months)",
+        stringsAsFactors = FALSE
+    )
+    
+    for (i in 1:nrow(rmst_results)) {
+        time_label <- paste0(rmst_results$Time_Point_Years[i], "-year")
+        rmst_diff <- rmst_results$RMST_Difference[i]
+        
+        # Format difference appropriately
+        formatted_diff <- if (is.na(rmst_diff)) {
+            "NA"
+        } else {
+            sprintf("%.1f", rmst_diff)
+        }
+        
+        if (time_label %in% names(surv_rates_wide)) {
+            rmst_diff_row[[time_label]] <- formatted_diff
+        }
+    }
+    
+    # Combine all rows
+    surv_rates_wide_with_rmst <- bind_rows(
+        surv_rates_wide_char, 
+        rmst_pvalue_row,
+        rmst_diff_row
+    )
 
     # Determine output directory based on outcome
     if (grepl("Overall Survival", ylab)) {
@@ -433,14 +614,20 @@ analyze_survival <- function(data, time_var, event_var, group_var = "treatment_g
         output_dir <- tables_dir  # fallback
     }
     
-    # Save high-level summary table of median survival times
+    # Save survival rate tables
     writexl::write_xlsx(
         surv_rates,
         path = file.path(output_dir, paste0(prefix, ylab, "_survival_rates.xlsx"))
     )
     writexl::write_xlsx(
-        surv_rates_wide,
+        surv_rates_wide_with_rmst,
         path = file.path(output_dir, paste0(prefix, ylab, "_survival_rates_wide.xlsx"))
+    )
+    
+    # Save detailed RMST analysis results
+    writexl::write_xlsx(
+        rmst_results,
+        path = file.path(output_dir, paste0(prefix, ylab, "_rmst_analysis.xlsx"))
     )
 
     # Cox model: use original data, not new_data
@@ -474,7 +661,8 @@ analyze_survival <- function(data, time_var, event_var, group_var = "treatment_g
         modify_header(
             label    = "**Variable**",
             estimate = "**HR (95 % CI)**",
-            p.value  = "**p-value**"
+            p.value  = "**p-value**",
+            quiet = TRUE
         ) %>%
         modify_caption(sprintf("%s: Adjusted Cox Proportional-Hazards Model", ylab)) %>%
         modify_footnote(
@@ -501,28 +689,137 @@ analyze_survival <- function(data, time_var, event_var, group_var = "treatment_g
         gt::gtsave(
             filename = file.path(output_dir, paste0(prefix, ylab, "_cox.html"))
         )
-
+    
     combined <- plot_grid(
         surv_plot$plot,
         surv_plot$table,
         ncol    = 1,
-        rel_heights = c(3,1)
+        rel_heights = c(4.5, 0.5),  # Make risk table much smaller to compress rows
+        align = "v"  # Vertical alignment to ensure x-axes line up
     )
 
     ggsave(
         file.path(figures_dir, paste0(prefix, ylab, "_survival.png")),
         combined,
-        width = 10, height = 8, dpi = 300
+        width = 10, height = 8, dpi = 300, bg = "white"
     )
+    
+    # Create RMST p-value progression plot
+    rmst_plot <- create_rmst_pvalue_plot(rmst_results, ylab)
     
     return(list(
         fit = surv_fit,
         plot = surv_plot,
         survival_rates = surv_rates,
-        survival_rates_wide = surv_rates_wide,
+        survival_rates_wide = surv_rates_wide_with_rmst,
+        rmst_analysis = rmst_results,
+        rmst_plot = rmst_plot,
         cox_model = cox_model,
         cox_table = cox_table
     ))
+}
+
+#' Create RMST P-value Progression Plot
+#'
+#' Creates a visualization showing how RMST p-values change over time points
+#' and highlights significance thresholds.
+#'
+#' @param rmst_results Data frame with RMST analysis results
+#' @param outcome_label Character string for the outcome being analyzed
+#'
+#' @return ggplot object
+create_rmst_pvalue_plot <- function(rmst_results, outcome_label) {
+    # Filter out failed analyses
+    plot_data <- rmst_results %>%
+        filter(!is.na(RMST_P_Value)) %>%
+        mutate(
+            Significant = RMST_P_Value < 0.05,
+            Log_P_Value = -log10(RMST_P_Value),
+            # RMST_Difference is GKSRS - Plaque (positive = GKSRS better, negative = GKSRS worse)
+            Direction = case_when(
+                !Significant ~ "Not significant",
+                RMST_Difference > 0 ~ "GKSRS advantage",
+                RMST_Difference < 0 ~ "GKSRS disadvantage",
+                TRUE ~ "Not significant"
+            ),
+            Significance_Level = case_when(
+                RMST_P_Value < 0.001 ~ "p < 0.001",
+                RMST_P_Value < 0.01 ~ "p < 0.01", 
+                RMST_P_Value < 0.05 ~ "p < 0.05",
+                TRUE ~ "Not significant"
+            )
+        )
+    
+    # Create the plot
+    p <- ggplot(plot_data, aes(x = Time_Point_Years, y = RMST_P_Value)) +
+        geom_line(size = 1.2, color = "steelblue", alpha = 0.8) +
+        geom_point(aes(color = Significant, size = Significant), alpha = 0.9) +
+        geom_hline(yintercept = 0.05, linetype = "dashed", color = "red", size = 0.8) +
+        geom_hline(yintercept = 0.01, linetype = "dotted", color = "darkred", size = 0.6) +
+        annotate("text", x = max(plot_data$Time_Point_Years), y = 0.05, label = "p = 0.05", 
+                 hjust = -0.1, vjust = -0.2, color = "red", size = 3.5) +
+        annotate("text", x = max(plot_data$Time_Point_Years), y = 0.01, label = "p = 0.01", 
+                 hjust = -0.1, vjust = -0.2, color = "darkred", size = 3.5) +
+        scale_color_manual(
+            values = c("TRUE" = "#E31A1C", "FALSE" = "#1F78B4"),
+            labels = c("TRUE" = "Significant (p < 0.05)", "FALSE" = "Not significant"),
+            name = "Statistical Significance"
+        ) +
+        scale_size_manual(
+            values = c("TRUE" = 4, "FALSE" = 2.5),
+            guide = "none"
+        ) +
+        scale_x_continuous(
+            breaks = plot_data$Time_Point_Years,
+            labels = paste0(plot_data$Time_Point_Years, " yr"),
+            limits = c(min(plot_data$Time_Point_Years), max(plot_data$Time_Point_Years) + 1.25)
+        ) +
+        scale_y_continuous(
+            limits = c(0, max(plot_data$RMST_P_Value) * 1.1),
+            breaks = c(0, seq(0.1, 1, 0.1))
+        ) +
+        labs(
+            title = paste("RMST P-value Progression:", outcome_label),
+            subtitle = "Restricted Mean Survival Time Analysis at Different Time Points",
+            x = "Analysis Time Point",
+            y = "P-value",
+            caption = "Dashed line: p = 0.05 | Dotted line: p = 0.01\nRMST difference: + = GKSRS advantage, - = GKSRS disadvantage (vs Plaque)"
+        ) +
+        theme_minimal() +
+        theme(
+            plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+            plot.subtitle = element_text(size = 12, hjust = 0.5, margin = margin(b = 20)),
+            axis.title = element_text(size = 14, face = "bold"),
+            axis.text = element_text(size = 12),
+            legend.title = element_text(size = 12, face = "bold"),
+            legend.text = element_text(size = 11),
+            legend.position = "bottom",
+            panel.grid.minor = element_blank(),
+            plot.caption = element_text(size = 10, hjust = 0.5, margin = margin(t = 15))
+        )
+    
+    # Add text annotations for p-values and direction
+    p <- p + geom_text(
+        aes(label = sprintf("p=%.3f\n%s%.1f mo", RMST_P_Value, 
+                           ifelse(RMST_Difference > 0, "+", ""), RMST_Difference)),
+        vjust = -0.8, hjust = 0.5, size = 3, color = "black"
+    )
+    
+    # Save the plot
+    output_dir <- switch(
+        gsub(".*:", "", outcome_label),
+        " Overall Survival Probability" = output_dirs$os,
+        " Progression-Free Survival Probability" = output_dirs$pfs,
+        figures_dir  # fallback
+    )
+    
+    ggsave(
+        file.path(output_dir, paste0(prefix, gsub("[^A-Za-z0-9]", "_", outcome_label), "_rmst_pvalue_progression.png")),
+        p,
+        width = 10, height = 6, dpi = 300, bg = "white"
+    )
+    
+    return(p)
 }
 
 #' Analyze tumor height changes
@@ -577,7 +874,8 @@ analyze_tumor_height_changes <- function(data) {
             #     height_change ~ "Change in Tumor Height (mm)"
             # )
         ) %>%
-        add_p() %>%
+        add_p(test = list(all_continuous() ~ "wilcox.test")) %>%
+        modify_header(quiet = TRUE) %>%
         modify_caption("Change in Tumor Height (Initial - Last Measured or Pre-Retreatment), by Treatment Group") %>%
         modify_footnote(
             update = all_stat_cols() ~ "Mean (SD)"
@@ -598,6 +896,13 @@ analyze_tumor_height_changes <- function(data) {
         exponentiate = FALSE,
         intercept = FALSE
     ) %>%
+        modify_header(
+            label = "**Characteristic**",
+            estimate = "**Beta**",
+            ci = "**95% CI**",
+            p.value = "**p-value**",
+            quiet = TRUE
+        ) %>%
         modify_caption("PRIMARY ANALYSIS: Linear Regression of Change in Tumor Height (without baseline height adjustment)") %>%
         modify_footnote(
             update = all_stat_cols() ~ "Adjusted for treatment group and recurrence status only. Reference level: Plaque. Primary analysis to avoid overadjustment bias."
@@ -618,6 +923,13 @@ analyze_tumor_height_changes <- function(data) {
         exponentiate = FALSE,
         intercept = FALSE
     ) %>%
+        modify_header(
+            label = "**Characteristic**",
+            estimate = "**Beta**",
+            ci = "**95% CI**",
+            p.value = "**p-value**",
+            quiet = TRUE
+        ) %>%
         modify_caption("SENSITIVITY ANALYSIS: Linear Regression of Change in Tumor Height (with baseline height adjustment)") %>%
         modify_footnote(
             update = all_stat_cols() ~ "Adjusted for treatment group, recurrence status, and initial tumor height. Reference level: Plaque. Sensitivity analysis including baseline adjustment."
@@ -1291,7 +1603,8 @@ analyze_vision_changes <- function(data) {
             statistic = list(vision_change ~ "{mean} ({sd})"),
             digits = list(vision_change ~ 2),
         ) %>%
-        add_p() %>%
+        add_p(test = list(all_continuous() ~ "wilcox.test")) %>%
+        modify_header(quiet = TRUE) %>%
         modify_caption("Change in Vision (Initial - Last Measured or Pre-Retreatment), by Treatment Group") %>%
         modify_footnote(
             update = all_stat_cols() ~ "Mean (SD)"
@@ -1312,6 +1625,13 @@ analyze_vision_changes <- function(data) {
         exponentiate = FALSE,
         intercept = FALSE
     ) %>%
+        modify_header(
+            label = "**Characteristic**",
+            estimate = "**Beta**",
+            ci = "**95% CI**",
+            p.value = "**p-value**",
+            quiet = TRUE
+        ) %>%
         modify_caption("Linear Regression of Change in Vision") %>%
         modify_footnote(
             update = all_stat_cols() ~ "Adjusted for treatment group and recurrence status. Reference level: Plaque."
@@ -1427,7 +1747,8 @@ analyze_radiation_sequelae <- function(data, sequela_type, confounders, dataset_
             type = list(!!outcome_var ~ "categorical"),
             label = list(!!outcome_var ~ paste("Radiation Sequela:", tools::toTitleCase(sequela_type)))
         ) %>%
-        add_p(test = list(all_categorical() ~ "chisq.test")) %>%
+        modify_header(quiet = TRUE) %>%
+        add_p() %>%  # Use gtsummary default test selection
         modify_caption(paste("Rates of", tools::toTitleCase(sequela_type), "by Treatment Group")) %>%
         as_gt()
     
@@ -1458,6 +1779,13 @@ analyze_radiation_sequelae <- function(data, sequela_type, confounders, dataset_
             exponentiate = TRUE,
             intercept = FALSE
         ) %>%
+            modify_header(
+                label = "**Characteristic**",
+                estimate = "**OR**",
+                ci = "**95% CI**",
+                p.value = "**p-value**",
+                quiet = TRUE
+            ) %>%
             modify_caption(paste("Logistic Regression for", tools::toTitleCase(sequela_type))) %>%
             modify_footnote(
                 update = all_stat_cols() ~ "OR = Odds Ratio. Reference level: Plaque."
