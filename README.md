@@ -52,9 +52,24 @@ project_working_directory/
 │   ├── Analytic Dataset/        # Processed and cleaned datasets (RDS, Excel)
 │   ├── Analysis/
 │   │   ├── gksrs/               # GKSRS-only cohort results
-│   │   ├── uveal_full/          # Full cohort results  
-│   │   └── uveal_restricted/    # Restricted cohort results
+│   │   │   ├── tables/
+│   │   │   │   ├── primary_outcomes/
+│   │   │   │   │   ├── recurrence/
+│   │   │   │   │   ├── metastatic_progression/
+│   │   │   │   │   ├── overall_survival/
+│   │   │   │   │   ├── progression_free_survival/
+│   │   │   │   │   └── tumor_height_change/
+│   │   │   │   │       ├── primary_analysis/          # Main height analysis (no baseline adjustment)
+│   │   │   │   │       ├── sensitivity_analysis/      # Alternative analysis (with baseline adjustment)
+│   │   │   │   │       └── subgroup_interactions/     # Treatment effect heterogeneity testing
+│   │   │   │   │           ├── without_baseline_height/  # Primary subgroup analysis
+│   │   │   │   │           └── with_baseline_height/     # Sensitivity subgroup analysis
+│   │   │   │   └── treatment_duration/
+│   │   │   └── figures/
+│   │   ├── uveal_full/          # Full cohort results (same structure as above)
+│   │   └── uveal_restricted/    # Restricted cohort results (same structure as above)
 │   └── Original Files/          # Raw, unmodified data files and documentation
+├── logs/                        # Analysis logs (when enabled)
 ├── scripts/
 │   ├── data_processing.R        # Data cleaning and cohort creation
 │   ├── main.R                   # Main script to run the full pipeline
@@ -62,6 +77,34 @@ project_working_directory/
 │   └── unit_tests.R             # Unit tests for data processing functions
 └── README.md
 ```
+
+### Analysis Directory Structure Explained
+
+Each cohort directory (`gksrs/`, `uveal_full/`, `uveal_restricted/`) contains:
+
+#### **Tables Structure:**
+- **`primary_outcomes/`**: Core clinical endpoints
+  - **`recurrence/`**: Local tumor recurrence analysis
+  - **`metastatic_progression/`**: Distant metastasis analysis  
+  - **`overall_survival/`**: Death from any cause
+  - **`progression_free_survival/`**: Time to progression or death
+  - **`tumor_height_change/`**: Change in tumor dimensions over time
+    - **`primary_analysis/`**: Main regression analysis without baseline height adjustment (avoids overadjustment bias)
+    - **`sensitivity_analysis/`**: Alternative analysis including baseline height as covariate (tests robustness)
+    - **`subgroup_interactions/`**: Tests whether treatment effects vary across patient subgroups
+      - **`without_baseline_height/`**: Primary subgroup analysis (interaction tests without baseline adjustment)
+      - **`with_baseline_height/`**: Sensitivity subgroup analysis (interaction tests with baseline adjustment)
+- **`treatment_duration/`**: Analysis of treatment characteristics and duration
+
+#### **Primary vs Sensitivity Analysis:**
+- **Primary Analysis**: Preferred approach that avoids potential overadjustment bias when analyzing change scores
+- **Sensitivity Analysis**: Alternative approach including baseline values to test robustness of findings
+- **Subgroup Interactions**: Tests whether treatment effects differ across patient characteristics (age, sex, tumor location, etc.)
+
+#### **Files Generated:**
+- **Tables**: HTML files with publication-ready formatted results
+- **Data**: RDS files with detailed statistical results for further analysis
+- **Figures**: Survival curves, forest plots, and other visualizations
 
 ---
 

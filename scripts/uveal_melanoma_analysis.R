@@ -1222,8 +1222,8 @@ create_output_structure <- function(base_dir) {
         pfs = file.path(base_dir, "primary_outcomes", "progression_free_survival"),
         height_primary = file.path(base_dir, "primary_outcomes", "tumor_height_change", "primary_analysis"),
         height_sensitivity = file.path(base_dir, "primary_outcomes", "tumor_height_change", "sensitivity_analysis"),
-        subgroup_primary = file.path(base_dir, "primary_outcomes", "tumor_height_change", "subgroup_interactions", "primary"),
-        subgroup_sensitivity = file.path(base_dir, "primary_outcomes", "tumor_height_change", "subgroup_interactions", "sensitivity"),
+        subgroup_primary = file.path(base_dir, "primary_outcomes", "tumor_height_change", "subgroup_interactions", "without_baseline_height"),
+        subgroup_sensitivity = file.path(base_dir, "primary_outcomes", "tumor_height_change", "subgroup_interactions", "with_baseline_height"),
         treatment_duration = file.path(base_dir, "treatment_duration")
     )
     
