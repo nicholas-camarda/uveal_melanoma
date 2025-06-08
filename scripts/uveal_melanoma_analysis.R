@@ -31,15 +31,111 @@ library(survRM2, quietly = TRUE)
 # This ensures factor variables use consistent naming across all models
 options(contrasts = c("contr.treatment", "contr.poly"))
 
-# Function to ensure consistent factor contrasts
+# Function to ensure consistent factor contrasts with human-readable names
 ensure_consistent_contrasts <- function(data) {
     factor_vars <- names(data)[sapply(data, is.factor)]
     for (var in factor_vars) {
         if (nlevels(data[[var]]) > 1) {
-            contrasts(data[[var]]) <- contr.treatment(nlevels(data[[var]]))
+            # Set contrasts with meaningful names based on factor levels
+            factor_levels <- levels(data[[var]])
+            if (length(factor_levels) > 1) {
+                contrast_matrix <- contr.treatment(length(factor_levels))
+                # Use factor level names for contrast names (excluding reference level)
+                colnames(contrast_matrix) <- factor_levels[-1]
+                contrasts(data[[var]]) <- contrast_matrix
+            }
         }
     }
     return(data)
+}
+
+# Function to extract coefficient names more robustly
+get_treatment_coefficient_name <- function(model, treatment_var = "treatment_group", data = NULL) {
+    coef_names <- names(coef(model))
+    
+    # Get the actual factor levels from the data if available
+    if (!is.null(data) && treatment_var %in% names(data)) {
+        treatment_levels <- levels(data[[treatment_var]])
+        if (length(treatment_levels) > 1) {
+            treatment_nonref <- treatment_levels[2]  # Second level (non-reference)
+        } else {
+            treatment_nonref <- "GKSRS"  # fallback
+        }
+    } else {
+        treatment_nonref <- "GKSRS"  # fallback
+    }
+    
+    # Try multiple patterns in order of preference
+    possible_patterns <- c(
+        paste0(treatment_var, treatment_nonref),     # treatment_groupGKSRS
+        paste0(treatment_var, "2"),                  # treatment_group2
+        paste0(treatment_var, "GKSRS"),              # treatment_groupGKSRS (exact)
+        treatment_nonref                             # GKSRS (just the level)
+    )
+    
+    for (pattern in possible_patterns) {
+        if (pattern %in% coef_names) {
+            return(pattern)
+        }
+    }
+    
+    # If no exact match, try partial matching
+    for (pattern in possible_patterns) {
+        matches <- grep(pattern, coef_names, value = TRUE)
+        if (length(matches) > 0) {
+            return(matches[1])
+        }
+    }
+    
+    return(NULL)
+}
+
+# Function to extract interaction coefficient names more robustly  
+get_interaction_coefficient_name <- function(model, treatment_var = "treatment_group", 
+                                           subgroup_var, subgroup_level, data = NULL) {
+    coef_names <- names(coef(model))
+    
+    # Get the actual factor levels from the data if available
+    if (!is.null(data) && treatment_var %in% names(data)) {
+        treatment_levels <- levels(data[[treatment_var]])
+        if (length(treatment_levels) > 1) {
+            treatment_nonref <- treatment_levels[2]  # Second level (non-reference)
+        } else {
+            treatment_nonref <- "GKSRS"  # fallback
+        }
+    } else {
+        treatment_nonref <- "GKSRS"  # fallback
+    }
+    
+    # Try multiple interaction patterns
+    possible_patterns <- c(
+        paste0(treatment_var, treatment_nonref, ":", subgroup_var, subgroup_level),
+        paste0(treatment_var, "2:", subgroup_var, subgroup_level),
+        paste0(treatment_var, treatment_nonref, ":", subgroup_var, "2"),
+        paste0(treatment_var, "2:", subgroup_var, "2"),
+        paste0(treatment_var, "GKSRS:", subgroup_var, subgroup_level),
+        paste0(treatment_var, "GKSRS:", subgroup_var, "2"),
+        paste0(treatment_var, treatment_nonref, ":", subgroup_var, "Yes"),
+        paste0(treatment_var, treatment_nonref, ":", subgroup_var, "No"),
+        paste0(treatment_var, "2:", subgroup_var, "Yes"),
+        paste0(treatment_var, "2:", subgroup_var, "No")
+    )
+    
+    # Try exact matches first
+    for (pattern in possible_patterns) {
+        if (pattern %in% coef_names) {
+            return(pattern)
+        }
+    }
+    
+    # Try pattern matching with regex
+    interaction_pattern <- paste0(treatment_var, ".*:", subgroup_var, ".*")
+    matches <- grep(interaction_pattern, coef_names, value = TRUE)
+    if (length(matches) > 0) {
+        return(matches[1])
+    }
+    
+    return(NULL)
 }
 
 # Function to get human-readable variable labels for tables
@@ -1616,41 +1712,12 @@ test_subgroup_interaction <- function(data, subgroup_var, percentile_cut = 0.5, 
         # For multiple levels, we need to test the overall interaction significance
         if (length(subgroup_levels) == 2) {
             # Simple case: just one interaction term
-            # Get the non-reference level for treatment_group
-            treatment_levels <- levels(data$treatment_group)
-            treatment_nonref <- treatment_levels[treatment_levels != treatment_levels[1]][1]  # Get first non-reference level
-            
-            # Get the actual coefficient names from the model
-            actual_coef_names <- names(coef(model))
-            
-            # Try to find the interaction term with more flexible naming
-            # Look for any coefficient that contains both the treatment and subgroup variable
-            possible_interaction_terms <- c(
-                paste0("treatment_group", treatment_nonref, ":", subgroup_var_to_use, subgroup_levels[2]),
-                paste0("treatment_group2:", subgroup_var_to_use, "2"),  # Numeric contrasts
-                paste0("treatment_group2:", subgroup_var_to_use, subgroup_levels[2]),
-                paste0("treatment_groupGKSRS:", subgroup_var_to_use, "2"),  # Mixed naming
-                paste0("treatment_groupGKSRS:", subgroup_var_to_use, subgroup_levels[2]),
-                paste0("treatment_group", treatment_nonref, ":", subgroup_var_to_use, "2"),  # R sometimes uses numeric suffixes
-                paste0("treatment_group", treatment_nonref, ":", subgroup_var_to_use, "Yes"),  # For Yes/No factors
-                paste0("treatment_group", treatment_nonref, ":", subgroup_var_to_use, "No")    # For Yes/No factors
-            )
-            
-            # Also try to find interaction terms that match the pattern
-            interaction_pattern <- paste0("treatment_group.*:", subgroup_var_to_use)
-            pattern_matches <- grep(interaction_pattern, actual_coef_names, value = TRUE)
-            possible_interaction_terms <- c(possible_interaction_terms, pattern_matches)
-            
-            interaction_term <- NULL
-            for (term in possible_interaction_terms) {
-                if (term %in% rownames(model_summary$coefficients)) {
-                    interaction_term <- term
-                    break
-                }
-            }
+            # Use the helper function to find the interaction term robustly
+            interaction_term <- get_interaction_coefficient_name(model, "treatment_group", 
+                                                               subgroup_var_to_use, subgroup_levels[2], data)
             
             if (VERBOSE) {
-                log_message(sprintf("Looking for interaction terms: %s", paste(possible_interaction_terms, collapse = ", ")))
+                log_message(sprintf("Looking for interaction terms: treatment_group:%s", subgroup_var_to_use))
                 if (!is.null(interaction_term)) {
                     log_message(sprintf("Found interaction term: %s", interaction_term))
                 } else {
@@ -1698,31 +1765,16 @@ test_subgroup_interaction <- function(data, subgroup_var, percentile_cut = 0.5, 
             
             if (i == 1) {
                 # Reference subgroup: treatment effect = β1 (main effect of treatment)
-                # Get the non-reference level for treatment_group
-                treatment_levels <- levels(data$treatment_group)
-                treatment_nonref <- treatment_levels[treatment_levels != treatment_levels[1]][1]
                 
-                # Try multiple possible main effect coefficient names
-                possible_main_coeffs <- c(
-                    paste0("treatment_group", treatment_nonref),
-                    "treatment_group2",  # Numeric contrast coding
-                    "treatment_groupGKSRS"  # Direct level naming
-                )
-                
-                coef_idx <- NULL
-                for (coef_name in possible_main_coeffs) {
-                    if (coef_name %in% names(coef(model))) {
-                        coef_idx <- coef_name
-                        break
-                    }
-                }
+                # Use the new helper function for robust coefficient extraction
+                coef_idx <- get_treatment_coefficient_name(model, "treatment_group", data)
                 
                 if (VERBOSE) {
-                    log_message(sprintf("  Reference level - Looking for coefficient: %s", paste(possible_main_coeffs, collapse = ", ")))
+                    log_message(sprintf("  Reference level - Looking for coefficient: treatment_group coefficient"))
                     if (!is.null(coef_idx)) {
                         log_message(sprintf("  Found coefficient: %s", coef_idx))
                     } else {
-                        log_message("  No main coefficient found")
+                        log_message(sprintf("  Coefficient 'treatment_group%s' not found", levels(data$treatment_group)[2]))
                     }
                 }
                 
@@ -1743,57 +1795,17 @@ test_subgroup_interaction <- function(data, subgroup_var, percentile_cut = 0.5, 
                 }
             } else {
                 # Non-reference subgroup: treatment effect = β1 + β3 (main + interaction)
-                # Get the non-reference level for treatment_group
-                treatment_levels <- levels(data$treatment_group)
-                treatment_nonref <- treatment_levels[treatment_levels != treatment_levels[1]][1]
-                main_coef_idx <- paste0("treatment_group", treatment_nonref)
                 
-                # Try multiple possible main coefficient names
-                possible_main_coeffs <- c(
-                    paste0("treatment_group", treatment_nonref),
-                    "treatment_group2",  # Numeric contrast coding
-                    "treatment_groupGKSRS"  # Direct level naming
-                )
-                
-                main_coef_idx <- NULL
-                for (coef_name in possible_main_coeffs) {
-                    if (coef_name %in% names(coef(model))) {
-                        main_coef_idx <- coef_name
-                        break
-                    }
-                }
-                
-                # Try multiple possible interaction coefficient names
-                possible_interaction_coeffs <- c(
-                    paste0("treatment_group", treatment_nonref, ":", subgroup_var_to_use, level),
-                    paste0("treatment_group", treatment_nonref, ":", subgroup_var_to_use, i),  # Use level index
-                    paste0("treatment_group", treatment_nonref, ":", subgroup_var_to_use, "2"),  # R sometimes uses "2" for second level
-                    paste0("treatment_group2:", subgroup_var_to_use, "2"),  # Numeric contrasts
-                    paste0("treatment_group2:", subgroup_var_to_use, level),
-                    paste0("treatment_groupGKSRS:", subgroup_var_to_use, "2"),  # Mixed naming
-                    paste0("treatment_groupGKSRS:", subgroup_var_to_use, level),
-                    paste0("treatment_group", treatment_nonref, ":", subgroup_var_to_use, "Yes"),  # For Yes/No variables
-                    paste0("treatment_group", treatment_nonref, ":", subgroup_var_to_use, "No")    # For Yes/No variables
-                )
-                
-                # Also check for pattern matches
-                interaction_pattern <- paste0("treatment_group.*:", subgroup_var_to_use)
-                pattern_matches <- grep(interaction_pattern, actual_coef_names, value = TRUE)
-                possible_interaction_coeffs <- c(possible_interaction_coeffs, pattern_matches)
-                
-                interaction_coef_idx <- NULL
-                for (coef_name in possible_interaction_coeffs) {
-                    if (coef_name %in% names(coef(model))) {
-                        interaction_coef_idx <- coef_name
-                        break
-                    }
-                }
+                # Use helper functions for robust coefficient extraction
+                main_coef_idx <- get_treatment_coefficient_name(model, "treatment_group", data)
+                interaction_coef_idx <- get_interaction_coefficient_name(model, "treatment_group", 
+                                                                        subgroup_var_to_use, level, data)
                 
                 if (VERBOSE) {
                     log_message(sprintf("  Non-reference level - Looking for coefficients:"))
-                    log_message(sprintf("    Main candidates: %s", paste(possible_main_coeffs, collapse = ", ")))
-                    log_message(sprintf("    Found main: %s", ifelse(is.null(main_coef_idx), "None", main_coef_idx)))
-                    log_message(sprintf("    Interaction candidates: %s", paste(possible_interaction_coeffs, collapse = ", ")))
+                    log_message(sprintf("    Main: treatment_group"))
+                    log_message(sprintf("    Interaction candidates: treatment_group:%s%s, treatment_group:%s2, treatment_group:%sYes, treatment_group:%sNo", 
+                                      subgroup_var_to_use, level, subgroup_var_to_use, subgroup_var_to_use, subgroup_var_to_use))
                     if (!is.null(interaction_coef_idx)) {
                         log_message(sprintf("    Found interaction: %s", interaction_coef_idx))
                     } else {
