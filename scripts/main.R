@@ -562,67 +562,6 @@ tryCatch({
             })
         }
         
-        # Create a summary document with key findings
-        log_message("Creating summary document with key findings")
-        
-        summary_content <- paste0(
-            "# Comprehensive Subgroup Analysis Summary\n\n",
-            "## Uveal Melanoma: GKSRS vs Plaque Brachytherapy\n\n",
-            "### Analysis Overview\n\n",
-            "This analysis examines treatment effect heterogeneity across patient subgroups for five primary outcomes:\n\n",
-            "1. **Overall Survival** (Hazard Ratios)\n",
-            "2. **Progression-Free Survival** (Hazard Ratios)\n", 
-            "3. **Local Recurrence** (Odds Ratios)\n",
-            "4. **Metastatic Progression** (Odds Ratios)\n",
-            "5. **Tumor Height Change** (Mean Differences)\n\n",
-            "### Subgroup Variables Tested\n\n",
-            "The following patient characteristics were evaluated for treatment effect modification:\n\n",
-            "- **Age at Diagnosis** (dichotomized at median)\n",
-            "- **Sex** (Male vs Female)\n", 
-            "- **Tumor Location** (anatomical site)\n",
-            "- **T-stage** (tumor stage)\n",
-            "- **Tumor Height** (dichotomized at median)\n",
-            "- **Tumor Diameter** (dichotomized at median)\n", 
-            "- **Gene Expression Profile** (GEP class)\n",
-            "- **Optic Nerve Involvement** (Yes vs No)\n\n",
-            "### Cohorts Compared\n\n",
-            "- **Full Cohort**: All patients who received either treatment (~263 patients)\n",
-            "- **Restricted Cohort**: Patients eligible for both treatments (~169 patients)\n\n",
-            "### Forest Plot Interpretation\n\n",
-            "- **Forest plots** show treatment effects (GKSRS vs Plaque) within each subgroup\n",
-            "- **Asterisks (*)** indicate significant interactions (p < 0.05)\n", 
-            "- **Square size** is proportional to sample size\n",
-            "- **Reference line** represents no treatment difference\n\n",
-            "### Key Questions Addressed\n\n",
-            "1. **Do treatment effects vary across patient subgroups?**\n",
-            "2. **Are there patient characteristics that predict better outcomes with one treatment?**\n",
-            "3. **Are findings consistent between full and restricted cohorts?**\n\n",
-            "### Files Generated\n\n",
-            "#### Forest Plots (figures/)\n",
-            "- `overall_survival_combined_forest_plot.png`\n",
-            "- `progression_free_survival_combined_forest_plot.png`\n",
-            "- `local_recurrence_combined_forest_plot.png`\n",
-            "- `metastatic_progression_combined_forest_plot.png`\n", 
-            "- `tumor_height_change_combined_forest_plot.png`\n\n",
-            "#### Summary Tables (tables/)\n",
-            "- `overall_survival_comprehensive_summary.html`\n",
-            "- `progression_free_survival_comprehensive_summary.html`\n",
-            "- `local_recurrence_comprehensive_summary.html`\n",
-            "- `metastatic_progression_comprehensive_summary.html`\n",
-            "- `tumor_height_change_comprehensive_summary.html`\n\n",
-            "### Statistical Methods\n\n",
-            "- **Survival outcomes**: Cox regression with treatment × subgroup interactions\n",
-            "- **Binary outcomes**: Logistic regression with treatment × subgroup interactions\n",
-            "- **Continuous outcomes**: Linear regression with treatment × subgroup interactions\n",
-            "- **Interaction testing**: Likelihood ratio tests for overall significance\n",
-            "- **Effect estimates**: Treatment effects calculated within each subgroup level\n\n",
-            "---\n\n",
-            "*Generated on: ", Sys.time(), "*\n"
-        )
-        
-        # Save summary document
-        writeLines(summary_content, file.path(combined_analysis_dir, "README.md"))
-        
         log_message("Comprehensive subgroup analysis summary completed successfully!")
         log_message(sprintf("Results saved to: %s", combined_analysis_dir))
         
