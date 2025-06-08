@@ -372,10 +372,26 @@ create_derived_variables <- function(data) {
             # Create progression-free survival time (first of recurrence OR death)
             tt_pfs_months = pmin(tt_recurrence_months, tt_death_months, na.rm = FALSE),
             
+            # PFS-2 variables (progression-free survival after first recurrence treatment)
+            tt_pfs2_months = case_when(
+                recurrence1 == "Y" & !is.na(recurrence1_treatment_date) & recurrence2 == "Y" & !is.na(recurrence2_date) ~ 
+                    time_length(interval(recurrence1_treatment_date, recurrence2_date), "months"),
+                recurrence1 == "Y" & !is.na(recurrence1_treatment_date) ~ 
+                    time_length(interval(recurrence1_treatment_date, last_known_alive_date), "months"),
+                TRUE ~ NA_real_
+            ),
+            
             # Legacy variables in days (kept for backward compatibility)
             tt_recurrence = case_when(
                 recurrence1 == "Y" ~ as.numeric(difftime(recurrence1_date, treatment_date, units = "days")),
                 TRUE ~ as.numeric(difftime(last_known_alive_date, treatment_date, units = "days"))
+            ),
+            tt_pfs2 = case_when(
+                recurrence1 == "Y" & !is.na(recurrence1_treatment_date) & recurrence2 == "Y" & !is.na(recurrence2_date) ~ 
+                    as.numeric(difftime(recurrence2_date, recurrence1_treatment_date, units = "days")),
+                recurrence1 == "Y" & !is.na(recurrence1_treatment_date) ~ 
+                    as.numeric(difftime(last_known_alive_date, recurrence1_treatment_date, units = "days")),
+                TRUE ~ NA_real_
             ),
             tt_mets = case_when(
                 mets_progression == "Y" ~ as.numeric(difftime(mets_progression_date, treatment_date, units = "days")),
@@ -397,6 +413,13 @@ create_derived_variables <- function(data) {
             tt_death_years = case_when(
                 !is.na(dod) ~ time_length(interval(treatment_date, dod), "years"),
                 TRUE ~ time_length(interval(treatment_date, last_known_alive_date), "years")
+            ),
+            tt_pfs2_years = case_when(
+                recurrence1 == "Y" & !is.na(recurrence1_treatment_date) & recurrence2 == "Y" & !is.na(recurrence2_date) ~ 
+                    time_length(interval(recurrence1_treatment_date, recurrence2_date), "years"),
+                recurrence1 == "Y" & !is.na(recurrence1_treatment_date) ~ 
+                    time_length(interval(recurrence1_treatment_date, last_known_alive_date), "years"),
+                TRUE ~ NA_real_
             )
         )
 
@@ -404,14 +427,30 @@ create_derived_variables <- function(data) {
     #     select(id, tt_death, dod, treatment_group, age_at_diagnosis, follow_up_days, follow_up_years, treatment_date, initial_gk_date, initial_plaque_date) %>%
     #     print(n = Inf)
 
-    log_message("Creating event indicators (ie, recurrence_event, mets_event, death_event, pfs_event)")
+    log_message("Creating event indicators (ie, recurrence_event, mets_event, death_event, pfs_event, pfs2_event)")
     data <- data %>%
         mutate(
             recurrence_event = if_else(recurrence1 == "Y", 1, 0, missing = 0),
             mets_event = if_else(mets_progression == "Y", 1, 0, missing = 0),
             death_event = if_else(!is.na(dod), 1, 0, missing = 0),
             # Progression-free survival event: progression OR death (whichever comes first)
-            pfs_event = if_else(recurrence_event == 1 | death_event == 1, 1, 0)
+            pfs_event = if_else(recurrence_event == 1 | death_event == 1, 1, 0),
+            # PFS-2 event: 1 if 2nd recurrence occurred, 0 if censored (only for patients with first recurrence)
+            pfs2_event = case_when(
+                recurrence1 == "Y" & !is.na(recurrence1_treatment_date) & recurrence2 == "Y" & !is.na(recurrence2_date) ~ 1,
+                recurrence1 == "Y" & !is.na(recurrence1_treatment_date) ~ 0,
+                TRUE ~ NA_real_
+            ),
+            # Clean recurrence treatment variable for PFS-2 analysis
+            recurrence1_treatment_clean = case_when(
+                recurrence1 == "Y" & !is.na(recurrence1_treatment) ~ case_when(
+                    str_detect(tolower(recurrence1_treatment), "gk") ~ "GKSRS",
+                    str_detect(tolower(recurrence1_treatment), "enuc") ~ "Enucleation", 
+                    str_detect(tolower(recurrence1_treatment), "ttt") ~ "TTT",
+                    TRUE ~ "Other"
+                ),
+                TRUE ~ NA_character_
+            )
         )
     
     # Identify patients who were mets-free at baseline
@@ -500,6 +539,11 @@ prepare_factor_levels <- function(data) {
             # Treatment group
             treatment_group = factor(treatment_group,
                 levels = c("Plaque", "GKSRS")
+            ),
+            
+            # Recurrence treatment group for PFS-2 analysis
+            recurrence1_treatment_clean = factor(recurrence1_treatment_clean,
+                levels = c("Enucleation", "GKSRS", "TTT", "Other")
             ),
 
             # Demographics

@@ -12,12 +12,23 @@
 #' Set the filename, this will be loaded from the *data* directory
 fn <- "Ocular Melanoma Master Spreadsheet REVISED FOR STATS (5-10-25, TJM).xlsx"
 
+########################################################
+############### ANALYSIS SETTINGS #####################
+########################################################
+
 # Toggle logging functionality
-USE_LOGS <- FALSE
+USE_LOGS <- TRUE
 
 # Toggle to control whether to recreate analytic datasets (default: FALSE)
 # Set to TRUE if you need to reprocess raw data or if data has changed
 RECREATE_ANALYTIC_DATASETS <- FALSE
+
+# Set to FALSE to suppress detailed logging in analysis functions
+VERBOSE <- TRUE 
+
+# Set to TRUE to show all individual p-values in regression tables
+# Set to FALSE to show only grouped p-values (one per variable group)
+SHOW_ALL_PVALUES <- TRUE
 
 ########################################################
 ############### DATA PROCESSING #######################
@@ -107,6 +118,12 @@ run_my_analysis <- function(dataset_name) {
     log_message("Loading analytic dataset")
     data <- readRDS(file.path(PROCESSED_DATA_DIR, paste0(dataset_name, ".rds")))
     log_message(sprintf("Loaded %d patients", nrow(data)))
+
+    ########################################################
+    ############### STEP 1: PRIMARY OUTCOMES ###############
+    ########################################################
+
+    message("=== STARTING STEP 1: PRIMARY OUTCOMES ANALYSIS ===")
 
     # # Summarize key variables before analysis
     # summarize_data(data)
@@ -275,7 +292,7 @@ run_my_analysis <- function(dataset_name) {
     ############### STEP 2: SAFETY/TOXICITY ###############
     ########################################################
     
-    log_message("=== STARTING STEP 2: SAFETY/TOXICITY ANALYSIS ===")
+    message("=== STARTING STEP 2: SAFETY/TOXICITY ANALYSIS ===")
     
     # 2a. Vision changes analysis (similar to tumor height changes)
     log_message("Analyzing vision changes")
@@ -316,6 +333,19 @@ run_my_analysis <- function(dataset_name) {
     srd_rates
     
     log_message("=== COMPLETED STEP 2: SAFETY/TOXICITY ANALYSIS ===")
+    
+    ########################################################
+    ############### STEP 3: REPEAT RADIATION ##############
+    ########################################################
+    
+    message("=== STARTING STEP 3: REPEAT RADIATION EFFICACY ===")
+    
+    # 3a. Progression-Free Survival-2 (PFS-2) for recurrent patients
+    log_message("Analyzing PFS-2 for recurrent patients")
+    pfs2_results <- analyze_pfs2(data, confounders = confounders, dataset_name = dataset_name)
+    pfs2_results
+    
+    log_message("=== COMPLETED STEP 3: REPEAT RADIATION EFFICACY ===")
     
 }
 

@@ -27,11 +27,72 @@ library(grid) # for unit()
 library(cowplot) # for combining plots
 library(survRM2, quietly = TRUE)
 
+# Set consistent contrast options for all modeling functions
+# This ensures factor variables use consistent naming across all models
+options(contrasts = c("contr.treatment", "contr.poly"))
+
+# Function to ensure consistent factor contrasts
+ensure_consistent_contrasts <- function(data) {
+    factor_vars <- names(data)[sapply(data, is.factor)]
+    for (var in factor_vars) {
+        if (nlevels(data[[var]]) > 1) {
+            contrasts(data[[var]]) <- contr.treatment(nlevels(data[[var]]))
+        }
+    }
+    return(data)
+}
+
+# Function to get human-readable variable labels for tables
+get_variable_labels <- function() {
+    list(
+        # Treatment and demographics
+        treatment_group = "Treatment Group",
+        age_at_diagnosis = "Age at Diagnosis (years)",
+        sex = "Sex",
+        
+        # Tumor characteristics
+        location = "Tumor Location",
+        optic_nerve = "Optic Nerve Involvement",
+        initial_tumor_height = "Initial Tumor Height (mm)",
+        initial_tumor_diameter = "Initial Tumor Diameter (mm)",
+        initial_overall_stage = "Initial Overall Stage",
+        initial_t_stage = "Initial T Stage",
+        biopsy1_gep = "Gene Expression Profile",
+        internal_reflectivity = "Internal Reflectivity",
+        srf = "Subretinal Fluid",
+        op = "Orange Pigment",
+        
+        # Symptoms
+        symptoms = "Any Symptoms",
+        vision_loss_blurred_vision = "Vision Loss/Blurred Vision",
+        visual_field_defect = "Visual Field Defect",
+        flashes_photopsia = "Flashes/Photopsia",
+        floaters = "Floaters",
+        pain = "Pain",
+        
+        # Outcomes
+        recurrence1 = "Local Recurrence",
+        recurrence2 = "Second Recurrence",
+        mets_progression = "Metastatic Progression",
+        enucleation = "Enucleation",
+        retinopathy = "Radiation Retinopathy",
+        nvg = "Neovascular Glaucoma",
+        srd = "Serous Retinal Detachment",
+        
+        # Recurrence treatment
+        recurrence1_treatment_clean = "Recurrence Treatment",
+        
+        # Follow-up variables
+        follow_up_years = "Follow-up Time (years)",
+        follow_up_months = "Follow-up Time (months)"
+    )
+}
+
 # Source the data processing script
 source("scripts/data_processing.R")
 
-# Set to FALSE to suppress detailed logging
-VERBOSE <- TRUE 
+# Analysis settings are now defined in main.R
+# VERBOSE and SHOW_ALL_PVALUES are set there 
 
 # Define data paths
 DATA_DIR <- "final_data"
@@ -199,6 +260,9 @@ calculate_rates <- function(data, outcome_var, time_var, event_var, group_var = 
             filter(!!sym(time_var) >= 0)
         log_message(sprintf("Removed %d rows with %s before treatment", nrow(rare_fix_data) - nrow(fix_event_data), event_var))
     }
+    
+    # Ensure consistent factor contrasts for modeling
+    fix_event_data <- ensure_consistent_contrasts(fix_event_data)
 
     # Filter and validate confounders using existing function
     if (!is.null(confounders)) {
@@ -210,7 +274,7 @@ calculate_rates <- function(data, outcome_var, time_var, event_var, group_var = 
     # Calculate rates by treatment group
     rates <- fix_event_data %>%
         group_by(!!sym(group_var)) %>%
-        summarise(
+        summarize(
             n = n(),
             events = sum(!!sym(event_var), na.rm = TRUE),
             rate = events / n * 100,
@@ -249,16 +313,29 @@ calculate_rates <- function(data, outcome_var, time_var, event_var, group_var = 
     logit_model <- glm(formula, data = fix_event_data, family = binomial())
     print(summary(logit_model))
 
+    # Get variable labels for better readability
+    variable_labels <- get_variable_labels()
+    
     # Create table with regression results
     tbl <- tbl_regression(
         logit_model,
         intercept = FALSE,
         exponentiate = TRUE,
         show_single_row = group_var,
-        quiet = TRUE
-    ) %>%
-        # could remove this to show all p-values
-        add_global_p() %>% 
+        quiet = TRUE,
+        label = variable_labels  # Apply human-readable labels
+    )
+    
+    # Add p-values based on toggle setting
+    if (SHOW_ALL_PVALUES) {
+        # Show individual p-values for each coefficient
+        tbl <- tbl  # No modification needed - individual p-values shown by default
+    } else {
+        # Show only grouped p-values (one per variable)
+        tbl <- tbl %>% add_global_p()
+    }
+    
+    tbl <- tbl %>%
         # change the column names
         modify_header(
             label     = "**Variable**",
@@ -321,7 +398,7 @@ calculate_rates <- function(data, outcome_var, time_var, event_var, group_var = 
 #' @return List with elements: fit (survfit object), plot (ggsurvplot), median_times (data frame), cox_model (coxph object), cox_table (gtsummary object).
 #' @examples
 #' analyze_survival(data, "tt_death", "death_event")
-analyze_survival <- function(data, time_var, event_var, group_var = "treatment_group", confounders = NULL, ylab = "Survival Probability", exclude_before_treatment = TRUE, handle_rare = TRUE, dataset_name = NULL) {
+analyze_survival <- function(data, time_var, event_var, group_var = "treatment_group", confounders = NULL, ylab = "Survival Probability", exclude_before_treatment = TRUE, handle_rare = TRUE, dataset_name = NULL, legend_labels = NULL) {
     # DEBUGGING:
     # time_var = "tt_death"
     # event_var = "death_event"
@@ -357,6 +434,9 @@ analyze_survival <- function(data, time_var, event_var, group_var = "treatment_g
             filter(!!sym(time_var) >= 0)
         log_message(sprintf("Removed %d rows with %s before treatment", nrow(rare_fix_data) - nrow(fix_event_data), event_var))
     }
+    
+    # Ensure consistent factor contrasts for modeling
+    fix_event_data <- ensure_consistent_contrasts(fix_event_data)
 
     # Filter and validate confounders using existing function
     if (!is.null(confounders)) {
@@ -382,10 +462,29 @@ analyze_survival <- function(data, time_var, event_var, group_var = "treatment_g
     max_time <- max(new_data[[time_var]], na.rm = TRUE)
     x_breaks <- seq(0, ceiling(max_time / 12) * 12, by = 12)
     
+    # Determine legend labels
+    if (is.null(legend_labels)) {
+        # Default to factor levels of the grouping variable
+        legend_labels <- levels(factor(new_data[[group_var]]))
+    }
+    
+    # Create dynamic color palette based on number of groups
+    n_groups <- length(legend_labels)
+    if (n_groups == 2) {
+        color_palette <- c("#BC3C29FF", "#0072B5FF")
+    } else if (n_groups == 3) {
+        color_palette <- c("#BC3C29FF", "#0072B5FF", "#E18727FF")
+    } else if (n_groups == 4) {
+        color_palette <- c("#BC3C29FF", "#0072B5FF", "#E18727FF", "#20854EFF")
+    } else {
+        # For more than 4 groups, use a larger palette
+        color_palette <- RColorBrewer::brewer.pal(min(n_groups, 8), "Set1")
+    }
+    
     surv_plot <- survminer::ggsurvplot(
         fit = surv_fit,
         data = new_data,
-        palette = c("#BC3C29FF", "#0072B5FF"),  # Use palette instead of col
+        palette = color_palette,  # Dynamic color palette
         risk.table = TRUE,
         conf.int = FALSE,
         pval = TRUE,
@@ -397,7 +496,7 @@ analyze_survival <- function(data, time_var, event_var, group_var = "treatment_g
         ggtheme = theme_minimal(),
         break.time.by = 12,  # Break every 12 months (1 year)
         xlim = c(0, max(x_breaks)),
-        legend.labs = c("Plaque", "GKSRS"),  # Clean legend labels
+        legend.labs = legend_labels,  # Dynamic legend labels
         risk.table.y.text = TRUE,   # Show strata labels in risk table
         tables.y.text = TRUE,       # Show strata labels in risk table
         risk.table.title = "Number at risk",  # Add back the risk table title
@@ -608,8 +707,12 @@ analyze_survival <- function(data, time_var, event_var, group_var = "treatment_g
     # Determine output directory based on outcome
     if (grepl("Overall Survival", ylab)) {
         output_dir <- output_dirs$os
-    } else if (grepl("Progression", ylab)) {
+    } else if (grepl("Progression-Free Survival", ylab)) {
         output_dir <- output_dirs$pfs
+    } else if (grepl("PFS-2", ylab)) {
+        # PFS-2 is part of Objective #3 (Repeat Radiation Efficacy) - separate from primary outcomes
+        output_dir <- file.path(tables_dir, "repeat_radiation_efficacy")
+        if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
     } else {
         output_dir <- tables_dir  # fallback
     }
@@ -649,15 +752,29 @@ analyze_survival <- function(data, time_var, event_var, group_var = "treatment_g
     #     optic_nerve = "Optic nerve involvement"
     # )
 
+    # Check if group_var has only 2 levels for show_single_row
+    group_levels <- length(unique(new_data[[group_var]]))
+    
+    # Get variable labels for better readability
+    variable_labels <- get_variable_labels()
+    
     cox_table <- tbl_regression(
         cox_model,
         exponentiate = TRUE, # gives you HRs
-        # label = confounders,
-        show_single_row = group_var # show Plaque row first
-    ) %>%
-        # add_nevent() %>% # add a column N(events)
-        # add_n() %>% # add a column N(total)
-        add_global_p() %>% # overall p for multi-levels
+        label = variable_labels,  # Apply human-readable labels
+        show_single_row = if (group_levels == 2) group_var else NULL # only for binary variables
+    )
+    
+    # Add p-values based on toggle setting
+    if (SHOW_ALL_PVALUES) {
+        # Show individual p-values for each coefficient
+        cox_table <- cox_table  # No modification needed - individual p-values shown by default
+    } else {
+        # Show only grouped p-values (one per variable)
+        cox_table <- cox_table %>% add_global_p()
+    }
+    
+    cox_table <- cox_table %>%
         modify_header(
             label    = "**Variable**",
             estimate = "**HR (95 % CI)**",
@@ -819,7 +936,145 @@ create_rmst_pvalue_plot <- function(rmst_results, outcome_label) {
         width = 10, height = 6, dpi = 300, bg = "white"
     )
     
-    return(p)
+          return(p)
+  }
+
+#' Analyze Progression-Free Survival-2 (PFS-2) for Recurrent Patients
+#'
+#' Analyzes outcomes for patients who had local recurrence and received additional treatment.
+#' Compares different second-line treatments.
+#'
+#' @param data Data frame with patient data
+#' @param confounders Character vector of confounder variable names (default: NULL)
+#' @param dataset_name Name of the dataset (character)
+#'
+#' @return List with survival analysis results
+#' @examples
+#' analyze_pfs2(data, confounders = c("age_at_diagnosis", "sex"))
+analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL) {
+    log_message("Starting PFS-2 analysis for recurrent patients")
+    
+    # Filter to patients with valid PFS-2 data (variables now created in data processing)
+    pfs2_data <- data %>%
+        filter(
+            !is.na(tt_pfs2_months), 
+            tt_pfs2_months >= 0,
+            !is.na(recurrence1_treatment_clean)
+        )
+    
+    log_message(sprintf("Found %d patients with valid PFS-2 data", nrow(pfs2_data)))
+    
+    if (nrow(pfs2_data) == 0) {
+        log_message("No patients with valid PFS-2 data found")
+        return(list(
+            pfs2_data = NULL,
+            survival_analysis = NULL,
+            summary_table = NULL
+        ))
+    }
+    
+    # Show treatment distribution
+    treatment_counts <- table(pfs2_data$recurrence1_treatment_clean)
+    log_message("Treatment distribution:")
+    print(treatment_counts)
+    
+    log_message(sprintf("Final PFS-2 analysis dataset: %d patients", nrow(pfs2_data)))
+    log_message(sprintf("PFS-2 events (2nd recurrence): %d", sum(pfs2_data$pfs2_event)))
+    
+    # Check if we have enough patients and events for analysis
+    if (nrow(pfs2_data) < 10) {
+        log_message("Insufficient patients for PFS-2 analysis")
+        return(list(
+            pfs2_data = pfs2_data,
+            survival_analysis = NULL,
+            summary_table = NULL
+        ))
+    }
+    
+    # Check if we have enough events per group for survival analysis
+    events_per_group <- pfs2_data %>%
+        group_by(recurrence1_treatment_clean) %>%
+        summarize(events = sum(pfs2_event), .groups = "drop")
+    
+    total_events <- sum(pfs2_data$pfs2_event)
+    
+    if (total_events < 5 || any(events_per_group$events < 1)) {
+        log_message("ERROR: Insufficient events for PFS-2 survival analysis")
+        log_message(sprintf("Total events: %d (minimum 5 required)", total_events))
+        log_message("Events per group:")
+        print(events_per_group)
+        log_message("Skipping survival analysis due to insufficient data")
+        
+        pfs2_survival <- list(
+            fit = NULL,
+            plot = NULL,
+            survival_rates = NULL,
+            cox_model = NULL,
+            cox_table = NULL
+        )
+    } else {
+        # Use existing analyze_survival function with dynamic legend labels
+        log_message("Performing PFS-2 survival analysis")
+        pfs2_survival <- analyze_survival(
+            data = pfs2_data,
+            time_var = "tt_pfs2_months",
+            event_var = "pfs2_event", 
+            group_var = "recurrence1_treatment_clean",
+            confounders = confounders,
+            ylab = "PFS-2 Probability (Freedom from 2nd Recurrence)",
+            exclude_before_treatment = FALSE,  # Already filtered appropriately
+            handle_rare = TRUE,
+            dataset_name = paste0(dataset_name, "_pfs2_recurrent"),
+            legend_labels = levels(pfs2_data$recurrence1_treatment_clean)
+        )
+    }
+    
+    # Create summary table of PFS-2 characteristics
+    summary_table <- pfs2_data %>%
+        select(recurrence1_treatment_clean, tt_pfs2_months, pfs2_event, 
+               age_at_diagnosis, sex) %>%  # Remove location since it was collapsed
+        tbl_summary(
+            by = recurrence1_treatment_clean,
+            missing = "no",
+            type = list(
+                pfs2_event ~ "continuous"  # Treat as continuous for sum calculation
+            ),
+            statistic = list(
+                tt_pfs2_months ~ "{median} ({p25}, {p75})",
+                pfs2_event ~ "{sum}",  # Just show sum, not percentage
+                age_at_diagnosis ~ "{mean} ({sd})"
+            ),
+            digits = list(
+                tt_pfs2_months ~ 1,
+                age_at_diagnosis ~ 1
+            ),
+            label = list(
+                tt_pfs2_months ~ "PFS-2 Time (months)",
+                pfs2_event ~ "2nd Recurrence Events",
+                age_at_diagnosis ~ "Age at Diagnosis",
+                sex ~ "Sex"
+            )
+        ) %>%
+        add_overall() %>%
+        add_p() %>%
+        modify_header(
+            label = "**Characteristic**",
+            stat_0 = "**Overall**\nN = {N}",
+            quiet = TRUE
+        ) %>%
+        modify_caption("PFS-2 Analysis: Characteristics of Recurrent Patients by Second-Line Treatment") %>%
+        as_gt()
+    
+    # Note: File saving is handled by the analyze_survival function called above
+    # which properly organizes outputs into the established directory structure
+    
+    log_message("PFS-2 analysis completed")
+    
+    return(list(
+        pfs2_data = pfs2_data,
+        survival_analysis = pfs2_survival,
+        summary_table = summary_table
+    ))
 }
 
 #' Analyze tumor height changes
@@ -844,11 +1099,14 @@ analyze_tumor_height_changes <- function(data) {
                 TRUE ~ initial_tumor_height - last_height
             )
         )
+    
+    # Ensure consistent factor contrasts for modeling
+    data_with_height_change <- ensure_consistent_contrasts(data_with_height_change)
 
     # Summary statistics (grouped)
     height_changes <- data_with_height_change %>%
         group_by(treatment_group) %>%
-        summarise(
+        summarize(
             n = n(),
             mean_change = mean(height_change, na.rm = TRUE),
             sd_change = sd(height_change, na.rm = TRUE),
@@ -892,10 +1150,25 @@ analyze_tumor_height_changes <- function(data) {
     log_message("Fitting PRIMARY linear regression model for tumor height changes (without baseline height adjustment)")
     primary_height_lm <- lm(height_change ~ treatment_group + recurrence1, data = data_with_height_change)
     
+    # Get variable labels for better readability
+    variable_labels <- get_variable_labels()
+    
     primary_height_lm_tbl <- tbl_regression(primary_height_lm,
         exponentiate = FALSE,
-        intercept = FALSE
-    ) %>%
+        intercept = FALSE,
+        label = variable_labels  # Apply human-readable labels
+    )
+    
+    # Add p-values based on toggle setting
+    if (SHOW_ALL_PVALUES) {
+        # Show individual p-values for each coefficient
+        primary_height_lm_tbl <- primary_height_lm_tbl  # No modification needed
+    } else {
+        # Show only grouped p-values (one per variable)
+        primary_height_lm_tbl <- primary_height_lm_tbl %>% add_global_p()
+    }
+    
+    primary_height_lm_tbl <- primary_height_lm_tbl %>%
         modify_header(
             label = "**Characteristic**",
             estimate = "**Beta**",
@@ -921,8 +1194,20 @@ analyze_tumor_height_changes <- function(data) {
     
     sensitivity_height_lm_tbl <- tbl_regression(sensitivity_height_lm,
         exponentiate = FALSE,
-        intercept = FALSE
-    ) %>%
+        intercept = FALSE,
+        label = variable_labels  # Apply human-readable labels
+    )
+    
+    # Add p-values based on toggle setting
+    if (SHOW_ALL_PVALUES) {
+        # Show individual p-values for each coefficient
+        sensitivity_height_lm_tbl <- sensitivity_height_lm_tbl  # No modification needed
+    } else {
+        # Show only grouped p-values (one per variable)
+        sensitivity_height_lm_tbl <- sensitivity_height_lm_tbl %>% add_global_p()
+    }
+    
+    sensitivity_height_lm_tbl <- sensitivity_height_lm_tbl %>%
         modify_header(
             label = "**Characteristic**",
             estimate = "**Beta**",
@@ -1300,6 +1585,9 @@ test_subgroup_interaction <- function(data, subgroup_var, percentile_cut = 0.5, 
     
     # Try to fit the linear model
     tryCatch({
+        # Ensure consistent factor contrasts for modeling
+        data <- ensure_consistent_contrasts(data)
+        
         # Build model formula with interaction term and confounders
         if (is.null(confounders_to_use) || length(confounders_to_use) == 0) {
             formula_str <- paste0("height_change ~ treatment_group * ", subgroup_var_to_use)
@@ -1315,6 +1603,9 @@ test_subgroup_interaction <- function(data, subgroup_var, percentile_cut = 0.5, 
             log_message(sprintf("Model formula: %s", formula_str))
             log_message("Available coefficients:")
             print(names(coef(model)))
+            log_message("Factor levels:")
+            log_message(sprintf("  treatment_group: %s", paste(levels(data$treatment_group), collapse = ", ")))
+            log_message(sprintf("  %s: %s", subgroup_var_to_use, paste(levels(data[[subgroup_var_to_use]]), collapse = ", ")))
             log_message("Model summary:")
             print(summary(model))
         }
@@ -1329,13 +1620,26 @@ test_subgroup_interaction <- function(data, subgroup_var, percentile_cut = 0.5, 
             treatment_levels <- levels(data$treatment_group)
             treatment_nonref <- treatment_levels[treatment_levels != treatment_levels[1]][1]  # Get first non-reference level
             
+            # Get the actual coefficient names from the model
+            actual_coef_names <- names(coef(model))
+            
             # Try to find the interaction term with more flexible naming
+            # Look for any coefficient that contains both the treatment and subgroup variable
             possible_interaction_terms <- c(
                 paste0("treatment_group", treatment_nonref, ":", subgroup_var_to_use, subgroup_levels[2]),
+                paste0("treatment_group2:", subgroup_var_to_use, "2"),  # Numeric contrasts
+                paste0("treatment_group2:", subgroup_var_to_use, subgroup_levels[2]),
+                paste0("treatment_groupGKSRS:", subgroup_var_to_use, "2"),  # Mixed naming
+                paste0("treatment_groupGKSRS:", subgroup_var_to_use, subgroup_levels[2]),
                 paste0("treatment_group", treatment_nonref, ":", subgroup_var_to_use, "2"),  # R sometimes uses numeric suffixes
                 paste0("treatment_group", treatment_nonref, ":", subgroup_var_to_use, "Yes"),  # For Yes/No factors
                 paste0("treatment_group", treatment_nonref, ":", subgroup_var_to_use, "No")    # For Yes/No factors
             )
+            
+            # Also try to find interaction terms that match the pattern
+            interaction_pattern <- paste0("treatment_group.*:", subgroup_var_to_use)
+            pattern_matches <- grep(interaction_pattern, actual_coef_names, value = TRUE)
+            possible_interaction_terms <- c(possible_interaction_terms, pattern_matches)
             
             interaction_term <- NULL
             for (term in possible_interaction_terms) {
@@ -1397,13 +1701,32 @@ test_subgroup_interaction <- function(data, subgroup_var, percentile_cut = 0.5, 
                 # Get the non-reference level for treatment_group
                 treatment_levels <- levels(data$treatment_group)
                 treatment_nonref <- treatment_levels[treatment_levels != treatment_levels[1]][1]
-                coef_idx <- paste0("treatment_group", treatment_nonref)
                 
-                if (VERBOSE) {
-                    log_message(sprintf("  Reference level - Looking for coefficient: %s", coef_idx))
+                # Try multiple possible main effect coefficient names
+                possible_main_coeffs <- c(
+                    paste0("treatment_group", treatment_nonref),
+                    "treatment_group2",  # Numeric contrast coding
+                    "treatment_groupGKSRS"  # Direct level naming
+                )
+                
+                coef_idx <- NULL
+                for (coef_name in possible_main_coeffs) {
+                    if (coef_name %in% names(coef(model))) {
+                        coef_idx <- coef_name
+                        break
+                    }
                 }
                 
-                if (coef_idx %in% names(coef(model))) {
+                if (VERBOSE) {
+                    log_message(sprintf("  Reference level - Looking for coefficient: %s", paste(possible_main_coeffs, collapse = ", ")))
+                    if (!is.null(coef_idx)) {
+                        log_message(sprintf("  Found coefficient: %s", coef_idx))
+                    } else {
+                        log_message("  No main coefficient found")
+                    }
+                }
+                
+                if (!is.null(coef_idx)) {
                     treatment_effect <- coef(model)[coef_idx]
                     se_effect <- sqrt(vcov(model)[coef_idx, coef_idx])
                     ci_lower <- treatment_effect - 1.96 * se_effect
@@ -1414,7 +1737,7 @@ test_subgroup_interaction <- function(data, subgroup_var, percentile_cut = 0.5, 
                     }
                 } else {
                     if (VERBOSE) {
-                        log_message(sprintf("  Coefficient '%s' not found", coef_idx))
+                        log_message("  No main treatment coefficient found")
                     }
                     treatment_effect <- NA; ci_lower <- NA; ci_upper <- NA; p_val <- NA
                 }
@@ -1425,14 +1748,38 @@ test_subgroup_interaction <- function(data, subgroup_var, percentile_cut = 0.5, 
                 treatment_nonref <- treatment_levels[treatment_levels != treatment_levels[1]][1]
                 main_coef_idx <- paste0("treatment_group", treatment_nonref)
                 
+                # Try multiple possible main coefficient names
+                possible_main_coeffs <- c(
+                    paste0("treatment_group", treatment_nonref),
+                    "treatment_group2",  # Numeric contrast coding
+                    "treatment_groupGKSRS"  # Direct level naming
+                )
+                
+                main_coef_idx <- NULL
+                for (coef_name in possible_main_coeffs) {
+                    if (coef_name %in% names(coef(model))) {
+                        main_coef_idx <- coef_name
+                        break
+                    }
+                }
+                
                 # Try multiple possible interaction coefficient names
                 possible_interaction_coeffs <- c(
                     paste0("treatment_group", treatment_nonref, ":", subgroup_var_to_use, level),
                     paste0("treatment_group", treatment_nonref, ":", subgroup_var_to_use, i),  # Use level index
                     paste0("treatment_group", treatment_nonref, ":", subgroup_var_to_use, "2"),  # R sometimes uses "2" for second level
+                    paste0("treatment_group2:", subgroup_var_to_use, "2"),  # Numeric contrasts
+                    paste0("treatment_group2:", subgroup_var_to_use, level),
+                    paste0("treatment_groupGKSRS:", subgroup_var_to_use, "2"),  # Mixed naming
+                    paste0("treatment_groupGKSRS:", subgroup_var_to_use, level),
                     paste0("treatment_group", treatment_nonref, ":", subgroup_var_to_use, "Yes"),  # For Yes/No variables
                     paste0("treatment_group", treatment_nonref, ":", subgroup_var_to_use, "No")    # For Yes/No variables
                 )
+                
+                # Also check for pattern matches
+                interaction_pattern <- paste0("treatment_group.*:", subgroup_var_to_use)
+                pattern_matches <- grep(interaction_pattern, actual_coef_names, value = TRUE)
+                possible_interaction_coeffs <- c(possible_interaction_coeffs, pattern_matches)
                 
                 interaction_coef_idx <- NULL
                 for (coef_name in possible_interaction_coeffs) {
@@ -1444,7 +1791,8 @@ test_subgroup_interaction <- function(data, subgroup_var, percentile_cut = 0.5, 
                 
                 if (VERBOSE) {
                     log_message(sprintf("  Non-reference level - Looking for coefficients:"))
-                    log_message(sprintf("    Main: %s", main_coef_idx))
+                    log_message(sprintf("    Main candidates: %s", paste(possible_main_coeffs, collapse = ", ")))
+                    log_message(sprintf("    Found main: %s", ifelse(is.null(main_coef_idx), "None", main_coef_idx)))
                     log_message(sprintf("    Interaction candidates: %s", paste(possible_interaction_coeffs, collapse = ", ")))
                     if (!is.null(interaction_coef_idx)) {
                         log_message(sprintf("    Found interaction: %s", interaction_coef_idx))
@@ -1453,7 +1801,7 @@ test_subgroup_interaction <- function(data, subgroup_var, percentile_cut = 0.5, 
                     }
                 }
                 
-                if (main_coef_idx %in% names(coef(model)) && !is.null(interaction_coef_idx)) {
+                if (!is.null(main_coef_idx) && !is.null(interaction_coef_idx)) {
                     # Combined effect
                     treatment_effect <- coef(model)[main_coef_idx] + coef(model)[interaction_coef_idx]
                     
@@ -1477,8 +1825,9 @@ test_subgroup_interaction <- function(data, subgroup_var, percentile_cut = 0.5, 
                 } else {
                     if (VERBOSE) {
                         log_message(sprintf("  Missing coefficients - Main found: %s, Interaction found: %s", 
-                                          main_coef_idx %in% names(coef(model)),
+                                          !is.null(main_coef_idx),
                                           !is.null(interaction_coef_idx)))
+                        log_message(sprintf("  Available coefficients: %s", paste(names(coef(model)), collapse = ", ")))
                     }
                     treatment_effect <- NA; ci_lower <- NA; ci_upper <- NA; p_val <- NA
                 }
@@ -1577,11 +1926,14 @@ analyze_vision_changes <- function(data) {
                 TRUE ~ initial_vision - last_vision
             )
         )
+    
+    # Ensure consistent factor contrasts for modeling
+    data_with_vision_change <- ensure_consistent_contrasts(data_with_vision_change)
 
     # Summary statistics (grouped)
     vision_changes <- data_with_vision_change %>%
         group_by(treatment_group) %>%
-        summarise(
+        summarize(
             n = n(),
             mean_change = mean(vision_change, na.rm = TRUE),
             sd_change = sd(vision_change, na.rm = TRUE),
@@ -1621,10 +1973,25 @@ analyze_vision_changes <- function(data) {
     log_message("Fitting linear regression model for vision changes")
     vision_lm <- lm(vision_change ~ treatment_group + recurrence1, data = data_with_vision_change)
     
+    # Get variable labels for better readability
+    variable_labels <- get_variable_labels()
+    
     vision_lm_tbl <- tbl_regression(vision_lm,
         exponentiate = FALSE,
-        intercept = FALSE
-    ) %>%
+        intercept = FALSE,
+        label = variable_labels  # Apply human-readable labels
+    )
+    
+    # Add p-values based on toggle setting
+    if (SHOW_ALL_PVALUES) {
+        # Show individual p-values for each coefficient
+        vision_lm_tbl <- vision_lm_tbl  # No modification needed
+    } else {
+        # Show only grouped p-values (one per variable)
+        vision_lm_tbl <- vision_lm_tbl %>% add_global_p()
+    }
+    
+    vision_lm_tbl <- vision_lm_tbl %>%
         modify_header(
             label = "**Characteristic**",
             estimate = "**Beta**",
@@ -1696,6 +2063,9 @@ analyze_radiation_sequelae <- function(data, sequela_type, confounders, dataset_
         log_message(sprintf("Data filtered for radiation-induced SRD: %d -> %d patients", original_n, nrow(data)))
     }
     
+    # Ensure consistent factor contrasts for modeling
+    data <- ensure_consistent_contrasts(data)
+    
     # Check if outcome variable exists
     outcome_var <- sequela_type
     if (!outcome_var %in% names(data)) {
@@ -1720,7 +2090,7 @@ analyze_radiation_sequelae <- function(data, sequela_type, confounders, dataset_
     # Calculate rates by treatment group
     sequela_rates <- data %>%
         group_by(treatment_group) %>%
-        summarise(
+        summarize(
             n_total = n(),
             n_events = sum(.data[[outcome_var]] == "Y", na.rm = TRUE),
             rate_percent = round(100 * n_events / n_total, 1),
@@ -1775,10 +2145,25 @@ analyze_radiation_sequelae <- function(data, sequela_type, confounders, dataset_
         
         model <- glm(as.formula(formula_str), data = data, family = binomial())
         
+        # Get variable labels for better readability
+        variable_labels <- get_variable_labels()
+        
         model_result <- tbl_regression(model,
             exponentiate = TRUE,
-            intercept = FALSE
-        ) %>%
+            intercept = FALSE,
+            label = variable_labels  # Apply human-readable labels
+        )
+        
+        # Add p-values based on toggle setting
+        if (SHOW_ALL_PVALUES) {
+            # Show individual p-values for each coefficient
+            model_result <- model_result  # No modification needed
+        } else {
+            # Show only grouped p-values (one per variable)
+            model_result <- model_result %>% add_global_p()
+        }
+        
+        model_result <- model_result %>%
             modify_header(
                 label = "**Characteristic**",
                 estimate = "**OR**",
