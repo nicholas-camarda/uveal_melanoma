@@ -195,13 +195,110 @@ run_my_analysis <- function(dataset_name) {
     height_changes <- analyze_tumor_height_changes(data)
     height_changes
 
-    # 1f. Subgroup analysis with interaction terms
-    log_message("Performing subgroup analysis with interaction terms for tumor height change")
+    # 1f. Comprehensive Subgroup analysis for all primary outcomes
+    log_message("Performing comprehensive subgroup analysis for all primary outcomes")
+    
+    # Create directories for subgroup analysis outputs
+    subgroup_base_dir <- file.path(tables_dir, "comprehensive_subgroup_analysis")
+    subgroup_figures_dir <- file.path(figures_dir, "comprehensive_subgroup_analysis")
+    
+    if (!dir.exists(subgroup_base_dir)) {
+        dir.create(subgroup_base_dir, recursive = TRUE)
+    }
+    if (!dir.exists(subgroup_figures_dir)) {
+        dir.create(subgroup_figures_dir, recursive = TRUE)
+    }
+    
+    # Perform subgroup analysis for survival outcomes
+    log_message("=== SUBGROUP ANALYSIS FOR SURVIVAL OUTCOMES ===")
+    
+    # Overall Survival
+    log_message("Performing subgroup analysis for Overall Survival")
+    os_subgroup_results <- perform_survival_subgroup_analysis(
+        data = data,
+        time_var = "tt_death",
+        event_var = "death_event", 
+        subgroup_vars = subgroup_vars,
+        confounders = confounders,
+        outcome_name = "Overall Survival"
+    )
+    
+    # Create forest plot for OS
+    os_forest_plot <- create_forest_plot(
+        subgroup_results = os_subgroup_results,
+        outcome_name = "Overall Survival",
+        effect_measure = "HR",
+        dataset_name = dataset_name,
+        output_path = file.path(subgroup_figures_dir, paste0(prefix, "overall_survival_forest_plot.png"))
+    )
+    
+    # Progression-Free Survival  
+    log_message("Performing subgroup analysis for Progression-Free Survival")
+    pfs_subgroup_results <- perform_survival_subgroup_analysis(
+        data = data,
+        time_var = "tt_progression_death",
+        event_var = "progression_death_event",
+        subgroup_vars = subgroup_vars,
+        confounders = confounders,
+        outcome_name = "Progression-Free Survival"
+    )
+    
+    # Create forest plot for PFS
+    pfs_forest_plot <- create_forest_plot(
+        subgroup_results = pfs_subgroup_results,
+        outcome_name = "Progression-Free Survival",
+        effect_measure = "HR",
+        dataset_name = dataset_name,
+        output_path = file.path(subgroup_figures_dir, paste0(prefix, "progression_free_survival_forest_plot.png"))
+    )
+    
+    # Perform subgroup analysis for binary outcomes
+    log_message("=== SUBGROUP ANALYSIS FOR BINARY OUTCOMES ===")
+    
+    # Local Recurrence
+    log_message("Performing subgroup analysis for Local Recurrence")
+    recurrence_subgroup_results <- perform_binary_subgroup_analysis(
+        data = data,
+        outcome_var = "recurrence1",
+        subgroup_vars = subgroup_vars,
+        confounders = confounders,
+        outcome_name = "Local Recurrence"
+    )
+    
+    # Create forest plot for Recurrence
+    recurrence_forest_plot <- create_forest_plot(
+        subgroup_results = recurrence_subgroup_results,
+        outcome_name = "Local Recurrence",
+        effect_measure = "OR",
+        dataset_name = dataset_name,
+        output_path = file.path(subgroup_figures_dir, paste0(prefix, "local_recurrence_forest_plot.png"))
+    )
+    
+    # Metastatic Progression
+    log_message("Performing subgroup analysis for Metastatic Progression")
+    mets_subgroup_results <- perform_binary_subgroup_analysis(
+        data = data,
+        outcome_var = "mets_progression",
+        subgroup_vars = subgroup_vars,
+        confounders = confounders,
+        outcome_name = "Metastatic Progression"
+    )
+    
+    # Create forest plot for Metastatic Progression
+    mets_forest_plot <- create_forest_plot(
+        subgroup_results = mets_subgroup_results,
+        outcome_name = "Metastatic Progression",
+        effect_measure = "OR",
+        dataset_name = dataset_name,
+        output_path = file.path(subgroup_figures_dir, paste0(prefix, "metastatic_progression_forest_plot.png"))
+    )
+    
+    # Tumor Height Change - use existing function but create forest plot
+    log_message("=== SUBGROUP ANALYSIS FOR TUMOR HEIGHT CHANGE ===")
     
     # Test treatment × subgroup interactions for tumor height change
-    # Run both PRIMARY (without baseline height) and SENSITIVITY (with baseline height) analyses
+    output_dirs <- create_output_structure(tables_dir)
     
-    # PRIMARY ANALYSIS: Without baseline height adjustment
     log_message("=== PRIMARY SUBGROUP ANALYSIS (without baseline height adjustment) ===")
     primary_subgroup_results <- list()
     
@@ -212,12 +309,10 @@ run_my_analysis <- function(dataset_name) {
         result <- test_subgroup_interaction(
             data = data,
             subgroup_var = subgroup_var,
-            percentile_cut = 0.5,  # Use median split
             confounders = confounders,  # Pass confounders (will auto-exclude subgroup var)
-            include_baseline_height = FALSE  # PRIMARY: no baseline height adjustment
+            include_baseline_height = FALSE  # PRIMARY analysis
         )
         
-        # Store results
         primary_subgroup_results[[subgroup_var]] <- result
         
         # Log the interaction p-value
@@ -231,62 +326,37 @@ run_my_analysis <- function(dataset_name) {
         print(result$subgroup_effects)
     }
     
-    # SENSITIVITY ANALYSIS: With baseline height adjustment
-    log_message("=== SENSITIVITY SUBGROUP ANALYSIS (with baseline height adjustment) ===")
-    sensitivity_subgroup_results <- list()
-    
-    for (subgroup_var in subgroup_vars) {
-        log_message(sprintf("Testing SENSITIVITY interaction for: %s", subgroup_var))
-        
-        # Test the interaction with confounders including baseline height
-        result <- test_subgroup_interaction(
-            data = data,
-            subgroup_var = subgroup_var,
-            percentile_cut = 0.5,  # Use median split
-            confounders = confounders,  # Pass confounders (will auto-exclude subgroup var)
-            include_baseline_height = TRUE  # SENSITIVITY: include baseline height adjustment
-        )
-        
-        # Store results
-        sensitivity_subgroup_results[[subgroup_var]] <- result
-        
-        # Log the interaction p-value
-        if (!is.na(result$interaction_p)) {
-            log_message(sprintf("  SENSITIVITY Interaction p-value: %.4f", result$interaction_p))
-        } else {
-            log_message("  SENSITIVITY Interaction p-value: NA (model issue)")
-        }
-        
-        # Print subgroup effects
-        print(result$subgroup_effects)
-    }
+    # Create forest plot for tumor height change
+    height_forest_plot <- create_forest_plot(
+        subgroup_results = primary_subgroup_results,
+        outcome_name = "Tumor Height Change",
+        effect_measure = "MD",
+        dataset_name = dataset_name,
+        output_path = file.path(subgroup_figures_dir, paste0(prefix, "tumor_height_change_forest_plot.png"))
+    )
     
     # Create formatted HTML tables for PRIMARY subgroup analysis
     log_message("Creating formatted PRIMARY subgroup analysis tables")
     create_subgroup_tables(
         subgroup_results = primary_subgroup_results,
-        dataset_name = paste("PRIMARY -", tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name)))),
+        dataset_name = dataset_name,
         subgroup_dir = output_dirs$subgroup_primary,
-        prefix = paste0(prefix, "primary_")
+        prefix = prefix
     )
     
-    # Create formatted HTML tables for SENSITIVITY subgroup analysis
-    log_message("Creating formatted SENSITIVITY subgroup analysis tables")
-    create_subgroup_tables(
-        subgroup_results = sensitivity_subgroup_results,
-        dataset_name = paste("SENSITIVITY -", tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name)))),
-        subgroup_dir = output_dirs$subgroup_sensitivity,
-        prefix = paste0(prefix, "sensitivity_")
-    )
-    
-    # Save both sets of subgroup analysis results for this dataset
-    saveRDS(primary_subgroup_results, 
+    # Save subgroup analysis results for this dataset
+    saveRDS(os_subgroup_results,
+            file.path(subgroup_base_dir, paste0(prefix, "overall_survival_subgroup_results.rds")))
+    saveRDS(pfs_subgroup_results,
+            file.path(subgroup_base_dir, paste0(prefix, "progression_free_survival_subgroup_results.rds")))
+    saveRDS(recurrence_subgroup_results,
+            file.path(subgroup_base_dir, paste0(prefix, "local_recurrence_subgroup_results.rds")))
+    saveRDS(mets_subgroup_results,
+            file.path(subgroup_base_dir, paste0(prefix, "metastatic_progression_subgroup_results.rds")))
+    saveRDS(primary_subgroup_results,
             file.path(output_dirs$subgroup_primary, paste0(prefix, "primary_subgroup_interactions.rds")))
     
-    saveRDS(sensitivity_subgroup_results, 
-            file.path(output_dirs$subgroup_sensitivity, paste0(prefix, "sensitivity_subgroup_interactions.rds")))
-    
-    log_message(sprintf("Completed PRIMARY and SENSITIVITY subgroup analysis for %d variables", length(subgroup_vars)))
+    log_message(sprintf("Completed comprehensive subgroup analysis for %s", dataset_name))
     
     ########################################################
     ############### STEP 2: SAFETY/TOXICITY ###############
@@ -376,6 +446,193 @@ tryCatch({
     )
     
     log_message("=== COMPLETED ALL ANALYSES INCLUDING MERGED TABLES ===")
+    
+    log_message("=== ANALYSIS PIPELINE COMPLETED SUCCESSFULLY ===")
+
+    #########################################################################
+    ################ COMPREHENSIVE SUBGROUP ANALYSIS SUMMARY ###############
+    #########################################################################
+
+    log_message("=== CREATING COMPREHENSIVE SUBGROUP ANALYSIS SUMMARY ===")
+
+    # Create combined analysis directory
+    combined_analysis_dir <- file.path(OUTPUT_DIR, "combined_cohort_analysis")
+    combined_figures_dir <- file.path(combined_analysis_dir, "figures")
+    combined_tables_dir <- file.path(combined_analysis_dir, "tables")
+
+    if (!dir.exists(combined_analysis_dir)) {
+        dir.create(combined_analysis_dir, recursive = TRUE)
+    }
+    if (!dir.exists(combined_figures_dir)) {
+        dir.create(combined_figures_dir, recursive = TRUE)
+    }
+    if (!dir.exists(combined_tables_dir)) {
+        dir.create(combined_tables_dir, recursive = TRUE)
+    }
+
+    # Load results from both cohorts if they exist
+    full_cohort_dir <- file.path(OUTPUT_DIR, "uveal_full", "tables", "comprehensive_subgroup_analysis")
+    restricted_cohort_dir <- file.path(OUTPUT_DIR, "uveal_restricted", "tables", "comprehensive_subgroup_analysis")
+
+    if (dir.exists(full_cohort_dir) && dir.exists(restricted_cohort_dir)) {
+        
+        log_message("Creating combined forest plots and tables for full vs restricted cohorts")
+        
+        # Define outcomes to process
+        outcomes_to_process <- list(
+            list(
+                name = "Overall Survival",
+                filename = "overall_survival_subgroup_results.rds",
+                effect_measure = "HR"
+            ),
+            list(
+                name = "Progression-Free Survival",
+                filename = "progression_free_survival_subgroup_results.rds",
+                effect_measure = "HR"
+            ),
+            list(
+                name = "Local Recurrence",
+                filename = "local_recurrence_subgroup_results.rds",
+                effect_measure = "OR"
+            ),
+            list(
+                name = "Metastatic Progression",
+                filename = "metastatic_progression_subgroup_results.rds",
+                effect_measure = "OR"
+            ),
+            list(
+                name = "Tumor Height Change",
+                filename = "primary_subgroup_interactions.rds",
+                effect_measure = "MD",
+                subdir = "primary_outcomes/tumor_height_change/subgroup_interactions/without_baseline_height"
+            )
+        )
+        
+        # Process each outcome
+        for (outcome in outcomes_to_process) {
+            
+            log_message(sprintf("Processing combined analysis for: %s", outcome$name))
+            
+            tryCatch({
+                # Load results from both cohorts
+                if (!is.null(outcome$subdir)) {
+                    # Special case for tumor height change
+                    full_results_path <- file.path(OUTPUT_DIR, "uveal_full", "tables", outcome$subdir, paste0("uveal_full_", outcome$filename))
+                    restricted_results_path <- file.path(OUTPUT_DIR, "uveal_restricted", "tables", outcome$subdir, paste0("uveal_restricted_", outcome$filename))
+                } else {
+                    full_results_path <- file.path(full_cohort_dir, paste0("uveal_full_", outcome$filename))
+                    restricted_results_path <- file.path(restricted_cohort_dir, paste0("uveal_restricted_", outcome$filename))
+                }
+                
+                if (file.exists(full_results_path) && file.exists(restricted_results_path)) {
+                    
+                    full_results <- readRDS(full_results_path)
+                    restricted_results <- readRDS(restricted_results_path)
+                    
+                    # Create combined forest plot
+                    combined_plot_path <- file.path(combined_figures_dir, paste0(gsub(" ", "_", tolower(outcome$name)), "_combined_forest_plot.png"))
+                    combined_forest_plot <- create_combined_forest_plot(
+                        full_results = full_results,
+                        restricted_results = restricted_results,
+                        outcome_name = outcome$name,
+                        effect_measure = outcome$effect_measure,
+                        output_path = combined_plot_path
+                    )
+                    
+                    # Create comprehensive summary table
+                    table_path <- file.path(combined_tables_dir, paste0(gsub(" ", "_", tolower(outcome$name)), "_comprehensive_summary.html"))
+                    comprehensive_table <- create_comprehensive_subgroup_table(
+                        full_results = full_results,
+                        restricted_results = restricted_results,
+                        outcome_name = outcome$name,
+                        effect_measure = outcome$effect_measure,
+                        output_path = table_path
+                    )
+                    
+                    log_message(sprintf("Created combined analysis for %s", outcome$name))
+                    
+                } else {
+                    log_message(sprintf("Skipping %s - results files not found", outcome$name))
+                    log_message(sprintf("  Full path: %s (exists: %s)", full_results_path, file.exists(full_results_path)))
+                    log_message(sprintf("  Restricted path: %s (exists: %s)", restricted_results_path, file.exists(restricted_results_path)))
+                }
+                
+            }, error = function(e) {
+                warning(sprintf("Error creating combined analysis for %s: %s", outcome$name, e$message))
+            })
+        }
+        
+        # Create a summary document with key findings
+        log_message("Creating summary document with key findings")
+        
+        summary_content <- paste0(
+            "# Comprehensive Subgroup Analysis Summary\n\n",
+            "## Uveal Melanoma: GKSRS vs Plaque Brachytherapy\n\n",
+            "### Analysis Overview\n\n",
+            "This analysis examines treatment effect heterogeneity across patient subgroups for five primary outcomes:\n\n",
+            "1. **Overall Survival** (Hazard Ratios)\n",
+            "2. **Progression-Free Survival** (Hazard Ratios)\n", 
+            "3. **Local Recurrence** (Odds Ratios)\n",
+            "4. **Metastatic Progression** (Odds Ratios)\n",
+            "5. **Tumor Height Change** (Mean Differences)\n\n",
+            "### Subgroup Variables Tested\n\n",
+            "The following patient characteristics were evaluated for treatment effect modification:\n\n",
+            "- **Age at Diagnosis** (dichotomized at median)\n",
+            "- **Sex** (Male vs Female)\n", 
+            "- **Tumor Location** (anatomical site)\n",
+            "- **T-stage** (tumor stage)\n",
+            "- **Tumor Height** (dichotomized at median)\n",
+            "- **Tumor Diameter** (dichotomized at median)\n", 
+            "- **Gene Expression Profile** (GEP class)\n",
+            "- **Optic Nerve Involvement** (Yes vs No)\n\n",
+            "### Cohorts Compared\n\n",
+            "- **Full Cohort**: All patients who received either treatment (~263 patients)\n",
+            "- **Restricted Cohort**: Patients eligible for both treatments (~169 patients)\n\n",
+            "### Forest Plot Interpretation\n\n",
+            "- **Forest plots** show treatment effects (GKSRS vs Plaque) within each subgroup\n",
+            "- **Asterisks (*)** indicate significant interactions (p < 0.05)\n", 
+            "- **Square size** is proportional to sample size\n",
+            "- **Reference line** represents no treatment difference\n\n",
+            "### Key Questions Addressed\n\n",
+            "1. **Do treatment effects vary across patient subgroups?**\n",
+            "2. **Are there patient characteristics that predict better outcomes with one treatment?**\n",
+            "3. **Are findings consistent between full and restricted cohorts?**\n\n",
+            "### Files Generated\n\n",
+            "#### Forest Plots (figures/)\n",
+            "- `overall_survival_combined_forest_plot.png`\n",
+            "- `progression_free_survival_combined_forest_plot.png`\n",
+            "- `local_recurrence_combined_forest_plot.png`\n",
+            "- `metastatic_progression_combined_forest_plot.png`\n", 
+            "- `tumor_height_change_combined_forest_plot.png`\n\n",
+            "#### Summary Tables (tables/)\n",
+            "- `overall_survival_comprehensive_summary.html`\n",
+            "- `progression_free_survival_comprehensive_summary.html`\n",
+            "- `local_recurrence_comprehensive_summary.html`\n",
+            "- `metastatic_progression_comprehensive_summary.html`\n",
+            "- `tumor_height_change_comprehensive_summary.html`\n\n",
+            "### Statistical Methods\n\n",
+            "- **Survival outcomes**: Cox regression with treatment × subgroup interactions\n",
+            "- **Binary outcomes**: Logistic regression with treatment × subgroup interactions\n",
+            "- **Continuous outcomes**: Linear regression with treatment × subgroup interactions\n",
+            "- **Interaction testing**: Likelihood ratio tests for overall significance\n",
+            "- **Effect estimates**: Treatment effects calculated within each subgroup level\n\n",
+            "---\n\n",
+            "*Generated on: ", Sys.time(), "*\n"
+        )
+        
+        # Save summary document
+        writeLines(summary_content, file.path(combined_analysis_dir, "README.md"))
+        
+        log_message("Comprehensive subgroup analysis summary completed successfully!")
+        log_message(sprintf("Results saved to: %s", combined_analysis_dir))
+        
+    } else {
+        log_message("Skipping combined analysis - both full and restricted cohort results not available")
+        log_message(sprintf("Full cohort dir exists: %s", dir.exists(full_cohort_dir)))
+        log_message(sprintf("Restricted cohort dir exists: %s", dir.exists(restricted_cohort_dir)))
+    }
+
+    log_message("=== ALL ANALYSES COMPLETED ===")
     
 }, finally = {
     # Clean up logging if it was enabled
