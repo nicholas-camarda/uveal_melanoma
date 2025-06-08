@@ -1093,10 +1093,12 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL) {
         summarize(events = sum(pfs2_event), .groups = "drop")
     
     total_events <- sum(pfs2_data$pfs2_event)
+    groups_with_events <- sum(events_per_group$events > 0)
     
-    if (total_events < 5 || any(events_per_group$events < 1)) {
+    if (total_events < 5 || groups_with_events < 2) {
         log_message("ERROR: Insufficient events for PFS-2 survival analysis")
         log_message(sprintf("Total events: %d (minimum 5 required)", total_events))
+        log_message(sprintf("Groups with events: %d (minimum 2 required)", groups_with_events))
         log_message("Events per group:")
         print(events_per_group)
         log_message("Skipping survival analysis due to insufficient data")
@@ -2202,4 +2204,276 @@ analyze_radiation_sequelae <- function(data, sequela_type, confounders, dataset_
         table = tbl,
         model = model_result
     ))
+}
+
+#' Merge Full and Restricted Cohort Tables Side by Side
+#'
+#' This function creates merged tables that display full and restricted cohort data side by side
+#' for easier comparison and presentation, as requested by collaborators.
+#' It reads existing HTML tables and recreates them in Excel format with both cohorts.
+#'
+#' @param full_cohort_data Data frame containing the full cohort data
+#' @param restricted_cohort_data Data frame containing the restricted cohort data
+#' @param output_path Path where merged tables should be saved
+#'
+#' @return None. Side effect: saves merged tables as Excel files
+#'
+#' @examples
+#' merge_cohort_tables(full_data, restricted_data, "final_data/Analysis/merged_tables/")
+merge_cohort_tables <- function(full_cohort_data, restricted_cohort_data, output_path = NULL) {
+    
+    log_message("=== STARTING TABLE MERGING: Full and Restricted Cohorts ===")
+    
+    # Set default output path if not provided
+    if (is.null(output_path)) {
+        output_path <- file.path("final_data", "Analysis", "merged_tables")
+    }
+    
+    # Create output directory
+    if (!dir.exists(output_path)) {
+        dir.create(output_path, recursive = TRUE, showWarnings = FALSE)
+        log_message(sprintf("Created merged tables directory: %s", output_path))
+    }
+    
+    log_message(sprintf("Merging tables will be saved to: %s", output_path))
+    
+    # Define variables for baseline characteristics summary
+    vars_to_summarize <- c(
+        "age_at_diagnosis", "race", "sex", "eye",
+        "initial_vision", "location", "optic_nerve",
+        "initial_tumor_height", "initial_tumor_diameter",
+        "internal_reflectivity", "srf", "op", "symptoms",
+        "vision_loss_blurred_vision", "visual_field_defect",
+        "flashes_photopsia", "floaters", "pain",
+        "initial_overall_stage", "initial_t_stage",
+        "initial_n_stage", "initial_m_stage",
+        "initial_mets", "biopsy1_gep"
+    )
+    
+    # 1. BASELINE CHARACTERISTICS TABLE (Most Important)
+    log_message("Creating merged baseline characteristics table")
+    
+    # Prepare data for both cohorts
+    full_data <- full_cohort_data %>%
+        select(all_of(vars_to_summarize), treatment_group) %>%
+        mutate(cohort = "Full Cohort")
+    
+    restricted_data <- restricted_cohort_data %>%
+        select(all_of(vars_to_summarize), treatment_group) %>%
+        mutate(cohort = "Restricted Cohort")
+    
+    # Create baseline characteristics table with both cohorts side by side
+    baseline_merged <- bind_rows(full_data, restricted_data) %>%
+        tbl_summary(
+            by = c(cohort, treatment_group),
+            type = list(
+                age_at_diagnosis ~ "continuous",
+                initial_vision ~ "continuous", 
+                initial_tumor_height ~ "continuous",
+                initial_tumor_diameter ~ "continuous"
+            ),
+            statistic = list(
+                all_continuous() ~ "{mean} ({sd})",
+                all_categorical() ~ "{n} ({p}%)"
+            ),
+            digits = list(all_continuous() ~ 1, all_categorical() ~ 1),
+            missing = "no",
+            label = list(
+                age_at_diagnosis ~ "Age at Diagnosis (years)",
+                race ~ "Race",
+                sex ~ "Sex", 
+                eye ~ "Eye",
+                initial_vision ~ "Initial Vision",
+                location ~ "Tumor Location",
+                optic_nerve ~ "Optic Nerve Abutment",
+                initial_tumor_height ~ "Tumor Height (mm)",
+                initial_tumor_diameter ~ "Tumor Diameter (mm)",
+                internal_reflectivity ~ "Internal Reflectivity",
+                srf ~ "Subretinal Fluid (SRF)",
+                op ~ "Orange Pigment",
+                symptoms ~ "Any Symptoms",
+                vision_loss_blurred_vision ~ "Vision Loss/Blurred Vision",
+                visual_field_defect ~ "Visual Field Defect",
+                flashes_photopsia ~ "Flashes/Photopsia",
+                floaters ~ "Floaters",
+                pain ~ "Pain",
+                initial_overall_stage ~ "Overall Stage",
+                initial_t_stage ~ "T Stage",
+                initial_n_stage ~ "N Stage",
+                initial_m_stage ~ "M Stage",
+                initial_mets ~ "Initial Metastases",
+                biopsy1_gep ~ "Gene Expression Profile"
+            )
+        ) %>%
+        add_overall(col_label = "**Overall**, N = {N}") %>%
+        add_p(
+            test = list(
+                all_continuous() ~ "t.test"
+            )
+        ) %>%
+        modify_header(label = "**Variable**", quiet = TRUE) %>%
+        modify_caption("Table 1: Baseline Characteristics - Full vs Restricted Cohort Comparison") %>%
+        modify_footnote(
+            update = all_stat_cols() ~ "Continuous variables: t-test; Categorical variables: Pearson's chi-squared test when expected cell counts ≥5, Fisher's exact test when expected cell counts <5"
+        )
+    
+    # Convert to data frame for Excel export
+    baseline_df <- baseline_merged %>%
+        as_tibble() %>%
+        # Clean up column names for Excel
+        rename_with(~ gsub("\\*\\*|\\*", "", .x)) %>%
+        rename_with(~ gsub("stat_[0-9]+_[0-9]+", "stat", .x))
+    
+    # Save baseline characteristics as Excel
+    writexl::write_xlsx(
+        baseline_df,
+        path = file.path(output_path, "merged_baseline_characteristics.xlsx")
+    )
+    
+    # Also save as HTML for viewing
+    baseline_merged %>%
+        as_gt() %>%
+        gt::gtsave(
+            filename = file.path(output_path, "merged_baseline_characteristics.html")
+        )
+    
+    log_message("Saved merged baseline characteristics table")
+    
+    # 2. CREATE MERGED SUMMARY COMPARISON TABLE
+    log_message("Creating cohort comparison summary table")
+    
+    # Create summary statistics for both cohorts
+    cohort_summary <- bind_rows(
+        full_cohort_data %>% 
+            summarise(
+                cohort = "Full Cohort",
+                n_total = n(),
+                n_plaque = sum(treatment_group == "Plaque", na.rm = TRUE),
+                n_gksrs = sum(treatment_group == "GKSRS", na.rm = TRUE),
+                mean_age = round(mean(age_at_diagnosis, na.rm = TRUE), 1),
+                mean_height = round(mean(initial_tumor_height, na.rm = TRUE), 1),
+                mean_diameter = round(mean(initial_tumor_diameter, na.rm = TRUE), 1),
+                pct_male = round(100 * sum(sex == "Male", na.rm = TRUE) / n(), 1),
+                pct_od = round(100 * sum(eye == "OD", na.rm = TRUE) / n(), 1)
+            ),
+        restricted_cohort_data %>%
+            summarise(
+                cohort = "Restricted Cohort", 
+                n_total = n(),
+                n_plaque = sum(treatment_group == "Plaque", na.rm = TRUE),
+                n_gksrs = sum(treatment_group == "GKSRS", na.rm = TRUE),
+                mean_age = round(mean(age_at_diagnosis, na.rm = TRUE), 1),
+                mean_height = round(mean(initial_tumor_height, na.rm = TRUE), 1),
+                mean_diameter = round(mean(initial_tumor_diameter, na.rm = TRUE), 1),
+                pct_male = round(100 * sum(sex == "Male", na.rm = TRUE) / n(), 1),
+                pct_od = round(100 * sum(eye == "OD", na.rm = TRUE) / n(), 1)
+            )
+    ) %>%
+        mutate(
+            plaque_pct = round(100 * n_plaque / n_total, 1),
+            gksrs_pct = round(100 * n_gksrs / n_total, 1)
+        ) %>%
+        select(
+            cohort, n_total, 
+            n_plaque, plaque_pct,
+            n_gksrs, gksrs_pct,
+            mean_age, mean_height, mean_diameter,
+            pct_male, pct_od
+        )
+    
+    # Save cohort summary
+    writexl::write_xlsx(
+        cohort_summary,
+        path = file.path(output_path, "cohort_comparison_summary.xlsx")
+    )
+    
+    # Create a formatted gt table for the summary
+    summary_gt <- cohort_summary %>%
+        gt() %>%
+        tab_header(
+            title = "Cohort Comparison Summary",
+            subtitle = "Key characteristics comparison between Full and Restricted cohorts"
+        ) %>%
+        cols_label(
+            cohort = "Cohort",
+            n_total = "Total N",
+            n_plaque = "Plaque N",
+            plaque_pct = "Plaque %",
+            n_gksrs = "GKSRS N", 
+            gksrs_pct = "GKSRS %",
+            mean_age = "Mean Age",
+            mean_height = "Mean Height (mm)",
+            mean_diameter = "Mean Diameter (mm)",
+            pct_male = "% Male",
+            pct_od = "% OD"
+        ) %>%
+        fmt_number(
+            columns = c(mean_age, mean_height, mean_diameter, plaque_pct, gksrs_pct, pct_male, pct_od),
+            decimals = 1
+        ) %>%
+        tab_options(
+            heading.title.font.size = 20,
+            heading.subtitle.font.size = 16,
+            column_labels.font.size = 14,
+            data_row.padding = px(8)
+        )
+    
+    # Save formatted summary
+    summary_gt %>%
+        gt::gtsave(
+            filename = file.path(output_path, "cohort_comparison_summary.html")
+        )
+    
+    log_message("Saved cohort comparison summary table")
+    
+    # 3. CREATE TREATMENT DISTRIBUTION COMPARISON
+    log_message("Creating treatment distribution comparison")
+    
+    treatment_comparison <- bind_rows(
+        full_cohort_data %>%
+            count(treatment_group, name = "full_cohort_n") %>%
+            mutate(full_cohort_pct = round(100 * full_cohort_n / sum(full_cohort_n), 1)),
+        restricted_cohort_data %>%
+            count(treatment_group, name = "restricted_cohort_n") %>%
+            mutate(restricted_cohort_pct = round(100 * restricted_cohort_n / sum(restricted_cohort_n), 1))
+    ) %>%
+        full_join(
+            full_cohort_data %>%
+                count(treatment_group, name = "full_cohort_n") %>%
+                mutate(full_cohort_pct = round(100 * full_cohort_n / sum(full_cohort_n), 1)),
+            by = "treatment_group"
+        ) %>%
+        full_join(
+            restricted_cohort_data %>%
+                count(treatment_group, name = "restricted_cohort_n") %>%
+                mutate(restricted_cohort_pct = round(100 * restricted_cohort_n / sum(restricted_cohort_n), 1)),
+            by = "treatment_group"
+        ) %>%
+        replace_na(list(
+            full_cohort_n = 0, full_cohort_pct = 0.0,
+            restricted_cohort_n = 0, restricted_cohort_pct = 0.0
+        )) %>%
+        select(
+            treatment_group,
+            full_cohort_n, full_cohort_pct,
+            restricted_cohort_n, restricted_cohort_pct
+        )
+    
+    # Save treatment comparison
+    writexl::write_xlsx(
+        treatment_comparison,
+        path = file.path(output_path, "treatment_distribution_comparison.xlsx")
+    )
+    
+    log_message("Saved treatment distribution comparison")
+    
+    # Summary message
+    log_message("=== COMPLETED TABLE MERGING ===")
+    log_message(sprintf("All merged tables saved to: %s", output_path))
+    log_message("Files created:")
+    log_message("  1. merged_baseline_characteristics.xlsx/.html - Side by side baseline characteristics")
+    log_message("  2. cohort_comparison_summary.xlsx/.html - High-level cohort comparison")
+    log_message("  3. treatment_distribution_comparison.xlsx - Treatment group distributions")
+    
+    return(invisible(NULL))
 }

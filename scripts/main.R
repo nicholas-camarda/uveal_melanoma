@@ -21,7 +21,7 @@ USE_LOGS <- TRUE
 
 # Toggle to control whether to recreate analytic datasets (default: FALSE)
 # Set to TRUE if you need to reprocess raw data or if data has changed
-RECREATE_ANALYTIC_DATASETS <- FALSE
+RECREATE_ANALYTIC_DATASETS <- TRUE
 
 # Set to FALSE to suppress detailed logging in analysis functions
 VERBOSE <- TRUE 
@@ -360,6 +360,23 @@ tryCatch({
         log_progress(i, length(available_datasets), message = sprintf("Analyzing dataset: %s", dataset))
         results[[dataset]] <- run_my_analysis(dataset)
     }
+    
+    # After all individual analyses are complete, create merged tables
+    log_message("=== CREATING MERGED TABLES FOR COLLABORATOR ===")
+    
+    # Load the full and restricted cohort data
+    full_cohort_data <- readRDS(file.path("final_data", "Analytic Dataset", "uveal_melanoma_full_cohort.rds"))
+    restricted_cohort_data <- readRDS(file.path("final_data", "Analytic Dataset", "uveal_melanoma_restricted_cohort.rds"))
+    
+    # Create merged tables showing both cohorts side by side
+    merge_cohort_tables(
+        full_cohort_data = full_cohort_data,
+        restricted_cohort_data = restricted_cohort_data,
+        output_path = file.path("final_data", "Analysis", "merged_tables")
+    )
+    
+    log_message("=== COMPLETED ALL ANALYSES INCLUDING MERGED TABLES ===")
+    
 }, finally = {
     # Clean up logging if it was enabled
     if (USE_LOGS) {
