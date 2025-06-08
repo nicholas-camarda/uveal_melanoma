@@ -6,6 +6,23 @@
 # Main script to run the analysis
 
 ########################################################
+############### REQUIRED LIBRARIES ####################
+########################################################
+
+# Load required libraries
+library(tidyverse) # For data manipulation and visualization
+library(readxl) # For reading Excel files
+library(writexl) # For writing Excel files
+library(gtsummary) # For creating publication-ready tables
+library(survival) # For survival analysis
+library(survminer) # For survival visualization
+library(gt) # For table formatting
+library(forestploter) # For forest plots
+library(grid) # for unit()
+library(cowplot) # for combining plots
+library(survRM2, quietly = TRUE)
+
+########################################################
 ############### INPUT FILE ############################
 ########################################################
 
@@ -35,10 +52,23 @@ SHOW_ALL_PVALUES <- TRUE
 ########################################################
 
 # Source the data processing script first
-source("scripts/data_processing.R")
+source("scripts/data_helper/data_processing.R")
 
-# Source the analysis script
-source("scripts/uveal_melanoma_analysis.R")
+# Source the analysis configuration and setup
+source("scripts/utils/analysis_config.R")
+
+# Source the utility and helper scripts
+source("scripts/data_helper/data_utilities.R")
+source("scripts/utils/output_utilities.R")
+
+# Source the main analysis function scripts
+source("scripts/analysis/statistical_analysis.R")
+source("scripts/analysis/tumor_height_analysis.R") 
+source("scripts/analysis/vision_safety_analysis.R")
+source("scripts/analysis/subgroup_analysis.R")
+
+# Source the forest plot script
+source("scripts/visualization/forest_plot.R")
 
 # Create logs directory if it doesn't exist
 if (USE_LOGS) {
@@ -59,83 +89,94 @@ if (USE_LOGS) {
 
 # Check if we need to recreate analytic datasets
 if (RECREATE_ANALYTIC_DATASETS) {
-    log_message("RECREATE_ANALYTIC_DATASETS = TRUE: Creating new analytic datasets")
+    log_section_start("DATA PREPROCESSING PHASE")
+    data_start_time <- Sys.time()
+    
+    log_enhanced("RECREATE_ANALYTIC_DATASETS = TRUE: Creating new analytic datasets", level = "INFO")
     
     # Load and clean raw data
+    log_function("load_and_clean_data", paste("Input file:", fn))
     cleaned_data <- load_and_clean_data(filename = fn)
 
     # Create derived variables BEFORE splitting into cohorts
+    log_function("create_derived_variables", "Creating PFS-2 variables and other derived measures")
     derived_data <- create_derived_variables(cleaned_data)
 
     # Prepare factor levels
+    log_function("prepare_factor_levels", "Setting up factor levels for analysis")
     factored_data <- prepare_factor_levels(derived_data)
 
     # Apply inclusion/exclusion criteria (split into cohorts)
+    log_function("apply_criteria", "Applying inclusion/exclusion criteria and creating cohorts")
     final_analytic_datasets_lst <- apply_criteria(factored_data)
 
     # Save each cohort separately
+    log_function("save_cohorts", "Saving processed cohorts to RDS files")
     save_cohorts(final_analytic_datasets_lst)
 
     # Create summary tables with organized output structure
+    log_function("create_summary_tables", "Creating baseline characteristics tables")
     summary_tables <- create_summary_tables(final_analytic_datasets_lst)
 
     # Create CONSORT diagram
     # TODO: Add CONSORT diagram
-    # log_message("Creating CONSORT diagram")
+    # log_function("create_consort_diagram", "Creating patient flow diagram")
     # create_consort_diagram(final_analytic_datasets_lst)
     
+    log_section_complete("DATA PREPROCESSING PHASE", data_start_time)
+    
 } else {
-    log_message("RECREATE_ANALYTIC_DATASETS = FALSE: Skipping analytic dataset creation")
-    log_message("Using existing datasets from final_data/Analytic Dataset/")
-    log_message("Set RECREATE_ANALYTIC_DATASETS = TRUE if you need to reprocess raw data")
+    log_section_start("DATA LOADING PHASE")
+    log_enhanced("RECREATE_ANALYTIC_DATASETS = FALSE: Skipping analytic dataset creation", level = "INFO")
+    log_enhanced("Using existing datasets from final_data/Analytic Dataset/", level = "INFO")
+    log_enhanced("Set RECREATE_ANALYTIC_DATASETS = TRUE if you need to reprocess raw data", level = "INFO")
 }
 
 # TODO: Run analysis for each dataset
 
 run_my_analysis <- function(dataset_name) {
-
-    # dataset_name <- "uveal_melanoma_full_cohort"
-    # dataset_name <- "uveal_melanoma_restricted_cohort"
-    # dataset_name <- "uveal_melanoma_gksrs_only_cohort"
+    analysis_start_time <- Sys.time()
+    
+    # Clean dataset name for display
+    display_name <- tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name)))
+    log_section_start("STATISTICAL ANALYSIS", display_name)
 
     # Get cohort info for file paths
-    message(dataset_name)
+    log_function("get_cohort_info", paste("Setting up output directories for", display_name))
     cohort_info <- get_cohort_info(dataset_name)
     tables_dir <<- file.path(cohort_info$dir, "tables")
     figures_dir <<- file.path(cohort_info$dir, "figures")
     prefix <<- cohort_info$prefix
     
     # Create organized output directory structure for tables (complex structure needed)
+    log_function("create_output_structure", "Creating organized directory structure")
     output_dirs <<- create_output_structure(tables_dir)
     
     # Create simple figures directory (no complex subdirs needed)
     if (!dir.exists(figures_dir)) {
         dir.create(figures_dir, recursive = TRUE, showWarnings = FALSE)
-        log_message(sprintf("Created figures directory: %s", figures_dir))
+        log_enhanced(sprintf("Created figures directory: %s", figures_dir), level = "INFO", indent = 1)
     }
 
     # Load analytic dataset
-    log_message("Loading analytic dataset")
+    log_function("readRDS", paste("Loading analytic dataset:", dataset_name))
     data <- readRDS(file.path(PROCESSED_DATA_DIR, paste0(dataset_name, ".rds")))
-    log_message(sprintf("Loaded %d patients", nrow(data)))
+    log_enhanced(sprintf("Successfully loaded %d patients for analysis", nrow(data)), level = "INFO", indent = 1)
 
     ########################################################
     ############### STEP 1: PRIMARY OUTCOMES ###############
     ########################################################
 
-    message("=== STARTING STEP 1: PRIMARY OUTCOMES ANALYSIS ===")
+    step1_start_time <- Sys.time()
+    log_section_start("STEP 1: PRIMARY OUTCOMES ANALYSIS", display_name)
 
-    # # Summarize key variables before analysis
-    # summarize_data(data)
-
-    # Show confounders
-    log_message(sprintf("Using %d confounders for adjustment", length(confounders)))
-    print(confounders)
+    # Show confounders being used
+    log_enhanced(sprintf("Using %d confounders for adjustment: %s", 
+                        length(confounders), paste(confounders, collapse = ", ")), 
+                level = "INFO", indent = 1)
 
     # 1a. Rates of recurrence
-    # print(tables_dir)
-    message(dataset_name)
-    log_message("Calculating recurrence rates")
+    log_function("calculate_rates", "Local recurrence rates analysis")
     recurrence_rates <- calculate_rates(
         data,
         outcome_var = "recurrence1",
@@ -146,10 +187,10 @@ run_my_analysis <- function(dataset_name) {
         handle_rare = TRUE,
         dataset_name = dataset_name
     )
-    recurrence_rates
+    log_enhanced("Local recurrence analysis completed", level = "INFO", indent = 1)
 
     # 1b. Rates of metastatic progression
-    log_message("Calculating metastatic progression rates")
+    log_function("calculate_rates", "Metastatic progression rates analysis")
     mets_rates <- calculate_rates(
         data,
         outcome_var = "mets_progression",
@@ -160,10 +201,10 @@ run_my_analysis <- function(dataset_name) {
         handle_rare = TRUE,
         dataset_name = dataset_name
     )
-    mets_rates
+    log_enhanced("Metastatic progression analysis completed", level = "INFO", indent = 1)
 
     # 1c. Overall Survival
-    log_message("Analyzing overall survival")
+    log_function("analyze_survival", "Overall survival analysis (Kaplan-Meier & Cox regression)")
     os_analysis <- analyze_survival(
         data,
         time_var = "tt_death_months",
@@ -174,10 +215,10 @@ run_my_analysis <- function(dataset_name) {
         handle_rare = TRUE,
         dataset_name = dataset_name
     )
-    os_analysis
+    log_enhanced("Overall survival analysis completed", level = "INFO", indent = 1)
 
     # 1d. Progression Free Survival (includes both progression AND death)
-    log_message("Analyzing progression-free survival (progression OR death)")
+    log_function("analyze_survival", "Progression-free survival analysis (progression OR death)")
     pfs_analysis <- analyze_survival(
         data,
         time_var = "tt_pfs_months",
@@ -188,251 +229,202 @@ run_my_analysis <- function(dataset_name) {
         handle_rare = TRUE,
         dataset_name = dataset_name
     )
-    pfs_analysis
+    log_enhanced("Progression-free survival analysis completed", level = "INFO", indent = 1)
 
     # 1e. Tumor height changes
-    log_message("Analyzing tumor height changes")
+    log_function("analyze_tumor_height_changes", "Primary and sensitivity tumor height analysis")
     height_changes <- analyze_tumor_height_changes(data)
-    height_changes
+    log_enhanced("Tumor height changes analysis completed", level = "INFO", indent = 1)
 
-    # 1f. Comprehensive Subgroup analysis for all primary outcomes
-    log_message("Performing comprehensive subgroup analysis for all primary outcomes")
-    
-    # Create directories for subgroup analysis outputs
-    subgroup_base_dir <- file.path(tables_dir, "comprehensive_subgroup_analysis")
-    subgroup_figures_dir <- file.path(figures_dir, "comprehensive_subgroup_analysis")
-    
-    if (!dir.exists(subgroup_base_dir)) {
-        dir.create(subgroup_base_dir, recursive = TRUE)
-    }
-    if (!dir.exists(subgroup_figures_dir)) {
-        dir.create(subgroup_figures_dir, recursive = TRUE)
-    }
-    
-    # Perform subgroup analysis for survival outcomes
-    log_message("=== SUBGROUP ANALYSIS FOR SURVIVAL OUTCOMES ===")
-    
-    # Overall Survival
-    log_message("Performing subgroup analysis for Overall Survival")
-    os_subgroup_results <- perform_survival_subgroup_analysis(
-        data = data,
-        time_var = "tt_death",
-        event_var = "death_event", 
-        subgroup_vars = subgroup_vars,
-        confounders = confounders,
-        outcome_name = "Overall Survival"
-    )
-    
-    # Create forest plot for OS
-    os_forest_plot <- create_forest_plot(
-        subgroup_results = os_subgroup_results,
-        outcome_name = "Overall Survival",
-        effect_measure = "HR",
-        dataset_name = dataset_name,
-        output_path = file.path(subgroup_figures_dir, paste0(prefix, "overall_survival_forest_plot.png"))
-    )
-    
-    # Progression-Free Survival  
-    log_message("Performing subgroup analysis for Progression-Free Survival")
-    pfs_subgroup_results <- perform_survival_subgroup_analysis(
-        data = data,
-        time_var = "tt_progression_death",
-        event_var = "progression_death_event",
-        subgroup_vars = subgroup_vars,
-        confounders = confounders,
-        outcome_name = "Progression-Free Survival"
-    )
-    
-    # Create forest plot for PFS
-    pfs_forest_plot <- create_forest_plot(
-        subgroup_results = pfs_subgroup_results,
-        outcome_name = "Progression-Free Survival",
-        effect_measure = "HR",
-        dataset_name = dataset_name,
-        output_path = file.path(subgroup_figures_dir, paste0(prefix, "progression_free_survival_forest_plot.png"))
-    )
-    
-    # Perform subgroup analysis for binary outcomes
-    log_message("=== SUBGROUP ANALYSIS FOR BINARY OUTCOMES ===")
-    
-    # Local Recurrence
-    log_message("Performing subgroup analysis for Local Recurrence")
-    recurrence_subgroup_results <- perform_binary_subgroup_analysis(
-        data = data,
-        outcome_var = "recurrence1",
-        subgroup_vars = subgroup_vars,
-        confounders = confounders,
-        outcome_name = "Local Recurrence"
-    )
-    
-    # Create forest plot for Recurrence
-    recurrence_forest_plot <- create_forest_plot(
-        subgroup_results = recurrence_subgroup_results,
-        outcome_name = "Local Recurrence",
-        effect_measure = "OR",
-        dataset_name = dataset_name,
-        output_path = file.path(subgroup_figures_dir, paste0(prefix, "local_recurrence_forest_plot.png"))
-    )
-    
-    # Metastatic Progression
-    log_message("Performing subgroup analysis for Metastatic Progression")
-    mets_subgroup_results <- perform_binary_subgroup_analysis(
-        data = data,
-        outcome_var = "mets_progression",
-        subgroup_vars = subgroup_vars,
-        confounders = confounders,
-        outcome_name = "Metastatic Progression"
-    )
-    
-    # Create forest plot for Metastatic Progression
-    mets_forest_plot <- create_forest_plot(
-        subgroup_results = mets_subgroup_results,
-        outcome_name = "Metastatic Progression",
-        effect_measure = "OR",
-        dataset_name = dataset_name,
-        output_path = file.path(subgroup_figures_dir, paste0(prefix, "metastatic_progression_forest_plot.png"))
-    )
-    
-    # Tumor Height Change - use existing function but create forest plot
-    log_message("=== SUBGROUP ANALYSIS FOR TUMOR HEIGHT CHANGE ===")
+    # 1f. Subgroup analysis with interaction terms
+    log_function("test_subgroup_interaction", "Subgroup analysis with interaction terms for tumor height change")
     
     # Test treatment × subgroup interactions for tumor height change
-    output_dirs <- create_output_structure(tables_dir)
+    # Run both PRIMARY (without baseline height) and SENSITIVITY (with baseline height) analyses
     
-    log_message("=== PRIMARY SUBGROUP ANALYSIS (without baseline height adjustment) ===")
+    # PRIMARY ANALYSIS: Without baseline height adjustment
+    primary_start_time <- Sys.time()
+    log_enhanced("PRIMARY SUBGROUP ANALYSIS (without baseline height adjustment)", level = "PROGRESS", indent = 1)
     primary_subgroup_results <- list()
     
-    for (subgroup_var in subgroup_vars) {
-        log_message(sprintf("Testing PRIMARY interaction for: %s", subgroup_var))
+    for (i in seq_along(subgroup_vars)) {
+        subgroup_var <- subgroup_vars[i]
+        log_progress(i, length(subgroup_vars), subgroup_var, "Testing PRIMARY interaction")
         
         # Test the interaction with confounders but without baseline height
         result <- test_subgroup_interaction(
             data = data,
             subgroup_var = subgroup_var,
+            percentile_cut = 0.5,  # Use median split
             confounders = confounders,  # Pass confounders (will auto-exclude subgroup var)
-            include_baseline_height = FALSE  # PRIMARY analysis
+            include_baseline_height = FALSE  # PRIMARY: no baseline height adjustment
         )
         
+        # Store results
         primary_subgroup_results[[subgroup_var]] <- result
         
         # Log the interaction p-value
         if (!is.na(result$interaction_p)) {
-            log_message(sprintf("  PRIMARY Interaction p-value: %.4f", result$interaction_p))
+            p_status <- if (result$interaction_p < 0.05) "SIGNIFICANT" else "non-significant"
+            log_enhanced(sprintf("PRIMARY Interaction p-value: %.4f (%s)", result$interaction_p, p_status), 
+                        level = "INFO", indent = 2)
         } else {
-            log_message("  PRIMARY Interaction p-value: NA (model issue)")
+            log_enhanced("PRIMARY Interaction p-value: NA (model issue)", level = "WARN", indent = 2)
         }
-        
-        # Print subgroup effects
-        print(result$subgroup_effects)
     }
+    log_section_complete("PRIMARY SUBGROUP ANALYSIS", primary_start_time)
     
-    # Create forest plot for tumor height change
-    height_forest_plot <- create_forest_plot(
-        subgroup_results = primary_subgroup_results,
-        outcome_name = "Tumor Height Change",
-        effect_measure = "MD",
-        dataset_name = dataset_name,
-        output_path = file.path(subgroup_figures_dir, paste0(prefix, "tumor_height_change_forest_plot.png"))
-    )
+    # SENSITIVITY ANALYSIS: With baseline height adjustment
+    sensitivity_start_time <- Sys.time()
+    log_enhanced("SENSITIVITY SUBGROUP ANALYSIS (with baseline height adjustment)", level = "PROGRESS", indent = 1)
+    sensitivity_subgroup_results <- list()
     
-    # Create formatted HTML tables for PRIMARY subgroup analysis
-    log_message("Creating formatted PRIMARY subgroup analysis tables")
+    for (i in seq_along(subgroup_vars)) {
+        subgroup_var <- subgroup_vars[i]
+        log_progress(i, length(subgroup_vars), subgroup_var, "Testing SENSITIVITY interaction")
+        
+        # Test the interaction with confounders including baseline height
+        result <- test_subgroup_interaction(
+            data = data,
+            subgroup_var = subgroup_var,
+            percentile_cut = 0.5,  # Use median split
+            confounders = confounders,  # Pass confounders (will auto-exclude subgroup var)
+            include_baseline_height = TRUE  # SENSITIVITY: include baseline height adjustment
+        )
+        
+        # Store results
+        sensitivity_subgroup_results[[subgroup_var]] <- result
+        
+        # Log the interaction p-value
+        if (!is.na(result$interaction_p)) {
+            p_status <- if (result$interaction_p < 0.05) "SIGNIFICANT" else "non-significant"
+            log_enhanced(sprintf("SENSITIVITY Interaction p-value: %.4f (%s)", result$interaction_p, p_status), 
+                        level = "INFO", indent = 2)
+        } else {
+            log_enhanced("SENSITIVITY Interaction p-value: NA (model issue)", level = "WARN", indent = 2)
+        }
+    }
+    log_section_complete("SENSITIVITY SUBGROUP ANALYSIS", sensitivity_start_time)
+    
+    # Create formatted HTML tables for subgroup analyses
+    log_function("create_subgroup_tables", "Creating formatted PRIMARY subgroup analysis tables")
     create_subgroup_tables(
         subgroup_results = primary_subgroup_results,
-        dataset_name = dataset_name,
+        dataset_name = paste("PRIMARY -", display_name),
         subgroup_dir = output_dirs$subgroup_primary,
-        prefix = prefix
+        prefix = paste0(prefix, "primary_")
     )
     
-    # Save subgroup analysis results for this dataset
-    saveRDS(os_subgroup_results,
-            file.path(subgroup_base_dir, paste0(prefix, "overall_survival_subgroup_results.rds")))
-    saveRDS(pfs_subgroup_results,
-            file.path(subgroup_base_dir, paste0(prefix, "progression_free_survival_subgroup_results.rds")))
-    saveRDS(recurrence_subgroup_results,
-            file.path(subgroup_base_dir, paste0(prefix, "local_recurrence_subgroup_results.rds")))
-    saveRDS(mets_subgroup_results,
-            file.path(subgroup_base_dir, paste0(prefix, "metastatic_progression_subgroup_results.rds")))
-    saveRDS(primary_subgroup_results,
+    log_function("create_subgroup_tables", "Creating formatted SENSITIVITY subgroup analysis tables")
+    create_subgroup_tables(
+        subgroup_results = sensitivity_subgroup_results,
+        dataset_name = paste("SENSITIVITY -", display_name),
+        subgroup_dir = output_dirs$subgroup_sensitivity,
+        prefix = paste0(prefix, "sensitivity_")
+    )
+    
+    # Save both sets of subgroup analysis results for this dataset
+    saveRDS(primary_subgroup_results, 
             file.path(output_dirs$subgroup_primary, paste0(prefix, "primary_subgroup_interactions.rds")))
     
-    log_message(sprintf("Completed comprehensive subgroup analysis for %s", dataset_name))
+    saveRDS(sensitivity_subgroup_results, 
+            file.path(output_dirs$subgroup_sensitivity, paste0(prefix, "sensitivity_subgroup_interactions.rds")))
+    
+    log_section_complete("STEP 1: PRIMARY OUTCOMES ANALYSIS", step1_start_time)
     
     ########################################################
     ############### STEP 2: SAFETY/TOXICITY ###############
     ########################################################
     
-    message("=== STARTING STEP 2: SAFETY/TOXICITY ANALYSIS ===")
+    step2_start_time <- Sys.time()
+    log_section_start("STEP 2: SAFETY/TOXICITY ANALYSIS", display_name)
     
     # 2a. Vision changes analysis (similar to tumor height changes)
-    log_message("Analyzing vision changes")
+    log_function("analyze_vision_changes", "Vision changes analysis")
     vision_changes <- analyze_vision_changes(data)
-    vision_changes
+    log_enhanced("Vision changes analysis completed", level = "INFO", indent = 1)
     
     # 2b. Rates of radiation sequelae
-    log_message("Analyzing radiation sequelae rates")
+    log_enhanced("Analyzing radiation sequelae rates", level = "INFO", indent = 1)
     
     # 2b1. Retinopathy
-    log_message("Analyzing retinopathy rates")
+    log_function("analyze_radiation_sequelae", "Radiation retinopathy analysis")
     retinopathy_rates <- analyze_radiation_sequelae(
         data = data,
         sequela_type = "retinopathy",
         confounders = confounders,
         dataset_name = dataset_name
     )
-    retinopathy_rates
+    log_enhanced("Retinopathy analysis completed", level = "INFO", indent = 1)
     
     # 2b2. Neovascular glaucoma (NVG)
-    log_message("Analyzing neovascular glaucoma (NVG) rates")
+    log_function("analyze_radiation_sequelae", "Neovascular glaucoma (NVG) analysis")
     nvg_rates <- analyze_radiation_sequelae(
         data = data,
         sequela_type = "nvg",
         confounders = confounders,
         dataset_name = dataset_name
     )
-    nvg_rates
+    log_enhanced("Neovascular glaucoma analysis completed", level = "INFO", indent = 1)
     
     # 2b3. Serous retinal detachment (SRD) - only radiation-induced
-    log_message("Analyzing serous retinal detachment (SRD) rates - radiation-induced only")
+    log_function("analyze_radiation_sequelae", "Serous retinal detachment (radiation-induced only)")
     srd_rates <- analyze_radiation_sequelae(
         data = data,
         sequela_type = "srd",
         confounders = confounders,
         dataset_name = dataset_name
     )
-    srd_rates
+    log_enhanced("Serous retinal detachment analysis completed", level = "INFO", indent = 1)
     
-    log_message("=== COMPLETED STEP 2: SAFETY/TOXICITY ANALYSIS ===")
+    log_section_complete("STEP 2: SAFETY/TOXICITY ANALYSIS", step2_start_time)
     
     ########################################################
     ############### STEP 3: REPEAT RADIATION ##############
     ########################################################
     
-    message("=== STARTING STEP 3: REPEAT RADIATION EFFICACY ===")
+    step3_start_time <- Sys.time()
+    log_section_start("STEP 3: REPEAT RADIATION EFFICACY", display_name)
     
     # 3a. Progression-Free Survival-2 (PFS-2) for recurrent patients
-    log_message("Analyzing PFS-2 for recurrent patients")
+    log_function("analyze_pfs2", "PFS-2 analysis for patients with local recurrence")
     pfs2_results <- analyze_pfs2(data, confounders = confounders, dataset_name = dataset_name)
-    pfs2_results
+    log_enhanced("PFS-2 analysis completed", level = "INFO", indent = 1)
     
-    log_message("=== COMPLETED STEP 3: REPEAT RADIATION EFFICACY ===")
+    log_section_complete("STEP 3: REPEAT RADIATION EFFICACY", step3_start_time)
+    
+    # Complete analysis for this dataset
+    log_section_complete(paste("STATISTICAL ANALYSIS -", display_name), analysis_start_time)
     
 }
 
 # Run analysis for each dataset
+log_section_start("MAIN EXECUTION PHASE")
+main_start_time <- Sys.time()
+
 available_datasets <- list_available_datasets()
 results <- list()
 
 # Wrap main execution in tryCatch to ensure proper cleanup
 tryCatch({
+    log_enhanced(sprintf("Beginning analysis of %d datasets", length(available_datasets)), level = "INFO")
+    
     for (i in seq_along(available_datasets)) {
         dataset <- available_datasets[i]
-        log_progress(i, length(available_datasets), message = sprintf("Analyzing dataset: %s", dataset))
+        dataset_display <- tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset)))
+        log_progress(i, length(available_datasets), dataset_display, "Analyzing dataset")
+        
         results[[dataset]] <- run_my_analysis(dataset)
+        
+        log_enhanced(sprintf("Dataset %d/%d completed: %s", i, length(available_datasets), dataset_display), 
+                    level = "PROGRESS")
     }
     
     # After all individual analyses are complete, create merged tables
-    log_message("=== CREATING MERGED TABLES FOR COLLABORATOR ===")
+    log_section_start("POST-ANALYSIS: MERGED TABLES")
+    merge_start_time <- Sys.time()
+    
+    log_function("merge_cohort_tables", "Creating side-by-side comparison tables for collaborators")
     
     # Load the full and restricted cohort data
     full_cohort_data <- readRDS(file.path("final_data", "Analytic Dataset", "uveal_melanoma_full_cohort.rds"))
@@ -445,133 +437,17 @@ tryCatch({
         output_path = file.path("final_data", "Analysis", "merged_tables")
     )
     
-    log_message("=== COMPLETED ALL ANALYSES INCLUDING MERGED TABLES ===")
+    log_section_complete("POST-ANALYSIS: MERGED TABLES", merge_start_time)
+    log_section_complete("MAIN EXECUTION PHASE", main_start_time)
     
-    log_message("=== ANALYSIS PIPELINE COMPLETED SUCCESSFULLY ===")
-
-    #########################################################################
-    ################ COMPREHENSIVE SUBGROUP ANALYSIS SUMMARY ###############
-    #########################################################################
-
-    log_message("=== CREATING COMPREHENSIVE SUBGROUP ANALYSIS SUMMARY ===")
-
-    # Create combined analysis directory
-    combined_analysis_dir <- file.path(OUTPUT_DIR, "combined_cohort_analysis")
-    combined_figures_dir <- file.path(combined_analysis_dir, "figures")
-    combined_tables_dir <- file.path(combined_analysis_dir, "tables")
-
-    if (!dir.exists(combined_analysis_dir)) {
-        dir.create(combined_analysis_dir, recursive = TRUE)
-    }
-    if (!dir.exists(combined_figures_dir)) {
-        dir.create(combined_figures_dir, recursive = TRUE)
-    }
-    if (!dir.exists(combined_tables_dir)) {
-        dir.create(combined_tables_dir, recursive = TRUE)
-    }
-
-    # Load results from both cohorts if they exist
-    full_cohort_dir <- file.path(OUTPUT_DIR, "uveal_full", "tables", "comprehensive_subgroup_analysis")
-    restricted_cohort_dir <- file.path(OUTPUT_DIR, "uveal_restricted", "tables", "comprehensive_subgroup_analysis")
-
-    if (dir.exists(full_cohort_dir) && dir.exists(restricted_cohort_dir)) {
-        
-        log_message("Creating combined forest plots and tables for full vs restricted cohorts")
-        
-        # Define outcomes to process
-        outcomes_to_process <- list(
-            list(
-                name = "Overall Survival",
-                filename = "overall_survival_subgroup_results.rds",
-                effect_measure = "HR"
-            ),
-            list(
-                name = "Progression-Free Survival",
-                filename = "progression_free_survival_subgroup_results.rds",
-                effect_measure = "HR"
-            ),
-            list(
-                name = "Local Recurrence",
-                filename = "local_recurrence_subgroup_results.rds",
-                effect_measure = "OR"
-            ),
-            list(
-                name = "Metastatic Progression",
-                filename = "metastatic_progression_subgroup_results.rds",
-                effect_measure = "OR"
-            ),
-            list(
-                name = "Tumor Height Change",
-                filename = "primary_subgroup_interactions.rds",
-                effect_measure = "MD",
-                subdir = "primary_outcomes/tumor_height_change/subgroup_interactions/without_baseline_height"
-            )
-        )
-        
-        # Process each outcome
-        for (outcome in outcomes_to_process) {
-            
-            log_message(sprintf("Processing combined analysis for: %s", outcome$name))
-            
-            tryCatch({
-                # Load results from both cohorts
-                if (!is.null(outcome$subdir)) {
-                    # Special case for tumor height change
-                    full_results_path <- file.path(OUTPUT_DIR, "uveal_full", "tables", outcome$subdir, paste0("uveal_full_", outcome$filename))
-                    restricted_results_path <- file.path(OUTPUT_DIR, "uveal_restricted", "tables", outcome$subdir, paste0("uveal_restricted_", outcome$filename))
-                } else {
-                    full_results_path <- file.path(full_cohort_dir, paste0("uveal_full_", outcome$filename))
-                    restricted_results_path <- file.path(restricted_cohort_dir, paste0("uveal_restricted_", outcome$filename))
-                }
-                
-                if (file.exists(full_results_path) && file.exists(restricted_results_path)) {
-                    
-                    full_results <- readRDS(full_results_path)
-                    restricted_results <- readRDS(restricted_results_path)
-                    
-                    # Create combined forest plot
-                    combined_plot_path <- file.path(combined_figures_dir, paste0(gsub(" ", "_", tolower(outcome$name)), "_combined_forest_plot.png"))
-                    combined_forest_plot <- create_combined_forest_plot(
-                        full_results = full_results,
-                        restricted_results = restricted_results,
-                        outcome_name = outcome$name,
-                        effect_measure = outcome$effect_measure,
-                        output_path = combined_plot_path
-                    )
-                    
-                    # Create comprehensive summary table
-                    table_path <- file.path(combined_tables_dir, paste0(gsub(" ", "_", tolower(outcome$name)), "_comprehensive_summary.html"))
-                    comprehensive_table <- create_comprehensive_subgroup_table(
-                        full_results = full_results,
-                        restricted_results = restricted_results,
-                        outcome_name = outcome$name,
-                        effect_measure = outcome$effect_measure,
-                        output_path = table_path
-                    )
-                    
-                    log_message(sprintf("Created combined analysis for %s", outcome$name))
-                    
-                } else {
-                    log_message(sprintf("Skipping %s - results files not found", outcome$name))
-                    log_message(sprintf("  Full path: %s (exists: %s)", full_results_path, file.exists(full_results_path)))
-                    log_message(sprintf("  Restricted path: %s (exists: %s)", restricted_results_path, file.exists(restricted_results_path)))
-                }
-                
-            }, error = function(e) {
-                warning(sprintf("Error creating combined analysis for %s: %s", outcome$name, e$message))
-            })
-        }
-        
-        log_message("Comprehensive subgroup analysis summary completed successfully!")
-        log_message(sprintf("Results saved to: %s", combined_analysis_dir))
-        
-    } else {
-        log_message("Skipping combined analysis - both full and restricted cohort results not available")
-        log_message(sprintf("Full cohort dir exists: %s", dir.exists(full_cohort_dir)))
-        log_message(sprintf("Restricted cohort dir exists: %s", dir.exists(restricted_cohort_dir)))
-    }
-
-    log_message("=== ALL ANALYSES COMPLETED ===")
+    # Final summary
+    log_enhanced("", level = "SECTION")
+    log_enhanced("🎉 ALL ANALYSES COMPLETED SUCCESSFULLY! 🎉", level = "PROGRESS")
+    log_enhanced(sprintf("Total execution time: %.1f minutes", 
+                        as.numeric(difftime(Sys.time(), main_start_time, units = "mins"))), 
+                level = "PROGRESS")
+    log_enhanced(sprintf("Datasets analyzed: %d", length(available_datasets)), level = "PROGRESS")
+    log_enhanced("Check the logs above for detailed progress and any warnings.", level = "INFO")
     
 }, finally = {
     # Clean up logging if it was enabled
@@ -579,6 +455,6 @@ tryCatch({
         sink(type = "message")
         sink()
         close(log_con)
-        log_message("Log file closed successfully")
+        log_enhanced("Log file closed successfully", level = "INFO")
     }
 })
