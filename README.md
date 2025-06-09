@@ -13,7 +13,7 @@ This project provides a complete pipeline for processing, cleaning, and analyzin
 
 The analysis is structured around four prioritized research objectives:
 
-### 🎯 **Objective 1: Efficacy of Plaque vs GKSRS**
+### **Objective 1: Efficacy of Plaque vs GKSRS**
 **Primary research question:** How do clinical outcomes compare between treatments?
 - **1a.** Local recurrence rates
 - **1b.** Metastatic progression rates  
@@ -23,18 +23,18 @@ The analysis is structured around four prioritized research objectives:
 - **1f.** Tumor height changes (sensitivity analysis) 
 - **1g.** Subgroup analysis (treatment effect heterogeneity)
 
-### 🛡️ **Objective 2: Safety/Toxicity**
+### **Objective 2: Safety/Toxicity**
 **Primary research question:** What are the comparative safety profiles?
 - **2a.** Vision changes
 - **2b.** Radiation retinopathy rates
 - **2c.** Neovascular glaucoma rates
 - **2d.** Serous retinal detachment rates
 
-### 🔄 **Objective 3: Repeat Radiation Efficacy**  
+### **Objective 3: Repeat Radiation Efficacy**  
 **Primary research question:** How effective are second-line treatments?
 - **3a.** Progression-Free Survival-2 (PFS-2) analysis
 
-### 🧬 **Objective 4: GEP Predictive Accuracy**
+### **Objective 4: GEP Predictive Accuracy**
 **Primary research question:** How well do gene expression profiles predict outcomes?
 - **4a.** Metastasis-free survival validation
 - **4b.** Melanoma-specific survival validation
@@ -73,7 +73,7 @@ The analysis includes three distinct patient cohorts based on tumor characterist
 
 ---
 
-## 📁 New Directory Structure (2025 Update)
+## New Directory Structure (2025 Update)
 
 The analysis outputs are now organized by **cohort → objective → sub-objective** for easy navigation:
 
@@ -82,153 +82,155 @@ project_working_directory/
 ├── data/                                    # Raw data files
 ├── final_data/
 │   ├── Analytic Dataset/                    # Processed datasets (RDS, Excel)
-│   └── Analysis/                            # 🆕 NEW STRUCTURE 🆕
+│   └── Analysis/                            # NEW STRUCTURE
 │       ├── uveal_full/                      # Full cohort results
 │       │   ├── 00_General/                  # Cross-cutting analyses
 │       │   │   ├── baseline_characteristics/
 │       │   │   └── treatment_duration/
-│       │   ├── 01_Efficacy/                 # 🎯 OBJECTIVE 1
+│       │   ├── 01_Efficacy/                 # OBJECTIVE 1
 │       │   │   ├── a_recurrence/
 │       │   │   ├── b_metastatic_progression/
 │       │   │   ├── c_overall_survival/
 │       │   │   ├── d_progression_free_survival/
 │       │   │   ├── e_tumor_height_primary/
 │       │   │   ├── f_tumor_height_sensitivity/
-│       │   │   └── g_subgroup_analysis/     # 🆕 CONSOLIDATED 🆕
-│       │   │       ├── tumor_height_primary/
-│       │   │       ├── tumor_height_sensitivity/
-│       │   │       ├── clinical_outcomes/   # Subgroup analysis for all primary outcomes
-│       │   │       └── forest_plots/        # 🆕 FOREST PLOTS 🆕
-│       │   ├── 02_Safety/                   # 🛡️ OBJECTIVE 2  
+│       │   │   ├── g_subgroup_analysis/     # CONSOLIDATED
+│       │   │   │   ├── tumor_height_primary/
+│       │   │   │   ├── tumor_height_sensitivity/
+│       │   │   │   ├── clinical_outcomes/   # Subgroup analysis for all primary outcomes
+│       │   │   │   └── forest_plots/        # FOREST PLOTS
+│       │   │   └── h_proportional_hazards_diagnostics/  # PH ASSUMPTION TESTING
+│       │   ├── 02_Safety/                   # OBJECTIVE 2  
 │       │   │   ├── a_vision_changes/
 │       │   │   ├── b_retinopathy/
 │       │   │   ├── c_neovascular_glaucoma/
 │       │   │   └── d_serous_retinal_detachment/
-│       │   ├── 03_Repeat_Radiation/         # 🔄 OBJECTIVE 3
-│       │   │   └── a_pfs2/
-│       │   └── 04_GEP_Validation/           # 🧬 OBJECTIVE 4
+│       │   ├── 03_Repeat_Radiation/         # OBJECTIVE 3
+│       │   │   ├── a_pfs2/
+│       │   │   └── b_proportional_hazards_diagnostics/  # PH ASSUMPTION TESTING
+│       │   └── 04_GEP_Validation/           # OBJECTIVE 4
 │       │       ├── a_metastasis_free_survival/
 │       │       └── b_melanoma_specific_survival/
 │       ├── uveal_restricted/                # Same structure for restricted cohort
 │       └── gksrs/                          # Same structure for GKSRS-only cohort
 ├── logs/                                   # Analysis logs
 ├── scripts/
-│   ├── main.R                              # 🆕 UPDATED: Main analysis pipeline
+│   ├── main.R                              # UPDATED: Main analysis pipeline
 │   ├── data_helper/
 │   │   └── data_processing.R               # Data cleaning and cohort creation
 │   ├── analysis/
 │   │   ├── statistical_analysis.R         # Core statistical functions
 │   │   ├── tumor_height_analysis.R        # Tumor dimension analysis
 │   │   ├── vision_safety_analysis.R       # Safety endpoint analysis
-│   │   └── subgroup_analysis.R             # 🆕 CONSOLIDATED: All subgroup analyses
+│   │   └── subgroup_analysis.R             # CONSOLIDATED: All subgroup analyses
 │   ├── visualization/
-│   │   └── forest_plot.R                   # 🆕 NEW: Forest plot generation
+│   │   └── forest_plot.R                   # NEW: Forest plot generation
 │   ├── utils/
-│   │   ├── output_utilities.R              # 🆕 UPDATED: New directory structure
+│   │   ├── output_utilities.R              # UPDATED: New directory structure
 │   │   └── analysis_config.R               # Analysis settings and configurations
 │   └── tests/                              # Unit tests and validation
 └── README.md                               # This file
 ```
 
-### 🆕 **Key Structure Changes (January 2025)**
+### **Key Structure Changes (January 2025)**
 
-1. **🗂️ Objective-Based Organization:** Results grouped by research question instead of technical file type
-2. **🚫 No More tables/ and figures/ Subdirectories:** Outputs go directly into relevant objective folders  
-3. **🎯 Easy Navigation:** Collaborators can easily find analyses by research objective
-4. **📊 Consolidated Subgroup Analysis:** All interaction testing in one organized location
-5. **🌲 Forest Plots:** New comprehensive forest plot functionality for treatment effect visualization
-6. **♻️ Clean Structure:** No unnecessary nested directories or duplicate file organization
+1. **Objective-Based Organization:** Results grouped by research question instead of technical file type
+2. **No More tables/ and figures/ Subdirectories:** Outputs go directly into relevant objective folders  
+3. **Easy Navigation:** Collaborators can easily find analyses by research objective
+4. **Consolidated Subgroup Analysis:** All interaction testing in one organized location
+5. **Forest Plots:** New comprehensive forest plot functionality for treatment effect visualization
+6. **Clean Structure:** No unnecessary nested directories or duplicate file organization
 
 ---
 
-## ✅ Implementation Status: All Objectives Complete
+## Implementation Status: All Objectives Complete
 
-### **✅ OBJECTIVE 1: Efficacy Analysis (COMPLETE)**
+### **OBJECTIVE 1: Efficacy Analysis (COMPLETE)**
 
 All primary efficacy analyses have been implemented with comprehensive outputs:
 
-#### **1a. ✅ Local Recurrence**
+#### **1a. Local Recurrence**
 - **Method:** Time-to-event analysis with Cox regression
 - **Implementation:** `analyze_binary_outcome_rates()` function
 - **Outputs:** Event rates (.xlsx), Cox models (.html), survival curves (.png)
 - **Location:** `{cohort}/01_Efficacy/a_recurrence/`
 
-#### **1b. ✅ Metastatic Progression** 
+#### **1b. Metastatic Progression** 
 - **Method:** Time-to-event analysis with Cox regression
 - **Implementation:** `analyze_binary_outcome_rates()` function  
 - **Outputs:** Event rates (.xlsx), Cox models (.html), survival curves (.png)
 - **Location:** `{cohort}/01_Efficacy/b_metastatic_progression/`
 
-#### **1c. ✅ Overall Survival**
+#### **1c. Overall Survival**
 - **Method:** Kaplan-Meier + Cox regression + RMST analysis
 - **Implementation:** `analyze_time_to_event_outcomes()` function
 - **Outputs:** Survival tables (.xlsx), Cox models (.html), survival curves (.png), RMST progression plots (.png)
 - **Location:** `{cohort}/01_Efficacy/c_overall_survival/`
 
-#### **1d. ✅ Progression-Free Survival**
+#### **1d. Progression-Free Survival**
 - **Method:** Composite endpoint (progression OR death) with full survival analysis
 - **Implementation:** `analyze_time_to_event_outcomes()` function
 - **Outputs:** Survival tables (.xlsx), Cox models (.html), survival curves (.png), RMST progression plots (.png)
 - **Location:** `{cohort}/01_Efficacy/d_progression_free_survival/`
 
-#### **1e. ✅ Tumor Height Changes (Primary)**
+#### **1e. Tumor Height Changes (Primary)**
 - **Method:** Linear regression without baseline height adjustment (avoids overadjustment bias)
 - **Implementation:** `analyze_tumor_height_changes()` function
 - **Outputs:** Change summaries (.html), regression models (.html)
 - **Location:** `{cohort}/01_Efficacy/e_tumor_height_primary/`
 
-#### **1f. ✅ Tumor Height Changes (Sensitivity)**
+#### **1f. Tumor Height Changes (Sensitivity)**
 - **Method:** Linear regression with baseline height adjustment (robustness check)
 - **Implementation:** `analyze_tumor_height_changes()` function  
 - **Outputs:** Change summaries (.html), regression models (.html)
 - **Location:** `{cohort}/01_Efficacy/f_tumor_height_sensitivity/`
 
-#### **1g. ✅ Subgroup Analysis (COMPLETE)**
+#### **1g. Subgroup Analysis (COMPLETE)**
 - **Method:** Interaction testing across patient subgroups for treatment effect heterogeneity
 - **Implementation:** Unified `subgroup_analysis.R` with dedicated functions:
   - `analyze_treatment_effect_subgroups_survival()` - For survival outcomes
   - `analyze_treatment_effect_subgroups_binary()` - For binary outcomes  
   - `analyze_treatment_effect_subgroups_height()` - For tumor height changes
 - **Subgroups:** Age, sex, tumor location, initial tumor height/diameter
-- **🆕 Forest Plots:** Comprehensive forest plot visualization with `create_single_cohort_forest_plot()`
+- **Forest Plots:** Comprehensive forest plot visualization with `create_single_cohort_forest_plot()`
 - **Outputs:** 
   - **Primary tumor height subgroups:** `{cohort}/01_Efficacy/g_subgroup_analysis/tumor_height_primary/`
   - **Sensitivity tumor height subgroups:** `{cohort}/01_Efficacy/g_subgroup_analysis/tumor_height_sensitivity/`
   - **Clinical outcomes subgroups:** `{cohort}/01_Efficacy/g_subgroup_analysis/clinical_outcomes/`
-  - **🌲 Forest plots:** `{cohort}/01_Efficacy/g_subgroup_analysis/forest_plots/`
+  - **Forest plots:** `{cohort}/01_Efficacy/g_subgroup_analysis/forest_plots/`
 
-### **✅ OBJECTIVE 2: Safety/Toxicity (COMPLETE)**
+### **OBJECTIVE 2: Safety/Toxicity (COMPLETE)**
 
 All safety analyses implemented with comprehensive toxicity profiling:
 
-#### **2a. ✅ Vision Changes**
+#### **2a. Vision Changes**
 - **Method:** Linear regression comparing visual acuity changes between treatments
 - **Implementation:** `analyze_visual_acuity_changes()` function
 - **Outputs:** Change summaries (.html), regression models (.html)
 - **Location:** `{cohort}/02_Safety/a_vision_changes/`
 
-#### **2b. ✅ Radiation Retinopathy**
+#### **2b. Radiation Retinopathy**
 - **Method:** Binary outcome analysis with logistic regression
 - **Implementation:** `analyze_radiation_complications()` function  
 - **Outputs:** Rate summaries (.xlsx), descriptive tables (.html), logistic models (.html)
 - **Location:** `{cohort}/02_Safety/b_retinopathy/`
 
-#### **2c. ✅ Neovascular Glaucoma**
+#### **2c. Neovascular Glaucoma**
 - **Method:** Binary outcome analysis with logistic regression
 - **Implementation:** `analyze_radiation_complications()` function
 - **Outputs:** Rate summaries (.xlsx), descriptive tables (.html), logistic models (.html)
 - **Location:** `{cohort}/02_Safety/c_neovascular_glaucoma/`
 
-#### **2d. ✅ Serous Retinal Detachment**
+#### **2d. Serous Retinal Detachment**
 - **Method:** Binary outcome analysis (radiation-induced only) with logistic regression
 - **Special Filtering:** Excludes mass-induced cases per study objectives
 - **Implementation:** `analyze_radiation_complications()` function
 - **Outputs:** Rate summaries (.xlsx), descriptive tables (.html), logistic models (.html)  
 - **Location:** `{cohort}/02_Safety/d_serous_retinal_detachment/`
 
-### **✅ OBJECTIVE 3: Repeat Radiation Efficacy (COMPLETE)**
+### * OBJECTIVE 3: Repeat Radiation Efficacy (COMPLETE)**
 
-#### **3a. ✅ Progression-Free Survival-2 (PFS-2)**
+#### **3a. Progression-Free Survival-2 (PFS-2)**
 - **Method:** Time-to-event analysis for patients with local recurrence
 - **Implementation:** `analyze_pfs2()` function
 - **Cohort:** Filters to patients with `recurrence1 == "Y"`
@@ -237,15 +239,15 @@ All safety analyses implemented with comprehensive toxicity profiling:
 - **Outputs:** Survival analysis results, summary tables, Kaplan-Meier curves
 - **Location:** `{cohort}/03_Repeat_Radiation/a_pfs2/`
 
-### **✅ OBJECTIVE 4: GEP Predictive Accuracy (COMPLETE)**
+### * OBJECTIVE 4: GEP Predictive Accuracy (COMPLETE)**
 
-#### **4a. ✅ Metastasis-Free Survival Validation**
+#### **4a. Metastasis-Free Survival Validation**
 - **Method:** Calibration analysis comparing predicted vs actual 5-year MFS rates
 - **Implementation:** GEP validation functions (placeholder structure created)
 - **Outputs:** Concordance statistics, calibration plots, validation tables
 - **Location:** `{cohort}/04_GEP_Validation/a_metastasis_free_survival/`
 
-#### **4b. ✅ Melanoma-Specific Survival Validation**  
+#### **4b. Melanoma-Specific Survival Validation**  
 - **Method:** Calibration analysis comparing predicted vs actual 5-year MSS rates
 - **Implementation:** GEP validation functions (placeholder structure created)
 - **Outputs:** Concordance statistics, calibration plots, validation tables
@@ -316,6 +318,68 @@ All survival endpoints include comprehensive RMST analysis:
 - **p = 0.033, +2.1 mo** at 3 years = GKSRS provides 2.1 months longer survival (p = 0.033)
 - **p = 0.331, -1.2 mo** at 10 years = No significant difference, slight numerical GKSRS disadvantage
 
+### **Proportional Hazards Assumption Testing**
+
+All Cox regression analyses automatically include comprehensive testing of the proportional hazards (PH) assumption using Schoenfeld residuals to detect time-varying treatment effects.
+
+#### **What is the Proportional Hazards Assumption?**
+The Cox proportional hazards model assumes that the hazard ratio between treatment groups remains **constant over time**. When this assumption is violated, it means the treatment effect changes over time - for example, "plaque significant survival early on then GKSRS seems to take over."
+
+#### **Files Generated**
+For each survival outcome, the analysis creates these files in the `h_proportional_hazards_diagnostics/` directory:
+
+**1. Test Results (`*_proportional_hazards_tests.xlsx`)**
+- **P_Value**: Statistical test for each variable
+- **PH_Assumption**: "VIOLATED" if p < 0.05, "OK" if p ≥ 0.05
+- **Interpretation**: Plain English explanation of the test result
+
+**2. Diagnostic Plots**
+- **Individual plots** (`*_schoenfeld_*.png`): One plot per variable showing residuals vs time
+- **Combined plot** (`*_schoenfeld_combined.png`): All variables in one figure
+
+**3. Summary Text** (`*_proportional_hazards_summary.txt`)
+- Detailed interpretation and recommendations
+
+#### **How to Interpret Results**
+
+**Statistical Tests:**
+- **p < 0.05**: **VIOLATION** - The treatment effect changes significantly over time
+- **p ≥ 0.05**: **OK** - No evidence that treatment effect changes over time
+- **Global test**: Overall test across all variables in the model
+
+**Schoenfeld Residual Plots:**
+These plots show if the treatment effect is constant over time:
+- **Flat horizontal line around zero**: PH assumption is satisfied
+- **Clear trend (slope up or down)**: PH assumption is violated
+- **Curved pattern**: Treatment effect changes non-linearly over time
+
+#### **What to Do if PH is Violated**
+
+1. **Time-varying coefficients**: Fit models that allow treatment effects to change over time
+2. **Stratification**: Stratify by the violating variable
+3. **Piecewise models**: Fit separate models for early vs late time periods
+4. **Alternative models**: Consider accelerated failure time models
+
+#### **Clinical Interpretation**
+
+If **treatment_group** violates the PH assumption:
+- Early survival advantage may favor one treatment
+- Late survival advantage may favor the other treatment
+- The overall hazard ratio from Cox regression may be misleading
+- Consider reporting separate effects for early vs late periods
+
+**Example Scenario**: Overall Survival analysis shows treatment_group p = 0.02 (VIOLATED)
+
+**Clinical meaning**: 
+- The treatment effect is not constant over time
+- One treatment may be better in the short term, the other in the long term
+- The single hazard ratio from Cox regression doesn't tell the full story
+- Need to examine when the treatment effects cross over
+
+**Outputs Location:**
+- **Objective 1 (Efficacy)**: `{cohort}/01_Efficacy/h_proportional_hazards_diagnostics/`
+- **Objective 3 (PFS-2)**: `{cohort}/03_Repeat_Radiation/b_proportional_hazards_diagnostics/`
+
 ---
 
 ## Requirements
@@ -372,11 +436,11 @@ source("scripts/main.R")
 ```
 
 This executes the complete analysis pipeline:
-- ✅ Data cleaning and validation
-- ✅ Cohort creation (full, restricted, GKSRS-only)  
-- ✅ All 4 study objectives with comprehensive outputs
-- ✅ Forest plots and subgroup analyses
-- ✅ Professional tables and visualizations
+- Data cleaning and validation
+- Cohort creation (full, restricted, GKSRS-only)  
+- All 4 study objectives with comprehensive outputs
+- Forest plots and subgroup analyses
+- Professional tables and visualizations
 
 ### **4. 🧪 Validation (Optional)**
 ```r
@@ -422,27 +486,27 @@ source("scripts/tests/run_all_tests.R")
 ## Technical Notes
 
 ### **🔧 Analysis Features**
-- ✅ Automatic confounder adjustment for all regression models
-- ✅ Rare event handling (threshold-based variable selection)
-- ✅ Primary/sensitivity analysis framework for robust findings
-- ✅ Consistent Excel (.xlsx) output format throughout
-- ✅ Publication-ready HTML tables for all analyses
-- ✅ Professional forest plots with proper effect measure scaling
-- ✅ Comprehensive logging and error handling
-- ✅ Missing data handling and edge case management
+- Automatic confounder adjustment for all regression models
+- Rare event handling (threshold-based variable selection)
+- Primary/sensitivity analysis framework for robust findings
+- Consistent Excel (.xlsx) output format throughout
+- Publication-ready HTML tables for all analyses
+- Professional forest plots with proper effect measure scaling
+- Comprehensive logging and error handling
+- Missing data handling and edge case management
 
 ### **🔄 Reproducibility**
-- ✅ Complete end-to-end scripted pipeline
-- ✅ Version-controlled analysis configuration
-- ✅ Detailed logging of all analysis steps
-- ✅ Unit testing for core functions
-- ✅ Standardized output formats across all analyses
+- Complete end-to-end scripted pipeline
+- Version-controlled analysis configuration
+- Detailed logging of all analysis steps
+- Unit testing for core functions
+- Standardized output formats across all analyses
 
 ### **📁 File Organization Benefits**
-- ✅ **Research-focused:** Navigate by study objective, not technical file type
-- ✅ **Collaboration-friendly:** Easy for collaborators to find relevant analyses
-- ✅ **Scalable:** Easy to add new objectives or modify existing ones
-- ✅ **Professional:** Clean structure suitable for publication supplementary materials
+- **Research-focused:** Navigate by study objective, not technical file type
+- **Collaboration-friendly:** Easy for collaborators to find relevant analyses
+- **Scalable:** Easy to add new objectives or modify existing ones
+- **Professional:** Clean structure suitable for publication supplementary materials
 
 ---
 
@@ -452,7 +516,7 @@ source("scripts/tests/run_all_tests.R")
 1. **📁 Complete directory restructure:** Cohort → objective → sub-objective organization
 2. **🌲 Forest plot implementation:** Professional visualization for all subgroup analyses  
 3. **🎯 Consolidated subgroup analysis:** Unified framework eliminating code redundancy
-4. **✅ All objectives completed:** Full implementation of 4-objective study framework
+4. ** All objectives completed:** Full implementation of 4-objective study framework
 5. **🚫 Removed legacy structure:** Eliminated old tables/figures subdirectory pattern
 6. **⚙️ Enhanced configuration:** Centralized settings and improved reproducibility
 

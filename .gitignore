@@ -7,7 +7,7 @@ data/
 
 # ignore generated poster scripts
 scripts/poster_scripts/
-scripts/old/
+scripts/old/*
 
 # Ignore history and .* files
 .Rhistory
