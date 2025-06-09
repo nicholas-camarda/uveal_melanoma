@@ -1,8 +1,13 @@
+.DS_Store
+scripts/.DS_Store
+
 # ignore raw data files
 data/
 
+
 # ignore generated poster scripts
 scripts/poster_scripts/
+scripts/old/
 
 # Ignore history and .* files
 .Rhistory
@@ -11,6 +16,7 @@ scripts/poster_scripts/
 # Ignore original files
 final_data/*
 
-# Ignore old and logs
+# Ignore old, test results, and logs
 logs/*
 old_results/*
+test_output/*

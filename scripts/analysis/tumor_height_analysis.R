@@ -65,7 +65,7 @@ analyze_tumor_height_changes <- function(data) {
     # Save table
     tbl %>%
         gt::gtsave(
-            filename = file.path(output_dirs$height_primary, paste0(prefix, "height_changes.html"))
+            filename = file.path(output_dirs$obj1_height_primary, paste0(prefix, "height_changes.html"))
         )
     
     # PRIMARY ANALYSIS: Linear regression WITHOUT initial tumor height adjustment
@@ -108,7 +108,7 @@ analyze_tumor_height_changes <- function(data) {
     # Save primary table
     primary_height_lm_tbl %>%
         gt::gtsave(
-            filename = file.path(output_dirs$height_primary, paste0(prefix, "height_lm_primary.html"))
+            filename = file.path(output_dirs$obj1_height_primary, paste0(prefix, "height_lm_primary.html"))
         )
 
     # SENSITIVITY ANALYSIS: Linear regression WITH initial tumor height adjustment
@@ -148,7 +148,7 @@ analyze_tumor_height_changes <- function(data) {
     # Save sensitivity table
     sensitivity_height_lm_tbl %>%
         gt::gtsave(
-            filename = file.path(output_dirs$height_sensitivity, paste0(prefix, "height_lm_sensitivity.html"))
+            filename = file.path(output_dirs$obj1_height_sensitivity, paste0(prefix, "height_lm_sensitivity.html"))
         )
 
     return(list(

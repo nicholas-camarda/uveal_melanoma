@@ -67,22 +67,27 @@ log_progress <- function(step, total, message) {
     }
 }
 
-# Create cohort-specific directories
-COHORT_DIRS <- list(
-    full = file.path(ANALYSIS_DIR, "uveal_full"),
-    restricted = file.path(ANALYSIS_DIR, "uveal_restricted"),
-    gksrs = file.path(ANALYSIS_DIR, "gksrs")
-)
+# NOTE: Old cohort directory structure no longer used
+# Directory structure is now created dynamically by create_output_structure() function
+# which creates cohort -> objective -> sub-objective structure
 
-# Create tables and figures subdirectories for each cohort
-for (dir in COHORT_DIRS) {
-    dir.create(file.path(dir, "tables"), showWarnings = FALSE, recursive = TRUE)
-    dir.create(file.path(dir, "figures"), showWarnings = FALSE, recursive = TRUE)
-}
+# DEPRECATED: Old cohort-specific directories (now handled by create_output_structure)
+# COHORT_DIRS <- list(
+#     full = file.path(ANALYSIS_DIR, "uveal_full"),
+#     restricted = file.path(ANALYSIS_DIR, "uveal_restricted"),
+#     gksrs = file.path(ANALYSIS_DIR, "gksrs")
+# )
+# 
+# # Create tables and figures subdirectories for each cohort
+# for (dir in COHORT_DIRS) {
+#     dir.create(file.path(dir, "tables"), showWarnings = FALSE, recursive = TRUE)
+#     dir.create(file.path(dir, "figures"), showWarnings = FALSE, recursive = TRUE)
+# }
 
-#' Get cohort directory and file prefix
+#' DEPRECATED: Get cohort directory and file prefix
 #'
-#' Maps a cohort name to its output directory and file prefix for saving results.
+#' This function is deprecated. Directory structure is now handled by create_output_structure()
+#' in scripts/utils/output_utilities.R which creates cohort -> objective -> sub-objective structure.
 #'
 #' @param cohort_name Character. Name of the cohort (e.g., 'full_cohort', 'restricted_cohort', 'gksrs_only_cohort').
 #'
@@ -93,7 +98,9 @@ for (dir in COHORT_DIRS) {
 #' @examples
 #' get_cohort_info("full_cohort")
 get_cohort_info <- function(cohort_name) {
-    # Map cohort names to directory names
+    warning("get_cohort_info() is deprecated. Use create_output_structure() in main.R instead.")
+    
+    # Map cohort names to directory names (DEPRECATED MAPPING)
     cohort_map <- list(
         "uveal_melanoma_full_cohort" = "uveal_full",
         "uveal_melanoma_gksrs_only_cohort" = "uveal_restricted",
@@ -837,12 +844,27 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
         message(sprintf("\nCreating table for cohort: %s", cohort_name))
         data <- data_list[[cohort_name]]
 
-        # Get cohort directory and file prefix
-        cohort_info <- get_cohort_info(cohort_name)
-        tables_dir <- file.path(cohort_info$dir, "tables")
-        treatment_duration_dir <- file.path(tables_dir, "treatment_duration")
-        walk(list(tables_dir, treatment_duration_dir), ~dir.create(., showWarnings = FALSE, recursive = TRUE))
-        prefix <- cohort_info$prefix
+        # Set up file prefix based on cohort name
+        prefix <- case_when(
+            grepl("full", cohort_name) ~ "full_cohort_",
+            grepl("restricted", cohort_name) ~ "restricted_cohort_", 
+            grepl("gksrs", cohort_name) ~ "gksrs_only_cohort_",
+            TRUE ~ paste0(cohort_name, "_")
+        )
+        
+        # Use objective-based directory structure
+        if (!is.null(output_dirs) && !is.null(output_dirs[[cohort_name]])) {
+            treatment_duration_dir <- output_dirs[[cohort_name]]$treatment_duration
+            baseline_output_dir <- output_dirs[[cohort_name]]$baseline_characteristics
+        } else {
+            # Fallback to main Analysis directory
+            treatment_duration_dir <- file.path("final_data/Analysis", "00_General", "treatment_duration")
+            baseline_output_dir <- file.path("final_data/Analysis", "00_General", "baseline_characteristics")
+        }
+        
+        # Ensure directories exist
+        dir.create(treatment_duration_dir, showWarnings = FALSE, recursive = TRUE)
+        dir.create(baseline_output_dir, showWarnings = FALSE, recursive = TRUE)
 
         # Calculate treatment duration metrics
         log_message("Calculating treatment duration metrics")
@@ -985,12 +1007,7 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
                 filename = file.path(treatment_duration_dir, paste0(prefix, "treatment_duration_summary.html"))
             )
 
-        # Determine where to save baseline table
-        baseline_output_dir <- if (!is.null(output_dirs) && !is.null(output_dirs$baseline)) {
-            output_dirs$baseline
-        } else {
-            tables_dir  # fallback to original behavior
-        }
+        # baseline_output_dir was already set above
         
         tbl %>%
             as_gt() %>%

@@ -64,7 +64,7 @@ analyze_visual_acuity_changes <- function(data) {
     # Save table
     tbl %>%
         gt::gtsave(
-            filename = file.path(output_dirs$vision, paste0(prefix, "vision_changes.html"))
+            filename = file.path(output_dirs$obj2_vision, paste0(prefix, "vision_changes.html"))
         )
     
     # Linear regression model
@@ -107,7 +107,7 @@ analyze_visual_acuity_changes <- function(data) {
     # Save regression table
     vision_lm_tbl %>%
         gt::gtsave(
-            filename = file.path(output_dirs$vision, paste0(prefix, "vision_regression.html"))
+            filename = file.path(output_dirs$obj2_vision, paste0(prefix, "vision_regression.html"))
         )
 
     return(list(
@@ -197,10 +197,10 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
     
     # Determine output directory
     output_dir <- switch(sequela_type,
-                        "retinopathy" = output_dirs$retinopathy,
-                        "nvg" = output_dirs$nvg,
-                        "srd" = output_dirs$srg,  # Note: objectives mention "srg" but data has "srd"
-                        file.path(tables_dir, "safety_toxicity", "radiation_sequelae"))  # fallback
+                                "retinopathy" = output_dirs$obj2_retinopathy,
+        "nvg" = output_dirs$obj2_nvg,
+        "srd" = output_dirs$obj2_srd,
+                                                 output_dirs$obj2_retinopathy)  # fallback to retinopathy folder
     
     # Save rates summary
     writexl::write_xlsx(sequela_rates, 

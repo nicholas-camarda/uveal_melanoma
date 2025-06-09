@@ -84,13 +84,13 @@ analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var,
             .groups = "drop"
         )
 
-    # Determine output directory based on outcome
+    # Determine output directory based on outcome (Objective 1: Efficacy)
     if (outcome_var == "recurrence1") {
-        output_dir <- output_dirs$recurrence
+        output_dir <- output_dirs$obj1_recurrence
     } else if (outcome_var == "mets_progression") {
-        output_dir <- output_dirs$mets
+        output_dir <- output_dirs$obj1_mets
     } else {
-        output_dir <- tables_dir  # fallback
+        output_dir <- output_dirs$baseline_characteristics  # fallback to general
     }
     
     # Save high-level summary table of event rates
@@ -499,15 +499,15 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
 
     # Determine output directory based on outcome
     if (grepl("Overall Survival", ylab)) {
-        output_dir <- output_dirs$os
+        output_dir <- output_dirs$obj1_os
     } else if (grepl("Progression-Free Survival", ylab)) {
-        output_dir <- output_dirs$pfs
+        output_dir <- output_dirs$obj1_pfs
     } else if (grepl("PFS-2", ylab)) {
         # PFS-2 is part of Objective #3 (Repeat Radiation Efficacy) - separate from primary outcomes
-        output_dir <- file.path(tables_dir, "repeat_radiation_efficacy")
+        output_dir <- output_dirs$obj3_pfs2
         if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
     } else {
-        output_dir <- tables_dir  # fallback
+        output_dir <- output_dirs$baseline_characteristics  # fallback to general
     }
     
     # Save survival rate tables
@@ -601,7 +601,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     )
 
     ggsave(
-        file.path(figures_dir, paste0(prefix, ylab, "_survival.png")),
+        file.path(output_dir, paste0(prefix, ylab, "_survival.png")),
         combined,
         width = 10, height = 8, dpi = 300, bg = "white"
     )
@@ -710,9 +710,9 @@ plot_rmst_pvalue_progression <- function(rmst_results, outcome_label) {
     # Save the plot
     output_dir <- switch(
         gsub(".*:", "", outcome_label),
-        " Overall Survival Probability" = output_dirs$os,
-        " Progression-Free Survival Probability" = output_dirs$pfs,
-        figures_dir  # fallback
+        " Overall Survival Probability" = output_dirs$obj1_os,
+        " Progression-Free Survival Probability" = output_dirs$obj1_pfs,
+        output_dirs$baseline_characteristics  # fallback
     )
     
     ggsave(

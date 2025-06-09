@@ -17,7 +17,7 @@ library(gtsummary) # For creating publication-ready tables
 library(survival) # For survival analysis
 library(survminer) # For survival visualization
 library(gt) # For table formatting
-library(forestploter) # For forest plots
+library(forestplot) # For forest plots
 library(grid) # for unit()
 library(cowplot) # for combining plots
 library(survRM2, quietly = TRUE)
@@ -38,7 +38,7 @@ USE_LOGS <- TRUE
 
 # Toggle to control whether to recreate analytic datasets (default: FALSE)
 # Set to TRUE if you need to reprocess raw data or if data has changed
-RECREATE_ANALYTIC_DATASETS <- FALSE
+RECREATE_ANALYTIC_DATASETS <- TRUE
 
 # Set to FALSE to suppress detailed logging in analysis functions
 VERBOSE <- TRUE 
@@ -66,6 +66,7 @@ source("scripts/analysis/statistical_analysis.R")
 source("scripts/analysis/tumor_height_analysis.R") 
 source("scripts/analysis/vision_safety_analysis.R")
 source("scripts/analysis/subgroup_analysis.R")
+# Primary outcomes subgroup analysis functions now in subgroup_analysis.R
 
 # Source the forest plot script
 source("scripts/visualization/forest_plot.R")
@@ -116,7 +117,24 @@ if (RECREATE_ANALYTIC_DATASETS) {
 
     # Create summary tables with organized output structure
     log_function("create_summary_tables", "Creating baseline characteristics tables")
-    summary_tables <- create_summary_tables(final_analytic_datasets_lst)
+    
+    # Create cohort-specific output structures for baseline characteristics
+    temp_output_dirs_by_cohort <- list()
+    for (cohort_name in names(final_analytic_datasets_lst)) {
+        # Determine cohort directory name
+        cohort_dir_name <- case_when(
+            grepl("full", cohort_name) ~ "uveal_full",
+            grepl("restricted", cohort_name) ~ "uveal_restricted", 
+            grepl("gksrs", cohort_name) ~ "gksrs",
+            TRUE ~ cohort_name
+        )
+        
+        # Create cohort-specific directory structure
+        cohort_base_dir <- file.path("final_data/Analysis", cohort_dir_name)
+        temp_output_dirs_by_cohort[[cohort_name]] <- create_output_structure(cohort_base_dir)
+    }
+    
+    summary_tables <- create_summary_tables(final_analytic_datasets_lst, temp_output_dirs_by_cohort)
 
     # Create CONSORT diagram
     # TODO: Add CONSORT diagram
@@ -141,22 +159,25 @@ run_my_analysis <- function(dataset_name) {
     display_name <- tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name)))
     log_section_start("STATISTICAL ANALYSIS", display_name)
 
-    # Get cohort info for file paths
-    log_function("get_cohort_info", paste("Setting up output directories for", display_name))
-    cohort_info <- get_cohort_info(dataset_name)
-    tables_dir <<- file.path(cohort_info$dir, "tables")
-    figures_dir <<- file.path(cohort_info$dir, "figures")
+    # Set up cohort information
+    cohort_info <- case_when(
+        grepl("full", dataset_name) ~ list(prefix = "full_cohort_", dir_name = "uveal_full"),
+        grepl("restricted", dataset_name) ~ list(prefix = "restricted_cohort_", dir_name = "uveal_restricted"), 
+        grepl("gksrs", dataset_name) ~ list(prefix = "gksrs_only_cohort_", dir_name = "gksrs"),
+        TRUE ~ list(prefix = paste0(dataset_name, "_"), dir_name = dataset_name)
+    )
+    
     prefix <<- cohort_info$prefix
+    cohort_dir_name <- cohort_info$dir_name
     
-    # Create organized output directory structure for tables (complex structure needed)
-    log_function("create_output_structure", "Creating organized directory structure")
-    output_dirs <<- create_output_structure(tables_dir)
+    # Create cohort-specific directory structure
+    cohort_base_dir <<- file.path("final_data/Analysis", cohort_dir_name)
+    log_function("create_output_structure", sprintf("Creating cohort-specific directory structure for %s", cohort_dir_name))
+    output_dirs <<- create_output_structure(cohort_base_dir)
     
-    # Create simple figures directory (no complex subdirs needed)
-    if (!dir.exists(figures_dir)) {
-        dir.create(figures_dir, recursive = TRUE, showWarnings = FALSE)
-        log_enhanced(sprintf("Created figures directory: %s", figures_dir), level = "INFO", indent = 1)
-    }
+    # Forest plots go directly into the objective 1 folder
+    forest_plots_dir <- output_dirs$obj1_forest_plots
+    log_enhanced(sprintf("All outputs organized by objectives under: %s", cohort_base_dir), level = "INFO", indent = 1)
 
     # Load analytic dataset
     log_function("readRDS", paste("Loading analytic dataset:", dataset_name))
@@ -313,7 +334,7 @@ run_my_analysis <- function(dataset_name) {
     format_subgroup_analysis_tables(
         subgroup_results = primary_subgroup_results,
         dataset_name = paste("PRIMARY -", display_name),
-        subgroup_dir = output_dirs$subgroup_primary,
+        subgroup_dir = output_dirs$obj1_subgroup_primary,
         prefix = paste0(prefix, "primary_")
     )
     
@@ -321,16 +342,215 @@ run_my_analysis <- function(dataset_name) {
     format_subgroup_analysis_tables(
         subgroup_results = sensitivity_subgroup_results,
         dataset_name = paste("SENSITIVITY -", display_name),
-        subgroup_dir = output_dirs$subgroup_sensitivity,
+        subgroup_dir = output_dirs$obj1_subgroup_sensitivity,
         prefix = paste0(prefix, "sensitivity_")
     )
     
+    # Create forest plots for tumor height subgroup analyses
+    log_function("create_forest_plots_height", "Creating forest plots for tumor height subgroup analyses")
+    
+    # Forest plot for PRIMARY tumor height subgroup analysis (without baseline height)
+    primary_height_forest_plot <- create_single_cohort_forest_plot(
+        subgroup_results = primary_subgroup_results,
+        outcome_name = "Tumor Height Change (Primary Analysis)",
+        cohort_name = display_name,
+        treatment_labels = c("GKSRS", "Plaque"),
+        variable_order = c("age_at_diagnosis", "sex", "location", "initial_tumor_height", "initial_tumor_diameter"),
+        effect_measure = "MD",  # Mean Difference for continuous outcome
+        favours_labels = c("Favours GKSRS", "Favours Plaque"),
+        title = sprintf("Subgroup Analysis: Tumor Height Change - Primary (%s)", display_name)
+    )
+    
+    # Save the PRIMARY forest plot
+    png(file.path(forest_plots_dir, paste0(prefix, "tumor_height_primary_subgroup_forest_plot.png")), 
+        width = 12, height = 8, units = "in", res = 300)
+    print(primary_height_forest_plot)
+    dev.off()
+    log_enhanced("PRIMARY tumor height forest plot created", level = "INFO", indent = 1)
+    
+    # Forest plot for SENSITIVITY tumor height subgroup analysis (with baseline height)
+    sensitivity_height_forest_plot <- create_single_cohort_forest_plot(
+        subgroup_results = sensitivity_subgroup_results,
+        outcome_name = "Tumor Height Change (Sensitivity Analysis)",
+        cohort_name = display_name,
+        treatment_labels = c("GKSRS", "Plaque"),
+        variable_order = c("age_at_diagnosis", "sex", "location", "initial_tumor_height", "initial_tumor_diameter"),
+        effect_measure = "MD",  # Mean Difference for continuous outcome
+        favours_labels = c("Favours GKSRS", "Favours Plaque"),
+        title = sprintf("Subgroup Analysis: Tumor Height Change - Sensitivity (%s)", display_name)
+    )
+    
+    # Save the SENSITIVITY forest plot
+    png(file.path(forest_plots_dir, paste0(prefix, "tumor_height_sensitivity_subgroup_forest_plot.png")), 
+        width = 12, height = 8, units = "in", res = 300)
+    print(sensitivity_height_forest_plot)
+    dev.off()
+    log_enhanced("SENSITIVITY tumor height forest plot created", level = "INFO", indent = 1)
+    
     # Save both sets of subgroup analysis results for this dataset
     saveRDS(primary_subgroup_results, 
-            file.path(output_dirs$subgroup_primary, paste0(prefix, "primary_subgroup_interactions.rds")))
+            file.path(output_dirs$obj1_subgroup_primary, paste0(prefix, "primary_subgroup_interactions.rds")))
     
     saveRDS(sensitivity_subgroup_results, 
-            file.path(output_dirs$subgroup_sensitivity, paste0(prefix, "sensitivity_subgroup_interactions.rds")))
+            file.path(output_dirs$obj1_subgroup_sensitivity, paste0(prefix, "sensitivity_subgroup_interactions.rds")))
+    
+    # 1g. PRIMARY OUTCOMES SUBGROUP ANALYSIS
+    log_function("primary_outcomes_subgroup_analysis", "Subgroup analysis for primary clinical outcomes")
+    
+    # Perform subgroup analysis for each primary outcome
+    primary_outcomes_start_time <- Sys.time()
+    log_enhanced("PRIMARY OUTCOMES SUBGROUP ANALYSIS", level = "PROGRESS", indent = 1)
+    
+    # 1g1. Local Recurrence Subgroup Analysis
+    log_enhanced("Analyzing subgroup effects for Local Recurrence", level = "INFO", indent = 1)
+    recurrence_subgroup_results <- analyze_treatment_effect_subgroups_binary(
+        data = data,
+        outcome_var = "recurrence1",
+        subgroup_vars = subgroup_vars,
+        confounders = confounders,
+        outcome_name = "Local Recurrence"
+    )
+    
+    # Create forest plot for local recurrence
+    recurrence_forest_plot <- create_single_cohort_forest_plot(
+        subgroup_results = recurrence_subgroup_results,
+        outcome_name = "Local Recurrence",
+        cohort_name = display_name,
+        treatment_labels = c("GKSRS", "Plaque"),
+        variable_order = c("age_at_diagnosis", "sex", "location", "initial_tumor_height", "initial_tumor_diameter"),
+        effect_measure = "OR",
+        favours_labels = c("Favours GKSRS", "Favours Plaque"),
+        title = sprintf("Subgroup Analysis: Local Recurrence (%s)", display_name)
+    )
+    
+    # Save the forest plot
+    png(file.path(forest_plots_dir, paste0(prefix, "local_recurrence_subgroup_forest_plot.png")), 
+        width = 12, height = 8, units = "in", res = 300)
+    print(recurrence_forest_plot)
+    dev.off()
+    log_enhanced("Local recurrence subgroup analysis completed", level = "INFO", indent = 1)
+    
+    # 1g2. Metastatic Progression Subgroup Analysis
+    log_enhanced("Analyzing subgroup effects for Metastatic Progression", level = "INFO", indent = 1)
+    mets_subgroup_results <- analyze_treatment_effect_subgroups_binary(
+        data = data,
+        outcome_var = "mets_progression",
+        subgroup_vars = subgroup_vars,
+        confounders = confounders,
+        outcome_name = "Metastatic Progression"
+    )
+    
+    # Create forest plot for metastatic progression
+    mets_forest_plot <- create_single_cohort_forest_plot(
+        subgroup_results = mets_subgroup_results,
+        outcome_name = "Metastatic Progression",
+        cohort_name = display_name,
+        treatment_labels = c("GKSRS", "Plaque"),
+        variable_order = c("age_at_diagnosis", "sex", "location", "initial_tumor_height", "initial_tumor_diameter"),
+        effect_measure = "OR",
+        favours_labels = c("Favours GKSRS", "Favours Plaque"),
+        title = sprintf("Subgroup Analysis: Metastatic Progression (%s)", display_name)
+    )
+    
+    # Save the forest plot
+    png(file.path(forest_plots_dir, paste0(prefix, "metastatic_progression_subgroup_forest_plot.png")), 
+        width = 12, height = 8, units = "in", res = 300)
+    print(mets_forest_plot)
+    dev.off()
+    log_enhanced("Metastatic progression subgroup analysis completed", level = "INFO", indent = 1)
+    
+    # 1g3. Overall Survival Subgroup Analysis
+    log_enhanced("Analyzing subgroup effects for Overall Survival", level = "INFO", indent = 1)
+    os_subgroup_results <- analyze_treatment_effect_subgroups_survival(
+        data = data,
+        time_var = "tt_death_months",
+        event_var = "death_event",
+        subgroup_vars = subgroup_vars,
+        confounders = confounders,
+        outcome_name = "Overall Survival"
+    )
+    
+    # Create forest plot for overall survival
+    os_forest_plot <- create_single_cohort_forest_plot(
+        subgroup_results = os_subgroup_results,
+        outcome_name = "Overall Survival",
+        cohort_name = display_name,
+        treatment_labels = c("GKSRS", "Plaque"),
+        variable_order = c("age_at_diagnosis", "sex", "location", "initial_tumor_height", "initial_tumor_diameter"),
+        effect_measure = "HR",
+        favours_labels = c("Favours GKSRS", "Favours Plaque"),
+        title = sprintf("Subgroup Analysis: Overall Survival (%s)", display_name)
+    )
+    
+    # Save the forest plot
+    png(file.path(forest_plots_dir, paste0(prefix, "overall_survival_subgroup_forest_plot.png")), 
+        width = 12, height = 8, units = "in", res = 300)
+    print(os_forest_plot)
+    dev.off()
+    log_enhanced("Overall survival subgroup analysis completed", level = "INFO", indent = 1)
+    
+    # 1g4. Progression-Free Survival Subgroup Analysis
+    log_enhanced("Analyzing subgroup effects for Progression-Free Survival", level = "INFO", indent = 1)
+    pfs_subgroup_results <- analyze_treatment_effect_subgroups_survival(
+        data = data,
+        time_var = "tt_pfs_months",
+        event_var = "pfs_event",
+        subgroup_vars = subgroup_vars,
+        confounders = confounders,
+        outcome_name = "Progression-Free Survival"
+    )
+    
+    # Create forest plot for progression-free survival
+    pfs_forest_plot <- create_single_cohort_forest_plot(
+        subgroup_results = pfs_subgroup_results,
+        outcome_name = "Progression-Free Survival",
+        cohort_name = display_name,
+        treatment_labels = c("GKSRS", "Plaque"),
+        variable_order = c("age_at_diagnosis", "sex", "location", "initial_tumor_height", "initial_tumor_diameter"),
+        effect_measure = "HR",
+        favours_labels = c("Favours GKSRS", "Favours Plaque"),
+        title = sprintf("Subgroup Analysis: Progression-Free Survival (%s)", display_name)
+    )
+    
+    # Save the forest plot
+    png(file.path(forest_plots_dir, paste0(prefix, "progression_free_survival_subgroup_forest_plot.png")), 
+        width = 12, height = 8, units = "in", res = 300)
+    print(pfs_forest_plot)
+    dev.off()
+    log_enhanced("Progression-free survival subgroup analysis completed", level = "INFO", indent = 1)
+    
+    # Save primary outcomes subgroup results
+    primary_outcomes_subgroup_results <- list(
+        local_recurrence = recurrence_subgroup_results,
+        metastatic_progression = mets_subgroup_results,
+        overall_survival = os_subgroup_results,
+        progression_free_survival = pfs_subgroup_results
+    )
+    
+    # Create organized directory for primary outcomes subgroup results
+    primary_outcomes_subgroup_dir <- output_dirs$obj1_subgroup_clinical
+    if (!dir.exists(primary_outcomes_subgroup_dir)) {
+        dir.create(primary_outcomes_subgroup_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+    
+    # Save formatted tables for each primary outcome
+    for (outcome_name in names(primary_outcomes_subgroup_results)) {
+        outcome_results <- primary_outcomes_subgroup_results[[outcome_name]]
+        effect_measure <- ifelse(outcome_name %in% c("overall_survival", "progression_free_survival"), "HR", "OR")
+        
+        formatted_table <- format_subgroup_analysis_results(
+            subgroup_results = outcome_results,
+            outcome_name = tools::toTitleCase(gsub("_", " ", outcome_name)),
+            effect_measure = effect_measure,
+            output_path = file.path(primary_outcomes_subgroup_dir, paste0(prefix, outcome_name, "_subgroup_analysis.xlsx"))
+        )
+    }
+    
+    # Save all primary outcomes subgroup results as RDS
+    saveRDS(primary_outcomes_subgroup_results, 
+            file.path(primary_outcomes_subgroup_dir, paste0(prefix, "primary_outcomes_subgroup_results.rds")))
+    
+    log_section_complete("PRIMARY OUTCOMES SUBGROUP ANALYSIS", primary_outcomes_start_time)
     
     log_section_complete("STEP 1: PRIMARY OUTCOMES ANALYSIS", step1_start_time)
     
@@ -422,34 +642,28 @@ tryCatch({
                     level = "PROGRESS")
     }
     
-    # After all individual analyses are complete, create merged tables
-    log_section_start("POST-ANALYSIS: MERGED TABLES")
-    merge_start_time <- Sys.time()
-    
-    log_function("merge_cohort_tables", "Creating side-by-side comparison tables for collaborators")
-    
-    # Load the full and restricted cohort data
-    full_cohort_data <- readRDS(file.path("final_data", "Analytic Dataset", "uveal_melanoma_full_cohort.rds"))
-    restricted_cohort_data <- readRDS(file.path("final_data", "Analytic Dataset", "uveal_melanoma_restricted_cohort.rds"))
-    
-    # Create merged tables showing both cohorts side by side
-    merge_cohort_tables(
-        full_cohort_data = full_cohort_data,
-        restricted_cohort_data = restricted_cohort_data,
-        output_path = file.path("final_data", "Analysis", "merged_tables")
-    )
-    
-    log_section_complete("POST-ANALYSIS: MERGED TABLES", merge_start_time)
+    # NOTE: Forest plot combining functionality is available in scripts/utils/output_utilities.R
+    # but not being run automatically. Collaborator can decide whether to use it later.
     log_section_complete("MAIN EXECUTION PHASE", main_start_time)
     
     # Final summary
     log_enhanced("", level = "SECTION")
-    log_enhanced("🎉 ALL ANALYSES COMPLETED SUCCESSFULLY! 🎉", level = "PROGRESS")
+    log_enhanced("ALL ANALYSES COMPLETED SUCCESSFULLY!", level = "PROGRESS")
     log_enhanced(sprintf("Total execution time: %.1f minutes", 
                         as.numeric(difftime(Sys.time(), main_start_time, units = "mins"))), 
                 level = "PROGRESS")
     log_enhanced(sprintf("Datasets analyzed: %d", length(available_datasets)), level = "PROGRESS")
     log_enhanced("Check the logs above for detailed progress and any warnings.", level = "INFO")
+    log_enhanced("", level = "SECTION")
+    log_enhanced("RESULTS ORGANIZATION:", level = "PROGRESS")
+    log_enhanced("All outputs saved under final_data/Analysis/ organized by cohort then by study objectives:", level = "INFO")
+    log_enhanced("• uveal_full/01_Efficacy/ - Primary efficacy comparisons (Objective 1)", level = "INFO")
+    log_enhanced("• uveal_full/02_Safety/ - Safety and toxicity analyses (Objective 2)", level = "INFO")
+    log_enhanced("• uveal_full/03_Repeat_Radiation/ - Second-line treatment effectiveness (Objective 3)", level = "INFO")
+    log_enhanced("• uveal_full/04_GEP_Validation/ - Gene expression profile validation (Objective 4)", level = "INFO")
+    log_enhanced("• uveal_restricted/... - Same structure for restricted cohort", level = "INFO")
+    log_enhanced("• gksrs/... - Same structure for GKSRS-only cohort", level = "INFO")
+    log_enhanced("Each cohort has its own complete set of analyses for easy comparison!", level = "INFO")
     
 }, finally = {
     # Clean up logging if it was enabled

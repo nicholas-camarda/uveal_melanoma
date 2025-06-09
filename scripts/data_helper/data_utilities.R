@@ -39,20 +39,35 @@ handle_rare_categories <- function(data, vars, threshold = 5) {
             # Get category counts
             cat_counts <- table(data[[var]])
             rare_cats <- names(cat_counts)[cat_counts < threshold]
+            valid_cats <- names(cat_counts)[cat_counts >= threshold]
 
             if (length(rare_cats) > 0) {
-                if (VERBOSE) {
-                    log_message(sprintf("\nCollapsing rare categories in %s:", var))
-                    for (cat in rare_cats) {
-                        log_message(sprintf("- %s (n=%d)", cat, cat_counts[cat]))
+                # Check if collapsing would leave at least 2 valid levels
+                # (1 from valid_cats + 1 from combined rare_cats)
+                total_rare_count <- sum(cat_counts[rare_cats])
+                would_have_valid_other <- total_rare_count >= threshold
+                final_valid_levels <- length(valid_cats) + (if (would_have_valid_other) 1 else 0)
+                
+                if (final_valid_levels >= 2) {
+                    if (VERBOSE) {
+                        log_message(sprintf("\nCollapsing rare categories in %s:", var))
+                        for (cat in rare_cats) {
+                            log_message(sprintf("- %s (n=%d)", cat, cat_counts[cat]))
+                        }
+                    }
+
+                    # Collapse rare categories into "Other"
+                    data[[var]] <- fct_collapse(data[[var]],
+                        Other = rare_cats
+                    ) %>%
+                        fct_relevel("Other", after = Inf)
+                } else {
+                    if (VERBOSE) {
+                        log_message(sprintf("\nSkipping collapse for %s: would result in insufficient valid levels", var))
+                        log_message(sprintf("Valid categories: %d, Rare total: %d (threshold: %d)", 
+                                          length(valid_cats), total_rare_count, threshold))
                     }
                 }
-
-                # Collapse rare categories into "Other"
-                data[[var]] <- fct_collapse(data[[var]],
-                    Other = rare_cats
-                ) %>%
-                    fct_relevel("Other", after = Inf)
             }
         }
     }
