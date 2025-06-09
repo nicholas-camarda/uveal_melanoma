@@ -56,7 +56,7 @@ create_forest_plot <- function(subgroup_results,
             dir.create(dirname(output_path), recursive = TRUE, showWarnings = FALSE)
             
             # Save as PNG
-            png(output_path, width = 12, height = 8, units = "in", res = 300)
+            png(output_path, width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI)
             print(plot)
             dev.off()
         }

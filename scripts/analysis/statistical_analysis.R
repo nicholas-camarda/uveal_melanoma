@@ -7,6 +7,7 @@
 # - analyze_time_to_event_outcomes(): Kaplan-Meier and Cox regression
 # - plot_rmst_pvalue_progression(): RMST visualization
 # - analyze_pfs2(): PFS-2 analysis for recurrent patients
+# - test_proportional_hazards_assumption(): Schoenfeld residuals and PH diagnostics
 
 # Note: Other analysis functions are in separate files:
 # - analyze_tumor_height_changes() is in tumor_height_analysis.R
@@ -61,7 +62,7 @@ analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var,
     if (exclude_before_treatment) {
         fix_event_data <- fix_event_data %>%
             filter(!!sym(time_var) >= 0)
-        log_message(sprintf("Removed %d rows with %s before treatment", nrow(rare_fix_data) - nrow(fix_event_data), event_var))
+        log_enhanced(sprintf("Removed %d rows with %s before treatment", nrow(rare_fix_data) - nrow(fix_event_data), event_var))
     }
     
     # Ensure consistent factor contrasts for modeling
@@ -172,10 +173,10 @@ analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var,
         )
     
     # Save table
-    gt_tbl %>%
-        gt::gtsave(
-            filename = file.path(output_dir, paste0(prefix, outcome_var, "_rates.html"))
-        )
+    save_gt_html(
+        gt_tbl,
+        filename = file.path(output_dir, paste0(prefix, outcome_var, "_rates.html"))
+    )
     
     return(list(
         rates = rates,
@@ -236,7 +237,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     if (exclude_before_treatment) {
         fix_event_data <- fix_event_data %>%
             filter(!!sym(time_var) >= 0)
-        log_message(sprintf("Removed %d rows with %s before treatment", nrow(rare_fix_data) - nrow(fix_event_data), event_var))
+        log_enhanced(sprintf("Removed %d rows with %s before treatment", nrow(rare_fix_data) - nrow(fix_event_data), event_var))
     }
     
     # Ensure consistent factor contrasts for modeling
@@ -559,7 +560,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         cox_table <- cox_table %>% add_global_p()
     }
     
-    cox_table <- cox_table %>%
+    cox_table_formatted <- cox_table %>%
         modify_header(
             label    = "**Variable**",
             estimate = "**HR (95 % CI)**",
@@ -569,7 +570,10 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         modify_caption(sprintf("%s: Adjusted Cox Proportional-Hazards Model", ylab)) %>%
         modify_footnote(
             update = all_stat_cols() ~ "Reference level: Plaque"
-        ) %>%
+        )
+
+    # Add source note
+    cox_table <- cox_table_formatted %>%
         as_gt() %>%
         tab_source_note(
             source_note = md(sprintf(
@@ -587,10 +591,28 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         )
 
     # Save table
-    cox_table %>%
-        gt::gtsave(
-            filename = file.path(output_dir, paste0(prefix, ylab, "_cox.html"))
-        )
+    save_gt_html(
+        cox_table,
+        filename = file.path(output_dir, paste0(prefix, ylab, "_cox.html"))
+    )
+    
+    # Test proportional hazards assumption using Schoenfeld residuals
+    log_enhanced("Testing proportional hazards assumption for Cox model", level = "INFO", indent = 1)
+    
+    # Determine PH diagnostics output directory
+    ph_output_dir <- if (grepl("PFS-2", ylab)) {
+        output_dirs$obj3_ph_diagnostics
+    } else {
+        output_dirs$obj1_ph_diagnostics
+    }
+    
+    ph_diagnostics <- test_proportional_hazards_assumption(
+        cox_model = cox_model,
+        outcome_name = ylab,
+        output_dir = ph_output_dir,
+        file_prefix = paste0(prefix, gsub("[^A-Za-z0-9]", "_", ylab), "_"),
+        dataset_name = dataset_name
+    )
     
     combined <- plot_grid(
         surv_plot$plot,
@@ -603,7 +625,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     ggsave(
         file.path(output_dir, paste0(prefix, ylab, "_survival.png")),
         combined,
-        width = 10, height = 8, dpi = 300, bg = "white"
+        width = SURVIVAL_PLOT_WIDTH, height = SURVIVAL_PLOT_HEIGHT, dpi = PLOT_DPI, bg = "white"
     )
     
     # Create RMST p-value progression plot
@@ -617,7 +639,8 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         rmst_analysis = rmst_results,
         rmst_plot = rmst_plot,
         cox_model = cox_model,
-        cox_table = cox_table
+        cox_table = cox_table,
+        ph_diagnostics = ph_diagnostics
     ))
 }
 
@@ -718,7 +741,7 @@ plot_rmst_pvalue_progression <- function(rmst_results, outcome_label) {
     ggsave(
         file.path(output_dir, paste0(prefix, gsub("[^A-Za-z0-9]", "_", outcome_label), "_rmst_pvalue_progression.png")),
         p,
-        width = 10, height = 6, dpi = 300, bg = "white"
+        width = RMST_PLOT_WIDTH, height = RMST_PLOT_HEIGHT, dpi = PLOT_DPI, bg = "white"
     )
     
           return(p)
@@ -736,7 +759,7 @@ plot_rmst_pvalue_progression <- function(rmst_results, outcome_label) {
 #' @examples
 #' analyze_pfs2(data, confounders = c("age", "sex"))
 analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL) {
-    log_message("Starting PFS-2 analysis for recurrent patients")
+    log_enhanced("Starting PFS-2 analysis for recurrent patients")
     
     # Filter to patients with valid PFS-2 data (variables now created in data processing)
     pfs2_data <- data %>%
@@ -746,10 +769,10 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL) {
             !is.na(recurrence1_treatment_clean)
         )
     
-    log_message(sprintf("Found %d patients with valid PFS-2 data", nrow(pfs2_data)))
+    log_enhanced(sprintf("Found %d patients with valid PFS-2 data", nrow(pfs2_data)))
     
     if (nrow(pfs2_data) == 0) {
-        log_message("No patients with valid PFS-2 data found")
+        log_enhanced("No patients with valid PFS-2 data found")
         return(list(
             pfs2_data = NULL,
             survival_analysis = NULL,
@@ -759,15 +782,15 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL) {
     
     # Show treatment distribution
     treatment_counts <- table(pfs2_data$recurrence1_treatment_clean)
-    log_message("Treatment distribution:")
+    log_enhanced("Treatment distribution:")
     print(treatment_counts)
     
-    log_message(sprintf("Final PFS-2 analysis dataset: %d patients", nrow(pfs2_data)))
-    log_message(sprintf("PFS-2 events (2nd recurrence): %d", sum(pfs2_data$pfs2_event)))
+    log_enhanced(sprintf("Final PFS-2 analysis dataset: %d patients", nrow(pfs2_data)))
+    log_enhanced(sprintf("PFS-2 events (2nd recurrence): %d", sum(pfs2_data$pfs2_event)))
     
     # Check if we have enough patients and events for analysis
     if (nrow(pfs2_data) < 10) {
-        log_message("Insufficient patients for PFS-2 analysis")
+        log_enhanced("Insufficient patients for PFS-2 analysis")
         return(list(
             pfs2_data = pfs2_data,
             survival_analysis = NULL,
@@ -784,12 +807,12 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL) {
     groups_with_events <- sum(events_per_group$events > 0)
     
     if (total_events < 5 || groups_with_events < 2) {
-        log_message("ERROR: Insufficient events for PFS-2 survival analysis")
-        log_message(sprintf("Total events: %d (minimum 5 required)", total_events))
-        log_message(sprintf("Groups with events: %d (minimum 2 required)", groups_with_events))
-        log_message("Events per group:")
+        log_enhanced("ERROR: Insufficient events for PFS-2 survival analysis")
+        log_enhanced(sprintf("Total events: %d (minimum 5 required)", total_events))
+        log_enhanced(sprintf("Groups with events: %d (minimum 2 required)", groups_with_events))
+        log_enhanced("Events per group:")
         print(events_per_group)
-        log_message("Skipping survival analysis due to insufficient data")
+        log_enhanced("Skipping survival analysis due to insufficient data")
         
         pfs2_survival <- list(
             fit = NULL,
@@ -800,7 +823,7 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL) {
         )
     } else {
         # Use existing analyze_time_to_event_outcomes function with dynamic legend labels
-        log_message("Performing PFS-2 survival analysis")
+        log_enhanced("Performing PFS-2 survival analysis")
         pfs2_survival <- analyze_time_to_event_outcomes(
             data = pfs2_data,
             time_var = "tt_pfs2_months",
@@ -854,11 +877,281 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL) {
     # Note: File saving is handled by the analyze_time_to_event_outcomes function called above
     # which properly organizes outputs into the established directory structure
     
-    log_message("PFS-2 analysis completed")
+    log_enhanced("PFS-2 analysis completed")
     
     return(list(
         pfs2_data = pfs2_data,
         survival_analysis = pfs2_survival,
         summary_table = summary_table
     ))
+}
+
+#' Test Proportional Hazards Assumption using Schoenfeld Residuals
+#'
+#' Performs comprehensive testing of the proportional hazards assumption for Cox models
+#' using Schoenfeld residuals. Creates diagnostic plots and statistical tests to identify
+#' time-varying treatment effects and other PH violations.
+#'
+#' @param cox_model A fitted coxph model object
+#' @param outcome_name Character string describing the outcome (e.g., "Overall Survival")
+#' @param output_dir Directory path where diagnostic files should be saved
+#' @param file_prefix Prefix for output files
+#' @param dataset_name Name of the dataset for labeling
+#'
+#' @return List containing:
+#'   - schoenfeld_test: Overall test results from cox.zph()
+#'   - individual_tests: P-values for each variable
+#'   - plots: List of diagnostic plots
+#'   - summary: Summary table of PH assumption violations
+#'
+#' @examples
+#' ph_diagnostics <- test_proportional_hazards_assumption(
+#'   cox_model = my_cox_model,
+#'   outcome_name = "Overall Survival", 
+#'   output_dir = "results/diagnostics/",
+#'   file_prefix = "os_",
+#'   dataset_name = "Full Cohort"
+#' )
+test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Survival", output_dir = NULL, file_prefix = "", dataset_name = NULL) {
+    
+    log_enhanced(sprintf("Testing proportional hazards assumption for %s", outcome_name), level = "INFO")
+    
+    # Check if model is valid
+    if (is.null(cox_model) || !inherits(cox_model, "coxph")) {
+        log_enhanced("Invalid Cox model provided - skipping PH assumption testing", level = "WARN")
+        return(NULL)
+    }
+    
+    # Set default output directory if not provided
+    if (is.null(output_dir)) {
+        output_dir <- "."
+    }
+    
+    # Ensure output directory exists
+    if (!dir.exists(output_dir)) {
+        dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+    
+    tryCatch({
+        # Perform Schoenfeld residuals test
+        log_enhanced("Computing Schoenfeld residuals and correlation tests", level = "INFO", indent = 1)
+        schoenfeld_test <- survival::cox.zph(cox_model)
+        
+        # Extract variable names and test statistics
+        var_names <- rownames(schoenfeld_test$table)
+        p_values <- schoenfeld_test$table[, "p"]
+        
+        # Create summary of PH violations
+        ph_summary <- data.frame(
+            Variable = var_names,
+            Chi_Square = schoenfeld_test$table[, "chisq"],
+            DF = schoenfeld_test$table[, "df"],
+            P_Value = p_values,
+            PH_Assumption = ifelse(p_values < 0.05, "VIOLATED", "OK"),
+            Interpretation = case_when(
+                p_values < 0.001 ~ "Strong evidence against PH (p < 0.001)",
+                p_values < 0.01 ~ "Moderate evidence against PH (p < 0.01)",
+                p_values < 0.05 ~ "Some evidence against PH (p < 0.05)",
+                TRUE ~ "No evidence against PH assumption"
+            ),
+            stringsAsFactors = FALSE
+        )
+        
+        # Add overall test result
+        global_test <- data.frame(
+            Variable = "GLOBAL",
+            Chi_Square = schoenfeld_test$table["GLOBAL", "chisq"],
+            DF = schoenfeld_test$table["GLOBAL", "df"],
+            P_Value = schoenfeld_test$table["GLOBAL", "p"],
+            PH_Assumption = ifelse(schoenfeld_test$table["GLOBAL", "p"] < 0.05, "VIOLATED", "OK"),
+            Interpretation = case_when(
+                schoenfeld_test$table["GLOBAL", "p"] < 0.001 ~ "Strong evidence against PH globally (p < 0.001)",
+                schoenfeld_test$table["GLOBAL", "p"] < 0.01 ~ "Moderate evidence against PH globally (p < 0.01)",
+                schoenfeld_test$table["GLOBAL", "p"] < 0.05 ~ "Some evidence against PH globally (p < 0.05)",
+                TRUE ~ "No evidence against PH assumption globally"
+            ),
+            stringsAsFactors = FALSE
+        )
+        
+        ph_summary_with_global <- rbind(ph_summary[var_names != "GLOBAL", ], global_test)
+        
+        # Save summary table
+        writexl::write_xlsx(
+            ph_summary_with_global,
+            path = file.path(output_dir, paste0(file_prefix, "proportional_hazards_tests.xlsx"))
+        )
+        
+        log_enhanced(sprintf("PH assumption tests saved to: %s", 
+                            file.path(output_dir, paste0(file_prefix, "proportional_hazards_tests.xlsx"))), 
+                    level = "INFO", indent = 1)
+        
+        # Log key findings
+        violations <- ph_summary_with_global[ph_summary_with_global$PH_Assumption == "VIOLATED", ]
+        if (nrow(violations) > 0) {
+            log_enhanced(sprintf("PH ASSUMPTION VIOLATIONS DETECTED for %d variable(s):", nrow(violations)), 
+                        level = "WARN", indent = 1)
+            for (i in 1:nrow(violations)) {
+                log_enhanced(sprintf("- %s: p = %.4f (%s)", 
+                                   violations$Variable[i], 
+                                   violations$P_Value[i],
+                                   violations$Interpretation[i]), 
+                            level = "WARN", indent = 2)
+            }
+        } else {
+            log_enhanced("No PH assumption violations detected", level = "INFO", indent = 1)
+        }
+        
+        # Create diagnostic plots
+        log_enhanced("Creating Schoenfeld residual diagnostic plots", level = "INFO", indent = 1)
+        
+        # Individual plots for each variable
+        individual_plots <- list()
+        n_vars <- length(var_names[var_names != "GLOBAL"])
+        
+        for (i in seq_along(var_names)) {
+            var_name <- var_names[i]
+            if (var_name == "GLOBAL") next  # Skip global test for individual plots
+            
+            log_enhanced(sprintf("Creating plot for variable: %s", var_name), level = "INFO", indent = 2)
+            
+            # Create individual plot
+            plot_filename <- file.path(output_dir, paste0(file_prefix, "schoenfeld_", gsub("[^A-Za-z0-9]", "_", var_name), ".png"))
+            
+            png(plot_filename, width = 10, height = 6, units = "in", res = 300)
+            
+            # Plot Schoenfeld residuals vs time
+            plot(schoenfeld_test[i], 
+                 main = sprintf("Schoenfeld Residuals: %s\n%s (%s)", 
+                              var_name, outcome_name, 
+                              ifelse(is.null(dataset_name), "", dataset_name)),
+                 xlab = "Time",
+                 ylab = "Schoenfeld Residuals")
+            
+            # Add p-value annotation
+            p_val <- p_values[i]
+            p_text <- if (p_val < 0.001) {
+                "p < 0.001"
+            } else {
+                sprintf("p = %.3f", p_val)
+            }
+            
+            mtext(sprintf("Correlation test: %s %s", 
+                         p_text,
+                         ifelse(p_val < 0.05, "(PH VIOLATED)", "(PH OK)")), 
+                  side = 3, line = 0.5, cex = 0.9, 
+                  col = ifelse(p_val < 0.05, "red", "darkgreen"))
+            
+            dev.off()
+            
+            individual_plots[[var_name]] <- plot_filename
+        }
+        
+        # Create combined plot showing all variables
+        log_enhanced("Creating combined diagnostic plot", level = "INFO", indent = 1)
+        combined_plot_filename <- file.path(output_dir, paste0(file_prefix, "schoenfeld_combined.png"))
+        
+        # Calculate grid dimensions
+        n_plots <- length(individual_plots)
+        n_cols <- min(3, n_plots)  # Max 3 columns
+        n_rows <- ceiling(n_plots / n_cols)
+        
+        png(combined_plot_filename, width = 4 * n_cols, height = 4 * n_rows, units = "in", res = 300)
+        par(mfrow = c(n_rows, n_cols), mar = c(4, 4, 3, 2))
+        
+        for (i in seq_along(var_names)) {
+            var_name <- var_names[i]
+            if (var_name == "GLOBAL") next
+            
+            plot(schoenfeld_test[i], 
+                 main = sprintf("%s\n%s", var_name, 
+                              if (p_values[i] < 0.001) "p < 0.001" else sprintf("p = %.3f", p_values[i])),
+                 xlab = "Time", 
+                 ylab = "Schoenfeld Residuals",
+                 cex.main = 0.9)
+            
+            # Color-code title based on p-value
+            title(main = sprintf("%s\n%s", var_name, 
+                               if (p_values[i] < 0.001) "p < 0.001" else sprintf("p = %.3f", p_values[i])),
+                  col.main = ifelse(p_values[i] < 0.05, "red", "darkgreen"),
+                  cex.main = 0.9)
+        }
+        
+        # Add overall title
+        mtext(sprintf("Proportional Hazards Diagnostics: %s\n%s", 
+                     outcome_name, 
+                     ifelse(is.null(dataset_name), "", paste("Dataset:", dataset_name))),
+              outer = TRUE, cex = 1.2, line = -2)
+        
+        dev.off()
+        
+        log_enhanced(sprintf("Combined diagnostic plot saved: %s", combined_plot_filename), 
+                    level = "INFO", indent = 1)
+        
+        # Create summary text file with interpretation
+        summary_filename <- file.path(output_dir, paste0(file_prefix, "proportional_hazards_summary.txt"))
+        
+        cat("PROPORTIONAL HAZARDS ASSUMPTION TESTING SUMMARY\n", file = summary_filename)
+        cat(paste(rep("=", 50), collapse = ""), "\n\n", file = summary_filename, append = TRUE)
+        cat(sprintf("Analysis: %s\n", outcome_name), file = summary_filename, append = TRUE)
+        cat(sprintf("Dataset: %s\n", ifelse(is.null(dataset_name), "Not specified", dataset_name)), 
+            file = summary_filename, append = TRUE)
+        cat(sprintf("Test Date: %s\n\n", Sys.time()), file = summary_filename, append = TRUE)
+        
+        cat("INTERPRETATION:\n", file = summary_filename, append = TRUE)
+        cat("The proportional hazards assumption requires that hazard ratios remain\n", 
+            file = summary_filename, append = TRUE)
+        cat("constant over time. Violations suggest time-varying treatment effects.\n\n", 
+            file = summary_filename, append = TRUE)
+        
+        cat("TEST RESULTS:\n", file = summary_filename, append = TRUE)
+        cat(sprintf("Global test p-value: %.4f %s\n\n", 
+                   schoenfeld_test$table["GLOBAL", "p"],
+                   ifelse(schoenfeld_test$table["GLOBAL", "p"] < 0.05, "(VIOLATION)", "(OK)")),
+            file = summary_filename, append = TRUE)
+        
+        cat("Individual variable tests:\n", file = summary_filename, append = TRUE)
+        for (i in 1:nrow(ph_summary_with_global)) {
+            row <- ph_summary_with_global[i, ]
+            cat(sprintf("- %s: p = %.4f (%s)\n", 
+                       row$Variable, row$P_Value, row$PH_Assumption), 
+                file = summary_filename, append = TRUE)
+        }
+        
+        if (nrow(violations) > 0) {
+            cat("\nVIOLATIONS DETECTED:\n", file = summary_filename, append = TRUE)
+            cat("Variables with p < 0.05 violate the proportional hazards assumption.\n", 
+                file = summary_filename, append = TRUE)
+            cat("Consider stratification, time-varying coefficients, or alternative models.\n", 
+                file = summary_filename, append = TRUE)
+        }
+        
+        cat("\nFILES CREATED:\n", file = summary_filename, append = TRUE)
+        cat(sprintf("- Test results: %s\n", basename(paste0(file_prefix, "proportional_hazards_tests.xlsx"))), 
+            file = summary_filename, append = TRUE)
+        cat(sprintf("- Combined plot: %s\n", basename(combined_plot_filename)), 
+            file = summary_filename, append = TRUE)
+        cat("- Individual plots: ", file = summary_filename, append = TRUE)
+        cat(paste(basename(unlist(individual_plots)), collapse = ", "), file = summary_filename, append = TRUE)
+        cat("\n", file = summary_filename, append = TRUE)
+        
+        log_enhanced(sprintf("Summary interpretation saved: %s", summary_filename), 
+                    level = "INFO", indent = 1)
+        
+        log_enhanced("Proportional hazards assumption testing completed", level = "INFO")
+        
+        return(list(
+            schoenfeld_test = schoenfeld_test,
+            individual_tests = p_values,
+            ph_summary = ph_summary_with_global,
+            plots = list(
+                individual = individual_plots,
+                combined = combined_plot_filename
+            ),
+            summary_file = summary_filename
+        ))
+        
+    }, error = function(e) {
+        log_enhanced(sprintf("Error in PH assumption testing: %s", e$message), level = "ERROR")
+        return(NULL)
+    })
 } 

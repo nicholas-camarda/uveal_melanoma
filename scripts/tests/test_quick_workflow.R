@@ -154,9 +154,10 @@ tryCatch({
         add_p()
     
     # Save table
-    summary_table %>%
-        as_gt() %>%
-        gtsave(file.path(test_output_dir, "quick_summary_table.html"))
+    save_gt_html(
+        summary_table %>% as_gt(),
+        filename = file.path(test_output_dir, "quick_summary_table.html")
+    )
     
     cat("✓ Summary table created and saved\n")
     

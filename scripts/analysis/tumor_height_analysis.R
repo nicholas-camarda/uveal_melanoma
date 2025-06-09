@@ -45,7 +45,7 @@ analyze_tumor_height_changes <- function(data) {
     wilcox.test(height_change ~ treatment_group, data = data_with_height_change)
 
     # Table for publication (row-level input)
-    tbl <- data_with_height_change %>%
+    tbl_summary_obj <- data_with_height_change %>%
         select(treatment_group, height_change) %>%
         tbl_summary(
             missing = "no",
@@ -59,17 +59,20 @@ analyze_tumor_height_changes <- function(data) {
         modify_caption("Change in Tumor Height (Initial - Last Measured or Pre-Retreatment), by Treatment Group") %>%
         modify_footnote(
             update = all_stat_cols() ~ "Mean (SD)"
-        ) %>%
+        )
+    
+    # Convert to gt table
+    tbl <- tbl_summary_obj %>%
         as_gt()
     
     # Save table
-    tbl %>%
-        gt::gtsave(
-            filename = file.path(output_dirs$obj1_height_primary, paste0(prefix, "height_changes.html"))
-        )
+    save_gt_html(
+        tbl,
+        filename = file.path(output_dirs$obj1_height_primary, paste0(prefix, "height_changes.html"))
+    )
     
     # PRIMARY ANALYSIS: Linear regression WITHOUT initial tumor height adjustment
-    log_message("Fitting PRIMARY linear regression model for tumor height changes (without baseline height adjustment)")
+    log_enhanced("Fitting PRIMARY linear regression model for tumor height changes (without baseline height adjustment)")
     primary_height_lm <- lm(height_change ~ treatment_group + recurrence1, data = data_with_height_change)
     
     # Get variable labels for better readability
@@ -102,17 +105,16 @@ analyze_tumor_height_changes <- function(data) {
         modify_caption("PRIMARY ANALYSIS: Linear Regression of Change in Tumor Height (without baseline height adjustment)") %>%
         modify_footnote(
             update = all_stat_cols() ~ "Adjusted for treatment group and recurrence status only. Reference level: Plaque. Primary analysis to avoid overadjustment bias."
-        ) %>%
-        as_gt()
+        )
     
     # Save primary table
-    primary_height_lm_tbl %>%
-        gt::gtsave(
-            filename = file.path(output_dirs$obj1_height_primary, paste0(prefix, "height_lm_primary.html"))
-        )
+    save_gt_html(
+        primary_height_lm_tbl %>% as_gt(),
+        filename = file.path(output_dirs$obj1_height_primary, paste0(prefix, "height_lm_primary.html"))
+    )
 
     # SENSITIVITY ANALYSIS: Linear regression WITH initial tumor height adjustment
-    log_message("Fitting SENSITIVITY linear regression model for tumor height changes (with baseline height adjustment)")
+    log_enhanced("Fitting SENSITIVITY linear regression model for tumor height changes (with baseline height adjustment)")
     sensitivity_height_lm <- lm(height_change ~ treatment_group + recurrence1 + initial_tumor_height, data = data_with_height_change)
     
     sensitivity_height_lm_tbl <- tbl_regression(sensitivity_height_lm,
@@ -142,14 +144,13 @@ analyze_tumor_height_changes <- function(data) {
         modify_caption("SENSITIVITY ANALYSIS: Linear Regression of Change in Tumor Height (with baseline height adjustment)") %>%
         modify_footnote(
             update = all_stat_cols() ~ "Adjusted for treatment group, recurrence status, and initial tumor height. Reference level: Plaque. Sensitivity analysis including baseline adjustment."
-        ) %>%
-        as_gt()
+        )
     
     # Save sensitivity table
-    sensitivity_height_lm_tbl %>%
-        gt::gtsave(
-            filename = file.path(output_dirs$obj1_height_sensitivity, paste0(prefix, "height_lm_sensitivity.html"))
-        )
+    save_gt_html(
+        sensitivity_height_lm_tbl %>% as_gt(),
+        filename = file.path(output_dirs$obj1_height_sensitivity, paste0(prefix, "height_lm_sensitivity.html"))
+    )
 
     return(list(
         changes = height_changes,

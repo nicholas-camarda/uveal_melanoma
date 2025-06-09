@@ -3,69 +3,10 @@
 # Date: 5/10/2025
 # Description: Script to process raw data into analytic dataset for uveal melanoma analysis
 
-# Install required packages if needed
-# install.packages(c(
-#   "tidyverse",    # Data manipulation and visualization
-#   "readxl",       # Reading Excel files
-#   "writexl",      # Writing Excel files
-#   "lubridate",    # Date handling
-#   "gtsummary",    # Creating publication-ready tables
-#   "janitor",      # Data cleaning
-#   "DiagrammeR",   # Creating CONSORT diagram
-#   "DiagrammeRsvg",# SVG export for CONSORT diagram
-#   "rsvg",         # PNG conversion for CONSORT diagram
-#   "gt"           # Creating publication-ready tables
-# ))
+# Source centralized configuration (must be first)
+source("scripts/utils/analysis_config.R")
 
-# Load required libraries
-library(tidyverse)
-library(readxl)
-library(writexl)
-library(lubridate)
-library(gtsummary)
-library(janitor)
-library(DiagrammeR)
-library(DiagrammeRsvg)
-library(rsvg)
-library(gt)
-
-# Verbosity control
-VERBOSE <- TRUE # Set to FALSE to suppress detailed logging
-
-# Define paths (reusing from main analysis script)
-DATA_DIR <- "final_data"
-RAW_DATA_DIR <- file.path(DATA_DIR, "Original Files")
-PROCESSED_DATA_DIR <- file.path(DATA_DIR, "Analytic Dataset")
-ANALYSIS_DIR <- file.path(DATA_DIR, "Analysis")
-
-# Define constants
-SPECIFIC_PATIENTS_TO_EXCLUDE <- c(271) # Patient 271 was excluded because all of their supporting documentation was lost
-DAYS_IN_YEAR <- 365.25
-DAYS_IN_MONTH <- 30.44
-UNITS_OF_TIME <- "months" # "days" or "months" or "years"
-TUMOR_HEIGHT_THRESHOLD <- 10 # mm
-TUMOR_DIAMETER_THRESHOLD <- 20 # mm
-FOLLOW_UP_YEARS <- 5 # For 5-year outcomes
-
-# Create necessary directories
-dir.create(PROCESSED_DATA_DIR, showWarnings = FALSE)
-dir.create(ANALYSIS_DIR, showWarnings = FALSE)
-
-# Logging function
-log_message <- function(message, level = "INFO") {
-    if (VERBOSE) {
-        timestamp <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
-        cat(sprintf("[%s] %s: %s\n", timestamp, level, message))
-    }
-}
-
-# Progress tracking
-log_progress <- function(step, total, message) {
-    if (VERBOSE) {
-        percentage <- round(step / total * 100, 1)
-        log_message(sprintf("[%.1f%%] %s", percentage, message))
-    }
-}
+# Note: Directory creation is handled in main.R after libraries are loaded
 
 # NOTE: Old cohort directory structure no longer used
 # Directory structure is now created dynamically by create_output_structure() function
@@ -115,10 +56,10 @@ get_cohort_info <- function(cohort_name) {
     # Create file prefix based on cohort name
     file_prefix <- paste0(dir_name, "_")
 
-    return(list(
-        dir = file.path(ANALYSIS_DIR, dir_name),
-        prefix = file_prefix
-    ))
+            return(list(
+            dir = file.path(ANALYSIS_DIR, dir_name),
+            prefix = file_prefix
+        ))
 }
 
 #' Check and fix consistency between event indicators and dates
@@ -138,7 +79,7 @@ get_cohort_info <- function(cohort_name) {
 #' @examples
 #' fix_event_date_consistency(data, "recurrence1", "recurrence1_date")
 fix_event_date_consistency <- function(data, event_var, date_var, event_yes = "Y", event_no = "N") {
-    log_message(sprintf("Checking consistency between %s and %s", event_var, date_var))
+    log_enhanced(sprintf("Checking consistency between %s and %s", event_var, date_var), level = "INFO")
     
     # Before the mutate, calculate inconsistencies
     n_event_should_be_yes <- sum(!is.na(data[[date_var]]) & data[[event_var]] != event_yes, na.rm = TRUE)
@@ -156,25 +97,25 @@ fix_event_date_consistency <- function(data, event_var, date_var, event_yes = "Y
         )
         
     if (VERBOSE) {
-        log_message(sprintf("Found %d events with dates", sum(!is.na(data[[date_var]]))))
-        log_message(sprintf("Found %d events marked as '%s'", sum(data[[event_var]] == event_yes, na.rm = TRUE), event_yes))
-        log_message(sprintf(
+        log_enhanced(sprintf("Found %d events with dates", sum(!is.na(data[[date_var]]))), level = "INFO")
+        log_enhanced(sprintf("Found %d events marked as '%s'", sum(data[[event_var]] == event_yes, na.rm = TRUE), event_yes), level = "INFO")
+        log_enhanced(sprintf(
             "Event/date consistency check for '%s' and '%s':", event_var, date_var
-        ))
-        log_message(sprintf(
+        ), level = "INFO")
+        log_enhanced(sprintf(
             "  - Number of records with a non-missing %s: %d", date_var, sum(!is.na(data[[date_var]]))
-        ))
-        log_message(sprintf(
+        ), level = "INFO")
+        log_enhanced(sprintf(
             "  - Number of records with %s marked as '%s': %d", event_var, event_yes, sum(data[[event_var]] == event_yes, na.rm = TRUE)
-        ))
-        log_message(sprintf(
+        ), level = "INFO")
+        log_enhanced(sprintf(
             "  - Fixed %d records where %s was not '%s' but %s was present (set event to '%s')",
             n_event_should_be_yes, event_var, event_yes, date_var, event_yes
-        ))
-        log_message(sprintf(
+        ), level = "INFO")
+        log_enhanced(sprintf(
             "  - Fixed %d records where %s was '%s' but %s was missing (set date to NA)",
             n_date_should_be_na, event_var, event_yes, date_var
-        ))
+        ), level = "INFO")
     }
     
     return(data)
@@ -198,8 +139,8 @@ fix_event_date_consistency <- function(data, event_var, date_var, event_yes = "Y
 #' load_and_clean_data()
 load_and_clean_data <- function(filename) {
     # Read the Excel file
-    log_message(sprintf("Loading data from directory: %s", RAW_DATA_DIR))
-    log_message(sprintf("Loading data from file: %s", filename))
+    log_enhanced(sprintf("Loading data from directory: %s", RAW_DATA_DIR), level = "INFO")
+    log_enhanced(sprintf("Loading data from file: %s", filename), level = "INFO")
     raw_data <- read_excel(
         file.path(RAW_DATA_DIR, filename),
         sheet = 1 # Main data sheet
@@ -253,17 +194,17 @@ load_and_clean_data <- function(filename) {
             )
         )
     
-    log_message("eligible_both: initial_tumor_diameter <= 20mm, initial_tumor_height <= 10mm, optic_nerve == 'N'")
-    log_message("gksrs_only: initial_tumor_diameter > 20mm, initial_tumor_height > 10mm, optic_nerve == 'Y'")
-    log_message("other: catch-all for any other cases")
+    log_enhanced("eligible_both: initial_tumor_diameter <= 20mm, initial_tumor_height <= 10mm, optic_nerve == 'N'", level = "INFO")
+    log_enhanced("gksrs_only: initial_tumor_diameter > 20mm, initial_tumor_height > 10mm, optic_nerve == 'Y'", level = "INFO")
+    log_enhanced("other: catch-all for any other cases", level = "INFO")
     message("\n")
-    log_message(sprintf("Found %d patients in full cohort", nrow(cleaned_data)))
-    log_message(sprintf("Found %d patients in restricted cohort", nrow(cleaned_data %>% filter(consort_group == "eligible_both"))))
-    log_message(sprintf("Found %d patients in GKSRS-only cohort", nrow(cleaned_data %>% filter(consort_group == "gksrs_only"))))
-    log_message(sprintf("Found %d patients in other cohort", nrow(cleaned_data %>% filter(consort_group == "other"))))
+    log_enhanced(sprintf("Found %d patients in full cohort", nrow(cleaned_data)), level = "INFO")
+    log_enhanced(sprintf("Found %d patients in restricted cohort", nrow(cleaned_data %>% filter(consort_group == "eligible_both"))), level = "INFO")
+    log_enhanced(sprintf("Found %d patients in GKSRS-only cohort", nrow(cleaned_data %>% filter(consort_group == "gksrs_only"))), level = "INFO")
+    log_enhanced(sprintf("Found %d patients in other cohort", nrow(cleaned_data %>% filter(consort_group == "other"))), level = "INFO")
     print(cleaned_data %>% filter(consort_group == "other") %>% select(id, initial_tumor_diameter, initial_tumor_height, optic_nerve))
     message("\n")
-    log_message("NOTE: NOT splitting into cohorts yet!")
+    log_enhanced("NOTE: NOT splitting into cohorts yet!", level = "INFO")
     message("\n")
 
 
@@ -305,7 +246,7 @@ load_and_clean_data <- function(filename) {
             )
         )
 
-    log_message(sprintf("Loaded %d rows of raw data", nrow(cleaned_data_final)))
+    log_enhanced(sprintf("Loaded %d rows of raw data", nrow(cleaned_data_final)), level = "INFO")
 
     return(cleaned_data_final)
 }
@@ -321,7 +262,7 @@ load_and_clean_data <- function(filename) {
 #' @examples
 #' create_derived_variables(cleaned_data)
 create_derived_variables <- function(data) {
-    log_message("Creating derived variables")
+    log_enhanced("Creating derived variables", level = "INFO")
 
     # Create treatment_group before using it
     data <- data %>%
@@ -333,11 +274,11 @@ create_derived_variables <- function(data) {
             )
         )
 
-    log_message("Calculating age at diagnosis")
+    log_enhanced("Calculating age at diagnosis", level = "INFO")
     data <- data %>%
         mutate(age_at_diagnosis = as.numeric(difftime(date_diagnosis, dob, units = "days") / DAYS_IN_YEAR))
 
-    log_message("Calculating follow-up times")
+    log_enhanced("Calculating follow-up times", level = "INFO")
     data <- data %>%
         mutate(
             follow_up_days = as.numeric(difftime(last_known_alive_date, date_diagnosis, units = "days")),
@@ -345,7 +286,7 @@ create_derived_variables <- function(data) {
             follow_up_months = follow_up_days / DAYS_IN_MONTH
         )
 
-    log_message("Setting treatment dates")
+    log_enhanced("Setting treatment dates", level = "INFO")
     data <- data %>%
         mutate(
             treatment_date = case_when(
@@ -360,7 +301,7 @@ create_derived_variables <- function(data) {
     #     select(id, treatment_group, age_at_diagnosis, follow_up_days, follow_up_years, treatment_date, initial_gk_date, initial_plaque_date) %>%
     #     print(n = Inf)
 
-    log_message("Calculating time-to-event (ie, tt_) variables")
+    log_enhanced("Calculating time-to-event (ie, tt_) variables", level = "INFO")
     data <- data %>%
         mutate(
             # Primary time-to-event variables in MONTHS (oncology standard)
@@ -434,7 +375,7 @@ create_derived_variables <- function(data) {
     #     select(id, tt_death, dod, treatment_group, age_at_diagnosis, follow_up_days, follow_up_years, treatment_date, initial_gk_date, initial_plaque_date) %>%
     #     print(n = Inf)
 
-    log_message("Creating event indicators (ie, recurrence_event, mets_event, death_event, pfs_event, pfs2_event)")
+    log_enhanced("Creating event indicators (ie, recurrence_event, mets_event, death_event, pfs_event, pfs2_event)", level = "INFO")
     data <- data %>%
         mutate(
             recurrence_event = if_else(recurrence1 == "Y", 1, 0, missing = 0),
@@ -488,7 +429,7 @@ create_derived_variables <- function(data) {
 apply_criteria <- function(data) {
     # Create full cohort (all patients treated with either GK or plaque)
 
-    log_message(sprintf("Applying inclusion/exclusion criteria to full cohort to generate restricted and GKSRS-only cohorts"))
+    log_enhanced(sprintf("Applying inclusion/exclusion criteria to full cohort to generate restricted and GKSRS-only cohorts"), level = "INFO")
 
     full_cohort <- data %>%
         filter(!is.na(consort_group)) %>%
@@ -496,8 +437,8 @@ apply_criteria <- function(data) {
         filter(!(id %in% SPECIFIC_PATIENTS_TO_EXCLUDE) | is.na(id)) %>%
         mutate(cohort = "All Patients")
     
-    log_message(sprintf("Removed %d patients from full cohort based on NA values in consort_group, treatment_group, or id", nrow(data) - nrow(full_cohort)))
-    log_message(sprintf("IDs of patients removed: %s", paste(SPECIFIC_PATIENTS_TO_EXCLUDE, collapse = ", ")))
+    log_enhanced(sprintf("Removed %d patients from full cohort based on NA values in consort_group, treatment_group, or id", nrow(data) - nrow(full_cohort)), level = "INFO")
+    log_enhanced(sprintf("IDs of patients removed: %s", paste(SPECIFIC_PATIENTS_TO_EXCLUDE, collapse = ", ")), level = "INFO")
 
     # Restricted cohort: eligible for both treatments
     restricted_cohort <- full_cohort %>%
@@ -516,9 +457,9 @@ apply_criteria <- function(data) {
         uveal_melanoma_restricted_cohort = gksrs_only_cohort
     )
 
-    log_message(sprintf("Created %d cohorts", length(factored_filtered_data)))
+    log_enhanced(sprintf("Created %d cohorts", length(factored_filtered_data)), level = "INFO")
     for (cohort in names(factored_filtered_data)) {
-        log_message(sprintf("Cohort '%s': %d patients", cohort, nrow(factored_filtered_data[[cohort]])))
+        log_enhanced(sprintf("Cohort '%s': %d patients", cohort, nrow(factored_filtered_data[[cohort]])), level = "INFO")
     }
 
     return(factored_filtered_data)
@@ -535,7 +476,7 @@ apply_criteria <- function(data) {
 #' @examples
 #' prepare_factor_levels(data)
 prepare_factor_levels <- function(data) {
-    log_message("Preparing factor levels for variables")
+    log_enhanced("Preparing factor levels for variables", level = "INFO")
 
     data <- data %>%
         mutate(
@@ -635,14 +576,10 @@ prepare_factor_levels <- function(data) {
 
     # Log new factor levels
     if (VERBOSE) {
-        log_message("\nNew factor levels:")
+        log_enhanced("\nNew factor levels:", level = "INFO")
         factor_vars <- names(data)[sapply(data, is.factor)]
         for (var in factor_vars) {
             message(sprintf("##### %s:", var))
-            log_message(sprintf(
-                "Levels (reference first): %s",
-                paste(levels(data[[var]]), collapse = " -> ")
-            ))
             print(table(data[[var]], useNA = "ifany"))
         }
     }
@@ -678,7 +615,7 @@ calculate_treatment_duration_metrics <- function(data) {
 
     # Log any problematic cases
     if (VERBOSE) {
-        log_message("Checking for problematic follow-up times:")
+        log_enhanced("Checking for problematic follow-up times:", level = "INFO")
         problematic_cases <- data %>%
             # Valid follow-up time is greater than 0 and not NA
             filter(is.na(total_followup_days) | total_followup_days < 0) %>%
@@ -687,7 +624,7 @@ calculate_treatment_duration_metrics <- function(data) {
         if (nrow(problematic_cases) > 0) {
             print(problematic_cases)
         } else {
-            log_message("No problematic follow-up times found")
+            log_enhanced("No problematic follow-up times found", level = "INFO")
         }
     }
 
@@ -721,7 +658,7 @@ calculate_treatment_duration_metrics <- function(data) {
         )
 
     # Add summary statistics
-    log_message("\nTreatment duration summary:")
+    log_enhanced("\nTreatment duration summary:", level = "INFO")
     summary_stats <- data %>%
         group_by(treatment_group) %>%
         summarize(
@@ -751,7 +688,7 @@ calculate_treatment_duration_metrics <- function(data) {
 #' @return None. Side effect: saves a PNG file to the analysis directory.
 #'
 #' @examples
-#' create_consort_diagram(list(full_cohort = df1, ...))
+#' create_consort_diagram(list(full_cohort = df1, ...), level = "INFO")
 create_consort_diagram <- function(data_list) {
     # Get counts for each cohort
     counts <- lapply(data_list, function(data) {
@@ -820,24 +757,14 @@ create_consort_diagram <- function(data_list) {
 #' @return A named list of lists, each containing the summary tables for a cohort.
 #'
 #' @examples
-#' create_summary_tables(list(full_cohort = df1, ...))
+#' create_summary_tables(list(full_cohort = df1, ...), level = "INFO")
 create_summary_tables <- function(data_list, output_dirs = NULL) {
-    log_message("Creating summary tables")
+    log_enhanced("Creating summary tables", level = "INFO")
 
-    # Define variables for summary
-    vars_to_summarize <- c(
-        "age_at_diagnosis", "race", "sex", "eye",
-        "initial_vision", "location", "optic_nerve",
-        "initial_tumor_height", "initial_tumor_diameter",
-        "internal_reflectivity", "srf", "op", "symptoms",
-        "vision_loss_blurred_vision", "visual_field_defect",
-        "flashes_photopsia", "floaters", "pain",
-        "initial_overall_stage", "initial_t_stage",
-        "initial_n_stage", "initial_m_stage",
-        "initial_mets", "biopsy1_gep"
-    )
+    # Use globally defined variables for baseline characteristics summary
+    vars_to_summarize <- BASELINE_VARIABLES_TO_SUMMARIZE
 
-    log_message(sprintf("Summarizing %d variables", length(vars_to_summarize)))
+    log_enhanced(sprintf("Summarizing %d variables", length(vars_to_summarize)), level = "INFO")
 
     # Create tables for each cohort
     tables <- lapply(names(data_list), function(cohort_name) {
@@ -867,11 +794,11 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
         dir.create(baseline_output_dir, showWarnings = FALSE, recursive = TRUE)
 
         # Calculate treatment duration metrics
-        log_message("Calculating treatment duration metrics")
+        log_enhanced("Calculating treatment duration metrics", level = "INFO")
         duration_metrics <- calculate_treatment_duration_metrics(data)
 
         # Save duration metrics
-        log_message("Saving treatment duration metrics")
+        log_enhanced("Saving treatment duration metrics", level = "INFO")
         write.csv(
             duration_metrics$interval_metrics,
             file.path(treatment_duration_dir, paste0(prefix, "treatment_duration_metrics.csv")),
@@ -885,11 +812,11 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
             row.names = FALSE
         )
 
-        log_message("Preparing variables for table")
+        log_enhanced("Preparing variables for table", level = "INFO")
         data <- data %>%
             select(all_of(vars_to_summarize), treatment_group) 
 
-        log_message("Creating summary table")
+        log_enhanced("Creating summary table", level = "INFO")
         tbl <- data %>%
             tbl_summary(
                 by = treatment_group,
@@ -905,32 +832,7 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
                 ),
                 digits = list(all_continuous() ~ 1, all_categorical() ~ 1),
                 missing = "no",
-                label = list(
-                    age_at_diagnosis ~ "Age at Diagnosis (years)",
-                    race ~ "Race",
-                    sex ~ "Sex",
-                    eye ~ "Eye",
-                    initial_vision ~ "Initial Vision",
-                    location ~ "Tumor Location",
-                    optic_nerve ~ "Optic Nerve Abutment",
-                    initial_tumor_height ~ "Tumor Height (mm)",
-                    initial_tumor_diameter ~ "Tumor Diameter (mm)",
-                    internal_reflectivity ~ "Internal Reflectivity",
-                    srf ~ "Subretinal Fluid (SRF)",
-                    op ~ "Orange Pigment",
-                    symptoms ~ "Any Symptoms",
-                    vision_loss_blurred_vision ~ "Vision Loss/Blurred Vision",
-                    visual_field_defect ~ "Visual Field Defect",
-                    flashes_photopsia ~ "Flashes/Photopsia",
-                    floaters ~ "Floaters",
-                    pain ~ "Pain",
-                    initial_overall_stage ~ "Overall Stage",
-                    initial_t_stage ~ "T Stage",
-                    initial_n_stage ~ "N Stage",
-                    initial_m_stage ~ "M Stage",
-                    initial_mets ~ "Initial Metastases",
-                    biopsy1_gep ~ "Gene Expression Profile"
-                )
+                label = STANDARD_TABLE_LABELS
             ) %>%
             add_overall() %>%
             add_p(
@@ -949,7 +851,7 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
             )
 
         # Add treatment duration metrics to the table
-        log_message("Adding treatment duration metrics to table")
+        log_enhanced("Adding treatment duration metrics to table", level = "INFO")
         duration_tbl <- duration_metrics$interval_metrics %>%
             select(interval_label, `n_Plaque`, `n_GKSRS`) %>%
             gt() %>%
@@ -996,24 +898,25 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
             )
 
         # Save tables
-        log_message("Saving tables")
-        duration_tbl %>%
-            gt::gtsave(
-                filename = file.path(treatment_duration_dir, paste0(prefix, "treatment_duration.html"))
-            )
+        log_enhanced("Saving tables", level = "INFO")
+        save_gt_html(
+            duration_tbl,
+            filename = file.path(treatment_duration_dir, paste0(prefix, "treatment_duration.html"))
+        )
 
-        summary_tbl %>%
-            gt::gtsave(
-                filename = file.path(treatment_duration_dir, paste0(prefix, "treatment_duration_summary.html"))
-            )
+        save_gt_html(
+            summary_tbl,
+            filename = file.path(treatment_duration_dir, paste0(prefix, "treatment_duration_summary.html"))
+        )
 
         # baseline_output_dir was already set above
         
-        tbl %>%
-            as_gt() %>%
-            gt::gtsave(
-                filename = file.path(baseline_output_dir, paste0(prefix, "baseline_characteristics.html"))
-            )
+        # Save baseline characteristics table with automatic factor level indentation
+        log_enhanced("Saving baseline table with automatic factor level indentation", level = "INFO")
+        save_gt_html(
+            tbl,
+            filename = file.path(baseline_output_dir, paste0(prefix, "baseline_characteristics.html"))
+        )
 
         return(list(
             baseline_table = tbl,
@@ -1034,10 +937,10 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
 #'
 #' @return None. Side effect: saves files to the processed data directory.
 save_cohorts <- function(cohort_data) {
-    log_message(sprintf("Saving processed data in %s", PROCESSED_DATA_DIR))
+    log_enhanced(sprintf("Saving processed data in %s", PROCESSED_DATA_DIR), level = "INFO")
 
     for (cohort_name in names(cohort_data)) {
-        log_message(sprintf("Saving cohort: %s", cohort_name))
+        log_enhanced(sprintf("Saving cohort: %s", cohort_name), level = "INFO")
         # Save as Excel
         write_xlsx(
             cohort_data[[cohort_name]],
@@ -1062,41 +965,41 @@ save_cohorts <- function(cohort_data) {
 #' @examples
 #' create_analytic_dataset()
 create_analytic_dataset <- function() {
-    log_message("Starting data processing pipeline")
+    log_enhanced("Starting data processing pipeline", level = "INFO")
 
     # Load and clean raw data
-    log_message("Loading and cleaning raw data")
+    log_enhanced("Loading and cleaning raw data", level = "INFO")
     raw_data <- load_and_clean_data()
-    log_message(sprintf("Loaded %d rows of raw data", nrow(raw_data)))
+    log_enhanced(sprintf("Loaded %d rows of raw data", nrow(raw_data)), level = "INFO")
 
     # Create derived variables BEFORE splitting into cohorts
-    log_message("Creating derived variables")
+    log_enhanced("Creating derived variables", level = "INFO")
     derived_data <- create_derived_variables(raw_data)
 
-    log_message("Preparing factor levels")
+    log_enhanced("Preparing factor levels", level = "INFO")
     factored_data <- prepare_factor_levels(derived_data)
 
     # Apply inclusion/exclusion criteria (split into cohorts)
-    log_message("Applying inclusion/exclusion criteria")
+    log_enhanced("Applying inclusion/exclusion criteria", level = "INFO")
     factored_filtered_data <- apply_criteria(factored_data)
-    log_message(sprintf("Created %d cohorts", length(factored_filtered_data)))
+    log_enhanced(sprintf("Created %d cohorts", length(factored_filtered_data)), level = "INFO")
     for (cohort in names(factored_filtered_data)) {
-        log_message(sprintf("Cohort '%s': %d patients", cohort, nrow(factored_filtered_data[[cohort]])))
+        log_enhanced(sprintf("Cohort '%s': %d patients", cohort, nrow(factored_filtered_data[[cohort]])), level = "INFO")
     }
 
     # Create summary tables
-    log_message("Creating summary tables")
+    log_enhanced("Creating summary tables", level = "INFO")
     summary_tables <- create_summary_tables(factored_filtered_data)
 
     # Create CONSORT diagram
     # TODO: Add CONSORT diagram
-    # log_message("Creating CONSORT diagram")
+    # log_enhanced("Creating CONSORT diagram", level = "INFO")
     # create_consort_diagram(factored_filtered_data)
 
     # Save each cohort separately
-    log_message("Saving processed data")
+    log_enhanced("Saving processed data", level = "INFO")
     for (cohort_name in names(factored_filtered_data)) {
-        log_message(sprintf("Saving cohort: %s", cohort_name))
+        log_enhanced(sprintf("Saving cohort: %s", cohort_name), level = "INFO")
         # Save as Excel
         write_xlsx(
             factored_filtered_data[[cohort_name]],

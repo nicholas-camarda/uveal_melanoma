@@ -27,7 +27,7 @@ cat(sprintf("✓ Created output directory: %s\n", test_plots_dir))
 
 # Define variables in the order you want them displayed
 # THIS IS NOW REQUIRED for consistency across all cohorts
-variable_order <- c("age_at_diagnosis", "sex", "location", "initial_tumor_height", "initial_tumor_diameter")
+variable_order <- FOREST_PLOT_VARIABLE_ORDER
 
 # Available outcomes in your data
 available_outcomes <- names(full_results)
@@ -60,7 +60,7 @@ for (outcome in available_outcomes) {
         
         # Save the plot to PNG file
         png_filename <- file.path(test_plots_dir, sprintf("forest_plot_%s_full_cohort.png", outcome))
-        png(png_filename, width = 12, height = 8, units = "in", res = 300)
+        png(png_filename, width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI)
         print(forest_plot)
         dev.off()
         
@@ -117,6 +117,6 @@ cat("    cohort_name = \"Full Cohort\",\n")
 cat("    variable_order = my_variables  # REQUIRED for consistency\n")
 cat(")\n")
 cat("# Save the plot\n")
-cat("png(\"my_forest_plot.png\", width = 12, height = 8, units = \"in\", res = 300)\n")
+    cat("png(\"my_forest_plot.png\", width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI)\n")
 cat("print(forest_plot)\n")
 cat("dev.off()\n")

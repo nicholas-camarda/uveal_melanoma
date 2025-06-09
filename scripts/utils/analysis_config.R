@@ -4,6 +4,157 @@
 
 # Note: All required libraries are loaded in main.R
 
+# Set consistent contrast options for all modeling functions
+# This ensures factor variables use consistent naming across all models
+options(contrasts = c("contr.treatment", "contr.poly"))
+
+# Define data paths
+DATA_DIR <- "final_data"
+RAW_DATA_DIR <- file.path(DATA_DIR, "Original Files")
+PROCESSED_DATA_DIR <- file.path(DATA_DIR, "Analytic Dataset")
+OUTPUT_DIR <- file.path(DATA_DIR, "Analysis")
+ANALYSIS_DIR <- OUTPUT_DIR  # Alias for consistency with legacy code
+
+# Minimum number of observations required to keep a category
+THRESHOLD_RARITY <- 5
+
+# Define confounders for adjustment
+confounders <- c(
+    "age_at_diagnosis", "sex", "location",
+    # "initial_overall_stage", "initial_tumor_height", "initial_tumor_diameter", "biopsy1_gep",
+    "optic_nerve"
+)
+
+# Define time conversion constants
+DAYS_IN_YEAR <- 365.25
+DAYS_IN_MONTH <- 30.44
+
+# Define subgroup variables for analysis
+subgroup_vars <- c(
+    "age_at_diagnosis", "sex", "location", "initial_t_stage",
+    "initial_tumor_height", "initial_tumor_diameter", "biopsy1_gep", "optic_nerve"
+)
+
+# =============================================================================
+# GLOBAL CONFIGURATION VARIABLES
+# =============================================================================
+# This section contains all hardcoded variables used throughout the analysis
+# To modify any settings, change them here rather than in individual files
+
+# Treatment labels and names
+TREATMENT_LABELS <- c("GKSRS", "Plaque")
+FAVOURS_LABELS <- c("Favours GKSRS", "Favours Plaque")
+
+# Plot dimensions and settings
+FOREST_PLOT_WIDTH <- 12    # inches
+FOREST_PLOT_HEIGHT <- 8    # inches
+SURVIVAL_PLOT_WIDTH <- 10  # inches  
+SURVIVAL_PLOT_HEIGHT <- 8  # inches
+RMST_PLOT_WIDTH <- 10      # inches
+RMST_PLOT_HEIGHT <- 6      # inches
+PLOT_DPI <- 300           # resolution
+PLOT_UNITS <- "in"        # units
+
+# Data processing constants
+INPUT_FILENAME <- "Ocular Melanoma Master Spreadsheet REVISED FOR STATS (5-10-25, TJM).xlsx"
+SPECIFIC_PATIENTS_TO_EXCLUDE <- c(271) # Patient 271: all supporting documentation was lost
+TUMOR_HEIGHT_THRESHOLD <- 10           # mm
+TUMOR_DIAMETER_THRESHOLD <- 20         # mm
+FOLLOW_UP_YEARS <- 5                   # For 5-year outcomes
+UNITS_OF_TIME <- "months" # "days" or "months" or "years"
+
+# TOGGLE: Switch between standardized vs median cutoffs
+USE_STANDARDIZED_CUTOFFS <- TRUE
+
+# Standardized cutoffs (when USE_STANDARDIZED_CUTOFFS = TRUE)
+STANDARDIZED_CUTOFFS <- list(
+    age_at_diagnosis = 65.0,
+    initial_tumor_height = 4.2,
+    initial_tumor_diameter = 11.0
+)
+
+# Define consistent variable order for forest plots and subgroup analysis
+# This ensures all plots and tables show variables in the same order across cohorts
+# Used by main.R, forest plot functions, and subgroup analysis to maintain consistency
+# To change the order of variables in all outputs, modify this single variable
+FOREST_PLOT_VARIABLE_ORDER <- c(
+    "age_at_diagnosis", "sex", "location", "initial_t_stage", 
+    "initial_tumor_height", "initial_tumor_diameter", "biopsy1_gep", "optic_nerve"
+)
+
+# Define variables for baseline characteristics summary tables
+# Used by create_summary_tables() and merge_cohort_tables() to ensure consistency
+BASELINE_VARIABLES_TO_SUMMARIZE <- c(
+    "age_at_diagnosis", "race", "sex", "eye",
+    "initial_vision", "location", "optic_nerve",
+    "initial_tumor_height", "initial_tumor_diameter",
+    "internal_reflectivity", "srf", "op", "symptoms",
+    "vision_loss_blurred_vision", "visual_field_defect",
+    "flashes_photopsia", "floaters", "pain",
+    "initial_overall_stage", "initial_t_stage",
+    "initial_n_stage", "initial_m_stage",
+    "initial_mets", "biopsy1_gep"
+)
+
+########################################################
+############### TABLE LABELS ##########################
+########################################################
+
+# Centralized table labels to ensure consistency across all gtsummary tables
+# These should match the labels used in data_processing.R baseline tables
+STANDARD_TABLE_LABELS <- list(
+    # Demographics
+    age_at_diagnosis = "Age at Diagnosis (years)",
+    race = "Race",
+    sex = "Sex", 
+    eye = "Eye",
+    
+    # Vision and measurements
+    initial_vision = "Initial Vision",
+    
+    # Tumor characteristics
+    location = "Tumor Location",
+    optic_nerve = "Optic Nerve Abutment",
+    initial_tumor_height = "Tumor Height (mm)",
+    initial_tumor_diameter = "Tumor Diameter (mm)",
+    internal_reflectivity = "Internal Reflectivity",
+    srf = "Subretinal Fluid (SRF)",
+    op = "Orange Pigment",
+    
+    # Symptoms
+    symptoms = "Any Symptoms",
+    vision_loss_blurred_vision = "Vision Loss/Blurred Vision",
+    visual_field_defect = "Visual Field Defect",
+    flashes_photopsia = "Flashes/Photopsia",
+    floaters = "Floaters",
+    pain = "Pain",
+    
+    # Staging
+    initial_overall_stage = "Overall Stage",
+    initial_t_stage = "T Stage",
+    initial_n_stage = "N Stage", 
+    initial_m_stage = "M Stage",
+    initial_mets = "Initial Metastases",
+    biopsy1_gep = "Gene Expression Profile",
+    
+    # Treatment
+    treatment_group = "Treatment Group",
+    recurrence1_treatment_clean = "Recurrence Treatment",
+    
+    # Outcomes
+    recurrence1 = "Local Recurrence",
+    recurrence2 = "Second Recurrence",
+    mets_progression = "Metastatic Progression",
+    enucleation = "Enucleation",
+    retinopathy = "Radiation Retinopathy",
+    nvg = "Neovascular Glaucoma",
+    srd = "Serous Retinal Detachment",
+    
+    # Follow-up
+    follow_up_years = "Follow-up Time (years)",
+    follow_up_months = "Follow-up Time (months)"
+)
+
 #' Enhanced logging utility functions
 #'
 #' Provides structured logging with timestamps, progress indicators, and visual formatting
@@ -84,36 +235,6 @@ log_function <- function(func_name, details = NULL) {
     }
     log_enhanced(msg, level = "INFO", indent = 1)
 }
-
-# Set consistent contrast options for all modeling functions
-# This ensures factor variables use consistent naming across all models
-options(contrasts = c("contr.treatment", "contr.poly"))
-
-# Define data paths
-DATA_DIR <- "final_data"
-RAW_DATA_DIR <- file.path(DATA_DIR, "Original Files")
-PROCESSED_DATA_DIR <- file.path(DATA_DIR, "Analytic Dataset")
-OUTPUT_DIR <- file.path(DATA_DIR, "Analysis")
-
-# Minimum number of observations required to keep a category
-THRESHOLD_RARITY <- 5 
-
-# Define confounders for adjustment
-confounders <- c(
-    "age_at_diagnosis", "sex", "location",
-    # "initial_overall_stage", "initial_tumor_height", "initial_tumor_diameter", "biopsy1_gep",
-    "optic_nerve"
-)
-
-# Define time conversion constants
-DAYS_IN_YEAR <- 365.25
-DAYS_IN_MONTH <- 30.44
-
-# Define subgroup variables for analysis
-subgroup_vars <- c(
-    "age_at_diagnosis", "sex", "location", "initial_overall_stage", "initial_t_stage",
-    "initial_tumor_height", "initial_tumor_diameter", "biopsy1_gep", "optic_nerve"
-)
 
 #' Function to ensure consistent factor contrasts with human-readable names
 #'

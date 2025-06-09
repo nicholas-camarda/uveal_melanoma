@@ -251,9 +251,10 @@ if (!is.null(cohorts) && length(cohorts) > 0) {
         # Save sample summary table
         if (length(summary_tables) > 0) {
             first_table <- summary_tables[[1]]
-            first_table %>%
-                as_gt() %>%
-                gtsave(file.path(test_output_dir, "test_summary_table.html"))
+            save_gt_html(
+                first_table %>% as_gt(),
+                filename = file.path(test_output_dir, "test_summary_table.html")
+            )
             cat("✓ Sample summary table saved\n")
         }
         

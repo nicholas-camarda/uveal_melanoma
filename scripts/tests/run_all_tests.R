@@ -233,7 +233,10 @@ suppressMessages({
         )
     
     # Save HTML summary
-    summary_table %>% gtsave(file.path(master_test_dir, "systematic_debug_summary.html"))
+    save_gt_html(
+        summary_table,
+        filename = file.path(master_test_dir, "systematic_debug_summary.html")
+    )
 })
 
 cat(sprintf("\nHTML summary saved to: %s\n", file.path(master_test_dir, "systematic_debug_summary.html")))

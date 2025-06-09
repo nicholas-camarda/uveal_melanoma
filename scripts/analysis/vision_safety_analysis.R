@@ -44,7 +44,7 @@ analyze_visual_acuity_changes <- function(data) {
     wilcox.test(vision_change ~ treatment_group, data = data_with_vision_change)
 
     # Table for publication (row-level input)
-    tbl <- data_with_vision_change %>%
+    tbl_summary_obj <- data_with_vision_change %>%
         select(treatment_group, vision_change) %>%
         tbl_summary(
             missing = "no",
@@ -58,17 +58,20 @@ analyze_visual_acuity_changes <- function(data) {
         modify_caption("Change in Vision (Initial - Last Measured or Pre-Retreatment), by Treatment Group") %>%
         modify_footnote(
             update = all_stat_cols() ~ "Mean (SD)"
-        ) %>%
+        )
+    
+    # Convert to gt table and save
+    tbl <- tbl_summary_obj %>%
         as_gt()
     
     # Save table
-    tbl %>%
-        gt::gtsave(
-            filename = file.path(output_dirs$obj2_vision, paste0(prefix, "vision_changes.html"))
-        )
+    save_gt_html(
+        tbl,
+        filename = file.path(output_dirs$obj2_vision, paste0(prefix, "vision_changes.html"))
+    )
     
     # Linear regression model
-    log_message("Fitting linear regression model for vision changes")
+    log_enhanced("Fitting linear regression model for vision changes")
     vision_lm <- lm(vision_change ~ treatment_group + recurrence1, data = data_with_vision_change)
     
     # Get variable labels for better readability
@@ -101,14 +104,13 @@ analyze_visual_acuity_changes <- function(data) {
         modify_caption("Linear Regression of Change in Vision") %>%
         modify_footnote(
             update = all_stat_cols() ~ "Adjusted for treatment group and recurrence status. Reference level: Plaque."
-        ) %>%
-        as_gt()
+        )
     
     # Save regression table
-    vision_lm_tbl %>%
-        gt::gtsave(
-            filename = file.path(output_dirs$obj2_vision, paste0(prefix, "vision_regression.html"))
-        )
+    save_gt_html(
+        vision_lm_tbl %>% as_gt(),
+        filename = file.path(output_dirs$obj2_vision, paste0(prefix, "vision_regression.html"))
+    )
 
     return(list(
         changes = vision_changes,
@@ -142,11 +144,11 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
     
     # For SRD, filter to only radiation-induced cases as per objectives
     if (sequela_type == "srd") {
-        log_message("Filtering SRD to only radiation-induced causes")
+        log_enhanced("Filtering SRD to only radiation-induced causes")
         original_n <- nrow(data)
         # Check what values exist in srd_cause
         if ("srd_cause" %in% names(data)) {
-            log_message("Available srd_cause values:")
+            log_enhanced("Available srd_cause values:")
             print(table(data$srd_cause, useNA = "ifany"))
         }
         
@@ -158,7 +160,7 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
                 # Keep patients with radiation-induced SRD (exclude mass-induced)
                 (srd == "Y" & srd_cause == "Radiation")
             )
-        log_message(sprintf("Data filtered for radiation-induced SRD: %d -> %d patients", original_n, nrow(data)))
+        log_enhanced(sprintf("Data filtered for radiation-induced SRD: %d -> %d patients", original_n, nrow(data)))
     }
     
     # Ensure consistent factor contrasts for modeling
@@ -171,7 +173,7 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
                      sequela_type, outcome_var))
     }
     
-    log_message(sprintf("Analyzing %s rates (binary outcome)", toupper(sequela_type)))
+    log_enhanced(sprintf("Analyzing %s rates (binary outcome)", toupper(sequela_type)))
     
     # Convert to binary if needed and ensure it's a factor
     data <- data %>%
@@ -207,7 +209,7 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
                         file.path(output_dir, paste0(prefix, sequela_type, "_rates_summary.xlsx")))
     
     # Create summary table
-    tbl <- data %>%
+    tbl_summary_obj <- data %>%
         select(treatment_group, all_of(outcome_var)) %>%
         tbl_summary(
             by = treatment_group,
@@ -217,12 +219,17 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
         ) %>%
         modify_header(quiet = TRUE) %>%
         add_p(quiet = TRUE) %>%  # Use gtsummary default test selection
-        modify_caption(paste("Rates of", tools::toTitleCase(sequela_type), "by Treatment Group")) %>%
+        modify_caption(paste("Rates of", tools::toTitleCase(sequela_type), "by Treatment Group"))
+    
+    # Convert to gt table and save
+    tbl <- tbl_summary_obj %>%
         as_gt()
     
     # Save summary table
-    tbl %>%
-        gt::gtsave(filename = file.path(output_dir, paste0(prefix, sequela_type, "_summary_table.html")))
+    save_gt_html(
+        tbl,
+        filename = file.path(output_dir, paste0(prefix, sequela_type, "_summary_table.html"))
+    )
     
     # Fit logistic regression if there are enough events and confounders
     model_result <- NULL
@@ -273,15 +280,16 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
             modify_caption(paste("Logistic Regression for", tools::toTitleCase(sequela_type))) %>%
             modify_footnote(
                 update = all_stat_cols() ~ "OR = Odds Ratio. Reference level: Plaque."
-            ) %>%
-            as_gt()
+            )
         
         # Save regression table
-        model_result %>%
-            gt::gtsave(filename = file.path(output_dir, paste0(prefix, sequela_type, "_logistic_regression.html")))
+        save_gt_html(
+            model_result %>% as_gt(),
+            filename = file.path(output_dir, paste0(prefix, sequela_type, "_logistic_regression.html"))
+        )
         
     } else {
-        log_message(sprintf("Insufficient events for regression modeling (%d events)", sum(data[[outcome_var]] == "Y", na.rm = TRUE)))
+        log_enhanced(sprintf("Insufficient events for regression modeling (%d events)", sum(data[[outcome_var]] == "Y", na.rm = TRUE)))
     }
     
     return(list(

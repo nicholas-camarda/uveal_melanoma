@@ -1,26 +1,12 @@
 # Subgroup Analysis Configuration
 # Single source of truth for cutoffs and variable ordering
 
-# TOGGLE: Switch between standardized vs median cutoffs
-USE_STANDARDIZED_CUTOFFS <- TRUE
-
-# Standardized cutoffs (when USE_STANDARDIZED_CUTOFFS = TRUE)
-STANDARDIZED_CUTOFFS <- list(
-  age_at_diagnosis = 65.0,
-  initial_tumor_height = 4.2,
-  initial_tumor_diameter = 11.0
-)
+# Source the main analysis config for consistent variable ordering
+source("scripts/utils/analysis_config.R")
 
 # Variable order for consistent display across all plots and tables
-SUBGROUP_VARIABLE_ORDER <- c(
-  "age_at_diagnosis",
-  "sex",
-  "location", 
-  "optic_nerve",
-  "biopsy1_gep",
-  "initial_tumor_height", 
-  "initial_tumor_diameter"
-)
+# Uses the global FOREST_PLOT_VARIABLE_ORDER for consistency
+SUBGROUP_VARIABLE_ORDER <- FOREST_PLOT_VARIABLE_ORDER
 
 #' Get cutoff value for a variable
 #' @param var_name Variable name

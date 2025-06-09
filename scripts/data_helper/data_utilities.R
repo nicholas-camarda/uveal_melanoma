@@ -12,7 +12,7 @@
 #' list_available_datasets()
 list_available_datasets <- function() {
     datasets <- list.files(PROCESSED_DATA_DIR, pattern = "\\.rds$")
-    log_message(sprintf("Found %d datasets to analyze", length(datasets)))
+    log_enhanced(sprintf("Found %d datasets to analyze", length(datasets)))
     print(datasets)
     return(gsub("\\.rds$", "", datasets))
 }
@@ -30,12 +30,12 @@ list_available_datasets <- function() {
 #' handle_rare_categories(data, vars = c("sex", "location"), threshold = 5)
 handle_rare_categories <- function(data, vars, threshold = 5) {
     if (VERBOSE) {
-        log_message(sprintf("\nChecking for rare categories (threshold: %d):", threshold))
+        log_enhanced(sprintf("\nChecking for rare categories (threshold: %d):", threshold))
     }
 
     for (var in vars) {
         if (is.factor(data[[var]])) {
-            log_message(sprintf("Checking for rare categories in %s", var))
+            log_enhanced(sprintf("Checking for rare categories in %s", var))
             # Get category counts
             cat_counts <- table(data[[var]])
             rare_cats <- names(cat_counts)[cat_counts < threshold]
@@ -50,9 +50,9 @@ handle_rare_categories <- function(data, vars, threshold = 5) {
                 
                 if (final_valid_levels >= 2) {
                     if (VERBOSE) {
-                        log_message(sprintf("\nCollapsing rare categories in %s:", var))
+                        log_enhanced(sprintf("\nCollapsing rare categories in %s:", var))
                         for (cat in rare_cats) {
-                            log_message(sprintf("- %s (n=%d)", cat, cat_counts[cat]))
+                            log_enhanced(sprintf("- %s (n=%d)", cat, cat_counts[cat]))
                         }
                     }
 
@@ -63,8 +63,8 @@ handle_rare_categories <- function(data, vars, threshold = 5) {
                         fct_relevel("Other", after = Inf)
                 } else {
                     if (VERBOSE) {
-                        log_message(sprintf("\nSkipping collapse for %s: would result in insufficient valid levels", var))
-                        log_message(sprintf("Valid categories: %d, Rare total: %d (threshold: %d)", 
+                        log_enhanced(sprintf("\nSkipping collapse for %s: would result in insufficient valid levels", var))
+                        log_enhanced(sprintf("Valid categories: %d, Rare total: %d (threshold: %d)", 
                                           length(valid_cats), total_rare_count, threshold))
                     }
                 }
@@ -100,8 +100,8 @@ generate_valid_confounders <- function(data, confounders, threshold = THRESHOLD_
     valid_confounders <- confounders[keep_cfs]
     # Check if any confounders were removed
     if (VERBOSE && length(confounders) != length(valid_confounders)) {
-        log_message("Removed confounders with only 1 level or <THRESHOLD_RARITY counts:")
-        log_message(paste(setdiff(confounders, valid_confounders), collapse = ", "))
+        log_enhanced("Removed confounders with only 1 level or <THRESHOLD_RARITY counts:")
+        log_enhanced(paste(setdiff(confounders, valid_confounders), collapse = ", "))
     }
     return(valid_confounders)
 }
@@ -144,29 +144,29 @@ bin_continuous <- function(vec, bins = 2, custom_breaks = NULL, varname = NULL, 
 #' summarize_data(data)
 summarize_data <- function(data) {
     if (VERBOSE) {
-        log_message("\nData Summary:")
-        log_message(sprintf("Total patients: %d", nrow(data)))
+        log_enhanced("\nData Summary:")
+        log_enhanced(sprintf("Total patients: %d", nrow(data)))
         
-        log_message("\nTreatment Groups:")
+        log_enhanced("\nTreatment Groups:")
         print(table(data$treatment_group))
         
-        log_message("\nCohort Distribution:")
+        log_enhanced("\nCohort Distribution:")
         print(table(data$cohort))
         
-        log_message("\nTumor Characteristics:")
-        log_message(sprintf("Location: %s", paste(unique(data$location), collapse=", ")))
-        log_message(sprintf("Optic Nerve Involvement: %s", paste(unique(data$optic_nerve), collapse=", ")))
-        log_message(sprintf("Initial Stage: %s", paste(unique(data$initial_overall_stage), collapse=", ")))
+        log_enhanced("\nTumor Characteristics:")
+        log_enhanced(sprintf("Location: %s", paste(unique(data$location), collapse=", ")))
+        log_enhanced(sprintf("Optic Nerve Involvement: %s", paste(unique(data$optic_nerve), collapse=", ")))
+        log_enhanced(sprintf("Initial Stage: %s", paste(unique(data$initial_overall_stage), collapse=", ")))
         
-        log_message("\nGene Expression Profile:")
+        log_enhanced("\nGene Expression Profile:")
         print(table(data$biopsy1_gep))
         
-        log_message("\nOutcomes:")
-        log_message(sprintf("Recurrence: %d patients", sum(data$recurrence_event)))
-        log_message(sprintf("Metastasis: %d patients", sum(data$mets_event)))
-        log_message(sprintf("Death: %d patients", sum(data$death_event)))
+        log_enhanced("\nOutcomes:")
+        log_enhanced(sprintf("Recurrence: %d patients", sum(data$recurrence_event)))
+        log_enhanced(sprintf("Metastasis: %d patients", sum(data$mets_event)))
+        log_enhanced(sprintf("Death: %d patients", sum(data$death_event)))
         
-        log_message("\nFollow-up:")
-        log_message(sprintf("Median follow-up: %.1f years", median(data$follow_up_years, na.rm=TRUE)))
+        log_enhanced("\nFollow-up:")
+        log_enhanced(sprintf("Median follow-up: %.1f years", median(data$follow_up_years, na.rm=TRUE)))
     }
 } 

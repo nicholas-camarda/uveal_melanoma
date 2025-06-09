@@ -13,21 +13,26 @@
 library(tidyverse) # For data manipulation and visualization
 library(readxl) # For reading Excel files
 library(writexl) # For writing Excel files
+library(lubridate) # Date handling
 library(gtsummary) # For creating publication-ready tables
+library(janitor) # Data cleaning
 library(survival) # For survival analysis
 library(survminer) # For survival visualization
 library(gt) # For table formatting
 library(forestplot) # For forest plots
 library(grid) # for unit()
 library(cowplot) # for combining plots
+library(DiagrammeR) # Creating CONSORT diagram
+library(DiagrammeRsvg) # SVG export for CONSORT diagram
+library(rsvg) # PNG conversion for CONSORT diagram
 library(survRM2, quietly = TRUE)
 
-########################################################
-############### INPUT FILE ############################
-########################################################
+# Source the analysis configuration first (contains all global variables)
+source("scripts/utils/analysis_config.R")
 
-#' Set the filename, this will be loaded from the *data* directory
-fn <- "Ocular Melanoma Master Spreadsheet REVISED FOR STATS (5-10-25, TJM).xlsx"
+# Create necessary directories now that libraries are loaded
+dir.create(PROCESSED_DATA_DIR, showWarnings = FALSE, recursive = TRUE)
+dir.create(OUTPUT_DIR, showWarnings = FALSE, recursive = TRUE)
 
 ########################################################
 ############### ANALYSIS SETTINGS #####################
@@ -51,11 +56,8 @@ SHOW_ALL_PVALUES <- TRUE
 ############### DATA PROCESSING #######################
 ########################################################
 
-# Source the data processing script first
+# Source the data processing script
 source("scripts/data_helper/data_processing.R")
-
-# Source the analysis configuration and setup
-source("scripts/utils/analysis_config.R")
 
 # Source the utility and helper scripts
 source("scripts/data_helper/data_utilities.R")
@@ -96,8 +98,8 @@ if (RECREATE_ANALYTIC_DATASETS) {
     log_enhanced("RECREATE_ANALYTIC_DATASETS = TRUE: Creating new analytic datasets", level = "INFO")
     
     # Load and clean raw data
-    log_function("load_and_clean_data", paste("Input file:", fn))
-    cleaned_data <- load_and_clean_data(filename = fn)
+    log_function("load_and_clean_data", paste("Input file:", INPUT_FILENAME))
+    cleaned_data <- load_and_clean_data(filename = INPUT_FILENAME)
 
     # Create derived variables BEFORE splitting into cohorts
     log_function("create_derived_variables", "Creating PFS-2 variables and other derived measures")
@@ -354,16 +356,16 @@ run_my_analysis <- function(dataset_name) {
         subgroup_results = primary_subgroup_results,
         outcome_name = "Tumor Height Change (Primary Analysis)",
         cohort_name = display_name,
-        treatment_labels = c("GKSRS", "Plaque"),
-        variable_order = c("age_at_diagnosis", "sex", "location", "initial_tumor_height", "initial_tumor_diameter"),
+        treatment_labels = TREATMENT_LABELS,
+        variable_order = FOREST_PLOT_VARIABLE_ORDER,
         effect_measure = "MD",  # Mean Difference for continuous outcome
-        favours_labels = c("Favours GKSRS", "Favours Plaque"),
+        favours_labels = FAVOURS_LABELS,
         title = sprintf("Subgroup Analysis: Tumor Height Change - Primary (%s)", display_name)
     )
     
     # Save the PRIMARY forest plot
     png(file.path(forest_plots_dir, paste0(prefix, "tumor_height_primary_subgroup_forest_plot.png")), 
-        width = 12, height = 8, units = "in", res = 300)
+        width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI)
     print(primary_height_forest_plot)
     dev.off()
     log_enhanced("PRIMARY tumor height forest plot created", level = "INFO", indent = 1)
@@ -373,16 +375,16 @@ run_my_analysis <- function(dataset_name) {
         subgroup_results = sensitivity_subgroup_results,
         outcome_name = "Tumor Height Change (Sensitivity Analysis)",
         cohort_name = display_name,
-        treatment_labels = c("GKSRS", "Plaque"),
-        variable_order = c("age_at_diagnosis", "sex", "location", "initial_tumor_height", "initial_tumor_diameter"),
+        treatment_labels = TREATMENT_LABELS,
+        variable_order = FOREST_PLOT_VARIABLE_ORDER,
         effect_measure = "MD",  # Mean Difference for continuous outcome
-        favours_labels = c("Favours GKSRS", "Favours Plaque"),
+        favours_labels = FAVOURS_LABELS,
         title = sprintf("Subgroup Analysis: Tumor Height Change - Sensitivity (%s)", display_name)
     )
     
     # Save the SENSITIVITY forest plot
     png(file.path(forest_plots_dir, paste0(prefix, "tumor_height_sensitivity_subgroup_forest_plot.png")), 
-        width = 12, height = 8, units = "in", res = 300)
+        width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI)
     print(sensitivity_height_forest_plot)
     dev.off()
     log_enhanced("SENSITIVITY tumor height forest plot created", level = "INFO", indent = 1)
@@ -416,16 +418,16 @@ run_my_analysis <- function(dataset_name) {
         subgroup_results = recurrence_subgroup_results,
         outcome_name = "Local Recurrence",
         cohort_name = display_name,
-        treatment_labels = c("GKSRS", "Plaque"),
-        variable_order = c("age_at_diagnosis", "sex", "location", "initial_tumor_height", "initial_tumor_diameter"),
+        treatment_labels = TREATMENT_LABELS,
+        variable_order = FOREST_PLOT_VARIABLE_ORDER,
         effect_measure = "OR",
-        favours_labels = c("Favours GKSRS", "Favours Plaque"),
+        favours_labels = FAVOURS_LABELS,
         title = sprintf("Subgroup Analysis: Local Recurrence (%s)", display_name)
     )
     
     # Save the forest plot
     png(file.path(forest_plots_dir, paste0(prefix, "local_recurrence_subgroup_forest_plot.png")), 
-        width = 12, height = 8, units = "in", res = 300)
+        width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI)
     print(recurrence_forest_plot)
     dev.off()
     log_enhanced("Local recurrence subgroup analysis completed", level = "INFO", indent = 1)
@@ -445,16 +447,16 @@ run_my_analysis <- function(dataset_name) {
         subgroup_results = mets_subgroup_results,
         outcome_name = "Metastatic Progression",
         cohort_name = display_name,
-        treatment_labels = c("GKSRS", "Plaque"),
-        variable_order = c("age_at_diagnosis", "sex", "location", "initial_tumor_height", "initial_tumor_diameter"),
+        treatment_labels = TREATMENT_LABELS,
+        variable_order = FOREST_PLOT_VARIABLE_ORDER,
         effect_measure = "OR",
-        favours_labels = c("Favours GKSRS", "Favours Plaque"),
+        favours_labels = FAVOURS_LABELS,
         title = sprintf("Subgroup Analysis: Metastatic Progression (%s)", display_name)
     )
     
     # Save the forest plot
     png(file.path(forest_plots_dir, paste0(prefix, "metastatic_progression_subgroup_forest_plot.png")), 
-        width = 12, height = 8, units = "in", res = 300)
+        width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI)
     print(mets_forest_plot)
     dev.off()
     log_enhanced("Metastatic progression subgroup analysis completed", level = "INFO", indent = 1)
@@ -475,16 +477,16 @@ run_my_analysis <- function(dataset_name) {
         subgroup_results = os_subgroup_results,
         outcome_name = "Overall Survival",
         cohort_name = display_name,
-        treatment_labels = c("GKSRS", "Plaque"),
-        variable_order = c("age_at_diagnosis", "sex", "location", "initial_tumor_height", "initial_tumor_diameter"),
+        treatment_labels = TREATMENT_LABELS,
+        variable_order = FOREST_PLOT_VARIABLE_ORDER,
         effect_measure = "HR",
-        favours_labels = c("Favours GKSRS", "Favours Plaque"),
+        favours_labels = FAVOURS_LABELS,
         title = sprintf("Subgroup Analysis: Overall Survival (%s)", display_name)
     )
     
     # Save the forest plot
     png(file.path(forest_plots_dir, paste0(prefix, "overall_survival_subgroup_forest_plot.png")), 
-        width = 12, height = 8, units = "in", res = 300)
+        width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI)
     print(os_forest_plot)
     dev.off()
     log_enhanced("Overall survival subgroup analysis completed", level = "INFO", indent = 1)
@@ -505,16 +507,16 @@ run_my_analysis <- function(dataset_name) {
         subgroup_results = pfs_subgroup_results,
         outcome_name = "Progression-Free Survival",
         cohort_name = display_name,
-        treatment_labels = c("GKSRS", "Plaque"),
-        variable_order = c("age_at_diagnosis", "sex", "location", "initial_tumor_height", "initial_tumor_diameter"),
+        treatment_labels = TREATMENT_LABELS,
+        variable_order = FOREST_PLOT_VARIABLE_ORDER,
         effect_measure = "HR",
-        favours_labels = c("Favours GKSRS", "Favours Plaque"),
+        favours_labels = FAVOURS_LABELS,
         title = sprintf("Subgroup Analysis: Progression-Free Survival (%s)", display_name)
     )
     
     # Save the forest plot
     png(file.path(forest_plots_dir, paste0(prefix, "progression_free_survival_subgroup_forest_plot.png")), 
-        width = 12, height = 8, units = "in", res = 300)
+        width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI)
     print(pfs_forest_plot)
     dev.off()
     log_enhanced("Progression-free survival subgroup analysis completed", level = "INFO", indent = 1)
@@ -646,6 +648,14 @@ tryCatch({
     # but not being run automatically. Collaborator can decide whether to use it later.
     log_section_complete("MAIN EXECUTION PHASE", main_start_time)
     
+    # Merge baseline tables from all cohorts
+    log_enhanced("Merging baseline tables from all cohorts", level = "INFO")
+    merge_cohort_tables(
+        full_cohort_data = readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds")),
+        restricted_cohort_data = readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_restricted_cohort.rds")),
+        output_path = file.path("final_data", "Analysis", "merged_tables")
+    )
+    
     # Final summary
     log_enhanced("", level = "SECTION")
     log_enhanced("ALL ANALYSES COMPLETED SUCCESSFULLY!", level = "PROGRESS")
@@ -654,15 +664,6 @@ tryCatch({
                 level = "PROGRESS")
     log_enhanced(sprintf("Datasets analyzed: %d", length(available_datasets)), level = "PROGRESS")
     log_enhanced("Check the logs above for detailed progress and any warnings.", level = "INFO")
-    log_enhanced("", level = "SECTION")
-    log_enhanced("RESULTS ORGANIZATION:", level = "PROGRESS")
-    log_enhanced("All outputs saved under final_data/Analysis/ organized by cohort then by study objectives:", level = "INFO")
-    log_enhanced("• uveal_full/01_Efficacy/ - Primary efficacy comparisons (Objective 1)", level = "INFO")
-    log_enhanced("• uveal_full/02_Safety/ - Safety and toxicity analyses (Objective 2)", level = "INFO")
-    log_enhanced("• uveal_full/03_Repeat_Radiation/ - Second-line treatment effectiveness (Objective 3)", level = "INFO")
-    log_enhanced("• uveal_full/04_GEP_Validation/ - Gene expression profile validation (Objective 4)", level = "INFO")
-    log_enhanced("• uveal_restricted/... - Same structure for restricted cohort", level = "INFO")
-    log_enhanced("• gksrs/... - Same structure for GKSRS-only cohort", level = "INFO")
     log_enhanced("Each cohort has its own complete set of analyses for easy comparison!", level = "INFO")
     
 }, finally = {
