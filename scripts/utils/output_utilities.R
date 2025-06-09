@@ -12,250 +12,88 @@
 #'
 #' @examples
 #' baseline_table %>% apply_factor_level_indentation()
-apply_factor_level_indentation <- function(gtsummary_obj) {
+apply_factor_level_indentation <- function(tbl_summary_obj) {
     tryCatch({
         # Convert to tibble to modify the data
-        table_data <- gtsummary_obj %>% as_tibble()
+        table_data <- tbl_summary_obj %>% as_tibble()
         
-        # Detect table type and apply appropriate logic
-        table_type <- detect_gtsummary_table_type(table_data)
+        # Define the ACTUAL labels used in baseline tables (from data_processing.R)
+        actual_baseline_labels <- c(
+            "Age at Diagnosis (years)",
+            "Race",
+            "Sex", 
+            "Eye",
+            "Initial Vision",
+            "Tumor Location",
+            "Optic Nerve Abutment",
+            "Tumor Height (mm)",
+            "Tumor Diameter (mm)",
+            "Internal Reflectivity",
+            "Subretinal Fluid (SRF)",
+            "Orange Pigment",
+            "Any Symptoms",
+            "Vision Loss/Blurred Vision",
+            "Visual Field Defect",
+            "Flashes/Photopsia",
+            "Floaters",
+            "Pain",
+            "Overall Stage",
+            "T Stage",
+            "N Stage", 
+            "M Stage",
+            "Initial Metastases",
+            "Gene Expression Profile"
+        )
         
-        if (table_type == "tbl_summary") {
-            # Original logic for tbl_summary tables
-            return(apply_tbl_summary_indentation(table_data))
-        } else if (table_type == "tbl_regression") {
-            # New logic for tbl_regression tables  
-            return(apply_tbl_regression_indentation(table_data))
-        } else {
-            # Unknown table type - apply best guess
-            return(apply_generic_indentation(table_data))
+        # Also include the baseline variable names and get_variable_labels for completeness
+        baseline_vars <- BASELINE_VARIABLES_TO_SUMMARIZE
+        variable_labels <- get_variable_labels()
+        config_labels <- unname(unlist(variable_labels))
+        
+        # Combine all possible main variable identifiers
+        all_main_variable_names <- unique(c(
+            actual_baseline_labels,
+            baseline_vars,
+            names(variable_labels),
+            config_labels
+        ))
+        
+        # Get variable names from the table
+        var_names <- table_data[[1]]
+        modified_names <- var_names
+        
+        # Simple logic: if the variable name matches a main variable, make it bold
+        # Otherwise, indent it as a factor level
+        for (i in 1:length(var_names)) {
+            var_name <- trimws(var_names[i])
+            
+            # Check if this is a main variable
+            is_main_variable <- var_name %in% all_main_variable_names
+            
+            if (is_main_variable) {
+                # Main variables: make bold
+                modified_names[i] <- paste0("<b>", var_name, "</b>")
+            } else {
+                # Factor levels: add indentation
+                modified_names[i] <- paste0("&nbsp;&nbsp;&nbsp;&nbsp;", var_name)
+            }
         }
+        
+        # Update the table data
+        table_data[[1]] <- modified_names
+        
+        # Convert back to gt table with HTML formatting enabled
+        gt_table <- table_data %>%
+            gt() %>%
+            fmt_markdown(columns = 1)  # Enable HTML formatting in first column
+        
+        return(gt_table)
         
     }, error = function(e) {
         warning(paste("Factor level indentation failed:", e$message))
         # Fallback to simple gt table
-        return(gtsummary_obj %>% as_gt())
+        return(tbl_summary_obj %>% as_gt())
     })
-}
-
-#' Detect the type of gtsummary table
-detect_gtsummary_table_type <- function(table_data) {
-    col_names <- names(table_data)
-    
-    # tbl_regression tables typically have "estimate", "CI", "p.value" columns
-    if (any(grepl("estimate|^OR|^HR|^MD", col_names, ignore.case = TRUE))) {
-        return("tbl_regression")
-    }
-    
-    # tbl_summary tables typically have "stat_" columns
-    if (any(grepl("stat_", col_names))) {
-        return("tbl_summary")
-    }
-    
-    return("unknown")
-}
-
-#' Apply indentation for tbl_summary tables (original logic)
-apply_tbl_summary_indentation <- function(table_data) {
-    # Define the ACTUAL labels used in baseline tables (from data_processing.R)
-    actual_baseline_labels <- c(
-        "Age at Diagnosis (years)",
-        "Race",
-        "Sex", 
-        "Eye",
-        "Initial Vision",
-        "Tumor Location",
-        "Optic Nerve Abutment",
-        "Tumor Height (mm)",
-        "Tumor Diameter (mm)",
-        "Internal Reflectivity",
-        "Subretinal Fluid (SRF)",
-        "Orange Pigment",
-        "Any Symptoms",
-        "Vision Loss/Blurred Vision",
-        "Visual Field Defect",
-        "Flashes/Photopsia",
-        "Floaters",
-        "Pain",
-        "Overall Stage",
-        "T Stage",
-        "N Stage", 
-        "M Stage",
-        "Initial Metastases",
-        "Gene Expression Profile"
-    )
-    
-    # Also include the baseline variable names and get_variable_labels for completeness
-    baseline_vars <- BASELINE_VARIABLES_TO_SUMMARIZE
-    variable_labels <- get_variable_labels()
-    config_labels <- unname(unlist(variable_labels))
-    
-    # Combine all possible main variable identifiers
-    all_main_variable_names <- unique(c(
-        actual_baseline_labels,
-        baseline_vars,
-        names(variable_labels),
-        config_labels
-    ))
-    
-    # Get variable names from the table
-    var_names <- table_data[[1]]
-    modified_names <- var_names
-    
-    # Simple logic: if the variable name matches a main variable, make it bold
-    # Otherwise, indent it as a factor level
-    for (i in 1:length(var_names)) {
-        var_name <- trimws(var_names[i])
-        
-        # Check if this is a main variable
-        is_main_variable <- var_name %in% all_main_variable_names
-        
-        if (is_main_variable) {
-            # Main variables: make bold
-            modified_names[i] <- paste0("<b>", var_name, "</b>")
-        } else {
-            # Factor levels: add indentation
-            modified_names[i] <- paste0("&nbsp;&nbsp;&nbsp;&nbsp;", var_name)
-        }
-    }
-    
-    # Update the table data
-    table_data[[1]] <- modified_names
-    
-    # Convert back to gt table with HTML formatting enabled
-    gt_table <- table_data %>%
-        gt() %>%
-        fmt_markdown(columns = 1)  # Enable HTML formatting in first column
-    
-    return(gt_table)
-}
-
-#' Apply indentation for tbl_regression tables
-apply_tbl_regression_indentation <- function(table_data) {
-    # Get variable names from the table
-    var_names <- table_data[[1]]
-    modified_names <- var_names
-    
-    # Regression table logic: Look for patterns that indicate main variables vs factor levels
-    for (i in 1:length(var_names)) {
-        var_name <- trimws(var_names[i])
-        
-        # Detect main variables (typically the ones that don't start with spaces and represent the variable name)
-        # In regression tables, main variables are usually:
-        # 1. Treatment Group, Age at Diagnosis, Sex, Tumor Location, etc. (not indented)
-        # 2. Factor levels are usually indented or are reference levels
-        
-        # Check if this looks like a main variable
-        is_main_variable <- detect_regression_main_variable(var_name, table_data, i)
-        
-        if (is_main_variable) {
-            # Main variables: make bold
-            modified_names[i] <- paste0("<b>", var_name, "</b>")
-        } else {
-            # Factor levels: add indentation
-            modified_names[i] <- paste0("&nbsp;&nbsp;&nbsp;&nbsp;", var_name)
-        }
-    }
-    
-    # Update the table data
-    table_data[[1]] <- modified_names
-    
-    # Convert back to gt table with HTML formatting enabled
-    gt_table <- table_data %>%
-        gt() %>%
-        fmt_markdown(columns = 1) %>%  # Enable HTML formatting in first column
-        # Replace "NA" with dashes in data columns (like in production tables)
-        sub_missing(columns = -1, missing_text = "")  # Replace NA with em dash in all columns except first
-    
-    return(gt_table)
-}
-
-#' Detect if a variable in a regression table is a main variable
-detect_regression_main_variable <- function(var_name, table_data, row_index) {
-    # Get the data columns (skip first column which is variable names)
-    data_cols <- 2:ncol(table_data)
-    
-    # Check if this row has actual data (not all NA)
-    current_row_data <- table_data[row_index, data_cols]
-    has_data <- any(!is.na(current_row_data) & current_row_data != "NA" & current_row_data != "")
-    
-    # Strategy 1: If this row has data AND is not obviously a factor level, it's a main variable
-    factor_level_patterns <- c(
-        "^Male$", "^Female$",
-        "^Anterior$", "^Posterior$", "^Equatorial$", "^Choroidal$", "^Cilio-Choroidal$", "^Other$",
-        "^Yes$", "^No$", 
-        "^Class", "^Low$", "^High$",
-        "^Left$", "^Right$"
-    )
-    
-    is_obvious_factor_level <- FALSE
-    for (pattern in factor_level_patterns) {
-        if (grepl(pattern, var_name, ignore.case = TRUE)) {
-            is_obvious_factor_level <- TRUE
-            break
-        }
-    }
-    
-    # If this row has data and is not an obvious factor level, it's a main variable (continuous variables)
-    if (has_data && !is_obvious_factor_level) {
-        return(TRUE)
-    }
-    
-    # Strategy 2: If this row has no data, determine if it's a main variable or factor level
-    if (!has_data) {
-        # Check if this looks like an obvious factor level
-        if (is_obvious_factor_level) {
-            return(FALSE)  # This is a factor level
-        }
-        
-        # Look ahead to see if next rows are factor levels (some with data, some with NA)
-        next_rows_look_like_factor_levels <- FALSE
-        
-        # Check the next 2-3 rows to see if they look like factor levels
-        for (check_idx in (row_index + 1):min(row_index + 3, nrow(table_data))) {
-            if (check_idx <= nrow(table_data)) {
-                next_var_name <- trimws(table_data[[1]][check_idx])
-                
-                # If next row matches factor level patterns, this is probably a main variable
-                for (pattern in factor_level_patterns) {
-                    if (grepl(pattern, next_var_name, ignore.case = TRUE)) {
-                        next_rows_look_like_factor_levels <- TRUE
-                        break
-                    }
-                }
-                
-                if (next_rows_look_like_factor_levels) break
-            }
-        }
-        
-        # Additional check: Look backwards to see if previous row was a main variable
-        # If so, this might be a factor level
-        if (row_index > 1) {
-            prev_var_name <- trimws(table_data[[1]][row_index - 1])
-            prev_row_data <- table_data[row_index - 1, data_cols]
-            prev_has_data <- any(!is.na(prev_row_data) & prev_row_data != "NA" & prev_row_data != "")
-            
-            # If previous row had no data and current row has no data and looks like factor level,
-            # then previous was probably main variable and this is factor level
-            if (!prev_has_data && is_obvious_factor_level) {
-                return(FALSE)  # This is a factor level
-            }
-        }
-        
-        return(next_rows_look_like_factor_levels)
-    }
-    
-    # Default: if we can't determine, assume it's a factor level
-    return(FALSE)
-}
-
-#' Apply generic indentation for unknown table types
-apply_generic_indentation <- function(table_data) {
-    # Fallback: just convert to gt table without modification
-    gt_table <- table_data %>%
-        gt()
-    
-    return(gt_table)
 }
 
 #' Create organized output directory structure based on study objectives
