@@ -116,27 +116,31 @@ All efficacy analyses comparing plaque brachytherapy vs GKSRS have been implemen
 
 #### **1a. ✅ Recurrence Rates**
 - **Status:** COMPLETE - Time-to-event analysis with logistic regression
+- **Implementation:** `analyze_binary_outcome_rates()` function
 - **Output:** Kaplan-Meier curves, Cox proportional hazards models, summary tables
 - **Location:** `final_data/Analysis/{cohort}/tables/primary_outcomes/recurrence/`
 
 #### **1b. ✅ Metastatic Progression Rates** 
 - **Status:** COMPLETE - Time-to-event analysis with logistic regression
+- **Implementation:** `analyze_binary_outcome_rates()` function
 - **Output:** Kaplan-Meier curves, Cox proportional hazards models, summary tables
 - **Location:** `final_data/Analysis/{cohort}/tables/primary_outcomes/metastatic_progression/`
 
 #### **1c. ✅ Overall Survival**
 - **Status:** COMPLETE - Survival analysis with confounder adjustment
+- **Implementation:** `analyze_time_to_event_outcomes()` function
 - **Output:** Kaplan-Meier curves, Cox proportional hazards models, median survival estimates, RMST p-value progression plots
 - **Location:** `final_data/Analysis/{cohort}/tables/primary_outcomes/overall_survival/`
 
 #### **1d. ✅ Progression-Free Survival**
 - **Status:** COMPLETE - Composite endpoint (progression OR death)
+- **Implementation:** `analyze_time_to_event_outcomes()` function
 - **Output:** Kaplan-Meier curves, Cox proportional hazards models, summary tables, RMST p-value progression plots
 - **Location:** `final_data/Analysis/{cohort}/tables/primary_outcomes/progression_free_survival/`
 
 #### **1e. ✅ Tumor Height Changes**
 - **Status:** COMPLETE - Linear regression analysis with primary/sensitivity approaches
-- **Implementation:** 
+- **Implementation:** `analyze_tumor_height_changes()` function
   - Primary analysis (without baseline height adjustment)
   - Sensitivity analysis (with baseline height adjustment)
   - Proper handling of pre-retreatment measurements for recurrent cases
@@ -145,6 +149,10 @@ All efficacy analyses comparing plaque brachytherapy vs GKSRS have been implemen
 
 #### **1f. ✅ Subgroup Analysis**
 - **Status:** COMPLETE - Treatment effect heterogeneity testing across patient characteristics
+- **Implementation:** 
+  - `analyze_treatment_effect_subgroups_survival()` for survival outcomes
+  - `analyze_treatment_effect_subgroups_binary()` for binary outcomes
+  - `format_subgroup_analysis_results()` for table creation
 - **Subgroups Tested:** Age, sex, tumor location, T-stage, tumor height, tumor diameter, GEP class, optic nerve involvement
 - **Methods:** Interaction terms in regression models, forest plots, primary/sensitivity analyses
 - **Output:** Interaction p-values, subgroup-specific treatment effects, formatted tables
@@ -156,12 +164,13 @@ All safety and toxicity analyses have been implemented and are generating result
 
 #### **2a. ✅ Vision Changes**
 - **Status:** COMPLETE - Linear regression analysis comparing treatment groups
-- **Implementation:** Proper handling of pre-retreatment vision for recurrent cases
+- **Implementation:** `analyze_visual_acuity_changes()` function
 - **Output:** Mean vision changes, statistical comparisons, regression models
 - **Location:** `final_data/Analysis/{cohort}/tables/safety_toxicity/vision_change/`
 
 #### **2b. ✅ Radiation Sequelae Rates**
 - **Status:** COMPLETE - All three radiation sequelae implemented with logistic regression
+- **Implementation:** `analyze_radiation_complications()` function
 
 **2b1. ✅ Retinopathy**
 - **Implementation:** Binary outcome analysis with confounder adjustment
@@ -183,6 +192,7 @@ All safety and toxicity analyses have been implemented and are generating result
 
 #### **3a. ⏳ Progression-Free Survival-2**
 - **Status:** NOT YET IMPLEMENTED
+- **Implementation:** Will use `analyze_pfs2()` function
 - **Requirements:** 
   - Filter to patients with local recurrence (`recurrence1 == "Y"`)
   - Compare GKSRS vs enucleation vs TTT (from `recurrence1_treatment`)

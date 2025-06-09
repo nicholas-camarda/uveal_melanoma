@@ -3,17 +3,16 @@
 # Description: Core statistical analysis functions for rates and survival analysis
 
 # This file contains the core statistical analysis functions:
-# - calculate_rates(): Event rates and logistic regression
-# - analyze_survival(): Kaplan-Meier and Cox regression
-# - create_rmst_pvalue_plot(): RMST visualization
+# - analyze_binary_outcome_rates(): Event rates and logistic regression
+# - analyze_time_to_event_outcomes(): Kaplan-Meier and Cox regression
+# - plot_rmst_pvalue_progression(): RMST visualization
 # - analyze_pfs2(): PFS-2 analysis for recurrent patients
 
-# Note: Some functions are very large and located in separate files:
-# - test_subgroup_interaction() and create_subgroup_tables() are in subgroup_analysis.R
+# Note: Other analysis functions are in separate files:
 # - analyze_tumor_height_changes() is in tumor_height_analysis.R
-# - analyze_vision_changes() and analyze_radiation_sequelae() are in vision_safety_analysis.R
+# - analyze_visual_acuity_changes() and analyze_radiation_complications() are in vision_safety_analysis.R
 
-#' Calculate rates and create regression tables
+#' Analyze binary outcome rates and create regression tables
 #'
 #' Calculates event rates by group and fits a logistic regression model, returning rates, a regression table, and the model object.
 #'
@@ -29,8 +28,8 @@
 #'
 #' @return List with elements: rates (data frame), table (gtsummary object), model (glm object).
 #' @examples
-#' calculate_rates(data, "recurrence1", "tt_recurrence", "recurrence_event")
-calculate_rates <- function(data, outcome_var, time_var, event_var, group_var = "treatment_group", confounders = NULL, exclude_before_treatment = TRUE, handle_rare = TRUE, dataset_name = NULL) {
+#' analyze_binary_outcome_rates(data, "recurrence1", "tt_recurrence", "recurrence_event")
+analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var, group_var = "treatment_group", confounders = NULL, exclude_before_treatment = TRUE, handle_rare = TRUE, dataset_name = NULL) {
     # DEBUGGING:
     # outcome_var = "recurrence1"
     # time_var = "tt_recurrence"
@@ -185,25 +184,25 @@ calculate_rates <- function(data, outcome_var, time_var, event_var, group_var = 
     ))
 }
 
-#' Perform survival analysis
+#' Analyze time-to-event outcomes with survival analysis
 #'
-#' Runs Kaplan-Meier and Cox regression for a given time-to-event and event indicator, optionally adjusting for confounders.
+#' Performs Kaplan-Meier analysis and Cox regression for time-to-event outcomes.
 #'
 #' @param data Data frame.
 #' @param time_var Name of the time-to-event variable (character).
 #' @param event_var Name of the event indicator variable (character).
 #' @param group_var Name of the grouping variable (default: 'treatment_group').
 #' @param confounders Character vector of confounder variable names (default: NULL).
-#' @param ylab Y-axis label for the survival plot (default: 'Survival Probability').
+#' @param ylab Label for y-axis (character).
 #' @param exclude_before_treatment Logical (default: TRUE). If TRUE, rows with events before treatment are excluded.
 #' @param handle_rare Logical (default: TRUE). If TRUE, rare categories in confounders are collapsed into 'Other'.
 #' @param dataset_name Name of the dataset (character).
-#' @param legend_labels Character vector of legend labels for the survival plot (default: NULL).
+#' @param legend_labels Character vector of labels for the legend (default: NULL, uses factor levels of group_var).
 #'
-#' @return List with elements: fit (survfit object), plot (ggsurvplot), median_times (data frame), cox_model (coxph object), cox_table (gtsummary object).
+#' @return List with elements: fit (survfit object), plot (ggplot object), survival_rates (data frame), survival_rates_wide (data frame), rmst_analysis (data frame), rmst_plot (ggplot object), cox_model (coxph object), cox_table (gtsummary object).
 #' @examples
-#' analyze_survival(data, "tt_death", "death_event")
-analyze_survival <- function(data, time_var, event_var, group_var = "treatment_group", confounders = NULL, ylab = "Survival Probability", exclude_before_treatment = TRUE, handle_rare = TRUE, dataset_name = NULL, legend_labels = NULL) {
+#' analyze_time_to_event_outcomes(data, "tt_os_months", "os_event", confounders = c("age", "sex"))
+analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var = "treatment_group", confounders = NULL, ylab = "Survival Probability", exclude_before_treatment = TRUE, handle_rare = TRUE, dataset_name = NULL, legend_labels = NULL) {
     # DEBUGGING:
     # time_var = "tt_death"
     # event_var = "death_event"
@@ -547,7 +546,8 @@ analyze_survival <- function(data, time_var, event_var, group_var = "treatment_g
         cox_model,
         exponentiate = TRUE, # gives you HRs
         label = variable_labels,  # Apply human-readable labels
-        show_single_row = if (group_levels == 2) group_var else NULL # only for binary variables
+        show_single_row = if (group_levels == 2) group_var else NULL, # only for binary variables
+        quiet = TRUE
     )
     
     # Add p-values based on toggle setting
@@ -607,7 +607,7 @@ analyze_survival <- function(data, time_var, event_var, group_var = "treatment_g
     )
     
     # Create RMST p-value progression plot
-    rmst_plot <- create_rmst_pvalue_plot(rmst_results, ylab)
+    rmst_plot <- plot_rmst_pvalue_progression(rmst_results, ylab)
     
     return(list(
         fit = surv_fit,
@@ -621,7 +621,7 @@ analyze_survival <- function(data, time_var, event_var, group_var = "treatment_g
     ))
 }
 
-#' Create RMST P-value Progression Plot
+#' Plot RMST p-value progression over time
 #'
 #' Creates a visualization showing how RMST p-values change over time points
 #' and highlights significance thresholds.
@@ -630,7 +630,7 @@ analyze_survival <- function(data, time_var, event_var, group_var = "treatment_g
 #' @param outcome_label Character string for the outcome being analyzed
 #'
 #' @return ggplot object
-create_rmst_pvalue_plot <- function(rmst_results, outcome_label) {
+plot_rmst_pvalue_progression <- function(rmst_results, outcome_label) {
     # Filter out failed analyses
     plot_data <- rmst_results %>%
         filter(!is.na(RMST_P_Value)) %>%
@@ -724,18 +724,17 @@ create_rmst_pvalue_plot <- function(rmst_results, outcome_label) {
           return(p)
   }
 
-#' Analyze Progression-Free Survival-2 (PFS-2) for Recurrent Patients
+#' Analyze second progression survival (PFS-2)
 #'
-#' Analyzes outcomes for patients who had local recurrence and received additional treatment.
-#' Compares different second-line treatments.
+#' Analyzes survival from second progression (PFS-2) for patients who experienced a first recurrence.
 #'
-#' @param data Data frame with patient data
-#' @param confounders Character vector of confounder variable names (default: NULL)
-#' @param dataset_name Name of the dataset (character)
+#' @param data Data frame.
+#' @param confounders Character vector of confounder variable names (default: NULL).
+#' @param dataset_name Name of the dataset (character).
 #'
-#' @return List with survival analysis results
+#' @return List with elements: pfs2_data (data frame), survival_analysis (list), summary_table (gtsummary object).
 #' @examples
-#' analyze_pfs2(data, confounders = c("age_at_diagnosis", "sex"))
+#' analyze_pfs2(data, confounders = c("age", "sex"))
 analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL) {
     log_message("Starting PFS-2 analysis for recurrent patients")
     
@@ -800,9 +799,9 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL) {
             cox_table = NULL
         )
     } else {
-        # Use existing analyze_survival function with dynamic legend labels
+        # Use existing analyze_time_to_event_outcomes function with dynamic legend labels
         log_message("Performing PFS-2 survival analysis")
-        pfs2_survival <- analyze_survival(
+        pfs2_survival <- analyze_time_to_event_outcomes(
             data = pfs2_data,
             time_var = "tt_pfs2_months",
             event_var = "pfs2_event", 
@@ -843,7 +842,7 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL) {
             )
         ) %>%
         add_overall() %>%
-        add_p() %>%
+        add_p(quiet = TRUE) %>%
         modify_header(
             label = "**Characteristic**",
             stat_0 = "**Overall**\nN = {N}",
@@ -852,7 +851,7 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL) {
         modify_caption("PFS-2 Analysis: Characteristics of Recurrent Patients by Second-Line Treatment") %>%
         as_gt()
     
-    # Note: File saving is handled by the analyze_survival function called above
+    # Note: File saving is handled by the analyze_time_to_event_outcomes function called above
     # which properly organizes outputs into the established directory structure
     
     log_message("PFS-2 analysis completed")

@@ -2,17 +2,17 @@
 # Author: Nicholas Camarda
 # Description: Functions for vision change and radiation sequelae analysis
 
-#' Analyze vision changes
+#' Analyze visual acuity changes
 #'
-#' Calculates and summarizes changes in vision by treatment group, returning summary statistics and a table.
+#' Calculates and summarizes changes in visual acuity by treatment group, returning summary statistics and a table.
 #' Simple analysis as required by objective 2a - no subgroup interactions needed.
 #'
 #' @param data Data frame with vision variables.
 #'
 #' @return List with elements: changes (summary data frame), table (gtsummary object), regression_model (lm object), regression_table (gtsummary object).
 #' @examples
-#' analyze_vision_changes(data)
-analyze_vision_changes <- function(data) {
+#' analyze_visual_acuity_changes(data)
+analyze_visual_acuity_changes <- function(data) {
     # Calculate vision changes (row-level)
     data_with_vision_change <- data %>%
         mutate(
@@ -53,7 +53,7 @@ analyze_vision_changes <- function(data) {
             statistic = list(vision_change ~ "{mean} ({sd})"),
             digits = list(vision_change ~ 2)
         ) %>%
-        add_p(test = list(all_continuous() ~ "wilcox.test")) %>%
+        add_p(test = list(all_continuous() ~ "wilcox.test"), quiet = TRUE) %>%
         modify_header(quiet = TRUE) %>%
         modify_caption("Change in Vision (Initial - Last Measured or Pre-Retreatment), by Treatment Group") %>%
         modify_footnote(
@@ -77,6 +77,7 @@ analyze_vision_changes <- function(data) {
     vision_lm_tbl <- tbl_regression(vision_lm,
         exponentiate = FALSE,
         intercept = FALSE,
+        quiet = TRUE,
         label = variable_labels  # Apply human-readable labels
     )
     
@@ -117,20 +118,20 @@ analyze_vision_changes <- function(data) {
     ))
 }
 
-#' Analyze radiation sequelae outcomes
+#' Analyze radiation complications
 #'
-#' Analyzes rates of radiation sequelae (retinopathy, nvg, srg) by treatment group.
-#' Reuses the existing calculate_rates function for consistency.
+#' Analyzes rates of radiation complications (retinopathy, nvg, srg) by treatment group.
+#' Reuses the existing analyze_binary_outcome_rates function for consistency.
 #'
 #' @param data Data frame with radiation sequelae variables
 #' @param sequela_type Type of sequela to analyze ("retinopathy", "nvg", or "srg")
 #' @param confounders Character vector of confounders for adjustment
 #' @param dataset_name Name of the dataset for output files
 #'
-#' @return Results from calculate_rates function
+#' @return Results from analyze_binary_outcome_rates function
 #' @examples
-#' analyze_radiation_sequelae(data, "retinopathy", confounders, "uveal_full")
-analyze_radiation_sequelae <- function(data, sequela_type, confounders, dataset_name) {
+#' analyze_radiation_complications(data, "retinopathy", confounders, "uveal_full")
+analyze_radiation_complications <- function(data, sequela_type, confounders = NULL, dataset_name = NULL) {
     
     # Validate sequela type
     valid_sequelae <- c("retinopathy", "nvg", "srd")
@@ -215,7 +216,7 @@ analyze_radiation_sequelae <- function(data, sequela_type, confounders, dataset_
             label = list(!!outcome_var ~ paste("Radiation Sequela:", tools::toTitleCase(sequela_type)))
         ) %>%
         modify_header(quiet = TRUE) %>%
-        add_p() %>%  # Use gtsummary default test selection
+        add_p(quiet = TRUE) %>%  # Use gtsummary default test selection
         modify_caption(paste("Rates of", tools::toTitleCase(sequela_type), "by Treatment Group")) %>%
         as_gt()
     
@@ -248,6 +249,7 @@ analyze_radiation_sequelae <- function(data, sequela_type, confounders, dataset_
         model_result <- tbl_regression(model,
             exponentiate = TRUE,
             intercept = FALSE,
+            quiet = TRUE,
             label = variable_labels  # Apply human-readable labels
         )
         

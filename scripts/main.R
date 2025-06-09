@@ -176,8 +176,8 @@ run_my_analysis <- function(dataset_name) {
                 level = "INFO", indent = 1)
 
     # 1a. Rates of recurrence
-    log_function("calculate_rates", "Local recurrence rates analysis")
-    recurrence_rates <- calculate_rates(
+    log_function("analyze_binary_outcome_rates", "Local recurrence rates analysis")
+    recurrence_rates <- analyze_binary_outcome_rates(
         data,
         outcome_var = "recurrence1",
         time_var = "tt_recurrence_months",
@@ -190,8 +190,8 @@ run_my_analysis <- function(dataset_name) {
     log_enhanced("Local recurrence analysis completed", level = "INFO", indent = 1)
 
     # 1b. Rates of metastatic progression
-    log_function("calculate_rates", "Metastatic progression rates analysis")
-    mets_rates <- calculate_rates(
+    log_function("analyze_binary_outcome_rates", "Metastatic progression rates analysis")
+    mets_rates <- analyze_binary_outcome_rates(
         data,
         outcome_var = "mets_progression",
         time_var = "tt_mets_months",
@@ -204,11 +204,12 @@ run_my_analysis <- function(dataset_name) {
     log_enhanced("Metastatic progression analysis completed", level = "INFO", indent = 1)
 
     # 1c. Overall Survival
-    log_function("analyze_survival", "Overall survival analysis (Kaplan-Meier & Cox regression)")
-    os_analysis <- analyze_survival(
+    log_function("analyze_time_to_event_outcomes", "Overall survival analysis (Kaplan-Meier & Cox regression)")
+    os_analysis <- analyze_time_to_event_outcomes(
         data,
         time_var = "tt_death_months",
         event_var = "death_event",
+        group_var = "treatment_group",
         confounders = confounders,
         ylab = "Overall Survival Probability",
         exclude_before_treatment = TRUE,
@@ -218,11 +219,12 @@ run_my_analysis <- function(dataset_name) {
     log_enhanced("Overall survival analysis completed", level = "INFO", indent = 1)
 
     # 1d. Progression Free Survival (includes both progression AND death)
-    log_function("analyze_survival", "Progression-free survival analysis (progression OR death)")
-    pfs_analysis <- analyze_survival(
+    log_function("analyze_time_to_event_outcomes", "Progression-free survival analysis (progression OR death)")
+    pfs_analysis <- analyze_time_to_event_outcomes(
         data,
         time_var = "tt_pfs_months",
         event_var = "pfs_event",
+        group_var = "treatment_group",
         confounders = confounders,
         ylab = "Progression-Free Survival Probability",
         exclude_before_treatment = TRUE,
@@ -237,7 +239,7 @@ run_my_analysis <- function(dataset_name) {
     log_enhanced("Tumor height changes analysis completed", level = "INFO", indent = 1)
 
     # 1f. Subgroup analysis with interaction terms
-    log_function("test_subgroup_interaction", "Subgroup analysis with interaction terms for tumor height change")
+    log_function("analyze_treatment_effect_subgroups_height", "Subgroup analysis with interaction terms for tumor height change")
     
     # Test treatment × subgroup interactions for tumor height change
     # Run both PRIMARY (without baseline height) and SENSITIVITY (with baseline height) analyses
@@ -252,7 +254,7 @@ run_my_analysis <- function(dataset_name) {
         log_progress(i, length(subgroup_vars), subgroup_var, "Testing PRIMARY interaction")
         
         # Test the interaction with confounders but without baseline height
-        result <- test_subgroup_interaction(
+        result <- analyze_treatment_effect_subgroups_height(
             data = data,
             subgroup_var = subgroup_var,
             percentile_cut = 0.5,  # Use median split
@@ -284,7 +286,7 @@ run_my_analysis <- function(dataset_name) {
         log_progress(i, length(subgroup_vars), subgroup_var, "Testing SENSITIVITY interaction")
         
         # Test the interaction with confounders including baseline height
-        result <- test_subgroup_interaction(
+        result <- analyze_treatment_effect_subgroups_height(
             data = data,
             subgroup_var = subgroup_var,
             percentile_cut = 0.5,  # Use median split
@@ -307,16 +309,16 @@ run_my_analysis <- function(dataset_name) {
     log_section_complete("SENSITIVITY SUBGROUP ANALYSIS", sensitivity_start_time)
     
     # Create formatted HTML tables for subgroup analyses
-    log_function("create_subgroup_tables", "Creating formatted PRIMARY subgroup analysis tables")
-    create_subgroup_tables(
+    log_function("format_subgroup_analysis_tables", "Creating formatted PRIMARY subgroup analysis tables")
+    format_subgroup_analysis_tables(
         subgroup_results = primary_subgroup_results,
         dataset_name = paste("PRIMARY -", display_name),
         subgroup_dir = output_dirs$subgroup_primary,
         prefix = paste0(prefix, "primary_")
     )
     
-    log_function("create_subgroup_tables", "Creating formatted SENSITIVITY subgroup analysis tables")
-    create_subgroup_tables(
+    log_function("format_subgroup_analysis_tables", "Creating formatted SENSITIVITY subgroup analysis tables")
+    format_subgroup_analysis_tables(
         subgroup_results = sensitivity_subgroup_results,
         dataset_name = paste("SENSITIVITY -", display_name),
         subgroup_dir = output_dirs$subgroup_sensitivity,
@@ -340,16 +342,16 @@ run_my_analysis <- function(dataset_name) {
     log_section_start("STEP 2: SAFETY/TOXICITY ANALYSIS", display_name)
     
     # 2a. Vision changes analysis (similar to tumor height changes)
-    log_function("analyze_vision_changes", "Vision changes analysis")
-    vision_changes <- analyze_vision_changes(data)
+    log_function("analyze_visual_acuity_changes", "Vision changes analysis")
+    vision_changes <- analyze_visual_acuity_changes(data)
     log_enhanced("Vision changes analysis completed", level = "INFO", indent = 1)
     
     # 2b. Rates of radiation sequelae
     log_enhanced("Analyzing radiation sequelae rates", level = "INFO", indent = 1)
     
     # 2b1. Retinopathy
-    log_function("analyze_radiation_sequelae", "Radiation retinopathy analysis")
-    retinopathy_rates <- analyze_radiation_sequelae(
+    log_function("analyze_radiation_complications", "Radiation retinopathy analysis")
+    retinopathy_rates <- analyze_radiation_complications(
         data = data,
         sequela_type = "retinopathy",
         confounders = confounders,
@@ -358,8 +360,8 @@ run_my_analysis <- function(dataset_name) {
     log_enhanced("Retinopathy analysis completed", level = "INFO", indent = 1)
     
     # 2b2. Neovascular glaucoma (NVG)
-    log_function("analyze_radiation_sequelae", "Neovascular glaucoma (NVG) analysis")
-    nvg_rates <- analyze_radiation_sequelae(
+    log_function("analyze_radiation_complications", "Neovascular glaucoma (NVG) analysis")
+    nvg_rates <- analyze_radiation_complications(
         data = data,
         sequela_type = "nvg",
         confounders = confounders,
@@ -368,8 +370,8 @@ run_my_analysis <- function(dataset_name) {
     log_enhanced("Neovascular glaucoma analysis completed", level = "INFO", indent = 1)
     
     # 2b3. Serous retinal detachment (SRD) - only radiation-induced
-    log_function("analyze_radiation_sequelae", "Serous retinal detachment (radiation-induced only)")
-    srd_rates <- analyze_radiation_sequelae(
+    log_function("analyze_radiation_complications", "Serous retinal detachment (radiation-induced only)")
+    srd_rates <- analyze_radiation_complications(
         data = data,
         sequela_type = "srd",
         confounders = confounders,

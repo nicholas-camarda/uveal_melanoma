@@ -10,3 +10,7 @@ scripts/poster_scripts/
 
 # Ignore original files
 final_data/*
+
+# Ignore old and logs
+logs/*
+old_results/*

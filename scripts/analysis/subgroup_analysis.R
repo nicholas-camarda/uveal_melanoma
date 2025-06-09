@@ -2,7 +2,7 @@
 # Author: Nicholas Camarda
 # Description: Functions for testing treatment interactions and creating subgroup tables
 
-#' Test treatment × subgroup interaction for tumor height change
+#' Analyze treatment effects across subgroups for tumor height change
 #'
 #' Tests whether treatment effect on tumor height change differs across subgroups
 #' using interaction terms. Bins continuous variables at specified percentile.
@@ -24,9 +24,9 @@
 #'   - confounders_used: Character vector of confounders actually used in the model
 #'
 #' @examples
-#' test_subgroup_interaction(data, "age_at_diagnosis", confounders = c("sex", "location"))
-#' test_subgroup_interaction(data, "initial_tumor_height", percentile_cut = 0.75, include_baseline_height = TRUE)
-test_subgroup_interaction <- function(data, subgroup_var, percentile_cut = 0.5, confounders = NULL, include_baseline_height = FALSE, create_tables = FALSE) {
+#' analyze_treatment_effect_subgroups_height(data, "age_at_diagnosis", confounders = c("sex", "location"))
+#' analyze_treatment_effect_subgroups_height(data, "initial_tumor_height", percentile_cut = 0.75, include_baseline_height = TRUE)
+analyze_treatment_effect_subgroups_height <- function(data, subgroup_var, percentile_cut = 0.5, confounders = NULL, include_baseline_height = FALSE, create_tables = FALSE) {
     
     # Calculate tumor height change if not already present
     if (!("height_change" %in% names(data))) {
@@ -349,20 +349,20 @@ test_subgroup_interaction <- function(data, subgroup_var, percentile_cut = 0.5, 
     })
 }
 
-#' Create formatted HTML table for subgroup interaction results
+#' Format subgroup analysis results into publication-ready tables
 #'
-#' Creates a publication-ready HTML table showing treatment effects within each subgroup level
+#' Creates publication-ready HTML tables showing treatment effects within each subgroup level
 #' with interaction p-values and detailed sample size information.
 #'
-#' @param subgroup_results List of results from test_subgroup_interaction
+#' @param subgroup_results List of results from analyze_treatment_effect_subgroups_height
 #' @param dataset_name Name of the dataset for table caption
 #' @param output_dir Directory to save the HTML tables
 #' @param prefix File prefix for naming
 #'
 #' @return None. Saves HTML tables to specified directory.
 #' @examples
-#' create_subgroup_tables(subgroup_results, "Full Cohort", tables_dir, prefix)
-create_subgroup_tables <- function(subgroup_results, dataset_name, subgroup_dir, prefix) {
+#' format_subgroup_analysis_tables(subgroup_results, "Full Cohort", tables_dir, prefix)
+format_subgroup_analysis_tables <- function(subgroup_results, dataset_name, subgroup_dir, prefix) {
     
     # subgroup_dir is now passed directly from calling function
     if (!dir.exists(subgroup_dir)) {

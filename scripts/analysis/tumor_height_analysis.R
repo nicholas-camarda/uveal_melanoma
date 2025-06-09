@@ -2,7 +2,7 @@
 # Author: Nicholas Camarda
 # Description: Functions specific to tumor height change analysis and subgroup interactions
 
-#' Analyze tumor height changes
+#' Analyze tumor height reduction
 #'
 #' Calculates and summarizes changes in tumor height by treatment group, returning summary statistics and a table.
 #' Now includes both primary analysis (without baseline height adjustment) and sensitivity analysis (with baseline height adjustment).
@@ -54,7 +54,7 @@ analyze_tumor_height_changes <- function(data) {
             statistic = list(height_change ~ "{mean} ({sd})"),
             digits = list(height_change ~ 1)
         ) %>%
-        add_p(test = list(all_continuous() ~ "wilcox.test")) %>%
+        add_p(test = list(all_continuous() ~ "wilcox.test"), quiet = TRUE) %>%
         modify_header(quiet = TRUE) %>%
         modify_caption("Change in Tumor Height (Initial - Last Measured or Pre-Retreatment), by Treatment Group") %>%
         modify_footnote(
@@ -78,6 +78,7 @@ analyze_tumor_height_changes <- function(data) {
     primary_height_lm_tbl <- tbl_regression(primary_height_lm,
         exponentiate = FALSE,
         intercept = FALSE,
+        quiet = TRUE,
         label = variable_labels  # Apply human-readable labels
     )
     
@@ -117,6 +118,7 @@ analyze_tumor_height_changes <- function(data) {
     sensitivity_height_lm_tbl <- tbl_regression(sensitivity_height_lm,
         exponentiate = FALSE,
         intercept = FALSE,
+        quiet = TRUE,
         label = variable_labels  # Apply human-readable labels
     )
     
