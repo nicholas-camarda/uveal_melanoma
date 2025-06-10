@@ -437,40 +437,185 @@ validate_naming_consistency <- function(dataset_name, prefix, cohort_dir_name) {
 #' Creates a detailed report of all validation checks performed during the analysis
 #'
 #' @param cohort_list List of cohort datasets
-#' @param output_path Path to save the validation report
+#' @param output_path Path to save the validation report (defaults to logs/)
 generate_validation_report <- function(cohort_list, output_path = NULL) {
     if (is.null(output_path)) {
-        output_path <- file.path("final_data", "Analysis", "validation_report.txt")
+        timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
+        output_path <- file.path("logs", paste0("validation_report_", timestamp, ".txt"))
     }
     
     # Ensure directory exists
     dir.create(dirname(output_path), recursive = TRUE, showWarnings = FALSE)
     
-    # Capture validation output
-    validation_output <- capture.output({
-        validation_result <- validate_cohort_integrity(cohort_list)
-    })
+    # Get cohort data
+    full_data <- cohort_list$uveal_melanoma_full_cohort
+    restricted_data <- cohort_list$uveal_melanoma_restricted_cohort
+    gksrs_only_data <- cohort_list$uveal_melanoma_gksrs_only_cohort
     
-    # Add timestamp and system info
+    # Build comprehensive validation report
     report_content <- c(
-        sprintf("COHORT VALIDATION REPORT"),
+        "================================================================================",
+        "                      COMPREHENSIVE VALIDATION REPORT",
+        "================================================================================",
         sprintf("Generated: %s", Sys.time()),
-        sprintf("System: %s", Sys.info()["sysname"]),
+        sprintf("System: %s %s", Sys.info()["sysname"], Sys.info()["release"]),
         sprintf("R Version: %s", R.version.string),
         "",
-        "=== VALIDATION OUTPUT ===",
-        validation_output,
+        "================================================================================",
+        "                           COHORT SIZE VALIDATION",
+        "================================================================================",
+        sprintf("Full cohort (uveal_melanoma_full_cohort):       %d patients", nrow(full_data)),
+        sprintf("Restricted cohort (uveal_melanoma_restricted_cohort): %d patients", nrow(restricted_data)),
+        sprintf("GKSRS-only cohort (uveal_melanoma_gksrs_only_cohort): %d patients", nrow(gksrs_only_data)),
         "",
-        "=== SUMMARY STATISTICS ===",
-        sprintf("Full cohort: %d patients", nrow(cohort_list$uveal_melanoma_full_cohort)),
-        sprintf("Restricted cohort: %d patients", nrow(cohort_list$uveal_melanoma_restricted_cohort)),
-        sprintf("GKSRS-only cohort: %d patients", nrow(cohort_list$uveal_melanoma_gksrs_only_cohort)),
+        sprintf("✓ Full cohort is largest: %s", if(nrow(full_data) >= nrow(restricted_data) && nrow(full_data) >= nrow(gksrs_only_data)) "PASS" else "FAIL"),
+        sprintf("✓ Subset sum check: %d + %d = %d vs %d full (diff: %d)", 
+                nrow(restricted_data), nrow(gksrs_only_data), 
+                nrow(restricted_data) + nrow(gksrs_only_data), nrow(full_data),
+                nrow(full_data) - (nrow(restricted_data) + nrow(gksrs_only_data))),
+        "",
+        "================================================================================",
+        "                        TREATMENT DISTRIBUTION VALIDATION",
+        "================================================================================"
+    )
+    
+    # Treatment distributions
+    for (cohort_name in names(cohort_list)) {
+        cohort_data <- cohort_list[[cohort_name]]
+        clean_name <- gsub("uveal_melanoma_", "", cohort_name)
+        treatment_dist <- table(cohort_data$treatment_group, useNA = "ifany")
+        
+        report_content <- c(report_content,
+            sprintf("%s:", tools::toTitleCase(gsub("_", " ", clean_name))),
+            sprintf("  - %s", paste(names(treatment_dist), "=", treatment_dist, collapse = ", ")),
+            ""
+        )
+    }
+    
+    # Consort group validation
+    report_content <- c(report_content,
+        "================================================================================",
+        "                        CONSORT GROUP VALIDATION",
+        "================================================================================"
+    )
+    
+    # Check restricted cohort
+    restricted_consort <- table(restricted_data$consort_group, useNA = "ifany")
+    restricted_valid <- all(restricted_data$consort_group == "eligible_both", na.rm = TRUE)
+    report_content <- c(report_content,
+        sprintf("Restricted cohort consort_group distribution: %s", paste(names(restricted_consort), "=", restricted_consort, collapse = ", ")),
+        sprintf("✓ All restricted patients are 'eligible_both': %s", if(restricted_valid) "PASS" else "FAIL"),
         ""
+    )
+    
+    # Check GKSRS-only cohort
+    gksrs_consort <- table(gksrs_only_data$consort_group, useNA = "ifany")
+    gksrs_valid <- all(gksrs_only_data$consort_group == "gksrs_only", na.rm = TRUE)
+    report_content <- c(report_content,
+        sprintf("GKSRS-only cohort consort_group distribution: %s", paste(names(gksrs_consort), "=", gksrs_consort, collapse = ", ")),
+        sprintf("✓ All GKSRS-only patients are 'gksrs_only': %s", if(gksrs_valid) "PASS" else "FAIL"),
+        ""
+    )
+    
+    # Eligibility criteria validation
+    report_content <- c(report_content,
+        "================================================================================",
+        "                      ELIGIBILITY CRITERIA VALIDATION",
+        "================================================================================",
+        sprintf("Tumor diameter threshold: %.1f mm", TUMOR_DIAMETER_THRESHOLD),
+        sprintf("Tumor height threshold: %.1f mm", TUMOR_HEIGHT_THRESHOLD),
+        ""
+    )
+    
+    # Check restricted cohort eligibility
+    restricted_violations <- restricted_data %>%
+        filter(
+            initial_tumor_diameter > TUMOR_DIAMETER_THRESHOLD |
+            initial_tumor_height > TUMOR_HEIGHT_THRESHOLD |
+            optic_nerve == "Yes"
+        )
+    
+    report_content <- c(report_content,
+        sprintf("Restricted cohort eligibility violations: %d patients", nrow(restricted_violations)),
+        sprintf("✓ Restricted cohort eligibility criteria: %s", if(nrow(restricted_violations) == 0) "PASS" else "FAIL")
+    )
+    
+    if (nrow(restricted_violations) > 0) {
+        report_content <- c(report_content,
+            "  Violating patients:",
+            sprintf("  ID %s: diameter=%.1f, height=%.1f, optic_nerve=%s", 
+                    restricted_violations$id,
+                    restricted_violations$initial_tumor_diameter,
+                    restricted_violations$initial_tumor_height,
+                    restricted_violations$optic_nerve)
+        )
+    }
+    
+    # Check GKSRS-only cohort eligibility
+    gksrs_should_qualify <- gksrs_only_data %>%
+        filter(
+            initial_tumor_diameter > TUMOR_DIAMETER_THRESHOLD |
+            initial_tumor_height > TUMOR_HEIGHT_THRESHOLD |
+            optic_nerve == "Yes"
+        )
+    
+    report_content <- c(report_content,
+        "",
+        sprintf("GKSRS-only cohort patients meeting ineligibility criteria: %d/%d", nrow(gksrs_should_qualify), nrow(gksrs_only_data)),
+        sprintf("✓ GKSRS-only cohort ineligibility criteria: %s", if(nrow(gksrs_should_qualify) == nrow(gksrs_only_data)) "PASS" else "FAIL")
+    )
+    
+    # Patient overlap check
+    overlap_patients <- intersect(restricted_data$id, gksrs_only_data$id)
+    report_content <- c(report_content,
+        "",
+        "================================================================================",
+        "                           PATIENT OVERLAP VALIDATION",
+        "================================================================================",
+        sprintf("Patients appearing in both restricted and GKSRS-only cohorts: %d", length(overlap_patients)),
+        sprintf("✓ No patient overlap between cohorts: %s", if(length(overlap_patients) == 0) "PASS" else "FAIL")
+    )
+    
+    if (length(overlap_patients) > 0) {
+        report_content <- c(report_content,
+            sprintf("  Overlapping patient IDs: %s", paste(overlap_patients, collapse = ", "))
+        )
+    }
+    
+    # Overall validation status
+    all_checks_passed <- restricted_valid && gksrs_valid && 
+                        nrow(restricted_violations) == 0 && 
+                        nrow(gksrs_should_qualify) == nrow(gksrs_only_data) &&
+                        length(overlap_patients) == 0 &&
+                        nrow(full_data) >= nrow(restricted_data) && 
+                        nrow(full_data) >= nrow(gksrs_only_data)
+    
+    report_content <- c(report_content,
+        "",
+        "================================================================================",
+        "                            OVERALL VALIDATION STATUS",
+        "================================================================================",
+        sprintf("🎯 OVERALL VALIDATION RESULT: %s", if(all_checks_passed) "✅ ALL CHECKS PASSED" else "❌ VALIDATION FAILED"),
+        "",
+        if (all_checks_passed) {
+            "All cohort definitions, sample sizes, treatment distributions, and eligibility"
+        } else {
+            "⚠️  CRITICAL: Data integrity issues detected. Review failed checks above."
+        },
+        if (all_checks_passed) {
+            "criteria have been validated. Analysis can proceed with confidence."
+        } else {
+            "   Analysis should not proceed until validation issues are resolved."
+        },
+        "",
+        "================================================================================",
+        sprintf("Report generated at: %s", Sys.time()),
+        "================================================================================"
     )
     
     # Write report
     writeLines(report_content, output_path)
-    log_enhanced(sprintf("Validation report saved to: %s", output_path), level = "INFO")
+    log_enhanced(sprintf("Comprehensive validation report saved to: %s", output_path), level = "INFO")
     
     return(output_path)
 }

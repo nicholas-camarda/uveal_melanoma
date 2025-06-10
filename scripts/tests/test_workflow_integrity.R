@@ -52,9 +52,10 @@ test_workflow_integrity <- function() {
         }
     }
     
-    # Step 4: Generate validation report
+    # Step 4: Generate validation report  
     log_enhanced("Generating validation report...", level = "INFO")
-    report_path <- file.path("final_data", "Analysis", "workflow_integrity_test_report.txt")
+    timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
+    report_path <- file.path("logs", paste0("workflow_integrity_test_", timestamp, ".txt"))
     generate_validation_report(final_analytic_datasets_lst, report_path)
     
     log_enhanced("=== WORKFLOW INTEGRITY TEST COMPLETED SUCCESSFULLY ===", level = "SECTION")
