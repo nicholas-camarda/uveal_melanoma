@@ -453,14 +453,22 @@ apply_criteria <- function(data) {
 
     factored_filtered_data <- list(
         uveal_melanoma_full_cohort = full_cohort,
-        uveal_melanoma_gksrs_only_cohort = restricted_cohort,
-        uveal_melanoma_restricted_cohort = gksrs_only_cohort
+        uveal_melanoma_restricted_cohort = restricted_cohort,
+        uveal_melanoma_gksrs_only_cohort = gksrs_only_cohort
     )
 
     log_enhanced(sprintf("Created %d cohorts", length(factored_filtered_data)), level = "INFO")
     for (cohort in names(factored_filtered_data)) {
         log_enhanced(sprintf("Cohort '%s': %d patients", cohort, nrow(factored_filtered_data[[cohort]])), level = "INFO")
     }
+
+    # CRITICAL: Validate cohort integrity to prevent bugs like dataset naming issues
+    if (!validate_cohort_integrity(factored_filtered_data)) {
+        stop("COHORT VALIDATION FAILED: Critical data integrity issues detected. See validation output above.")
+    }
+    
+    # Generate validation report
+    generate_validation_report(factored_filtered_data)
 
     return(factored_filtered_data)
 }
@@ -835,20 +843,15 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
                 label = STANDARD_TABLE_LABELS
             ) %>%
             add_overall() %>%
-            add_p(
-                test = list(
-                    all_continuous() ~ "t.test"
-                    # Categorical variables: automatic selection (chi-squared for expected counts ≥5, Fisher's exact for <5)
-                )
+            add_p(test = list(all_categorical() ~ "fisher.test"), 
+                  test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))) %>%
+            bold_labels() %>%       # Built-in gtsummary function for bold variable labels!
+            modify_header(
+                label = "**Characteristic**",
+                stat_0 = "**Overall**\nN = {N}"
             ) %>%
-            modify_header(label = "**Variable**", quiet = TRUE) %>%
-            modify_caption(paste(
-                "Table 1: Baseline Characteristics -",
-                gsub("_", " ", tools::toTitleCase(cohort_name))
-            )) %>%
-            modify_footnote(
-                update = all_stat_cols() ~ "Continuous variables: t-test; Categorical variables: Pearson's chi-squared test when expected cell counts ≥5, Fisher's exact test when expected cell counts <5"
-            )
+            modify_caption("Baseline Characteristics") %>%
+            as_gt()
 
         # Add treatment duration metrics to the table
         log_enhanced("Adding treatment duration metrics to table", level = "INFO")

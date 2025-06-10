@@ -53,20 +53,19 @@ analyze_visual_acuity_changes <- function(data) {
             statistic = list(vision_change ~ "{mean} ({sd})"),
             digits = list(vision_change ~ 2)
         ) %>%
-        add_p(test = list(all_continuous() ~ "wilcox.test"), quiet = TRUE) %>%
-        modify_header(quiet = TRUE) %>%
-        modify_caption("Change in Vision (Initial - Last Measured or Pre-Retreatment), by Treatment Group") %>%
-        modify_footnote(
-            update = all_stat_cols() ~ "Mean (SD)"
-        )
-    
-    # Convert to gt table and save
-    tbl <- tbl_summary_obj %>%
+        add_p(test = list(all_continuous() ~ "wilcox.test")) %>%
+        add_overall() %>%
+        bold_labels() %>%       # Built-in gtsummary function for bold variable labels!
+        modify_header(
+            label = "**Characteristic**",
+            stat_0 = "**Overall**\nN = {N}"
+        ) %>%
+        modify_caption("Vision Changes Analysis") %>%
         as_gt()
     
     # Save table
     save_gt_html(
-        tbl,
+        tbl_summary_obj,
         filename = file.path(output_dirs$obj2_vision, paste0(prefix, "vision_changes.html"))
     )
     
@@ -80,7 +79,6 @@ analyze_visual_acuity_changes <- function(data) {
     vision_lm_tbl <- tbl_regression(vision_lm,
         exponentiate = FALSE,
         intercept = FALSE,
-        quiet = TRUE,
         label = variable_labels  # Apply human-readable labels
     )
     
@@ -94,12 +92,12 @@ analyze_visual_acuity_changes <- function(data) {
     }
     
     vision_lm_tbl <- vision_lm_tbl %>%
+        bold_labels() %>%
         modify_header(
             label = "**Characteristic**",
             estimate = "**Beta**",
             ci = "**95% CI**",
-            p.value = "**p-value**",
-            quiet = TRUE
+            p.value = "**p-value**"
         ) %>%
         modify_caption("Linear Regression of Change in Vision") %>%
         modify_footnote(
@@ -114,7 +112,7 @@ analyze_visual_acuity_changes <- function(data) {
 
     return(list(
         changes = vision_changes,
-        table = tbl,
+        table = tbl_summary_obj,
         regression_model = vision_lm,
         regression_table = vision_lm_tbl
     ))
@@ -214,11 +212,22 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
         tbl_summary(
             by = treatment_group,
             missing = "no",
-            type = list(!!outcome_var ~ "categorical"),
-            label = list(!!outcome_var ~ paste("Radiation Sequela:", tools::toTitleCase(sequela_type)))
+            label = get_variable_labels(),
+            statistic = list(
+                all_continuous() ~ "{mean} ({sd})",
+                all_categorical() ~ "{n} ({p}%)"
+            )
         ) %>%
-        modify_header(quiet = TRUE) %>%
-        add_p(quiet = TRUE) %>%  # Use gtsummary default test selection
+        add_overall() %>%
+        add_p(test = list(all_continuous() ~ "wilcox.test")) %>%
+        bold_labels() %>%
+        modify_header(
+            label = "**Characteristic**",
+            stat_0 = "**Overall**\nN = {N}",
+            stat_1 = "**Plaque**\nN = {n}",
+            stat_2 = "**GKSRS**\nN = {n}",
+            p.value = "**p-value**"
+        ) %>%
         modify_caption(paste("Rates of", tools::toTitleCase(sequela_type), "by Treatment Group"))
     
     # Convert to gt table and save
@@ -256,7 +265,6 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
         model_result <- tbl_regression(model,
             exponentiate = TRUE,
             intercept = FALSE,
-            quiet = TRUE,
             label = variable_labels  # Apply human-readable labels
         )
         
@@ -270,12 +278,12 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
         }
         
         model_result <- model_result %>%
+            bold_labels() %>%
             modify_header(
                 label = "**Characteristic**",
                 estimate = "**OR**",
                 ci = "**95% CI**",
-                p.value = "**p-value**",
-                quiet = TRUE
+                p.value = "**p-value**"
             ) %>%
             modify_caption(paste("Logistic Regression for", tools::toTitleCase(sequela_type))) %>%
             modify_footnote(

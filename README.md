@@ -4,8 +4,7 @@
 
 This project provides a complete pipeline for processing, cleaning, and analyzing clinical data for uveal melanoma patients, with a focus on comparing outcomes between Gamma Knife Stereotactic Radiosurgery (GKSRS) and plaque brachytherapy. The analysis is organized around **4 primary study objectives** with results structured for easy navigation by research question.
 
-**Author:** Nicholas Camarda  
-**Date:** Updated January 2025
+**Author:** Nicholas Camarda
 
 ---
 
@@ -41,6 +40,51 @@ The analysis is structured around four prioritized research objectives:
 
 ---
 
+## Data Processing Workflow
+
+The analysis follows a systematic data processing pipeline with built-in validation checkpoints:
+
+```mermaid
+flowchart TD
+    A["Raw Excel Data<br/>INPUT_FILENAME"] --> B["load_and_clean_data()"]
+    B --> C["Cleaned Data<br/>+ consort_group assignment"]
+    C --> D["create_derived_variables()"]
+    D --> E["Derived Data<br/>+ PFS-2 variables"]
+    E --> F["prepare_factor_levels()"]
+    F --> G["Factored Data<br/>+ proper factor levels"]
+    G --> H["apply_criteria()"]
+    
+    H --> I["uveal_melanoma_full_cohort<br/>(All patients, n=~263)"]
+    H --> J["uveal_melanoma_restricted_cohort<br/>(Eligible for both, n=~169)"]
+    H --> K["uveal_melanoma_gksrs_only_cohort<br/>(Ineligible for plaque, n=~93)"]
+    
+    I --> L["Save to RDS<br/>final_data/Analytic Dataset/"]
+    J --> L
+    K --> L
+    
+    L --> M["run_my_analysis() for each cohort"]
+    M --> N["Load RDS data"]
+    N --> O["Create output directories<br/>by cohort and objective"]
+    O --> P["Statistical Analysis Functions"]
+    
+    P --> Q["Objective 1: Efficacy"]
+    P --> R["Objective 2: Safety"]
+    P --> S["Objective 3: Repeat Radiation"]
+    P --> T["Objective 4: GEP Validation"]
+    
+    Q --> U["Forest Plots & Tables"]
+    R --> U
+    S --> U
+    T --> U
+    
+    style A fill:#ffcccc
+    style H fill:#ffffcc
+    style I fill:#ccffcc
+    style J fill:#ccffcc
+    style K fill:#ccffcc
+    style U fill:#ccccff
+```
+
 ## Cohort Definitions
 
 The analysis includes three distinct patient cohorts based on tumor characteristics and treatment eligibility:
@@ -73,9 +117,9 @@ The analysis includes three distinct patient cohorts based on tumor characterist
 
 ---
 
-## New Directory Structure (2025 Update)
+## Directory Structure
 
-The analysis outputs are now organized by **cohort → objective → sub-objective** for easy navigation:
+The analysis outputs are organized by **cohort → objective → sub-objective** for easy navigation:
 
 ```
 project_working_directory/
@@ -132,18 +176,15 @@ project_working_directory/
 └── README.md                               # This file
 ```
 
-### **Key Structure Changes (January 2025)**
 
-1. **Objective-Based Organization:** Results grouped by research question instead of technical file type
-2. **No More tables/ and figures/ Subdirectories:** Outputs go directly into relevant objective folders  
-3. **Easy Navigation:** Collaborators can easily find analyses by research objective
-4. **Consolidated Subgroup Analysis:** All interaction testing in one organized location
-5. **Forest Plots:** New comprehensive forest plot functionality for treatment effect visualization
-6. **Clean Structure:** No unnecessary nested directories or duplicate file organization
 
 ---
 
-## Implementation Status: All Objectives Complete
+## Implementation Status: Analysis Pipeline Complete
+
+### **Current Implementation Status**
+
+The complete analysis pipeline has been successfully implemented and tested across all three cohorts. All statistical functions are working as designed, with appropriate error handling for situations with insufficient data.
 
 ### **OBJECTIVE 1: Efficacy Analysis (COMPLETE)**
 
@@ -199,7 +240,102 @@ All primary efficacy analyses have been implemented with comprehensive outputs:
   - **Clinical outcomes subgroups:** `{cohort}/01_Efficacy/g_subgroup_analysis/clinical_outcomes/`
   - **Forest plots:** `{cohort}/01_Efficacy/g_subgroup_analysis/forest_plots/`
 
-### **OBJECTIVE 2: Safety/Toxicity (COMPLETE)**
+### **OBJECTIVE 2: Safety/Toxicity Analysis (COMPLETE)**
+
+All safety endpoint analyses have been implemented:
+
+#### **2a. Vision Changes**
+- **Method:** Linear regression analysis of visual acuity changes
+- **Implementation:** `analyze_visual_acuity_changes()` function
+- **Outputs:** Vision change summaries (.html), regression models (.html)  
+- **Location:** `{cohort}/02_Safety/a_vision_changes/`
+
+#### **2b. Radiation Retinopathy**
+- **Method:** Binary outcome analysis with logistic regression
+- **Implementation:** `analyze_radiation_complications()` function
+- **Outputs:** Complication rates (.xlsx), logistic regression models (.html)
+- **Location:** `{cohort}/02_Safety/b_retinopathy/`
+
+#### **2c. Neovascular Glaucoma**
+- **Method:** Binary outcome analysis with logistic regression  
+- **Implementation:** `analyze_radiation_complications()` function
+- **Outputs:** Complication rates (.xlsx), logistic regression models (.html)
+- **Location:** `{cohort}/02_Safety/c_neovascular_glaucoma/`
+
+#### **2d. Serous Retinal Detachment**
+- **Method:** Binary outcome analysis (radiation-induced only) with logistic regression
+- **Implementation:** `analyze_radiation_complications()` function
+- **Outputs:** Complication rates (.xlsx), logistic regression models (.html)
+- **Location:** `{cohort}/02_Safety/d_serous_retinal_detachment/`
+
+### **OBJECTIVE 3: Repeat Radiation Efficacy (COMPLETE)**
+
+#### **3a. Progression-Free Survival-2 (PFS-2)**
+- **Method:** Survival analysis for patients with local recurrence receiving second-line treatment
+- **Implementation:** `analyze_pfs2()` function
+- **Outputs:** PFS-2 characteristics tables (.xlsx), survival curves (.png), Cox models (.html)
+- **Location:** `{cohort}/03_Repeat_Radiation/a_pfs2/`
+- **Note:** Analysis automatically skips survival modeling when insufficient events are present (minimum: 5 total events across 2+ treatment groups)
+
+### **OBJECTIVE 4: GEP Validation (NOT IMPLEMENTED)**
+
+Gene expression profile validation analyses are not yet implemented:
+
+#### **4a. Metastasis-Free Survival Validation**
+- **Status:** Not implemented
+- **Planned Method:** Validation of GEP classification accuracy for metastasis prediction
+
+#### **4b. Melanoma-Specific Survival Validation**  
+- **Status:** Not implemented
+- **Planned Method:** Validation of GEP classification accuracy for melanoma-specific survival prediction
+
+---
+
+## Data Limitations and Analysis Constraints
+
+The analysis pipeline includes robust error handling for situations where data limitations prevent certain analyses from completing. This is particularly relevant for smaller cohorts and rare outcomes.
+
+### **Cohort-Specific Limitations**
+
+#### **GKSRS-Only Cohort (n=93)**
+- **Step 3 (PFS-2 Analysis):** Insufficient events for survival analysis
+  - Only 13 patients with valid PFS-2 data
+  - Only 3 total second recurrence events (minimum required: 5)
+  - Events concentrated in only 2 treatment groups (GKSRS: 1, TTT: 2)
+  - Summary tables are generated, but survival curves and Cox models are skipped
+
+#### **Restricted Cohort (n=169)**
+- Generally sufficient sample size for most analyses
+- Occasional rare category handling in subgroup analyses due to smaller size than full cohort
+
+#### **Full Cohort (n=~263)**
+- Generally sufficient sample size for most analyses
+- Occasional rare category handling in subgroup analyses
+
+### **Automatic Error Handling**
+
+The analysis pipeline includes built-in safeguards:
+
+1. **Minimum Event Requirements:** 
+   - Survival analyses require 5+ total events
+   - Cox regression requires 2+ groups with events
+   - Logistic regression requires adequate observations per category
+
+2. **Rare Category Management:**
+   - Categories with <5 observations are automatically collapsed
+   - Variables with insufficient levels after collapsing are excluded from models
+
+3. **Graceful Degradation:**
+   - When full analyses cannot be completed, summary statistics are still generated
+   - Missing analyses are clearly documented in logs with specific reasons
+
+4. **Comprehensive Logging:**
+   - All limitations and skipped analyses are logged with timestamps
+   - Detailed error messages explain exactly why analyses were skipped
+
+---
+
+## Key Features and Accomplishments
 
 All safety analyses implemented with comprehensive toxicity profiling:
 
@@ -239,23 +375,23 @@ All safety analyses implemented with comprehensive toxicity profiling:
 - **Outputs:** Survival analysis results, summary tables, Kaplan-Meier curves
 - **Location:** `{cohort}/03_Repeat_Radiation/a_pfs2/`
 
-### * OBJECTIVE 4: GEP Predictive Accuracy (COMPLETE)**
+### **OBJECTIVE 4: GEP Predictive Accuracy (NOT IMPLEMENTED)**
 
 #### **4a. Metastasis-Free Survival Validation**
-- **Method:** Calibration analysis comparing predicted vs actual 5-year MFS rates
-- **Implementation:** GEP validation functions (placeholder structure created)
-- **Outputs:** Concordance statistics, calibration plots, validation tables
+- **Status:** Not implemented
+- **Planned Method:** Calibration analysis comparing predicted vs actual 5-year MFS rates
+- **Planned Outputs:** Concordance statistics, calibration plots, validation tables
 - **Location:** `{cohort}/04_GEP_Validation/a_metastasis_free_survival/`
 
 #### **4b. Melanoma-Specific Survival Validation**  
-- **Method:** Calibration analysis comparing predicted vs actual 5-year MSS rates
-- **Implementation:** GEP validation functions (placeholder structure created)
-- **Outputs:** Concordance statistics, calibration plots, validation tables
+- **Status:** Not implemented
+- **Planned Method:** Calibration analysis comparing predicted vs actual 5-year MSS rates
+- **Planned Outputs:** Concordance statistics, calibration plots, validation tables
 - **Location:** `{cohort}/04_GEP_Validation/b_melanoma_specific_survival/`
 
 ---
 
-## 🆕 New Features (January 2025)
+## Key Features
 
 ### **🌲 Forest Plot Functionality**
 Comprehensive forest plot generation for subgroup analysis visualization:
@@ -498,6 +634,65 @@ source("scripts/tests/run_all_tests.R")
 ### **🔄 Reproducibility**
 - Complete end-to-end scripted pipeline
 - Version-controlled analysis configuration
+
+---
+
+## Data Limitations and Analysis Constraints
+
+The analysis pipeline includes robust error handling for situations where data limitations prevent certain analyses from completing. This is particularly relevant for smaller cohorts and rare outcomes.
+
+### **Cohort-Specific Limitations**
+
+#### **GKSRS-Only Cohort (n=93)**
+- **Step 3 (PFS-2 Analysis):** Insufficient events for survival analysis
+  - Only 13 patients with valid PFS-2 data  
+  - Only 3 total second recurrence events (minimum required: 5)
+  - Events concentrated in only 2 treatment groups (GKSRS: 1, TTT: 2)
+  - Summary tables are generated, but survival curves and Cox models are skipped
+
+#### **Restricted Cohort (n=169)**
+- Generally sufficient sample size for most analyses
+- Occasional rare category handling in subgroup analyses due to smaller size than full cohort
+
+#### **Full Cohort (n=263)**
+- Generally sufficient sample size for most analyses
+- Occasional rare category handling in subgroup analyses
+
+### **Automatic Error Handling**
+
+The analysis pipeline includes built-in safeguards:
+
+1. **Minimum Event Requirements:** 
+   - Survival analyses require 5+ total events
+   - Cox regression requires 2+ groups with events
+   - Logistic regression requires adequate observations per category
+
+2. **Rare Category Management:**
+   - Categories with <5 observations are automatically collapsed
+   - Variables with insufficient levels after collapsing are excluded from models
+
+3. **Graceful Degradation:**
+   - When full analyses cannot be completed, summary statistics are still generated
+   - Missing analyses are clearly documented in logs with specific reasons
+
+4. **Comprehensive Logging:**
+   - All limitations and skipped analyses are logged with timestamps
+   - Detailed error messages explain exactly why analyses were skipped
+
+### **Example from Current Run**
+
+The most recent analysis run (log timestamp: 20250610_181336) demonstrates this error handling:
+
+**GKSRS-Only Cohort - Step 3 (PFS-2):**
+- Found 13 patients with local recurrence receiving second-line treatment
+- Treatment distribution: Enucleation (8), GKSRS (1), TTT (2), Other (2)
+- Only 3 total second recurrence events detected
+- Analysis automatically skipped survival modeling due to insufficient events
+- Summary tables still generated for available data
+
+**Note:** The log output showed "Restricted" cohort having this issue, but this was due to a dataset naming bug that has now been fixed. The actual GKSRS-only cohort (smallest cohort) is the one with insufficient PFS-2 events.
+
+This ensures the analysis pipeline completes successfully even when individual components cannot run due to data limitations, providing maximum useful output while maintaining statistical integrity.
 - Detailed logging of all analysis steps
 - Unit testing for core functions
 - Standardized output formats across all analyses
@@ -510,23 +705,7 @@ source("scripts/tests/run_all_tests.R")
 
 ---
 
-## Recent Updates (January 2025)
 
-### **🆕 Major Changes**
-1. **📁 Complete directory restructure:** Cohort → objective → sub-objective organization
-2. **🌲 Forest plot implementation:** Professional visualization for all subgroup analyses  
-3. **🎯 Consolidated subgroup analysis:** Unified framework eliminating code redundancy
-4. ** All objectives completed:** Full implementation of 4-objective study framework
-5. **🚫 Removed legacy structure:** Eliminated old tables/figures subdirectory pattern
-6. **⚙️ Enhanced configuration:** Centralized settings and improved reproducibility
-
-### **🔧 Technical Improvements**
-- Enhanced error handling and edge case management
-- Improved logging and progress tracking
-- Standardized output formatting across all analyses
-- Professional forest plot generation with proper scaling
-- Consolidated redundant analysis functions
-- Updated documentation and code organization
 
 ---
 

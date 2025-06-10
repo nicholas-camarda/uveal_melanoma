@@ -126,7 +126,7 @@ analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var,
         intercept = FALSE,
         exponentiate = TRUE,
         show_single_row = group_var,
-        quiet = TRUE,
+
         label = variable_labels  # Apply human-readable labels
     )
     
@@ -140,12 +140,13 @@ analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var,
     }
     
     tbl <- tbl %>%
+        bold_labels() %>%
         # change the column names
         modify_header(
             label     = "**Variable**",
             estimate  = "**OR**",
             p.value   = "**p-value**",
-            quiet = TRUE
+
         ) %>%
         modify_caption( # shorten the caption
             md(sprintf("Adjusted Odds Ratios for **%s** by Treatment Group and Covariates", outcome_var))
@@ -547,8 +548,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         cox_model,
         exponentiate = TRUE, # gives you HRs
         label = variable_labels,  # Apply human-readable labels
-        show_single_row = if (group_levels == 2) group_var else NULL, # only for binary variables
-        quiet = TRUE
+        show_single_row = if (group_levels == 2) group_var else NULL # only for binary variables
     )
     
     # Add p-values based on toggle setting
@@ -561,11 +561,11 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     }
     
     cox_table_formatted <- cox_table %>%
+        bold_labels() %>%
         modify_header(
             label    = "**Variable**",
             estimate = "**HR (95 % CI)**",
-            p.value  = "**p-value**",
-            quiet = TRUE
+            p.value  = "**p-value**"
         ) %>%
         modify_caption(sprintf("%s: Adjusted Cox Proportional-Hazards Model", ylab)) %>%
         modify_footnote(
@@ -845,31 +845,32 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL) {
         tbl_summary(
             by = recurrence1_treatment_clean,
             missing = "no",
-            type = list(
-                pfs2_event ~ "continuous"  # Treat as continuous for sum calculation
-            ),
-            statistic = list(
-                tt_pfs2_months ~ "{median} ({p25}, {p75})",
-                pfs2_event ~ "{sum}",  # Just show sum, not percentage
-                age_at_diagnosis ~ "{mean} ({sd})"
-            ),
-            digits = list(
-                tt_pfs2_months ~ 1,
-                age_at_diagnosis ~ 1
-            ),
             label = list(
                 tt_pfs2_months ~ "PFS-2 Time (months)",
                 pfs2_event ~ "2nd Recurrence Events",
                 age_at_diagnosis ~ "Age at Diagnosis",
                 sex ~ "Sex"
+            ),
+            statistic = list(
+                tt_pfs2_months ~ "{median} ({p25}, {p75})",
+                pfs2_event ~ "{n} ({p}%)",  # Standard categorical format
+                age_at_diagnosis ~ "{mean} ({sd})"
+            ),
+            digits = list(
+                tt_pfs2_months ~ 1,
+                age_at_diagnosis ~ 1
             )
         ) %>%
         add_overall() %>%
-        add_p(quiet = TRUE) %>%
+        add_p(test = list(all_continuous() ~ "kruskal.test", all_categorical() ~ "fisher.test"), 
+              test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))) %>%
+        bold_labels() %>%
         modify_header(
             label = "**Characteristic**",
             stat_0 = "**Overall**\nN = {N}",
-            quiet = TRUE
+            stat_1 = "**Plaque**\nN = {n}",
+            stat_2 = "**GKSRS**\nN = {n}",
+            p.value = "**p-value**"
         ) %>%
         modify_caption("PFS-2 Analysis: Characteristics of Recurrent Patients by Second-Line Treatment") %>%
         as_gt()

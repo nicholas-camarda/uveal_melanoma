@@ -592,11 +592,12 @@ format_subgroup_analysis_tables <- function(subgroup_results, dataset_name, subg
 #' Format subgroup analysis results into publication-ready table
 #'
 #' Creates a formatted table of subgroup analysis results for publication
+#' Saves both Excel (.xlsx) and styled HTML versions
 #'
 #' @param subgroup_results List of subgroup analysis results
 #' @param outcome_name Name of the outcome being analyzed
 #' @param effect_measure Type of effect measure ("HR" for hazard ratio, "OR" for odds ratio, "MD" for mean difference)
-#' @param output_path Full path for saving the table
+#' @param output_path Full path for saving the Excel table (HTML will be saved with .html extension)
 #' @return Formatted data frame
 format_subgroup_analysis_results <- function(subgroup_results, outcome_name, effect_measure = "HR", output_path = NULL) {
     # Use the create_forest_plot_data function from forest_plot.R
@@ -672,7 +673,7 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
         return(NULL)
     }
 
-    # Format the table
+    # Format the table for Excel output
     formatted_table <- table_data %>%
         mutate(
             # Format effect estimates and confidence intervals
@@ -698,20 +699,130 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
         ) %>%
         arrange(variable_label, level_label)
 
-    # Add column headers
+    # Add column headers for Excel version
     colnames(formatted_table) <- c(
-        "Subgroup",
-        "Level",
+        "Subgroup Variable",
+        "Level", 
         paste0(effect_measure, " (95% CI)"),
         "p-value",
         "Interaction p-value",
-        "GKSRS/Plaque"
+        "Sample Size (GKSRS/Plaque)"
     )
 
-    # Save table if path provided
+    # Save Excel table if path provided
     if (!is.null(output_path)) {
         writexl::write_xlsx(formatted_table, output_path)
         log_enhanced(sprintf("Subgroup analysis table saved to: %s", output_path), level = "INFO")
+        
+                # Create styled HTML version using gt() but with tbl_regression styling
+        tryCatch({
+            # Extract clean cohort name from outcome_name
+            clean_outcome_name <- gsub("Tumor Height Change - ", "", outcome_name)
+            clean_outcome_name <- gsub(" - [A-Z]+ - ", " - ", clean_outcome_name)
+            
+            # Get the subgroup variable name and confounders from the first row for the title
+            subgroup_variable_name <- if(nrow(formatted_table) > 0) {
+                # Clean up the variable name for display
+                var_name <- formatted_table$`Subgroup Variable`[1]
+                tools::toTitleCase(gsub("_", " ", var_name))
+            } else {
+                "Unknown Variable"
+            }
+            
+            # Get confounders used from the results (if available)
+            confounders_used <- tryCatch({
+                first_result <- subgroup_results[[1]]
+                if (!is.null(first_result$confounders_used)) {
+                    paste(first_result$confounders_used, collapse = ", ")
+                } else {
+                    "age_at_diagnosis, sex, location, initial_tumor_height"
+                }
+            }, error = function(e) {
+                "age_at_diagnosis, sex, location, initial_tumor_height"
+            })
+            
+            # Format confounders for model formula
+            model_confounders <- gsub(", ", " + ", confounders_used)
+            
+                        # Prepare data for gtsummary table format
+            # Create a restructured data frame for tbl_summary approach
+            subgroup_data <- table_data %>%
+                select(subgroup_variable, level_label, treatment_effect, ci_lower, ci_upper, p_value, interaction_p, n_total, n_plaque, n_gksrs) %>%
+                mutate(
+                    effect_ci = sprintf("%.2f (%.2f, %.2f)", treatment_effect, ci_lower, ci_upper),
+                    p_value_formatted = sprintf("%.4f", p_value),
+                    sample_size = sprintf("%d (%d Plaque + %d GKSRS)", n_total, n_plaque, n_gksrs)
+                ) %>%
+                select(subgroup_variable, level_label, sample_size, effect_ci, p_value_formatted, interaction_p)
+            
+            # Extract interaction p-value for the subtitle
+            interaction_p_value <- ifelse(length(unique(table_data$interaction_p)) == 1, 
+                                        unique(table_data$interaction_p)[1], NA)
+            
+            # Create a simple summary table structure that mimics tbl_summary styling
+            # Using gt but with gtsummary-style formatting
+            gt_tbl <- subgroup_data %>%
+                select(-subgroup_variable, -interaction_p) %>%
+                rename(
+                    `Subgroup Level` = level_label,
+                    `Sample Size` = sample_size,
+                    `Treatment Effect (95% CI)` = effect_ci,
+                    `P-value` = p_value_formatted
+                ) %>%
+                gt() %>%
+                # Main title and subtitle matching the image style
+                tab_header(
+                    title = md(sprintf("**Subgroup Analysis: %s**", subgroup_variable_name)),
+                    subtitle = md(sprintf("**Treatment Effect on %s | Interaction P-value: %.4f**", 
+                                        gsub("Subgroup Analysis: ", "", outcome_name),
+                                        interaction_p_value))
+                ) %>%
+                # Column headers with gtsummary-style formatting
+                cols_label(
+                    `Subgroup Level` = md("**Subgroup Level**"),
+                    `Sample Size` = md("**Sample Size**"),
+                    `Treatment Effect (95% CI)` = md(sprintf("**Treatment Effect (95%% CI)**")),
+                    `P-value` = md("**P-value**")
+                ) %>%
+                # Add footnotes/caption information matching the image style
+                tab_source_note(
+                    source_note = md(sprintf(
+                        "**Treatment Effect**: %s vs %s (reference). %s\n\n**Model**: %s ~ treatment_group * %s + %s\n\n**Confounders**: %s\n\n**Dataset**: %s",
+                        "GKSRS",
+                        "Plaque", 
+                        case_when(
+                            effect_measure == "HR" ~ "Values < 1 favor GKSRS",
+                            effect_measure == "OR" ~ "Values < 1 favor GKSRS", 
+                            effect_measure == "MD" ~ "Positive values indicate greater height reduction with GKSRS",
+                            TRUE ~ "Comparison of treatment effects"
+                        ),
+                        tolower(gsub("Subgroup Analysis: ", "", gsub(" Analysis.*", "", outcome_name))),
+                        tolower(subgroup_variable_name),
+                        model_confounders,
+                        confounders_used,
+                        clean_outcome_name
+                    ))
+                ) %>%
+                # Apply gtsummary-style formatting
+                tab_style(
+                    style = cell_text(weight = "bold"),
+                    locations = cells_column_labels()
+                ) %>%
+                tab_style(
+                    style = cell_text(style = "italic"),
+                    locations = cells_body(columns = `Subgroup Level`)
+                ) %>%
+                # Replace missing with blank
+                sub_missing(columns = everything(), missing_text = "")
+            
+            # Save HTML version
+            html_path <- gsub("\\.xlsx$", ".html", output_path)
+            save_gt_html(gt_tbl, filename = html_path)
+            log_enhanced(sprintf("Styled HTML subgroup analysis table saved to: %s", html_path), level = "INFO")
+            
+        }, error = function(e) {
+            warning(sprintf("Failed to create HTML version: %s", e$message))
+        })
     }
 
     return(formatted_table)

@@ -288,10 +288,24 @@ tryCatch({
     cat("✗ Styled gt table creation failed:", e$message, "\n")
 })
 
+# Test 6: Save the gt table as a regular HTML file
+cat("\n6. Saving gt table as a regular HTML file...\n")
+tryCatch({
+    # Save table
+    save_gt_html(
+        gt_table,
+        filename = file.path(test_output_dir, "baseline.html")
+    )
+    
+    cat("✓ gt table saved successfully\n")
+    
+}, error = function(e) {
+    cat("✗ gt table creation failed:", e$message, "\n")
+})
+
 # Summary
 cat("\n=== FACTOR INDENTATION TEST SUMMARY ===\n")
 cat(sprintf("Test outputs saved to: %s\n", test_output_dir))
 cat("\nFiles created:\n")
-cat("  - baseline_simple.html (without styling)\n")
-cat("  - baseline_styled.html (with factor indentation)\n")
-cat("\nCompare the two files to see the difference!\n") 
+cat("  - baseline.html\n")
+cat("\nCheck the file to verify formatting!\n") 

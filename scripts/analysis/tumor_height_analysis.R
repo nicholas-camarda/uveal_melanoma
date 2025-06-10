@@ -48,26 +48,30 @@ analyze_tumor_height_changes <- function(data) {
     tbl_summary_obj <- data_with_height_change %>%
         select(treatment_group, height_change) %>%
         tbl_summary(
-            missing = "no",
             by = treatment_group,
-            type = list(height_change ~ "continuous"),
-            statistic = list(height_change ~ "{mean} ({sd})"),
-            digits = list(height_change ~ 1)
+            missing = "no",
+            label = get_variable_labels(),
+            statistic = list(
+                all_continuous() ~ "{mean} ({sd})",
+                all_categorical() ~ "{n} ({p}%)"
+            )
         ) %>%
-        add_p(test = list(all_continuous() ~ "wilcox.test"), quiet = TRUE) %>%
-        modify_header(quiet = TRUE) %>%
-        modify_caption("Change in Tumor Height (Initial - Last Measured or Pre-Retreatment), by Treatment Group") %>%
-        modify_footnote(
-            update = all_stat_cols() ~ "Mean (SD)"
-        )
-    
-    # Convert to gt table
-    tbl <- tbl_summary_obj %>%
+        add_overall() %>%
+        add_p(test = list(all_continuous() ~ "wilcox.test")) %>%
+        bold_labels() %>%
+        modify_header(
+            label = "**Characteristic**",
+            stat_0 = "**Overall**\nN = {N}",
+            stat_1 = "**Plaque**\nN = {n}",
+            stat_2 = "**GKSRS**\nN = {n}",
+            p.value = "**p-value**"
+        ) %>%
+        modify_caption("Tumor Height Changes Analysis") %>%
         as_gt()
     
     # Save table
     save_gt_html(
-        tbl,
+        tbl_summary_obj,
         filename = file.path(output_dirs$obj1_height_primary, paste0(prefix, "height_changes.html"))
     )
     
@@ -81,7 +85,6 @@ analyze_tumor_height_changes <- function(data) {
     primary_height_lm_tbl <- tbl_regression(primary_height_lm,
         exponentiate = FALSE,
         intercept = FALSE,
-        quiet = TRUE,
         label = variable_labels  # Apply human-readable labels
     )
     
@@ -95,12 +98,12 @@ analyze_tumor_height_changes <- function(data) {
     }
     
     primary_height_lm_tbl <- primary_height_lm_tbl %>%
+        bold_labels() %>%
         modify_header(
             label = "**Characteristic**",
             estimate = "**Beta**",
             ci = "**95% CI**",
-            p.value = "**p-value**",
-            quiet = TRUE
+            p.value = "**p-value**"
         ) %>%
         modify_caption("PRIMARY ANALYSIS: Linear Regression of Change in Tumor Height (without baseline height adjustment)") %>%
         modify_footnote(
@@ -120,7 +123,6 @@ analyze_tumor_height_changes <- function(data) {
     sensitivity_height_lm_tbl <- tbl_regression(sensitivity_height_lm,
         exponentiate = FALSE,
         intercept = FALSE,
-        quiet = TRUE,
         label = variable_labels  # Apply human-readable labels
     )
     
@@ -134,12 +136,12 @@ analyze_tumor_height_changes <- function(data) {
     }
     
     sensitivity_height_lm_tbl <- sensitivity_height_lm_tbl %>%
+        bold_labels() %>%
         modify_header(
             label = "**Characteristic**",
             estimate = "**Beta**",
             ci = "**95% CI**",
-            p.value = "**p-value**",
-            quiet = TRUE
+            p.value = "**p-value**"
         ) %>%
         modify_caption("SENSITIVITY ANALYSIS: Linear Regression of Change in Tumor Height (with baseline height adjustment)") %>%
         modify_footnote(
@@ -154,7 +156,7 @@ analyze_tumor_height_changes <- function(data) {
 
     return(list(
         changes = height_changes,
-        table = tbl,
+        table = tbl_summary_obj,
         primary_regression_model = primary_height_lm,
         primary_regression_table = primary_height_lm_tbl,
         sensitivity_regression_model = sensitivity_height_lm,

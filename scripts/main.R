@@ -172,6 +172,11 @@ run_my_analysis <- function(dataset_name) {
     prefix <<- cohort_info$prefix
     cohort_dir_name <- cohort_info$dir_name
     
+    # CRITICAL: Validate naming consistency to prevent bugs
+    if (!validate_naming_consistency(dataset_name, prefix, cohort_dir_name)) {
+        stop(sprintf("NAMING VALIDATION FAILED for dataset: %s", dataset_name))
+    }
+    
     # Create cohort-specific directory structure
     cohort_base_dir <<- file.path("final_data/Analysis", cohort_dir_name)
     log_function("create_output_structure", sprintf("Creating cohort-specific directory structure for %s", cohort_dir_name))

@@ -110,13 +110,13 @@ STANDARD_TABLE_LABELS <- list(
     eye = "Eye",
     
     # Vision and measurements
-    initial_vision = "Initial Vision",
+    initial_vision = "Initial Visual Acuity (logMAR)",
     
     # Tumor characteristics
     location = "Tumor Location",
-    optic_nerve = "Optic Nerve Abutment",
-    initial_tumor_height = "Tumor Height (mm)",
-    initial_tumor_diameter = "Tumor Diameter (mm)",
+    optic_nerve = "Optic Nerve Involvement",
+    initial_tumor_height = "Initial Tumor Height (mm)",
+    initial_tumor_diameter = "Initial Tumor Diameter (mm)",
     internal_reflectivity = "Internal Reflectivity",
     srf = "Subretinal Fluid (SRF)",
     op = "Orange Pigment",
@@ -150,9 +150,15 @@ STANDARD_TABLE_LABELS <- list(
     nvg = "Neovascular Glaucoma",
     srd = "Serous Retinal Detachment",
     
-    # Follow-up
+    # Changes/follow-up
+    height_change = "Tumor Height Change (mm)",
+    vision_change = "Visual Acuity Change (logMAR)",
     follow_up_years = "Follow-up Time (years)",
-    follow_up_months = "Follow-up Time (months)"
+    follow_up_months = "Follow-up Time (months)",
+    
+    # PFS-2 specific
+    tt_pfs2_months = "PFS-2 Time (months)", 
+    pfs2_event = "Second Recurrence Events"
 )
 
 #' Enhanced logging utility functions
@@ -204,14 +210,14 @@ log_progress <- function(current, total, item_name = NULL, action = "Processing"
 #' Log start of a major analysis section
 #'
 #' @param section_name Name of the analysis section
-#' @param dataset_name Name of the current dataset
-log_section_start <- function(section_name, dataset_name = NULL) {
-    if (!is.null(dataset_name)) {
-        msg <- sprintf("%s - Dataset: %s", section_name, dataset_name)
+#' @param detail_name Optional detail for the section
+log_section_start <- function(section_name, detail_name = NULL) {
+    if (!is.null(detail_name)) {
+        full_name <- sprintf("%s - %s", section_name, detail_name)
     } else {
-        msg <- section_name
+        full_name <- section_name
     }
-    log_enhanced(msg, level = "SECTION")
+    log_enhanced(full_name, level = "SECTION")
 }
 
 #' Log completion of a major analysis section with timing
@@ -219,21 +225,254 @@ log_section_start <- function(section_name, dataset_name = NULL) {
 #' @param section_name Name of the analysis section
 #' @param start_time Start time from Sys.time()
 log_section_complete <- function(section_name, start_time) {
-    duration <- round(as.numeric(difftime(Sys.time(), start_time, units = "secs")), 1)
-    log_enhanced(sprintf("COMPLETED %s (Duration: %.1f seconds)", section_name, duration), level = "PROGRESS")
+    duration <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
+    log_enhanced(sprintf(">>> COMPLETED %s (Duration: %.1f seconds)", section_name, duration), level = "PROGRESS")
 }
 
-#' Log function execution
+#' Log a function call with its purpose
 #'
-#' @param func_name Name of the function being executed
-#' @param details Additional details about the function call
-log_function <- function(func_name, details = NULL) {
-    if (!is.null(details)) {
-        msg <- sprintf("Executing %s: %s", func_name, details)
+#' @param func_name Name of the function being called
+#' @param purpose Description of what the function does
+log_function <- function(func_name, purpose) {
+    log_enhanced(sprintf("Executing %s: %s", func_name, purpose), level = "INFO", indent = 1)
+}
+
+########################################################
+############### DATA VALIDATION FUNCTIONS #############
+########################################################
+
+#' Comprehensive validation of cohort assignments and data integrity
+#'
+#' This function performs critical validation checks to prevent bugs like the 
+#' dataset naming issue that was discovered. It should be called after cohort
+#' creation to ensure data integrity.
+#'
+#' @param cohort_list List of cohort datasets from apply_criteria()
+#' @return TRUE if all validations pass, FALSE otherwise with detailed error messages
+validate_cohort_integrity <- function(cohort_list) {
+    log_enhanced("=== STARTING COMPREHENSIVE COHORT VALIDATION ===", level = "SECTION")
+    validation_passed <- TRUE
+    
+    # Check 1: Verify expected cohort names exist
+    expected_names <- c("uveal_melanoma_full_cohort", "uveal_melanoma_restricted_cohort", "uveal_melanoma_gksrs_only_cohort")
+    actual_names <- names(cohort_list)
+    
+    if (!all(expected_names %in% actual_names)) {
+        missing_names <- setdiff(expected_names, actual_names)
+        log_enhanced(sprintf("VALIDATION FAILED: Missing expected cohort names: %s", paste(missing_names, collapse = ", ")), level = "ERROR")
+        validation_passed <- FALSE
     } else {
-        msg <- sprintf("Executing %s", func_name)
+        log_enhanced("✓ All expected cohort names present", level = "INFO")
     }
-    log_enhanced(msg, level = "INFO", indent = 1)
+    
+    # Only proceed with detailed validation if all expected cohorts exist
+    if (!validation_passed) {
+        return(validation_passed)
+    }
+    
+    # Check 2: Verify sample size relationships
+    n_full <- nrow(cohort_list$uveal_melanoma_full_cohort)
+    n_restricted <- nrow(cohort_list$uveal_melanoma_restricted_cohort)
+    n_gksrs_only <- nrow(cohort_list$uveal_melanoma_gksrs_only_cohort)
+    
+    log_enhanced(sprintf("Sample sizes - Full: %d, Restricted: %d, GKSRS-only: %d", n_full, n_restricted, n_gksrs_only), level = "INFO")
+    
+    # Full cohort should be largest
+    if (n_full < n_restricted || n_full < n_gksrs_only) {
+        log_enhanced("VALIDATION FAILED: Full cohort should be largest", level = "ERROR")
+        validation_passed <- FALSE
+    } else {
+        log_enhanced("✓ Full cohort is largest as expected", level = "INFO")
+    }
+    
+    # Restricted + GKSRS-only should approximately equal full (allowing for exclusions)
+    total_subsets <- n_restricted + n_gksrs_only
+    if (abs(n_full - total_subsets) > 10) { # Allow some tolerance for exclusions
+        log_enhanced(sprintf("VALIDATION WARNING: Full cohort (%d) vs sum of subsets (%d) differs by %d patients", 
+                            n_full, total_subsets, abs(n_full - total_subsets)), level = "WARN")
+    } else {
+        log_enhanced("✓ Cohort size relationships are reasonable", level = "INFO")
+    }
+    
+    # Check 3: Verify cohort definitions match consort_group assignments
+    restricted_data <- cohort_list$uveal_melanoma_restricted_cohort
+    gksrs_only_data <- cohort_list$uveal_melanoma_gksrs_only_cohort
+    
+    # All restricted cohort patients should have consort_group == "eligible_both"
+    if (any(restricted_data$consort_group != "eligible_both")) {
+        wrong_consort <- table(restricted_data$consort_group)
+        log_enhanced(sprintf("VALIDATION FAILED: Restricted cohort contains wrong consort_group: %s", 
+                            paste(names(wrong_consort), "=", wrong_consort, collapse = ", ")), level = "ERROR")
+        validation_passed <- FALSE
+    } else {
+        log_enhanced("✓ Restricted cohort contains only eligible_both patients", level = "INFO")
+    }
+    
+    # All GKSRS-only cohort patients should have consort_group == "gksrs_only"
+    if (any(gksrs_only_data$consort_group != "gksrs_only")) {
+        wrong_consort <- table(gksrs_only_data$consort_group)
+        log_enhanced(sprintf("VALIDATION FAILED: GKSRS-only cohort contains wrong consort_group: %s", 
+                            paste(names(wrong_consort), "=", wrong_consort, collapse = ", ")), level = "ERROR")
+        validation_passed <- FALSE
+    } else {
+        log_enhanced("✓ GKSRS-only cohort contains only gksrs_only patients", level = "INFO")
+    }
+    
+    # Check 4: Verify eligibility criteria are correctly applied
+    # Restricted cohort: diameter ≤ 20, height ≤ 10, no optic nerve
+    restricted_violations <- restricted_data %>%
+        filter(
+            initial_tumor_diameter > TUMOR_DIAMETER_THRESHOLD |
+            initial_tumor_height > TUMOR_HEIGHT_THRESHOLD |
+            optic_nerve == "Yes"
+        )
+    
+    if (nrow(restricted_violations) > 0) {
+        log_enhanced(sprintf("VALIDATION FAILED: %d patients in restricted cohort violate eligibility criteria", nrow(restricted_violations)), level = "ERROR")
+        print(restricted_violations %>% select(id, initial_tumor_diameter, initial_tumor_height, optic_nerve))
+        validation_passed <- FALSE
+    } else {
+        log_enhanced("✓ Restricted cohort eligibility criteria correctly applied", level = "INFO")
+    }
+    
+    # GKSRS-only cohort: diameter > 20 OR height > 10 OR optic nerve involvement
+    gksrs_only_should_qualify <- gksrs_only_data %>%
+        filter(
+            initial_tumor_diameter > TUMOR_DIAMETER_THRESHOLD |
+            initial_tumor_height > TUMOR_HEIGHT_THRESHOLD |
+            optic_nerve == "Yes"
+        )
+    
+    if (nrow(gksrs_only_should_qualify) != nrow(gksrs_only_data)) {
+        log_enhanced(sprintf("VALIDATION FAILED: %d/%d patients in GKSRS-only cohort don't meet ineligibility criteria", 
+                            nrow(gksrs_only_data) - nrow(gksrs_only_should_qualify), nrow(gksrs_only_data)), level = "ERROR")
+        validation_passed <- FALSE
+    } else {
+        log_enhanced("✓ GKSRS-only cohort ineligibility criteria correctly applied", level = "INFO")
+    }
+    
+    # Check 5: Verify no patient overlap between restricted and GKSRS-only
+    overlap_patients <- intersect(restricted_data$id, gksrs_only_data$id)
+    if (length(overlap_patients) > 0) {
+        log_enhanced(sprintf("VALIDATION FAILED: %d patients appear in both restricted and GKSRS-only cohorts: %s", 
+                            length(overlap_patients), paste(overlap_patients, collapse = ", ")), level = "ERROR")
+        validation_passed <- FALSE
+    } else {
+        log_enhanced("✓ No patient overlap between cohorts", level = "INFO")
+    }
+    
+    # Check 6: Verify treatment assignments make sense
+    # Check treatment distribution in each cohort
+    for (cohort_name in names(cohort_list)) {
+        cohort_data <- cohort_list[[cohort_name]]
+        treatment_dist <- table(cohort_data$treatment_group, useNA = "ifany")
+        log_enhanced(sprintf("Treatment distribution in %s: %s", 
+                            gsub("uveal_melanoma_", "", cohort_name),
+                            paste(names(treatment_dist), "=", treatment_dist, collapse = ", ")), level = "INFO")
+        
+        # All patients should have a treatment assignment
+        if (any(is.na(cohort_data$treatment_group))) {
+            log_enhanced(sprintf("VALIDATION WARNING: %d patients in %s have missing treatment_group", 
+                                sum(is.na(cohort_data$treatment_group)), cohort_name), level = "WARN")
+        }
+    }
+    
+    # Final validation summary
+    if (validation_passed) {
+        log_enhanced("=== COHORT VALIDATION PASSED: All checks successful ===", level = "SECTION")
+    } else {
+        log_enhanced("=== COHORT VALIDATION FAILED: See errors above ===", level = "SECTION")
+    }
+    
+    return(validation_passed)
+}
+
+#' Validate dataset naming and directory structure consistency
+#'
+#' Ensures that dataset names, directory names, and prefixes are all consistent
+#' throughout the analysis pipeline.
+#'
+#' @param dataset_name Name of the dataset being processed
+#' @param prefix File prefix being used
+#' @param cohort_dir_name Directory name being used
+#' @return TRUE if naming is consistent, FALSE otherwise
+validate_naming_consistency <- function(dataset_name, prefix, cohort_dir_name) {
+    log_enhanced(sprintf("Validating naming consistency for dataset: %s", dataset_name), level = "INFO")
+    
+    # Define expected mappings
+    expected_mappings <- list(
+        "uveal_melanoma_full_cohort" = list(prefix = "full_cohort_", dir_name = "uveal_full"),
+        "uveal_melanoma_restricted_cohort" = list(prefix = "restricted_cohort_", dir_name = "uveal_restricted"),
+        "uveal_melanoma_gksrs_only_cohort" = list(prefix = "gksrs_only_cohort_", dir_name = "gksrs")
+    )
+    
+    # Check if dataset name is recognized
+    if (!dataset_name %in% names(expected_mappings)) {
+        log_enhanced(sprintf("VALIDATION WARNING: Unrecognized dataset name: %s", dataset_name), level = "WARN")
+        return(FALSE)
+    }
+    
+    expected <- expected_mappings[[dataset_name]]
+    
+    # Validate prefix
+    if (prefix != expected$prefix) {
+        log_enhanced(sprintf("VALIDATION FAILED: Prefix mismatch for %s. Expected: %s, Got: %s", 
+                            dataset_name, expected$prefix, prefix), level = "ERROR")
+        return(FALSE)
+    }
+    
+    # Validate directory name
+    if (cohort_dir_name != expected$dir_name) {
+        log_enhanced(sprintf("VALIDATION FAILED: Directory name mismatch for %s. Expected: %s, Got: %s", 
+                            dataset_name, expected$dir_name, cohort_dir_name), level = "ERROR")
+        return(FALSE)
+    }
+    
+    log_enhanced("✓ Naming consistency validated", level = "INFO")
+    return(TRUE)
+}
+
+#' Generate a comprehensive validation report
+#'
+#' Creates a detailed report of all validation checks performed during the analysis
+#'
+#' @param cohort_list List of cohort datasets
+#' @param output_path Path to save the validation report
+generate_validation_report <- function(cohort_list, output_path = NULL) {
+    if (is.null(output_path)) {
+        output_path <- file.path("final_data", "Analysis", "validation_report.txt")
+    }
+    
+    # Ensure directory exists
+    dir.create(dirname(output_path), recursive = TRUE, showWarnings = FALSE)
+    
+    # Capture validation output
+    validation_output <- capture.output({
+        validation_result <- validate_cohort_integrity(cohort_list)
+    })
+    
+    # Add timestamp and system info
+    report_content <- c(
+        sprintf("COHORT VALIDATION REPORT"),
+        sprintf("Generated: %s", Sys.time()),
+        sprintf("System: %s", Sys.info()["sysname"]),
+        sprintf("R Version: %s", R.version.string),
+        "",
+        "=== VALIDATION OUTPUT ===",
+        validation_output,
+        "",
+        "=== SUMMARY STATISTICS ===",
+        sprintf("Full cohort: %d patients", nrow(cohort_list$uveal_melanoma_full_cohort)),
+        sprintf("Restricted cohort: %d patients", nrow(cohort_list$uveal_melanoma_restricted_cohort)),
+        sprintf("GKSRS-only cohort: %d patients", nrow(cohort_list$uveal_melanoma_gksrs_only_cohort)),
+        ""
+    )
+    
+    # Write report
+    writeLines(report_content, output_path)
+    log_enhanced(sprintf("Validation report saved to: %s", output_path), level = "INFO")
+    
+    return(output_path)
 }
 
 #' Function to ensure consistent factor contrasts with human-readable names
@@ -370,46 +609,5 @@ get_interaction_coefficient_name <- function(model, treatment_var = "treatment_g
 #'
 #' @return Named list of variable labels
 get_variable_labels <- function() {
-    list(
-        # Treatment and demographics
-        treatment_group = "Treatment Group",
-        age_at_diagnosis = "Age at Diagnosis (years)",
-        sex = "Sex",
-        
-        # Tumor characteristics
-        location = "Tumor Location",
-        optic_nerve = "Optic Nerve Involvement",
-        initial_tumor_height = "Initial Tumor Height (mm)",
-        initial_tumor_diameter = "Initial Tumor Diameter (mm)",
-        initial_overall_stage = "Initial Overall Stage",
-        initial_t_stage = "Initial T Stage",
-        biopsy1_gep = "Gene Expression Profile",
-        internal_reflectivity = "Internal Reflectivity",
-        srf = "Subretinal Fluid",
-        op = "Orange Pigment",
-        
-        # Symptoms
-        symptoms = "Any Symptoms",
-        vision_loss_blurred_vision = "Vision Loss/Blurred Vision",
-        visual_field_defect = "Visual Field Defect",
-        flashes_photopsia = "Flashes/Photopsia",
-        floaters = "Floaters",
-        pain = "Pain",
-        
-        # Outcomes
-        recurrence1 = "Local Recurrence",
-        recurrence2 = "Second Recurrence",
-        mets_progression = "Metastatic Progression",
-        enucleation = "Enucleation",
-        retinopathy = "Radiation Retinopathy",
-        nvg = "Neovascular Glaucoma",
-        srd = "Serous Retinal Detachment",
-        
-        # Recurrence treatment
-        recurrence1_treatment_clean = "Recurrence Treatment",
-        
-        # Follow-up variables
-        follow_up_years = "Follow-up Time (years)",
-        follow_up_months = "Follow-up Time (months)"
-    )
+    return(STANDARD_TABLE_LABELS)
 } 
