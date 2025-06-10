@@ -12,7 +12,7 @@ This project provides a complete pipeline for processing, cleaning, and analyzin
 
 The analysis is structured around four prioritized research objectives:
 
-### **Objective 1: Efficacy of Plaque vs GKSRS**
+### **Objective 1: Efficacy of Plaque vs GKSRS (COMPLETE)**
 **Primary research question:** How do clinical outcomes compare between treatments?
 - **1a.** Local recurrence rates
 - **1b.** Metastatic progression rates  
@@ -22,18 +22,18 @@ The analysis is structured around four prioritized research objectives:
 - **1f.** Tumor height changes (sensitivity analysis) 
 - **1g.** Subgroup analysis (treatment effect heterogeneity)
 
-### **Objective 2: Safety/Toxicity**
+### **Objective 2: Safety/Toxicity (COMPLETE)**
 **Primary research question:** What are the comparative safety profiles?
 - **2a.** Vision changes
 - **2b.** Radiation retinopathy rates
 - **2c.** Neovascular glaucoma rates
 - **2d.** Serous retinal detachment rates
 
-### **Objective 3: Repeat Radiation Efficacy**  
+### **Objective 3: Repeat Radiation Efficacy (COMPLETE)**  
 **Primary research question:** How effective are second-line treatments?
 - **3a.** Progression-Free Survival-2 (PFS-2) analysis
 
-### **Objective 4: GEP Predictive Accuracy**
+### **Objective 4: GEP Predictive Accuracy (NOT IMPLEMENTED)**
 **Primary research question:** How well do gene expression profiles predict outcomes?
 - **4a.** Metastasis-free survival validation
 - **4b.** Melanoma-specific survival validation
@@ -54,9 +54,9 @@ flowchart TD
     F --> G["Factored Data<br/>+ proper factor levels"]
     G --> H["apply_criteria()"]
     
-    H --> I["uveal_melanoma_full_cohort<br/>(All patients, n=~263)"]
-    H --> J["uveal_melanoma_restricted_cohort<br/>(Eligible for both, n=~169)"]
-    H --> K["uveal_melanoma_gksrs_only_cohort<br/>(Ineligible for plaque, n=~93)"]
+    H --> I["uveal_melanoma_full_cohort<br/>(All patients, n=263)"]
+    H --> J["uveal_melanoma_restricted_cohort<br/>(Eligible for both, n=169)"]
+    H --> K["uveal_melanoma_gksrs_only_cohort<br/>(Ineligible for plaque, n=93)"]
     
     I --> L["Save to RDS<br/>final_data/Analytic Dataset/"]
     J --> L
@@ -85,41 +85,31 @@ flowchart TD
     style U fill:#ccccff
 ```
 
+---
+
 ## Cohort Definitions
 
 The analysis includes three distinct patient cohorts based on tumor characteristics and treatment eligibility:
 
-### 1. **Full Cohort** (`uveal_melanoma_full_cohort`)
+### **Full Cohort** (n=263)
 - **Definition:** All patients who received either GKSRS or plaque brachytherapy
-- **Sample Size:** ~263 patients
-- **Purpose:** Primary analysis comparing outcomes between all GKSRS and plaque patients
-- **Clinical Rationale:** Represents real-world effectiveness comparison across all tumor sizes and locations
+- **Purpose:** Real-world effectiveness comparison across all tumor sizes and locations
 
-### 2. **Restricted Cohort** (`uveal_melanoma_restricted_cohort`) 
-- **Definition:** Patients eligible for **both** GKSRS and plaque brachytherapy
-- **Inclusion Criteria:**
-  - Tumor diameter ≤ 20mm **AND**
-  - Tumor height ≤ 10mm **AND** 
-  - No optic nerve involvement
-- **Sample Size:** ~169 patients  
+### **Restricted Cohort** (n=169) 
+- **Definition:** Patients eligible for **both** treatments
+- **Criteria:** Tumor diameter ≤20mm AND height ≤10mm AND no optic nerve involvement
 - **Purpose:** Balanced comparison minimizing treatment selection bias
-- **Clinical Rationale:** These patients could have received either treatment, making the comparison more equitable
 
-### 3. **GKSRS-Only Cohort** (`uveal_melanoma_gksrs_only_cohort`)
-- **Definition:** Patients who were **ineligible** for plaque brachytherapy
-- **Inclusion Criteria (any of the following):**
-  - Tumor diameter > 20mm **OR**
-  - Tumor height > 10mm **OR**
-  - Optic nerve involvement present
-- **Sample Size:** ~93 patients
-- **Purpose:** Outcomes analysis for patients with contraindications to plaque therapy
-- **Clinical Rationale:** Demonstrates GKSRS effectiveness in challenging cases where plaque is not feasible
+### **GKSRS-Only Cohort** (n=93)
+- **Definition:** Patients **ineligible** for plaque brachytherapy
+- **Criteria:** Tumor diameter >20mm OR height >10mm OR optic nerve involvement
+- **Purpose:** GKSRS effectiveness in challenging cases where plaque is not feasible
 
 ---
 
 ## Directory Structure
 
-The analysis outputs are organized by **cohort → objective → sub-objective** for easy navigation:
+Analysis outputs are organized by **cohort → objective → sub-objective**:
 
 ```
 project_working_directory/
@@ -180,11 +170,7 @@ project_working_directory/
 
 ---
 
-## Implementation Status: Analysis Pipeline Complete
-
-### **Current Implementation Status**
-
-The complete analysis pipeline has been successfully implemented and tested across all three cohorts. All statistical functions are working as designed, with appropriate error handling for situations with insufficient data.
+## Implementation Status: Analysis Pipeline
 
 ### **OBJECTIVE 1: Efficacy Analysis (COMPLETE)**
 
@@ -308,7 +294,7 @@ The analysis pipeline includes robust error handling for situations where data l
 - Generally sufficient sample size for most analyses
 - Occasional rare category handling in subgroup analyses due to smaller size than full cohort
 
-#### **Full Cohort (n=~263)**
+#### **Full Cohort (n=263)**
 - Generally sufficient sample size for most analyses
 - Occasional rare category handling in subgroup analyses
 
@@ -333,6 +319,17 @@ The analysis pipeline includes built-in safeguards:
    - All limitations and skipped analyses are logged with timestamps
    - Detailed error messages explain exactly why analyses were skipped
 
+### **Example from Current Run**
+
+The most recent analysis run (log timestamp: 20250610_181336) demonstrates this error handling:
+
+**GKSRS-Only Cohort - Step 3 (PFS-2):**
+- Found 13 patients with local recurrence receiving second-line treatment
+- Treatment distribution: Enucleation (8), GKSRS (1), TTT (2), Other (2)
+- Only 3 total second recurrence events detected
+- Analysis automatically skipped survival modeling due to insufficient events
+- Summary tables still generated for available data
+
 ---
 
 ## Key Features
@@ -351,7 +348,7 @@ Comprehensive forest plot generation for subgroup analysis visualization:
 - **Location:** `{cohort}/01_Efficacy/g_subgroup_analysis/forest_plots/`
 
 ### **🎯 Consolidated Subgroup Analysis**
-Unified subgroup analysis framework eliminating code redundancy:
+Unified subgroup analysis framework:
 
 - **File:** `scripts/analysis/subgroup_analysis.R` (replaces multiple scattered functions)
 - **Functions:**
@@ -363,8 +360,8 @@ Unified subgroup analysis framework eliminating code redundancy:
 - **Coverage:** All primary outcomes + tumor height changes (primary & sensitivity)
 - **Output:** Standardized interaction p-values, subgroup-specific effects, forest plots
 
-### **📊 Enhanced Analysis Configuration**
-Improved analysis settings and reproducibility:
+### **📊 Analysis Configuration**
+Set analysis settings globally to improve reproducibility:
 
 - **File:** `scripts/utils/analysis_config.R`
 - **Features:** Centralized configuration, consistent variable definitions, confounder specifications
@@ -531,130 +528,8 @@ source("scripts/tests/run_all_tests.R")
 
 ---
 
-## Key Output Files
-
-### **📊 Essential Results by Objective**
-
-#### **🎯 Objective 1: Efficacy**
-- **Primary outcomes:** `uveal_full/01_Efficacy/{a-d}_*/`
-- **Tumor height:** `uveal_full/01_Efficacy/{e-f}_tumor_height_*/`
-- **🌲 Forest plots:** `uveal_full/01_Efficacy/g_subgroup_analysis/forest_plots/`
-
-#### **🛡️ Objective 2: Safety**  
-- **All safety outcomes:** `uveal_full/02_Safety/{a-d}_*/`
-
-#### **🔄 Objective 3: Repeat Radiation**
-- **PFS-2 analysis:** `uveal_full/03_Repeat_Radiation/a_pfs2/`
-
-#### **🧬 Objective 4: GEP Validation**
-- **Validation results:** `uveal_full/04_GEP_Validation/{a-b}_*/`
-
-### **📋 Cross-Cutting Analyses**
-- **Baseline characteristics:** `uveal_full/00_General/baseline_characteristics/`
-- **Treatment duration:** `uveal_full/00_General/treatment_duration/`
-
----
-
-## Data Coverage
-
-- **📈 Full Cohort:** 263 patients (all treatments, real-world comparison)
-- **⚖️ Restricted Cohort:** ~169 patients (eligible for both treatments, balanced comparison)  
-- **🎯 GKSRS-Only Cohort:** ~93 patients (ineligible for plaque, challenging cases)
-
----
-
-## Technical Notes
-
-### **🔧 Analysis Features**
-- Automatic confounder adjustment for all regression models
-- Rare event handling (threshold-based variable selection)
-- Primary/sensitivity analysis framework for robust findings
-- Consistent Excel (.xlsx) output format throughout
-- Publication-ready HTML tables for all analyses
-- Professional forest plots with proper effect measure scaling
-- Comprehensive logging and error handling
-- Missing data handling and edge case management
-
-### **🔄 Reproducibility**
-- Complete end-to-end scripted pipeline
-- Version-controlled analysis configuration
-
----
-
-## Data Limitations and Analysis Constraints
-
-The analysis pipeline includes robust error handling for situations where data limitations prevent certain analyses from completing. This is particularly relevant for smaller cohorts and rare outcomes.
-
-### **Cohort-Specific Limitations**
-
-#### **GKSRS-Only Cohort (n=93)**
-- **Step 3 (PFS-2 Analysis):** Insufficient events for survival analysis
-  - Only 13 patients with valid PFS-2 data  
-  - Only 3 total second recurrence events (minimum required: 5)
-  - Events concentrated in only 2 treatment groups (GKSRS: 1, TTT: 2)
-  - Summary tables are generated, but survival curves and Cox models are skipped
-
-#### **Restricted Cohort (n=169)**
-- Generally sufficient sample size for most analyses
-- Occasional rare category handling in subgroup analyses due to smaller size than full cohort
-
-#### **Full Cohort (n=263)**
-- Generally sufficient sample size for most analyses
-- Occasional rare category handling in subgroup analyses
-
-### **Automatic Error Handling**
-
-The analysis pipeline includes built-in safeguards:
-
-1. **Minimum Event Requirements:** 
-   - Survival analyses require 5+ total events
-   - Cox regression requires 2+ groups with events
-   - Logistic regression requires adequate observations per category
-
-2. **Rare Category Management:**
-   - Categories with <5 observations are automatically collapsed
-   - Variables with insufficient levels after collapsing are excluded from models
-
-3. **Graceful Degradation:**
-   - When full analyses cannot be completed, summary statistics are still generated
-   - Missing analyses are clearly documented in logs with specific reasons
-
-4. **Comprehensive Logging:**
-   - All limitations and skipped analyses are logged with timestamps
-   - Detailed error messages explain exactly why analyses were skipped
-
-### **Example from Current Run**
-
-The most recent analysis run (log timestamp: 20250610_181336) demonstrates this error handling:
-
-**GKSRS-Only Cohort - Step 3 (PFS-2):**
-- Found 13 patients with local recurrence receiving second-line treatment
-- Treatment distribution: Enucleation (8), GKSRS (1), TTT (2), Other (2)
-- Only 3 total second recurrence events detected
-- Analysis automatically skipped survival modeling due to insufficient events
-- Summary tables still generated for available data
-
-**Note:** The log output showed "Restricted" cohort having this issue, but this was due to a dataset naming bug that has now been fixed. The actual GKSRS-only cohort (smallest cohort) is the one with insufficient PFS-2 events.
-
-This ensures the analysis pipeline completes successfully even when individual components cannot run due to data limitations, providing maximum useful output while maintaining statistical integrity.
-- Detailed logging of all analysis steps
-- Unit testing for core functions
-- Standardized output formats across all analyses
-
-### **📁 File Organization Benefits**
-- **Research-focused:** Navigate by study objective, not technical file type
-- **Collaboration-friendly:** Easy for collaborators to find relevant analyses
-- **Scalable:** Easy to add new objectives or modify existing ones
-- **Professional:** Clean structure suitable for publication supplementary materials
-
----
-
-
-
----
-
 ## License
 
 *Research use only - no license currently specified.*
-
 ---
+
