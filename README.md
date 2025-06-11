@@ -473,7 +473,7 @@ tidyverse, readxl, writexl, lubridate, janitor
 gtsummary, survival, survminer, survRM2, gt
 
 # Visualization and plots
-forestplot, grid, cowplot, ggplot2
+forestploter, grid, cowplot, ggplot2
 
 # Testing and documentation
 testthat
@@ -483,7 +483,7 @@ testthat
 ```r
 install.packages(c(
   "tidyverse", "readxl", "writexl", "lubridate", "gtsummary", "janitor",
-  "gt", "survival", "survminer", "survRM2", "forestplot", "grid", "cowplot", "testthat"
+  "gt", "survival", "survminer", "survRM2", "forestploter", "grid", "cowplot", "testthat"
 ))
 ```
 

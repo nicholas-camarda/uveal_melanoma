@@ -2,7 +2,7 @@
 # Demonstrates the publication-style forest plots with real data
 
 library(dplyr)
-library(forestplot)
+library(forestploter)
 
 # Source the forest plot functions
 source("scripts/visualization/forest_plot.R")

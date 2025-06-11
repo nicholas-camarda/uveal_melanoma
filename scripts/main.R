@@ -19,7 +19,7 @@ library(janitor) # Data cleaning
 library(survival) # For survival analysis
 library(survminer) # For survival visualization
 library(gt) # For table formatting
-library(forestplot) # For forest plots
+library(forestploter) # For forest plots
 library(grid) # for unit()
 library(cowplot) # for combining plots
 library(DiagrammeR) # Creating CONSORT diagram

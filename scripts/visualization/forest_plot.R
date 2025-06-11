@@ -3,9 +3,7 @@
 #' This module creates forest plots that match the format shown in published papers,
 #' with grouped variables, indented subgroups, and proper formatting for publication.
 
-library(forestplot)
-library(dplyr)
-library(grid)
+# Libraries loaded in main.R
 
 #' Create forest plot wrapper function (called by main.R)
 #'
@@ -17,7 +15,7 @@ library(grid)
 #' @param effect_measure Character string for the effect measure (default: "HR") 
 #' @param dataset_name Character string for the dataset name
 #' @param output_path Character string for output file path (optional)
-#' @return A forestplot object
+#' @return A forestploter object
 create_forest_plot <- function(subgroup_results, 
                                outcome_name,
                                effect_measure = "HR",
@@ -57,7 +55,7 @@ create_forest_plot <- function(subgroup_results,
             
             # Save as PNG
             png(output_path, width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI)
-            print(plot)
+            plot(plot)
             dev.off()
         }
         
@@ -80,7 +78,7 @@ create_forest_plot <- function(subgroup_results,
 #' @param favours_labels Character vector of length 2 for axis labels (e.g., c("Favours GKSRS", "Favours Plaque"))
 #' @param clip Numeric vector of length 2 for clipping range (default: c(0.1, 10))
 #' @param title Character string for plot title (optional)
-#' @return A forestplot object
+#' @return A forestploter object
 create_single_cohort_forest_plot <- function(subgroup_results, 
                                             outcome_name,
                                             cohort_name = "Cohort",
@@ -101,62 +99,66 @@ create_single_cohort_forest_plot <- function(subgroup_results,
         favours_labels <- paste0("Favours ", treatment_labels)
     }
     
-    # Create the formatted data for forestplot
+    # Create the formatted data for forestploter
     plot_data <- create_forest_plot_data(subgroup_results, variable_order, treatment_labels, effect_measure)
     
     # Set default title
     if (is.null(title)) {
-        title <- sprintf("Subgroup Analysis: %s\nDataset: %s", outcome_name, cohort_name)
+        title <- sprintf("Subgroup Analysis: %s", outcome_name)
     }
     
     # Set scale parameters based on effect measure
     use_log_scale <- effect_measure %in% c("HR", "OR", "RR")
-    zero_line <- if (use_log_scale) 1 else 0
     
     # Set default clipping if not provided
     if (is.null(clip)) {
         clip <- if (use_log_scale) c(0.1, 10) else c(-5, 5)
     }
     
-    # Create the forest plot with proper bold formatting only for variable headers
-    fp <- forestplot(
-        labeltext = plot_data$labeltext,
-        mean = plot_data$mean,
-        lower = plot_data$lower,
-        upper = plot_data$upper,
-        is.summary = plot_data$is_summary,
-        clip = clip,
-        xlog = use_log_scale,
-        zero = zero_line,
-        boxsize = 0.3,
-        lineheight = unit(8, "mm"),
-        colgap = unit(2, "mm"),
-        col = fpColors(
-            box = "black",
-            line = "black",
-            summary = "black",
-            hrz_lines = "black"
-        ),
-        txt_gp = fpTxtGp(
-            label = gpar(fontface = plot_data$label_fontface, cex = 0.8),  # Use dynamic fontface
-            ticks = gpar(cex = 0.8),
-            xlab = gpar(cex = 0.9, fontface = "bold")
-        ),
-        graph.pos = 5,  # Position of the forest plot (after 5 text columns)
-        hrzl_lines = plot_data$hrzl_lines,
-        vertices = TRUE,
-        ci.vertices = TRUE,
-        ci.vertices.height = 0.1,
-        title = title,
-        xlab = sprintf("%s (95%% CI)", effect_measure),
-        new_page = FALSE
+    # Create theme for forestploter
+    tm <- forest_theme(
+        base_size = 10,
+        ci_pch = 15,
+        ci_col = "black",
+        ci_fill = "black",
+        ci_alpha = 0.8,
+        ci_lty = 1,
+        ci_lwd = 1.5,
+        refline_gp = gpar(lwd = 1, lty = "solid", col = "black"),
+        vertline_lwd = 1,
+        vertline_lty = "solid",
+        vertline_col = "black",
+        footnote_gp = gpar(cex = 0.8),
+        # Set header rows to bold
+        colhead = list(fg_params = list(fontface = "bold")),
+        # Control text formatting per row - use manual bold/plain setting
+        core = list(
+            fg_params = list(fontface = rep(c("bold", "plain"), length.out = nrow(plot_data$data_frame)))
+        )
     )
     
-    # Add favours labels
-    grid.text(favours_labels[1], x = 0.1, y = 0.02, 
-              gp = gpar(cex = 0.8, fontface = "italic"))
-    grid.text(favours_labels[2], x = 0.9, y = 0.02, 
-              gp = gpar(cex = 0.8, fontface = "italic"))
+    # Find the CI column (the one with spaces)
+    ci_col_idx <- which(sapply(plot_data$data_frame, function(x) any(grepl("^\\s+$", x))))
+    if (length(ci_col_idx) == 0) {
+        ci_col_idx <- ncol(plot_data$data_frame) - 1  # Default to second-to-last column
+    }
+    
+    # Create the forest plot
+    fp <- forest(
+        plot_data$data_frame,
+        est = plot_data$est_values,
+        lower = plot_data$lower_values,
+        upper = plot_data$upper_values,
+        sizes = 0.3,
+        is_summary = plot_data$is_summary,
+        ci_column = ci_col_idx,
+        ref_line = if (use_log_scale) 1 else 0,
+        arrow_lab = favours_labels,
+        xlim = clip,
+        x_trans = if (use_log_scale) "log" else "none",
+        theme = tm,
+        title = title
+    )
     
     return(fp)
 }
@@ -172,7 +174,7 @@ create_single_cohort_forest_plot <- function(subgroup_results,
 #' @param favours_labels Character vector of length 2 for axis labels
 #' @param clip Numeric vector of length 2 for clipping range (default: c(0.1, 10))
 #' @param title Character string for plot title (optional)
-#' @return A combined forestplot object
+#' @return A combined forestploter object
 create_combined_forest_plot <- function(full_results, 
                                        restricted_results,
                                        outcome_name,
@@ -204,242 +206,259 @@ create_combined_forest_plot <- function(full_results,
     
     # Set scale parameters based on effect measure
     use_log_scale <- effect_measure %in% c("HR", "OR", "RR")
-    zero_line <- if (use_log_scale) 1 else 0
     
     # Set default clipping if not provided
     if (is.null(clip)) {
         clip <- if (use_log_scale) c(0.1, 10) else c(-5, 5)
     }
     
-    # Create the combined forest plot with proper bold formatting
-    fp <- forestplot(
-        labeltext = plot_data$labeltext,
-        mean = plot_data$mean,
-        lower = plot_data$lower,
-        upper = plot_data$upper,
-        is.summary = plot_data$is_summary,
-        clip = clip,
-        xlog = use_log_scale,
-        zero = zero_line,
-        boxsize = 0.25,
-        lineheight = unit(8, "mm"),
-        colgap = unit(2, "mm"),
-        col = fpColors(
-            box = c("blue", "red"),
-            line = c("blue", "red"),
-            summary = c("blue", "red"),
-            hrz_lines = "black"
-        ),
-        txt_gp = fpTxtGp(
-            label = gpar(fontface = plot_data$label_fontface, cex = 0.8),  # Use dynamic fontface
-            ticks = gpar(cex = 0.8),
-            xlab = gpar(cex = 0.9, fontface = "bold")
-        ),
-        graph.pos = 3,  # Position after 6 text columns
-        hrzl_lines = plot_data$hrzl_lines,
-        vertices = TRUE,
-        ci.vertices = TRUE,
-        ci.vertices.height = 0.1,
-        title = title,
-        xlab = sprintf("%s (95%% CI)", effect_measure),
-        legend = c("Full Cohort", "Restricted Cohort"),
-        legend_args = fpLegend(
-            pos = list(x = 0.85, y = 0.95),
-            gp = gpar(col = "#CCCCCC", fill = "#F9F9F9")
-        ),
-        new_page = FALSE
+    # Create theme for forestploter with multiple cohort colors
+    tm <- forest_theme(
+        base_size = 10,
+        ci_pch = c(15, 18),  # Different shapes for full vs restricted
+        ci_col = c("blue", "red"),
+        ci_fill = c("blue", "red"),
+        ci_alpha = 0.8,
+        ci_lty = 1,
+        ci_lwd = 1.5,
+        refline_gp = gpar(lwd = 1, lty = "solid", col = "black"),
+        vertline_lwd = 1,
+        vertline_lty = "solid",
+        vertline_col = "black",
+        footnote_gp = gpar(cex = 0.8),
+        legend_name = "Cohort",
+        legend_value = c("Full Cohort", "Restricted Cohort"),
+        # Set header rows to bold
+        colhead = list(fg_params = list(fontface = "bold")),
+        # Control text formatting per row
+        core = list(
+            fg_params = list(fontface = rep(c("bold", "plain"), length.out = nrow(plot_data$data_frame)))
+        )
     )
     
-    # Add favours labels
-    grid.text(favours_labels[1], x = 0.1, y = 0.02, 
-              gp = gpar(cex = 0.8, fontface = "italic"))
-    grid.text(favours_labels[2], x = 0.9, y = 0.02, 
-              gp = gpar(cex = 0.8, fontface = "italic"))
+    # Find CI columns
+    ci_columns <- which(names(plot_data$data_frame) %in% c("Full_CI", "Restricted_CI"))
+    if (length(ci_columns) < 2) {
+        # Fallback: find columns with spaces
+        ci_columns <- which(sapply(plot_data$data_frame, function(x) any(grepl("^\\s+$", x))))
+    }
+    
+    # Create the forest plot with multiple CI columns
+    fp <- forest(
+        plot_data$data_frame,
+        est = list(plot_data$est_values_full, plot_data$est_values_restricted),
+        lower = list(plot_data$lower_values_full, plot_data$lower_values_restricted),
+        upper = list(plot_data$upper_values_full, plot_data$upper_values_restricted),
+        sizes = 0.25,
+        is_summary = plot_data$is_summary,
+        ci_column = ci_columns,
+        ref_line = if (use_log_scale) 1 else 0,
+        arrow_lab = favours_labels,
+        xlim = clip,
+        x_trans = if (use_log_scale) "log" else "none",
+        theme = tm,
+        title = title
+    )
     
     return(fp)
 }
 
-#' Create formatted data for single cohort forest plot
+#' Create formatted data for single cohort forest plot using forestploter format
 #'
 #' @param subgroup_results List of subgroup analysis results
 #' @param variable_order Character vector of variables to include (enforced for consistency)
 #' @param treatment_labels Character vector of treatment labels
 #' @param effect_measure Character string for effect measure
-#' @return List with formatted data for forestplot
+#' @return List with formatted data for forestploter
 create_forest_plot_data <- function(subgroup_results, variable_order, treatment_labels, effect_measure) {
     
-    # Calculate total rows needed - accurately count actual data structure
-    total_rows <- 1  # Header row
-    for (var_name in variable_order) {
-        total_rows <- total_rows + 1  # Variable header (always included)
-        
-        # Count actual subgroups if data exists
-        if (var_name %in% names(subgroup_results)) {
-            var_data <- subgroup_results[[var_name]]
-            if (!is.null(var_data$subgroup_effects) && nrow(var_data$subgroup_effects) > 0) {
-                total_rows <- total_rows + nrow(var_data$subgroup_effects)
-            } else {
-                total_rows <- total_rows + 1  # "No data available" row
-            }
-        } else {
-            total_rows <- total_rows + 1  # "No data available" row for missing variable
-        }
-    }
+    # Initialize data collection
+    all_rows <- list()
+    est_values <- c()
+    lower_values <- c()
+    upper_values <- c()
+    is_summary <- c()
     
-    # Create simple labeltext matrix
-    labeltext <- matrix("", nrow = total_rows, ncol = 5)
-    labeltext[1, ] <- c("Subgroup", 
-                       paste(treatment_labels[1], "n/N"), 
-                       paste(treatment_labels[2], "n/N"), 
-                       sprintf("%s (95%% CI)", effect_measure),
-                       "p value")
+    # Add header row
+    header_row <- data.frame(
+        Subgroup = "Subgroup",
+        GKSRS_n = paste(treatment_labels[1], "n/N"),
+        Plaque_n = paste(treatment_labels[2], "n/N"),
+        CI_space = paste(rep(" ", 20), collapse = " "),  # Blank column for CI
+        Effect_CI = sprintf("%s (95%% CI)", effect_measure),
+        p_value = "p value",
+        stringsAsFactors = FALSE
+    )
     
-    # Initialize arrays
-    mean_vals <- rep(NA, total_rows)
-    lower_vals <- rep(NA, total_rows)
-    upper_vals <- rep(NA, total_rows)
-    is_summary <- rep(FALSE, total_rows)
-    is_summary[1] <- TRUE  # Header is summary
+    all_rows[[1]] <- header_row
+    est_values <- c(est_values, NA)
+    lower_values <- c(lower_values, NA)
+    upper_values <- c(upper_values, NA)
+    is_summary <- c(is_summary, TRUE)
     
-    # Track fontface for each row (bold for headers, plain for subgroups)
-    label_fontface <- rep("plain", total_rows)
-    label_fontface[1] <- "bold"  # Header
-    
-    current_row <- 2
-    
-    # Process ALL variables in variable_order for consistency
+    # Process each variable in order
     for (var_name in variable_order) {
         
-        # Variable header row (always included for consistency)
-        labeltext[current_row, 1] <- format_variable_name(var_name)
-        is_summary[current_row] <- TRUE
-        label_fontface[current_row] <- "bold"  # Variable headers are bold
-        current_row <- current_row + 1
+        # Variable header row
+        var_header <- data.frame(
+            Subgroup = format_variable_name(var_name),
+            GKSRS_n = "",
+            Plaque_n = "",
+            CI_space = "",
+            Effect_CI = "",
+            p_value = "",
+            stringsAsFactors = FALSE
+        )
+        
+        all_rows[[length(all_rows) + 1]] <- var_header
+        est_values <- c(est_values, NA)
+        lower_values <- c(lower_values, NA)
+        upper_values <- c(upper_values, NA)
+        is_summary <- c(is_summary, TRUE)
         
         # Check if data exists for this variable
         if (var_name %in% names(subgroup_results)) {
             var_data <- subgroup_results[[var_name]]
             
             if (!is.null(var_data$subgroup_effects) && nrow(var_data$subgroup_effects) > 0) {
-                # Subgroup rows with data
+                # Add subgroup rows
                 effects_data <- var_data$subgroup_effects
                 for (i in 1:nrow(effects_data)) {
                     row_data <- effects_data[i, ]
                     
-                    labeltext[current_row, 1] <- paste0("  ", row_data$subgroup_level)
-                    labeltext[current_row, 2] <- format_sample_size(row_data$n_gksrs, row_data$n_total)
-                    labeltext[current_row, 3] <- format_sample_size(row_data$n_plaque, row_data$n_total)
-                    labeltext[current_row, 4] <- sprintf("%.2f (%.2f-%.2f)", 
-                                                       row_data$treatment_effect,
-                                                       row_data$ci_lower,
-                                                       row_data$ci_upper)
-                    labeltext[current_row, 5] <- format_p_value(row_data$p_value)
+                    subgroup_row <- data.frame(
+                        Subgroup = paste0("  ", row_data$subgroup_level),
+                        GKSRS_n = format_sample_size(row_data$n_gksrs, row_data$n_total),
+                        Plaque_n = format_sample_size(row_data$n_plaque, row_data$n_total),
+                        CI_space = "",
+                        Effect_CI = sprintf("%.2f (%.2f-%.2f)", 
+                                          row_data$treatment_effect,
+                                          row_data$ci_lower,
+                                          row_data$ci_upper),
+                        p_value = format_p_value(row_data$p_value),
+                        stringsAsFactors = FALSE
+                    )
                     
-                    mean_vals[current_row] <- row_data$treatment_effect
-                    lower_vals[current_row] <- row_data$ci_lower
-                    upper_vals[current_row] <- row_data$ci_upper
-                    label_fontface[current_row] <- "plain"  # Subgroup levels are plain
-                    current_row <- current_row + 1
+                    all_rows[[length(all_rows) + 1]] <- subgroup_row
+                    est_values <- c(est_values, row_data$treatment_effect)
+                    lower_values <- c(lower_values, row_data$ci_lower)
+                    upper_values <- c(upper_values, row_data$ci_upper)
+                    is_summary <- c(is_summary, FALSE)
                 }
             } else {
-                # Variable exists but has no subgroup data - show "No data available"
-                labeltext[current_row, 1] <- "  No data available"
-                label_fontface[current_row] <- "italic"
-                current_row <- current_row + 1
+                # No data available
+                no_data_row <- data.frame(
+                    Subgroup = "  No data available",
+                    GKSRS_n = "",
+                    Plaque_n = "",
+                    CI_space = "",
+                    Effect_CI = "",
+                    p_value = "",
+                    stringsAsFactors = FALSE
+                )
+                
+                all_rows[[length(all_rows) + 1]] <- no_data_row
+                est_values <- c(est_values, NA)
+                lower_values <- c(lower_values, NA)
+                upper_values <- c(upper_values, NA)
+                is_summary <- c(is_summary, FALSE)
             }
         } else {
-            # Variable doesn't exist in results - show "No data available"
-            labeltext[current_row, 1] <- "  No data available"
-            label_fontface[current_row] <- "italic"
-            current_row <- current_row + 1
+            # Variable missing from results
+            no_data_row <- data.frame(
+                Subgroup = "  No data available",
+                GKSRS_n = "",
+                Plaque_n = "",
+                CI_space = "",
+                Effect_CI = "",
+                p_value = "",
+                stringsAsFactors = FALSE
+            )
+            
+            all_rows[[length(all_rows) + 1]] <- no_data_row
+            est_values <- c(est_values, NA)
+            lower_values <- c(lower_values, NA)
+            upper_values <- c(upper_values, NA)
+            is_summary <- c(is_summary, FALSE)
         }
     }
     
-    # Convert matrix to list format for forestplot
-    labeltext_list <- list()
-    for (i in 1:5) {
-        labeltext_list[[i]] <- labeltext[, i]
-    }
+    # Combine all rows into a data frame
+    final_df <- do.call(rbind, all_rows)
     
     return(list(
-        labeltext = labeltext_list,
-        mean = mean_vals,
-        lower = lower_vals,
-        upper = upper_vals,
-        is_summary = is_summary,
-        label_fontface = label_fontface,  # Add fontface information
-        hrzl_lines = list("1" = gpar(lwd = 2, col = "black"))
+        data_frame = final_df,
+        est_values = est_values,
+        lower_values = lower_values,
+        upper_values = upper_values,
+        is_summary = is_summary
     ))
 }
 
-#' Create formatted data for combined cohort forest plot
+#' Create formatted data for combined cohort forest plot using forestploter format
 #'
 #' @param full_results List of subgroup analysis results for full cohort
 #' @param restricted_results List of subgroup analysis results for restricted cohort
 #' @param variable_order Character vector of variables to include (enforced for consistency)
 #' @param treatment_labels Character vector of treatment labels
 #' @param effect_measure Character string for effect measure
-#' @return List with formatted data for forestplot
+#' @return List with formatted data for forestploter
 create_combined_forest_plot_data <- function(full_results, restricted_results, variable_order, treatment_labels, effect_measure) {
     
-    # Calculate total rows needed using ALL variables in variable_order for consistency
-    total_rows <- 1  # Header row
-    for (var_name in variable_order) {
-        total_rows <- total_rows + 1  # Variable header
-        
-        # Use the maximum number of subgroups from either cohort
-        max_subgroups <- 0
-        if (var_name %in% names(full_results)) {
-            full_var <- full_results[[var_name]]
-            if (!is.null(full_var$subgroup_effects) && nrow(full_var$subgroup_effects) > 0) {
-                max_subgroups <- max(max_subgroups, nrow(full_var$subgroup_effects))
-            }
-        }
-        if (var_name %in% names(restricted_results)) {
-            restricted_var <- restricted_results[[var_name]]
-            if (!is.null(restricted_var$subgroup_effects) && nrow(restricted_var$subgroup_effects) > 0) {
-                max_subgroups <- max(max_subgroups, nrow(restricted_var$subgroup_effects))
-            }
-        }
-        
-        total_rows <- total_rows + max(max_subgroups, 1)  # At least 1 row for "No data"
-    }
+    # Initialize data collection
+    all_rows <- list()
+    est_values_full <- c()
+    lower_values_full <- c()
+    upper_values_full <- c()
+    est_values_restricted <- c()
+    lower_values_restricted <- c()
+    upper_values_restricted <- c()
+    is_summary <- c()
     
-    # Create simple labeltext matrix
-    labeltext <- matrix("", nrow = total_rows, ncol = 6)
-    labeltext[1, ] <- c("Subgroup", 
-                       "Full Cohort HR (95% CI)", 
-                       "Restricted Cohort HR (95% CI)",
-                       "Full n_GKSRS/n_Plaque",
-                       "Restricted n_GKSRS/n_Plaque",
-                       "p value")
+    # Add header row
+    header_row <- data.frame(
+        Subgroup = "Subgroup",
+        Full_CI = paste(rep(" ", 20), collapse = " "),
+        Restricted_CI = paste(rep(" ", 20), collapse = " "),
+        Full_n = "Full n_GKSRS/n_Plaque",
+        Restricted_n = "Restricted n_GKSRS/n_Plaque",
+        p_value = "p value",
+        stringsAsFactors = FALSE
+    )
     
-    # Initialize arrays for both cohorts
-    mean_vals1 <- rep(NA, total_rows)   # Full cohort
-    mean_vals2 <- rep(NA, total_rows)   # Restricted cohort
-    lower_vals1 <- rep(NA, total_rows)
-    lower_vals2 <- rep(NA, total_rows)
-    upper_vals1 <- rep(NA, total_rows)
-    upper_vals2 <- rep(NA, total_rows)
-    is_summary <- rep(FALSE, total_rows)
-    is_summary[1] <- TRUE  # Header is summary
+    all_rows[[1]] <- header_row
+    est_values_full <- c(est_values_full, NA)
+    lower_values_full <- c(lower_values_full, NA)
+    upper_values_full <- c(upper_values_full, NA)
+    est_values_restricted <- c(est_values_restricted, NA)
+    lower_values_restricted <- c(lower_values_restricted, NA)
+    upper_values_restricted <- c(upper_values_restricted, NA)
+    is_summary <- c(is_summary, TRUE)
     
-    # Track fontface for each row
-    label_fontface <- rep("plain", total_rows)
-    label_fontface[1] <- "bold"  # Header
-    
-    current_row <- 2
-    
-    # Process ALL variables in variable_order for consistency
+    # Process each variable in order
     for (var_name in variable_order) {
         
-        # Variable header row (always included)
-        labeltext[current_row, 1] <- format_variable_name(var_name)
-        is_summary[current_row] <- TRUE
-        label_fontface[current_row] <- "bold"  # Variable headers are bold
-        current_row <- current_row + 1
+        # Variable header row
+        var_header <- data.frame(
+            Subgroup = format_variable_name(var_name),
+            Full_CI = "",
+            Restricted_CI = "",
+            Full_n = "",
+            Restricted_n = "",
+            p_value = "",
+            stringsAsFactors = FALSE
+        )
         
-        # Check if either cohort has data for this variable
+        all_rows[[length(all_rows) + 1]] <- var_header
+        est_values_full <- c(est_values_full, NA)
+        lower_values_full <- c(lower_values_full, NA)
+        upper_values_full <- c(upper_values_full, NA)
+        est_values_restricted <- c(est_values_restricted, NA)
+        lower_values_restricted <- c(lower_values_restricted, NA)
+        upper_values_restricted <- c(upper_values_restricted, NA)
+        is_summary <- c(is_summary, TRUE)
+        
+        # Get data for both cohorts
         full_var <- if (var_name %in% names(full_results)) full_results[[var_name]] else NULL
         restricted_var <- if (var_name %in% names(restricted_results)) restricted_results[[var_name]] else NULL
         
@@ -470,74 +489,69 @@ create_combined_forest_plot_data <- function(full_results, restricted_results, v
                 }
             }
             
-            # Subgroup rows
+            # Add subgroup rows
             for (i in 1:nrow(aligned_data)) {
                 row_data <- aligned_data[i, ]
                 
-                labeltext[current_row, 1] <- paste0("  ", row_data$subgroup_level)
+                subgroup_row <- data.frame(
+                    Subgroup = paste0("  ", row_data$subgroup_level),
+                    Full_CI = "",
+                    Restricted_CI = "",
+                    Full_n = if (!is.na(row_data$full_n_gksrs)) sprintf("%d/%d", row_data$full_n_gksrs, row_data$full_n_plaque) else "No data",
+                    Restricted_n = if (!is.na(row_data$restricted_n_gksrs)) sprintf("%d/%d", row_data$restricted_n_gksrs, row_data$restricted_n_plaque) else "No data",
+                    p_value = if (!is.na(row_data$full_p_value)) format_p_value(row_data$full_p_value) else if (!is.na(row_data$restricted_p_value)) format_p_value(row_data$restricted_p_value) else "",
+                    stringsAsFactors = FALSE
+                )
                 
-                # Full cohort data
-                if (!is.na(row_data$full_treatment_effect)) {
-                    labeltext[current_row, 2] <- sprintf("%.2f (%.2f-%.2f)", 
-                                                       row_data$full_treatment_effect,
-                                                       row_data$full_ci_lower,
-                                                       row_data$full_ci_upper)
-                    labeltext[current_row, 4] <- sprintf("%d/%d", row_data$full_n_gksrs, row_data$full_n_plaque)
-                    mean_vals1[current_row] <- row_data$full_treatment_effect
-                    lower_vals1[current_row] <- row_data$full_ci_lower
-                    upper_vals1[current_row] <- row_data$full_ci_upper
-                } else {
-                    labeltext[current_row, 2] <- "No data"
-                    labeltext[current_row, 4] <- "No data"
-                }
+                all_rows[[length(all_rows) + 1]] <- subgroup_row
                 
-                # Restricted cohort data
-                if (!is.na(row_data$restricted_treatment_effect)) {
-                    labeltext[current_row, 3] <- sprintf("%.2f (%.2f-%.2f)", 
-                                                       row_data$restricted_treatment_effect,
-                                                       row_data$restricted_ci_lower,
-                                                       row_data$restricted_ci_upper)
-                    labeltext[current_row, 5] <- sprintf("%d/%d", row_data$restricted_n_gksrs, row_data$restricted_n_plaque)
-                    mean_vals2[current_row] <- row_data$restricted_treatment_effect
-                    lower_vals2[current_row] <- row_data$restricted_ci_lower
-                    upper_vals2[current_row] <- row_data$restricted_ci_upper
-                } else {
-                    labeltext[current_row, 3] <- "No data"
-                    labeltext[current_row, 5] <- "No data"
-                }
+                # Full cohort values
+                est_values_full <- c(est_values_full, if (!is.na(row_data$full_treatment_effect)) row_data$full_treatment_effect else NA)
+                lower_values_full <- c(lower_values_full, if (!is.na(row_data$full_ci_lower)) row_data$full_ci_lower else NA)
+                upper_values_full <- c(upper_values_full, if (!is.na(row_data$full_ci_upper)) row_data$full_ci_upper else NA)
                 
-                # P-value (use full cohort p-value if available)
-                if (!is.na(row_data$full_p_value)) {
-                    labeltext[current_row, 6] <- format_p_value(row_data$full_p_value)
-                } else if (!is.na(row_data$restricted_p_value)) {
-                    labeltext[current_row, 6] <- format_p_value(row_data$restricted_p_value)
-                }
+                # Restricted cohort values
+                est_values_restricted <- c(est_values_restricted, if (!is.na(row_data$restricted_treatment_effect)) row_data$restricted_treatment_effect else NA)
+                lower_values_restricted <- c(lower_values_restricted, if (!is.na(row_data$restricted_ci_lower)) row_data$restricted_ci_lower else NA)
+                upper_values_restricted <- c(upper_values_restricted, if (!is.na(row_data$restricted_ci_upper)) row_data$restricted_ci_upper else NA)
                 
-                label_fontface[current_row] <- "plain"  # Subgroup levels are plain
-                current_row <- current_row + 1
+                is_summary <- c(is_summary, FALSE)
             }
         } else {
-            # No data available for either cohort
-            labeltext[current_row, 1] <- "  No data available"
-            label_fontface[current_row] <- "italic"
-            current_row <- current_row + 1
+            # No data available
+            no_data_row <- data.frame(
+                Subgroup = "  No data available",
+                Full_CI = "",
+                Restricted_CI = "",
+                Full_n = "",
+                Restricted_n = "",
+                p_value = "",
+                stringsAsFactors = FALSE
+            )
+            
+            all_rows[[length(all_rows) + 1]] <- no_data_row
+            est_values_full <- c(est_values_full, NA)
+            lower_values_full <- c(lower_values_full, NA)
+            upper_values_full <- c(upper_values_full, NA)
+            est_values_restricted <- c(est_values_restricted, NA)
+            lower_values_restricted <- c(lower_values_restricted, NA)
+            upper_values_restricted <- c(upper_values_restricted, NA)
+            is_summary <- c(is_summary, FALSE)
         }
     }
     
-    # Convert matrix to list format for forestplot
-    labeltext_list <- list()
-    for (i in 1:6) {
-        labeltext_list[[i]] <- labeltext[, i]
-    }
+    # Combine all rows into a data frame
+    final_df <- do.call(rbind, all_rows)
     
     return(list(
-        labeltext = labeltext_list,
-        mean = cbind(mean_vals1, mean_vals2),
-        lower = cbind(lower_vals1, lower_vals2),
-        upper = cbind(upper_vals1, upper_vals2),
-        is_summary = is_summary,
-        label_fontface = label_fontface,  # Add fontface information
-        hrzl_lines = list("1" = gpar(lwd = 2, col = "black"))
+        data_frame = final_df,
+        est_values_full = est_values_full,
+        lower_values_full = lower_values_full,
+        upper_values_full = upper_values_full,
+        est_values_restricted = est_values_restricted,
+        lower_values_restricted = lower_values_restricted,
+        upper_values_restricted = upper_values_restricted,
+        is_summary = is_summary
     ))
 }
 
