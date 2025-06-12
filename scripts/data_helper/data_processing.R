@@ -294,7 +294,9 @@ create_derived_variables <- function(data) {
                 treatment_group == "Plaque" ~ initial_plaque_date,
                 TRUE ~ NA_Date_
             )
-        )
+        ) %>%
+        # Set Plaque as reference group (using centralized factor levels)
+        mutate(treatment_group = factor(treatment_group, levels = TREATMENT_FACTOR_LEVELS))
     
     # !DEBUG
     # data %>%
@@ -467,6 +469,11 @@ apply_criteria <- function(data) {
         stop("COHORT VALIDATION FAILED: Critical data integrity issues detected. See validation output above.")
     }
     
+    # CRITICAL: Validate factor level consistency throughout analysis pipeline
+    if (!validate_factor_level_consistency(factored_filtered_data, phase = "data_processing")) {
+        stop("FACTOR LEVEL VALIDATION FAILED: Critical factor level inconsistencies detected. See validation output above.")
+    }
+    
     # Generate validation report
     generate_validation_report(factored_filtered_data)
 
@@ -488,13 +495,13 @@ prepare_factor_levels <- function(data) {
 
     data <- data %>%
         mutate(
-            # Outcome variables
-            recurrence1 = factor(recurrence1, levels = c("Y", "N")),
-            mets_progression = factor(mets_progression, levels = c("Y", "N")),
+            # Outcome variables (using centralized Y/N factor levels)
+            recurrence1 = factor(recurrence1, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
+            mets_progression = factor(mets_progression, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
 
-            # Treatment group
+            # Treatment group (using centralized factor levels)
             treatment_group = factor(treatment_group,
-                levels = c("Plaque", "GKSRS")
+                levels = TREATMENT_FACTOR_LEVELS
             ),
             
             # Recurrence treatment group for PFS-2 analysis
@@ -502,19 +509,16 @@ prepare_factor_levels <- function(data) {
                 levels = c("Enucleation", "GKSRS", "TTT", "Other")
             ),
 
-            # Demographics
+            # Demographics (using centralized factor levels)
             sex = factor(sex,
-                levels = c("Female", "Male"),
-                labels = c("Female", "Male")
+                levels = SEX_FACTOR_LEVELS,
+                labels = SEX_FACTOR_LEVELS
             ),
             location = factor(location,
                 levels = c("Choroidal", "Ciliary_Body", "Cilio_Choroidal", "Conjunctival", "Irido_Ciliary", "Iris"),
                 labels = c("Choroidal", "Ciliary Body", "Cilio-Choroidal", "Conjunctival", "Irido-Ciliary", "Iris")
             ),
-            optic_nerve = factor(optic_nerve,
-                levels = c("Y", "N"),
-                labels = c("Yes", "No")
-            ),
+            optic_nerve = factor(optic_nerve, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
 
             # Tumor characteristics
             internal_reflectivity = factor(internal_reflectivity,
@@ -522,38 +526,14 @@ prepare_factor_levels <- function(data) {
                 labels = c("Very Low", "Low", "Low-Medium", "Medium", "Medium-High", "High", "Unknown"),
                 ordered = TRUE
             ),
-            srf = factor(srf,
-                levels = c("Y", "N"),
-                labels = c("Yes", "No")
-            ),
-            op = factor(op,
-                levels = c("Y", "N"),
-                labels = c("Yes", "No")
-            ),
-            symptoms = factor(symptoms,
-                levels = c("Y", "N"),
-                labels = c("Yes", "No")
-            ),
-            vision_loss_blurred_vision = factor(vision_loss_blurred_vision,
-                levels = c("Y", "N"),
-                labels = c("Yes", "No")
-            ),
-            visual_field_defect = factor(visual_field_defect,
-                levels = c("Y", "N"),
-                labels = c("Yes", "No")
-            ),
-            flashes_photopsia = factor(flashes_photopsia,
-                levels = c("Y", "N"),
-                labels = c("Yes", "No")
-            ),
-            floaters = factor(floaters,
-                levels = c("Y", "N"),
-                labels = c("Yes", "No")
-            ),
-            pain = factor(pain,
-                levels = c("Y", "N"),
-                labels = c("Yes", "No")
-            ),
+            srf = factor(srf, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
+            op = factor(op, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
+            symptoms = factor(symptoms, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
+            vision_loss_blurred_vision = factor(vision_loss_blurred_vision, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
+            visual_field_defect = factor(visual_field_defect, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
+            flashes_photopsia = factor(flashes_photopsia, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
+            floaters = factor(floaters, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
+            pain = factor(pain, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
 
             # Staging
             initial_overall_stage = factor(initial_overall_stage,

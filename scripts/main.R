@@ -157,6 +157,8 @@ if (RECREATE_ANALYTIC_DATASETS) {
 run_my_analysis <- function(dataset_name) {
     analysis_start_time <- Sys.time()
     
+    # dataset_name <- "uveal_melanoma_full_cohort"
+
     # Clean dataset name for display
     display_name <- tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name)))
     log_section_start("STATISTICAL ANALYSIS", display_name)

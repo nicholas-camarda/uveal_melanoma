@@ -45,6 +45,37 @@ subgroup_vars <- c(
 TREATMENT_LABELS <- c("GKSRS", "Plaque")
 FAVOURS_LABELS <- c("Favours GKSRS", "Favours Plaque")
 
+# =============================================================================
+# FACTOR LEVEL CONFIGURATION (CRITICAL FOR ANALYSIS CONSISTENCY)
+# =============================================================================
+# These variables define the factor levels and reference groups used throughout
+# the entire analysis pipeline. Changing these affects all models, tables, and plots.
+
+# Treatment group factor levels (CRITICAL: Order determines reference group)
+# Reference group = FIRST level (used in regression models)
+# All models will compare TREATMENT_FACTOR_LEVELS[2] vs TREATMENT_FACTOR_LEVELS[1]
+TREATMENT_FACTOR_LEVELS <- c("Plaque", "GKSRS")  # Plaque is reference group
+TREATMENT_REFERENCE_LEVEL <- TREATMENT_FACTOR_LEVELS[1]  # Explicitly define reference
+TREATMENT_COMPARISON_LEVEL <- TREATMENT_FACTOR_LEVELS[2]  # Explicitly define comparison
+
+# Validation: Ensure consistency with TREATMENT_LABELS
+if (!all(TREATMENT_LABELS %in% TREATMENT_FACTOR_LEVELS)) {
+    stop(sprintf("CRITICAL ERROR: TREATMENT_LABELS (%s) must match TREATMENT_FACTOR_LEVELS (%s)", 
+                 paste(TREATMENT_LABELS, collapse = ", "), 
+                 paste(TREATMENT_FACTOR_LEVELS, collapse = ", ")))
+}
+
+# Note: TREATMENT_LABELS are used for display/plotting, TREATMENT_FACTOR_LEVELS for data/modeling
+# They should contain the same values, potentially in different order
+
+# Y/N factor configurations (used for ALL Y/N binary variables)
+# N is ALWAYS the reference level (first), Y is comparison (second)
+YN_RAW_LEVELS <- c("N", "Y")
+YN_DISPLAY_LABELS <- c("No", "Yes")
+
+# Other critical factor levels
+SEX_FACTOR_LEVELS <- c("Female", "Male")
+
 # Plot dimensions and settings
 FOREST_PLOT_WIDTH <- 10    # inches (reduced from 12 for less horizontal space)
 FOREST_PLOT_HEIGHT <- 10   # inches (increased from 8 for more vertical space)
@@ -382,6 +413,166 @@ validate_cohort_integrity <- function(cohort_list) {
         log_enhanced("=== COHORT VALIDATION PASSED: All checks successful ===", level = "SECTION")
     } else {
         log_enhanced("=== COHORT VALIDATION FAILED: See errors above ===", level = "SECTION")
+    }
+    
+    return(validation_passed)
+}
+
+#' Validate factor level consistency throughout the analysis pipeline
+#'
+#' Ensures that factor levels remain consistent from data processing through analysis
+#' phases. This is critical for maintaining consistent reference groups and interpretation.
+#'
+#' @param cohort_list List of cohort datasets from apply_criteria()
+#' @param phase Character string indicating analysis phase ("data_processing", "analysis", etc.)
+#' @return TRUE if all factor level validations pass, FALSE otherwise with detailed error messages
+validate_factor_level_consistency <- function(cohort_list, phase = "data_processing") {
+    log_enhanced("=== STARTING FACTOR LEVEL CONSISTENCY VALIDATION ===", level = "SECTION")
+    validation_passed <- TRUE
+    
+    # Define expected factor configurations
+    expected_factors <- list(
+        treatment_group = list(
+            levels = TREATMENT_FACTOR_LEVELS,
+            reference = TREATMENT_REFERENCE_LEVEL,
+            comparison = TREATMENT_COMPARISON_LEVEL,
+            critical = TRUE
+        ),
+        recurrence1 = list(
+            levels = YN_DISPLAY_LABELS,
+            reference = YN_DISPLAY_LABELS[1],  # "No" 
+            critical = TRUE
+        ),
+        sex = list(
+            levels = SEX_FACTOR_LEVELS,
+            reference = SEX_FACTOR_LEVELS[1],
+            critical = FALSE
+        ),
+        optic_nerve = list(
+            levels = YN_DISPLAY_LABELS,  # c("No", "Yes")
+            reference = YN_DISPLAY_LABELS[1],  # "No" 
+            critical = TRUE
+        )
+    )
+    
+    # Check each cohort for factor level consistency
+    for (cohort_name in names(cohort_list)) {
+        cohort_data <- cohort_list[[cohort_name]]
+        cohort_display_name <- gsub("uveal_melanoma_", "", cohort_name)
+        
+        log_enhanced(sprintf("Validating factor levels for %s", cohort_display_name), level = "INFO")
+        
+        for (factor_name in names(expected_factors)) {
+            expected_config <- expected_factors[[factor_name]]
+            
+            # Check if factor exists in data
+            if (!factor_name %in% names(cohort_data)) {
+                if (expected_config$critical) {
+                    log_enhanced(sprintf("VALIDATION FAILED: Critical factor '%s' missing from %s", 
+                                        factor_name, cohort_display_name), level = "ERROR")
+                    validation_passed <- FALSE
+                } else {
+                    log_enhanced(sprintf("VALIDATION WARNING: Optional factor '%s' missing from %s", 
+                                        factor_name, cohort_display_name), level = "WARN")
+                }
+                next
+            }
+            
+            factor_col <- cohort_data[[factor_name]]
+            
+            # Check if variable is actually a factor
+            if (!is.factor(factor_col)) {
+                log_enhanced(sprintf("VALIDATION FAILED: '%s' is not a factor in %s (class: %s)", 
+                                    factor_name, cohort_display_name, class(factor_col)[1]), level = "ERROR")
+                validation_passed <- FALSE
+                next
+            }
+            
+            # Check factor levels
+            actual_levels <- levels(factor_col)
+            expected_levels <- expected_config$levels
+            
+            if (!identical(actual_levels, expected_levels)) {
+                log_enhanced(sprintf("VALIDATION FAILED: Factor levels mismatch for '%s' in %s", 
+                                    factor_name, cohort_display_name), level = "ERROR")
+                log_enhanced(sprintf("  Expected: %s", paste(expected_levels, collapse = ", ")), level = "ERROR")
+                log_enhanced(sprintf("  Actual:   %s", paste(actual_levels, collapse = ", ")), level = "ERROR")
+                validation_passed <- FALSE
+            } else {
+                log_enhanced(sprintf("✓ Factor levels correct for '%s' in %s", factor_name, cohort_display_name), level = "INFO")
+            }
+            
+            # Check reference level (first level)
+            if (length(actual_levels) > 0 && actual_levels[1] != expected_config$reference) {
+                log_enhanced(sprintf("VALIDATION FAILED: Reference level mismatch for '%s' in %s", 
+                                    factor_name, cohort_display_name), level = "ERROR")
+                log_enhanced(sprintf("  Expected reference: %s", expected_config$reference), level = "ERROR")
+                log_enhanced(sprintf("  Actual reference:   %s", actual_levels[1]), level = "ERROR")
+                validation_passed <- FALSE
+            }
+            
+            # Special validation for treatment_group (most critical)
+            if (factor_name == "treatment_group") {
+                # Check that both treatment groups are present
+                unique_values <- unique(as.character(factor_col[!is.na(factor_col)]))
+                if (length(unique_values) < 2) {
+                    log_enhanced(sprintf("VALIDATION WARNING: Only %d treatment group(s) present in %s: %s", 
+                                        length(unique_values), cohort_display_name, 
+                                        paste(unique_values, collapse = ", ")), level = "WARN")
+                }
+                
+                # Check sample sizes per treatment group
+                treatment_dist <- table(factor_col, useNA = "ifany")
+                log_enhanced(sprintf("Treatment distribution in %s: %s", 
+                                    cohort_display_name,
+                                    paste(names(treatment_dist), "=", treatment_dist, collapse = ", ")), level = "INFO")
+                
+                # Validate that reference group is Plaque (expected for our analysis)
+                if (actual_levels[1] != "Plaque") {
+                    log_enhanced(sprintf("VALIDATION FAILED: Treatment reference group should be 'Plaque', got '%s' in %s", 
+                                        actual_levels[1], cohort_display_name), level = "ERROR")
+                    validation_passed <- FALSE
+                }
+            }
+        }
+    }
+    
+    # Cross-cohort consistency check
+    log_enhanced("Checking factor level consistency across cohorts", level = "INFO")
+    for (factor_name in names(expected_factors)) {
+        if (!expected_factors[[factor_name]]$critical) next
+        
+        cohort_levels <- list()
+        for (cohort_name in names(cohort_list)) {
+            if (factor_name %in% names(cohort_list[[cohort_name]])) {
+                cohort_levels[[cohort_name]] <- levels(cohort_list[[cohort_name]][[factor_name]])
+            }
+        }
+        
+        # Check that all cohorts have identical factor levels
+        if (length(cohort_levels) > 1) {
+            first_levels <- cohort_levels[[1]]
+            for (i in 2:length(cohort_levels)) {
+                if (!identical(first_levels, cohort_levels[[i]])) {
+                    log_enhanced(sprintf("VALIDATION FAILED: Factor levels for '%s' differ between cohorts", factor_name), level = "ERROR")
+                    log_enhanced(sprintf("  %s: %s", names(cohort_levels)[1], paste(first_levels, collapse = ", ")), level = "ERROR")
+                    log_enhanced(sprintf("  %s: %s", names(cohort_levels)[i], paste(cohort_levels[[i]], collapse = ", ")), level = "ERROR")
+                    validation_passed <- FALSE
+                }
+            }
+        }
+    }
+    
+    # Validation summary
+    if (validation_passed) {
+        log_enhanced("=== FACTOR LEVEL VALIDATION PASSED: All factor levels consistent ===", level = "SECTION")
+        log_enhanced(sprintf("✓ Treatment reference group: %s", TREATMENT_REFERENCE_LEVEL), level = "INFO")
+        log_enhanced(sprintf("✓ Treatment comparison group: %s", TREATMENT_COMPARISON_LEVEL), level = "INFO")
+        log_enhanced("✓ All critical factor levels match expected configuration", level = "INFO")
+    } else {
+        log_enhanced("=== FACTOR LEVEL VALIDATION FAILED: See errors above ===", level = "SECTION")
+        log_enhanced("⚠️  CRITICAL: Factor level inconsistencies detected.", level = "ERROR")
+        log_enhanced("   This could lead to incorrect model interpretation and inconsistent results.", level = "ERROR")
     }
     
     return(validation_passed)

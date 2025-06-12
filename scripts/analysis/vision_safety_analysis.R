@@ -73,13 +73,18 @@ analyze_visual_acuity_changes <- function(data) {
     log_enhanced("Fitting linear regression model for vision changes")
     vision_lm <- lm(vision_change ~ treatment_group + recurrence1, data = data_with_vision_change)
     
-    # Get variable labels for better readability
-    variable_labels <- get_variable_labels()
+    # Get variable labels for better readability - filter to only variables in the model
+    all_variable_labels <- get_variable_labels()
+    # Get the actual variable names from the model terms (not coefficient names)
+    model_terms <- attr(terms(vision_lm), "term.labels")
+    model_var_names <- unique(c("treatment_group", model_terms))
+    # Filter labels to only include variables actually in the model
+    variable_labels <- all_variable_labels[intersect(names(all_variable_labels), model_var_names)]
     
     vision_lm_tbl <- tbl_regression(vision_lm,
         exponentiate = FALSE,
         intercept = FALSE,
-        label = variable_labels  # Apply human-readable labels
+        label = variable_labels  # Apply filtered human-readable labels
     )
     
     # Add p-values based on toggle setting
@@ -259,13 +264,18 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
         
         model <- glm(as.formula(formula_str), data = data, family = binomial())
         
-        # Get variable labels for better readability
-        variable_labels <- get_variable_labels()
+        # Get variable labels for better readability - filter to only variables in the model
+        all_variable_labels <- get_variable_labels()
+        # Get the actual variable names from the model terms (not coefficient names)
+        model_terms <- attr(terms(model), "term.labels")
+        model_var_names <- unique(c("treatment_group", model_terms))
+        # Filter labels to only include variables actually in the model
+        variable_labels <- all_variable_labels[intersect(names(all_variable_labels), model_var_names)]
         
         model_result <- tbl_regression(model,
             exponentiate = TRUE,
             intercept = FALSE,
-            label = variable_labels  # Apply human-readable labels
+            label = variable_labels  # Apply filtered human-readable labels
         )
         
         # Add p-values based on toggle setting

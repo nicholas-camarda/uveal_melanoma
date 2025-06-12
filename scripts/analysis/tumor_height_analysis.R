@@ -79,13 +79,18 @@ analyze_tumor_height_changes <- function(data) {
     log_enhanced("Fitting PRIMARY linear regression model for tumor height changes (without baseline height adjustment)")
     primary_height_lm <- lm(height_change ~ treatment_group + recurrence1, data = data_with_height_change)
     
-    # Get variable labels for better readability
-    variable_labels <- get_variable_labels()
+    # Get variable labels for better readability - filter to only variables in the model
+    all_variable_labels <- get_variable_labels()
+    # Get the actual variable names from the model terms (not coefficient names)
+    model_terms <- attr(terms(primary_height_lm), "term.labels")
+    model_var_names <- unique(c("treatment_group", model_terms))
+    # Filter labels to only include variables actually in the model
+    variable_labels <- all_variable_labels[intersect(names(all_variable_labels), model_var_names)]
     
     primary_height_lm_tbl <- tbl_regression(primary_height_lm,
         exponentiate = FALSE,
         intercept = FALSE,
-        label = variable_labels  # Apply human-readable labels
+        label = variable_labels  # Apply filtered human-readable labels
     )
     
     # Add p-values based on toggle setting
@@ -120,10 +125,18 @@ analyze_tumor_height_changes <- function(data) {
     log_enhanced("Fitting SENSITIVITY linear regression model for tumor height changes (with baseline height adjustment)")
     sensitivity_height_lm <- lm(height_change ~ treatment_group + recurrence1 + initial_tumor_height, data = data_with_height_change)
     
+    # Get variable labels for sensitivity model - filter to only variables in the model
+    all_variable_labels_sens <- get_variable_labels()
+    # Get the actual variable names from the model terms (not coefficient names)
+    model_terms_sens <- attr(terms(sensitivity_height_lm), "term.labels")
+    model_var_names_sens <- unique(c("treatment_group", model_terms_sens))
+    # Filter labels to only include variables actually in the model
+    variable_labels_sens <- all_variable_labels_sens[intersect(names(all_variable_labels_sens), model_var_names_sens)]
+    
     sensitivity_height_lm_tbl <- tbl_regression(sensitivity_height_lm,
         exponentiate = FALSE,
         intercept = FALSE,
-        label = variable_labels  # Apply human-readable labels
+        label = variable_labels_sens  # Apply filtered human-readable labels
     )
     
     # Add p-values based on toggle setting
