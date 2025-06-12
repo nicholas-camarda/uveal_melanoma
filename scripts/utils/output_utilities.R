@@ -285,7 +285,7 @@ create_all_combined_forest_plots <- function(base_dir, cohort_names = c("full", 
                 # Save the plot
                 plot_path <- file.path(combined_output_dir, paste0("combined_", outcome_key, "_forest_plot.png"))
                 png(plot_path, width = 14, height = 10, units = "in", res = 300)
-                print(combined_plot)
+                plot(combined_plot)
                 dev.off()
                 
                 log_enhanced(sprintf("Combined forest plot saved: %s", plot_path), level = "INFO", indent = 2)

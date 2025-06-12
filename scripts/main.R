@@ -373,7 +373,7 @@ run_my_analysis <- function(dataset_name) {
     # Save the PRIMARY forest plot
     png(file.path(forest_plots_dir, paste0(prefix, "tumor_height_primary_subgroup_forest_plot.png")), 
         width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI)
-    print(primary_height_forest_plot)
+    plot(primary_height_forest_plot)
     dev.off()
     log_enhanced("PRIMARY tumor height forest plot created", level = "INFO", indent = 1)
     
@@ -392,7 +392,7 @@ run_my_analysis <- function(dataset_name) {
     # Save the SENSITIVITY forest plot
     png(file.path(forest_plots_dir, paste0(prefix, "tumor_height_sensitivity_subgroup_forest_plot.png")), 
         width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI)
-    print(sensitivity_height_forest_plot)
+    plot(sensitivity_height_forest_plot)
     dev.off()
     log_enhanced("SENSITIVITY tumor height forest plot created", level = "INFO", indent = 1)
     
@@ -435,7 +435,7 @@ run_my_analysis <- function(dataset_name) {
     # Save the forest plot
     png(file.path(forest_plots_dir, paste0(prefix, "local_recurrence_subgroup_forest_plot.png")), 
         width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI)
-    print(recurrence_forest_plot)
+    plot(recurrence_forest_plot)
     dev.off()
     log_enhanced("Local recurrence subgroup analysis completed", level = "INFO", indent = 1)
     
@@ -464,7 +464,7 @@ run_my_analysis <- function(dataset_name) {
     # Save the forest plot
     png(file.path(forest_plots_dir, paste0(prefix, "metastatic_progression_subgroup_forest_plot.png")), 
         width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI)
-    print(mets_forest_plot)
+    plot(mets_forest_plot)
     dev.off()
     log_enhanced("Metastatic progression subgroup analysis completed", level = "INFO", indent = 1)
     
@@ -494,7 +494,7 @@ run_my_analysis <- function(dataset_name) {
     # Save the forest plot
     png(file.path(forest_plots_dir, paste0(prefix, "overall_survival_subgroup_forest_plot.png")), 
         width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI)
-    print(os_forest_plot)
+    plot(os_forest_plot)
     dev.off()
     log_enhanced("Overall survival subgroup analysis completed", level = "INFO", indent = 1)
     
@@ -524,7 +524,7 @@ run_my_analysis <- function(dataset_name) {
     # Save the forest plot
     png(file.path(forest_plots_dir, paste0(prefix, "progression_free_survival_subgroup_forest_plot.png")), 
         width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI)
-    print(pfs_forest_plot)
+    plot(pfs_forest_plot)
     dev.off()
     log_enhanced("Progression-free survival subgroup analysis completed", level = "INFO", indent = 1)
     
