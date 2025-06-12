@@ -683,6 +683,192 @@ generate_validation_report <- function(cohort_list, output_path = NULL) {
         )
     }
     
+    # Factor Level Validation Section
+    report_content <- c(report_content,
+        "================================================================================",
+        "                         FACTOR LEVEL VALIDATION",
+        "================================================================================"
+    )
+    
+    # Run factor validation and capture results
+    factor_validation_passed <- TRUE
+    
+    # Define expected factor configurations (same as in validate_factor_level_consistency)
+    expected_factors <- list(
+        treatment_group = list(
+            levels = TREATMENT_FACTOR_LEVELS,
+            reference = TREATMENT_REFERENCE_LEVEL,
+            comparison = TREATMENT_COMPARISON_LEVEL,
+            critical = TRUE
+        ),
+        recurrence1 = list(
+            levels = YN_DISPLAY_LABELS,
+            reference = YN_DISPLAY_LABELS[1],  # "No" 
+            critical = TRUE
+        ),
+        sex = list(
+            levels = SEX_FACTOR_LEVELS,
+            reference = SEX_FACTOR_LEVELS[1],
+            critical = FALSE
+        ),
+        optic_nerve = list(
+            levels = YN_DISPLAY_LABELS,  # c("No", "Yes")
+            reference = YN_DISPLAY_LABELS[1],  # "No" 
+            critical = TRUE
+        )
+    )
+    
+    # Expected factor configuration summary
+    report_content <- c(report_content,
+        "EXPECTED FACTOR CONFIGURATIONS:",
+        sprintf("Treatment Group: %s (reference: %s)", 
+                paste(TREATMENT_FACTOR_LEVELS, collapse = ", "), TREATMENT_REFERENCE_LEVEL),
+        sprintf("Sex: %s (reference: %s)", 
+                paste(SEX_FACTOR_LEVELS, collapse = ", "), SEX_FACTOR_LEVELS[1]),
+        sprintf("Yes/No Variables: %s (reference: %s)", 
+                paste(YN_DISPLAY_LABELS, collapse = ", "), YN_DISPLAY_LABELS[1]),
+        ""
+    )
+    
+    # Check each cohort for factor level consistency
+    cohort_factor_results <- list()
+    
+    for (cohort_name in names(cohort_list)) {
+        cohort_data <- cohort_list[[cohort_name]]
+        cohort_display_name <- gsub("uveal_melanoma_", "", cohort_name)
+        cohort_results <- list()
+        
+        report_content <- c(report_content,
+            sprintf("FACTOR VALIDATION - %s:", toupper(cohort_display_name))
+        )
+        
+        for (factor_name in names(expected_factors)) {
+            expected_config <- expected_factors[[factor_name]]
+            
+            # Check if factor exists in data
+            if (!factor_name %in% names(cohort_data)) {
+                                 if (expected_config$critical) {
+                     report_content <- c(report_content,
+                         sprintf("  ❌ CRITICAL: Factor '%s' missing", factor_name))
+                     factor_validation_passed <- FALSE
+                 } else {
+                     report_content <- c(report_content,
+                         sprintf("  ⚠️  WARNING: Optional factor '%s' missing", factor_name))
+                 }
+                next
+            }
+            
+            factor_col <- cohort_data[[factor_name]]
+            
+            # Check if variable is actually a factor
+            if (!is.factor(factor_col)) {
+                report_content <- c(report_content,
+                    sprintf("  ❌ FAIL: '%s' is not a factor (class: %s)", factor_name, class(factor_col)[1]))
+                factor_validation_passed <- FALSE
+                next
+            }
+            
+            # Check factor levels
+            actual_levels <- levels(factor_col)
+            expected_levels <- expected_config$levels
+            
+            if (!identical(actual_levels, expected_levels)) {
+                report_content <- c(report_content,
+                    sprintf("  ❌ FAIL: Factor levels mismatch for '%s'", factor_name),
+                    sprintf("    Expected: %s", paste(expected_levels, collapse = ", ")),
+                    sprintf("    Actual:   %s", paste(actual_levels, collapse = ", ")))
+                factor_validation_passed <- FALSE
+            } else {
+                report_content <- c(report_content,
+                    sprintf("  ✅ PASS: Factor levels correct for '%s'", factor_name))
+            }
+            
+            # Check reference level (first level)
+            if (length(actual_levels) > 0 && actual_levels[1] != expected_config$reference) {
+                report_content <- c(report_content,
+                    sprintf("  ❌ FAIL: Reference level mismatch for '%s'", factor_name),
+                    sprintf("    Expected reference: %s", expected_config$reference),
+                    sprintf("    Actual reference:   %s", actual_levels[1]))
+                factor_validation_passed <- FALSE
+            } else if (length(actual_levels) > 0) {
+                report_content <- c(report_content,
+                    sprintf("  ✅ PASS: Reference level correct for '%s' (%s)", factor_name, actual_levels[1]))
+            }
+            
+            # Special validation for treatment_group
+            if (factor_name == "treatment_group") {
+                unique_values <- unique(as.character(factor_col[!is.na(factor_col)]))
+                treatment_dist <- table(factor_col, useNA = "ifany")
+                
+                report_content <- c(report_content,
+                    sprintf("    Treatment distribution: %s", 
+                            paste(names(treatment_dist), "=", treatment_dist, collapse = ", ")))
+                
+                if (length(unique_values) < 2) {
+                    report_content <- c(report_content,
+                        sprintf("  ⚠️  WARNING: Only %d treatment group(s) present: %s", 
+                                length(unique_values), paste(unique_values, collapse = ", ")))
+                }
+                
+                if (actual_levels[1] != "Plaque") {
+                    report_content <- c(report_content,
+                        sprintf("  ❌ FAIL: Treatment reference should be 'Plaque', got '%s'", actual_levels[1]))
+                    factor_validation_passed <- FALSE
+                }
+            }
+        }
+        
+        report_content <- c(report_content, "")
+    }
+    
+    # Cross-cohort consistency check
+    report_content <- c(report_content,
+        "CROSS-COHORT FACTOR CONSISTENCY:"
+    )
+    
+    for (factor_name in names(expected_factors)) {
+        if (!expected_factors[[factor_name]]$critical) next
+        
+        cohort_levels <- list()
+        for (cohort_name in names(cohort_list)) {
+            if (factor_name %in% names(cohort_list[[cohort_name]])) {
+                cohort_levels[[cohort_name]] <- levels(cohort_list[[cohort_name]][[factor_name]])
+            }
+        }
+        
+        # Check that all cohorts have identical factor levels
+        if (length(cohort_levels) > 1) {
+            first_levels <- cohort_levels[[1]]
+            all_identical <- TRUE
+            for (i in 2:length(cohort_levels)) {
+                if (!identical(first_levels, cohort_levels[[i]])) {
+                    all_identical <- FALSE
+                    break
+                }
+            }
+            
+            if (all_identical) {
+                report_content <- c(report_content,
+                    sprintf("  ✅ PASS: Factor '%s' consistent across all cohorts", factor_name))
+            } else {
+                report_content <- c(report_content,
+                    sprintf("  ❌ FAIL: Factor '%s' differs between cohorts", factor_name))
+                for (i in 1:length(cohort_levels)) {
+                    report_content <- c(report_content,
+                        sprintf("    %s: %s", names(cohort_levels)[i], paste(cohort_levels[[i]], collapse = ", ")))
+                }
+                factor_validation_passed <- FALSE
+            }
+        }
+    }
+    
+    # Factor validation summary
+    report_content <- c(report_content,
+        "",
+        sprintf("🎯 FACTOR VALIDATION RESULT: %s", if(factor_validation_passed) "✅ ALL CHECKS PASSED" else "❌ VALIDATION FAILED"),
+        ""
+    )
+    
     # Consort group validation
     report_content <- c(report_content,
         "================================================================================",
@@ -779,7 +965,8 @@ generate_validation_report <- function(cohort_list, output_path = NULL) {
                         nrow(gksrs_should_qualify) == nrow(gksrs_only_data) &&
                         length(overlap_patients) == 0 &&
                         nrow(full_data) >= nrow(restricted_data) && 
-                        nrow(full_data) >= nrow(gksrs_only_data)
+                        nrow(full_data) >= nrow(gksrs_only_data) &&
+                        factor_validation_passed
     
     report_content <- c(report_content,
         "",
@@ -789,12 +976,12 @@ generate_validation_report <- function(cohort_list, output_path = NULL) {
         sprintf("🎯 OVERALL VALIDATION RESULT: %s", if(all_checks_passed) "✅ ALL CHECKS PASSED" else "❌ VALIDATION FAILED"),
         "",
         if (all_checks_passed) {
-            "All cohort definitions, sample sizes, treatment distributions, and eligibility"
+            "All cohort definitions, sample sizes, treatment distributions, factor levels,"
         } else {
             "⚠️  CRITICAL: Data integrity issues detected. Review failed checks above."
         },
         if (all_checks_passed) {
-            "criteria have been validated. Analysis can proceed with confidence."
+            "and eligibility criteria have been validated. Analysis can proceed with confidence."
         } else {
             "   Analysis should not proceed until validation issues are resolved."
         },
