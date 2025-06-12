@@ -4,6 +4,8 @@ scripts/.DS_Store
 # ignore raw data files
 data/
 
+# ignore unwanted R output files
+Rplots.pdf
 
 # ignore generated poster scripts
 scripts/poster_scripts/
