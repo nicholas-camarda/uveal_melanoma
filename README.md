@@ -76,13 +76,6 @@ flowchart TD
     R --> U
     S --> U
     T --> U
-    
-    style A fill:#ffcccc
-    style H fill:#ffffcc
-    style I fill:#ccffcc
-    style J fill:#ccffcc
-    style K fill:#ccffcc
-    style U fill:#ccccff
 ```
 
 ---

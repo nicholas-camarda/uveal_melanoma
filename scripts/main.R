@@ -214,7 +214,7 @@ run_my_analysis <- function(dataset_name) {
         event_var = "recurrence_event",
         confounders = confounders,
         exclude_before_treatment = TRUE,
-        handle_rare = TRUE,
+        handle_rare = TRUE, 
         dataset_name = dataset_name
     )
     log_enhanced("Local recurrence analysis completed", level = "INFO", indent = 1)

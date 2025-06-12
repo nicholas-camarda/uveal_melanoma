@@ -319,9 +319,13 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     # Apply additional styling to ensure proper alignment and clean appearance
     # Make main plot text bigger and format Y-axis as percentages
     surv_plot$plot <- surv_plot$plot +
-        # Don't add scale_y_continuous here as ggsurvplot already sets ylim
-        # Instead, just modify the y-axis labels and title
-        labs(y = paste0(ylab, " (%)")) +  # Add (%) to the Y-axis label
+        # Format Y-axis as percentages with whole integers in increments of 10
+        scale_y_continuous(
+            limits = c(0, 1),
+            breaks = seq(0, 1, by = 0.1),  # Breaks every 10%
+            labels = function(x) x * 100,  # Convert to percentage numbers without % symbol
+            name = paste0(ylab, " (%)")  # Y-axis title with (%)
+        ) +
         theme(
             plot.title = element_text(size = 16, face = "bold", hjust = 0.5),  # Bigger title
             plot.subtitle = element_text(size = 14, face = "italic", hjust = 0.5, color = "gray40"),  # Subtitle styling
