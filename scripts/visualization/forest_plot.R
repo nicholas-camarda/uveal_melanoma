@@ -110,14 +110,28 @@ create_single_cohort_forest_plot <- function(subgroup_results,
     # Set scale parameters based on effect measure
     use_log_scale <- effect_measure %in% c("HR", "OR", "RR")
     
+    # Check for problematic values (≤ 0) when using log scale
+    if (use_log_scale) {
+        problematic_values <- any(
+            !is.na(plot_data$est_values) & plot_data$est_values <= 0 |
+            !is.na(plot_data$lower_values) & plot_data$lower_values <= 0 |
+            !is.na(plot_data$upper_values) & plot_data$upper_values <= 0
+        )
+        
+        if (problematic_values) {
+            warning("Found values ≤ 0 in forest plot data. Switching to linear scale to avoid log transformation errors.")
+            use_log_scale <- FALSE
+        }
+    }
+    
     # Set default clipping if not provided
     if (is.null(clip)) {
         clip <- if (use_log_scale) c(0.1, 10) else c(-5, 5)
     }
     
-    # Create theme for forestploter
+    # Create improved theme for forestploter with proper formatting following documentation
     tm <- forest_theme(
-        base_size = 10,
+        base_size = 11,
         ci_pch = 15,
         ci_col = "black",
         ci_fill = "black",
@@ -129,29 +143,33 @@ create_single_cohort_forest_plot <- function(subgroup_results,
         vertline_lty = "solid",
         vertline_col = "black",
         footnote_gp = gpar(cex = 0.8),
-        # Set header rows to bold
-        colhead = list(fg_params = list(fontface = "bold")),
-        # Control text formatting per row - use manual bold/plain setting
+        # Header formatting - this controls the column headers
+        colhead = list(
+            fg_params = list(
+                fontface = "bold",
+                cex = 1.0,
+                hjust = 0.5
+            )
+        ),
+        # Core content formatting with dynamic font face and size
         core = list(
-            fg_params = list(fontface = rep(c("bold", "plain"), length.out = nrow(plot_data$data_frame)))
+            fg_params = list(
+                fontface = plot_data$font_face,  # Dynamic font faces
+                cex = plot_data$text_size        # Dynamic text sizes
+            )
         )
     )
     
-    # Find the CI column (the one with spaces)
-    ci_col_idx <- which(sapply(plot_data$data_frame, function(x) any(grepl("^\\s+$", x))))
-    if (length(ci_col_idx) == 0) {
-        ci_col_idx <- ncol(plot_data$data_frame) - 1  # Default to second-to-last column
-    }
-    
-    # Create the forest plot
+    # Create the forest plot using correct forestploter syntax following documentation
+    # CI column is position 4 (blank column after Subgroup, GKSRS_n, Plaque_n)
     fp <- forest(
         plot_data$data_frame,
         est = plot_data$est_values,
         lower = plot_data$lower_values,
         upper = plot_data$upper_values,
-        sizes = 0.3,
+        sizes = 0.4,
         is_summary = plot_data$is_summary,
-        ci_column = ci_col_idx,
+        ci_column = 4,  # Position of blank column
         ref_line = if (use_log_scale) 1 else 0,
         arrow_lab = favours_labels,
         xlim = clip,
@@ -207,6 +225,23 @@ create_combined_forest_plot <- function(full_results,
     # Set scale parameters based on effect measure
     use_log_scale <- effect_measure %in% c("HR", "OR", "RR")
     
+    # Check for problematic values (≤ 0) when using log scale
+    if (use_log_scale) {
+        problematic_values <- any(
+            !is.na(plot_data$est_values_full) & plot_data$est_values_full <= 0 |
+            !is.na(plot_data$lower_values_full) & plot_data$lower_values_full <= 0 |
+            !is.na(plot_data$upper_values_full) & plot_data$upper_values_full <= 0 |
+            !is.na(plot_data$est_values_restricted) & plot_data$est_values_restricted <= 0 |
+            !is.na(plot_data$lower_values_restricted) & plot_data$lower_values_restricted <= 0 |
+            !is.na(plot_data$upper_values_restricted) & plot_data$upper_values_restricted <= 0
+        )
+        
+        if (problematic_values) {
+            warning("Found values ≤ 0 in combined forest plot data. Switching to linear scale to avoid log transformation errors.")
+            use_log_scale <- FALSE
+        }
+    }
+    
     # Set default clipping if not provided
     if (is.null(clip)) {
         clip <- if (use_log_scale) c(0.1, 10) else c(-5, 5)
@@ -214,7 +249,7 @@ create_combined_forest_plot <- function(full_results,
     
     # Create theme for forestploter with multiple cohort colors
     tm <- forest_theme(
-        base_size = 10,
+        base_size = 11,
         ci_pch = c(15, 18),  # Different shapes for full vs restricted
         ci_col = c("blue", "red"),
         ci_fill = c("blue", "red"),
@@ -228,11 +263,14 @@ create_combined_forest_plot <- function(full_results,
         footnote_gp = gpar(cex = 0.8),
         legend_name = "Cohort",
         legend_value = c("Full Cohort", "Restricted Cohort"),
-        # Set header rows to bold
-        colhead = list(fg_params = list(fontface = "bold")),
-        # Control text formatting per row
+        # Set header rows to bold with improved formatting
+        colhead = list(fg_params = list(fontface = "bold", cex = 1.1, hjust = 0.5, x = 0.5)),
+        # Use dynamic row-specific formatting
         core = list(
-            fg_params = list(fontface = rep(c("bold", "plain"), length.out = nrow(plot_data$data_frame)))
+            fg_params = list(
+                fontface = plot_data$font_face,  # Dynamic font faces
+                cex = plot_data$text_size        # Dynamic text sizes
+            )
         )
     )
     
@@ -278,43 +316,33 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
     lower_values <- c()
     upper_values <- c()
     is_summary <- c()
+    font_face <- c()
+    text_size <- c()
     
-    # Add header row
-    header_row <- data.frame(
-        Subgroup = "Subgroup",
-        GKSRS_n = paste(treatment_labels[1], "n/N"),
-        Plaque_n = paste(treatment_labels[2], "n/N"),
-        CI_space = paste(rep(" ", 20), collapse = " "),  # Blank column for CI
-        Effect_CI = sprintf("%s (95%% CI)", effect_measure),
-        p_value = "p value",
-        stringsAsFactors = FALSE
-    )
-    
-    all_rows[[1]] <- header_row
-    est_values <- c(est_values, NA)
-    lower_values <- c(lower_values, NA)
-    upper_values <- c(upper_values, NA)
-    is_summary <- c(is_summary, TRUE)
+    # DO NOT create header row as data - forestploter creates headers from column names automatically
     
     # Process each variable in order
     for (var_name in variable_order) {
         
-        # Variable header row
-        var_header <- data.frame(
-            Subgroup = format_variable_name(var_name),
-            GKSRS_n = "",
-            Plaque_n = "",
-            CI_space = "",
-            Effect_CI = "",
-            p_value = "",
-            stringsAsFactors = FALSE
-        )
-        
-        all_rows[[length(all_rows) + 1]] <- var_header
-        est_values <- c(est_values, NA)
-        lower_values <- c(lower_values, NA)
-        upper_values <- c(upper_values, NA)
-        is_summary <- c(is_summary, TRUE)
+                                        # Variable header row 
+                var_header <- data.frame(
+                    Subgroup = format_variable_name(var_name),
+                    GKSRS_n = "",
+                    Plaque_n = "",
+                    stringsAsFactors = FALSE
+                )
+                
+                # Add blank column for CI
+                var_header$` ` <- paste(rep(" ", 20), collapse = " ")
+                var_header$`HR (95% CI)` <- ""
+                
+                all_rows[[length(all_rows) + 1]] <- var_header
+                est_values <- c(est_values, NA)
+                lower_values <- c(lower_values, NA)
+                upper_values <- c(upper_values, NA)
+                is_summary <- c(is_summary, TRUE)
+                font_face <- c(font_face, "bold")
+                text_size <- c(text_size, 1.0)
         
         # Check if data exists for this variable
         if (var_name %in% names(subgroup_results)) {
@@ -327,23 +355,26 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                     row_data <- effects_data[i, ]
                     
                     subgroup_row <- data.frame(
-                        Subgroup = paste0("  ", row_data$subgroup_level),
+                        Subgroup = sprintf("  %s", row_data$subgroup_level),  # Indented subgroup levels
                         GKSRS_n = format_sample_size(row_data$n_gksrs, row_data$n_total),
                         Plaque_n = format_sample_size(row_data$n_plaque, row_data$n_total),
-                        CI_space = "",
-                        Effect_CI = sprintf("%.2f (%.2f-%.2f)", 
-                                          row_data$treatment_effect,
-                                          row_data$ci_lower,
-                                          row_data$ci_upper),
-                        p_value = format_p_value(row_data$p_value),
                         stringsAsFactors = FALSE
                     )
+                    
+                    # Add blank column for CI
+                    subgroup_row$` ` <- paste(rep(" ", 20), collapse = " ")
+                    subgroup_row$`HR (95% CI)` <- sprintf("%.2f (%.2f-%.2f)", 
+                                                         row_data$treatment_effect,
+                                                         row_data$ci_lower,
+                                                         row_data$ci_upper)
                     
                     all_rows[[length(all_rows) + 1]] <- subgroup_row
                     est_values <- c(est_values, row_data$treatment_effect)
                     lower_values <- c(lower_values, row_data$ci_lower)
                     upper_values <- c(upper_values, row_data$ci_upper)
                     is_summary <- c(is_summary, FALSE)
+                    font_face <- c(font_face, "plain")
+                    text_size <- c(text_size, 0.9)
                 }
             } else {
                 # No data available
@@ -351,17 +382,20 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                     Subgroup = "  No data available",
                     GKSRS_n = "",
                     Plaque_n = "",
-                    CI_space = "",
-                    Effect_CI = "",
-                    p_value = "",
                     stringsAsFactors = FALSE
                 )
+                
+                # Add blank column for CI
+                no_data_row$` ` <- paste(rep(" ", 20), collapse = " ")
+                no_data_row$`HR (95% CI)` <- ""
                 
                 all_rows[[length(all_rows) + 1]] <- no_data_row
                 est_values <- c(est_values, NA)
                 lower_values <- c(lower_values, NA)
                 upper_values <- c(upper_values, NA)
                 is_summary <- c(is_summary, FALSE)
+                font_face <- c(font_face, "italic")
+                text_size <- c(text_size, 0.8)
             }
         } else {
             # Variable missing from results
@@ -369,29 +403,43 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                 Subgroup = "  No data available",
                 GKSRS_n = "",
                 Plaque_n = "",
-                CI_space = "",
-                Effect_CI = "",
-                p_value = "",
                 stringsAsFactors = FALSE
             )
+            
+            # Add blank column for CI
+            no_data_row$` ` <- paste(rep(" ", 20), collapse = " ")
+            no_data_row$`HR (95% CI)` <- ""
             
             all_rows[[length(all_rows) + 1]] <- no_data_row
             est_values <- c(est_values, NA)
             lower_values <- c(lower_values, NA)
             upper_values <- c(upper_values, NA)
             is_summary <- c(is_summary, FALSE)
+            font_face <- c(font_face, "italic")
+            text_size <- c(text_size, 0.8)
         }
     }
     
     # Combine all rows into a data frame
     final_df <- do.call(rbind, all_rows)
     
+    # Set proper column names that will become the forestploter headers
+    colnames(final_df) <- c(
+        "Subgroup",
+        sprintf("%s n/N", treatment_labels[1]),
+        sprintf("%s n/N", treatment_labels[2]),
+        " ",  # Blank column for CI
+        sprintf("%s (95%% CI)", effect_measure)
+    )
+    
     return(list(
         data_frame = final_df,
         est_values = est_values,
         lower_values = lower_values,
         upper_values = upper_values,
-        is_summary = is_summary
+        is_summary = is_summary,
+        font_face = font_face,
+        text_size = text_size
     ))
 }
 
@@ -414,33 +462,17 @@ create_combined_forest_plot_data <- function(full_results, restricted_results, v
     lower_values_restricted <- c()
     upper_values_restricted <- c()
     is_summary <- c()
+    font_face <- c()
+    text_size <- c()
     
-    # Add header row
-    header_row <- data.frame(
-        Subgroup = "Subgroup",
-        Full_CI = paste(rep(" ", 20), collapse = " "),
-        Restricted_CI = paste(rep(" ", 20), collapse = " "),
-        Full_n = "Full n_GKSRS/n_Plaque",
-        Restricted_n = "Restricted n_GKSRS/n_Plaque",
-        p_value = "p value",
-        stringsAsFactors = FALSE
-    )
-    
-    all_rows[[1]] <- header_row
-    est_values_full <- c(est_values_full, NA)
-    lower_values_full <- c(lower_values_full, NA)
-    upper_values_full <- c(upper_values_full, NA)
-    est_values_restricted <- c(est_values_restricted, NA)
-    lower_values_restricted <- c(lower_values_restricted, NA)
-    upper_values_restricted <- c(upper_values_restricted, NA)
-    is_summary <- c(is_summary, TRUE)
+    # Note: Headers are set via column names, not as data rows in forestploter
     
     # Process each variable in order
     for (var_name in variable_order) {
         
-        # Variable header row
+        # Variable header row with bold formatting
         var_header <- data.frame(
-            Subgroup = format_variable_name(var_name),
+            Subgroup = format_variable_name(var_name),  # Clean variable names (will be made bold via theme)
             Full_CI = "",
             Restricted_CI = "",
             Full_n = "",
@@ -457,19 +489,20 @@ create_combined_forest_plot_data <- function(full_results, restricted_results, v
         lower_values_restricted <- c(lower_values_restricted, NA)
         upper_values_restricted <- c(upper_values_restricted, NA)
         is_summary <- c(is_summary, TRUE)
+        font_face <- c(font_face, "bold")
+        text_size <- c(text_size, 1.0)
         
-        # Get data for both cohorts
+        # Check if data exists for this variable in either cohort
         full_var <- if (var_name %in% names(full_results)) full_results[[var_name]] else NULL
         restricted_var <- if (var_name %in% names(restricted_results)) restricted_results[[var_name]] else NULL
         
-        has_full_data <- !is.null(full_var) && !is.null(full_var$subgroup_effects) && nrow(full_var$subgroup_effects) > 0
-        has_restricted_data <- !is.null(restricted_var) && !is.null(restricted_var$subgroup_effects) && nrow(restricted_var$subgroup_effects) > 0
-        
-        if (has_full_data || has_restricted_data) {
-            # Get aligned subgroup data
-            if (has_full_data && has_restricted_data) {
+        if (!is.null(full_var) || !is.null(restricted_var)) {
+            # Align subgroup levels between cohorts
+            aligned_data <- data.frame(subgroup_level = character(0), stringsAsFactors = FALSE)
+            
+            if (!is.null(full_var) && !is.null(restricted_var)) {
                 aligned_data <- align_subgroup_levels(full_var$subgroup_effects, restricted_var$subgroup_effects)
-            } else if (has_full_data) {
+            } else if (!is.null(full_var)) {
                 aligned_data <- full_var$subgroup_effects
                 # Add empty columns for restricted data
                 for (col in c("treatment_effect", "ci_lower", "ci_upper", "p_value", "n_gksrs", "n_plaque", "n_total")) {
@@ -494,7 +527,7 @@ create_combined_forest_plot_data <- function(full_results, restricted_results, v
                 row_data <- aligned_data[i, ]
                 
                 subgroup_row <- data.frame(
-                    Subgroup = paste0("  ", row_data$subgroup_level),
+                    Subgroup = sprintf("  %s", row_data$subgroup_level),  # Indented subgroup levels
                     Full_CI = "",
                     Restricted_CI = "",
                     Full_n = if (!is.na(row_data$full_n_gksrs)) sprintf("%d/%d", row_data$full_n_gksrs, row_data$full_n_plaque) else "No data",
@@ -516,11 +549,13 @@ create_combined_forest_plot_data <- function(full_results, restricted_results, v
                 upper_values_restricted <- c(upper_values_restricted, if (!is.na(row_data$restricted_ci_upper)) row_data$restricted_ci_upper else NA)
                 
                 is_summary <- c(is_summary, FALSE)
+                font_face <- c(font_face, "plain")  # Plain font for subgroup levels
+                text_size <- c(text_size, 0.9)
             }
         } else {
             # No data available
             no_data_row <- data.frame(
-                Subgroup = "  No data available",
+                Subgroup = "  No data available",  # Clean text for no data
                 Full_CI = "",
                 Restricted_CI = "",
                 Full_n = "",
@@ -537,11 +572,23 @@ create_combined_forest_plot_data <- function(full_results, restricted_results, v
             lower_values_restricted <- c(lower_values_restricted, NA)
             upper_values_restricted <- c(upper_values_restricted, NA)
             is_summary <- c(is_summary, FALSE)
+            font_face <- c(font_face, "italic")
+            text_size <- c(text_size, 0.9)
         }
     }
     
     # Combine all rows into a data frame
     final_df <- do.call(rbind, all_rows)
+    
+    # Set proper column names for forestploter headers
+    colnames(final_df) <- c(
+        "Subgroup",
+        " ",  # Full CI blank column
+        " ",  # Restricted CI blank column  
+        sprintf("Full Cohort (%s/%s)", treatment_labels[1], treatment_labels[2]),
+        sprintf("Restricted Cohort (%s/%s)", treatment_labels[1], treatment_labels[2]),
+        "p value"
+    )
     
     return(list(
         data_frame = final_df,
@@ -551,7 +598,9 @@ create_combined_forest_plot_data <- function(full_results, restricted_results, v
         est_values_restricted = est_values_restricted,
         lower_values_restricted = lower_values_restricted,
         upper_values_restricted = upper_values_restricted,
-        is_summary = is_summary
+        is_summary = is_summary,
+        font_face = font_face,
+        text_size = text_size
     ))
 }
 
@@ -671,4 +720,37 @@ format_p_value <- function(p_value) {
     } else {
         return(sprintf("%.2f", p_value))
     }
+}
+
+#' Apply post-processing formatting for better appearance
+#'
+#' @param fp A forestploter object
+#' @param plot_data List with formatted data for forestploter
+#' @return A formatted forestploter object
+apply_forest_plot_formatting <- function(fp, plot_data) {
+    
+    # Find rows that should be bold (variable headers)
+    bold_rows <- which(plot_data$is_summary & plot_data$font_face == "bold")
+    
+    # Skip the first row (main header) for variable-specific formatting
+    variable_header_rows <- bold_rows[-1]
+    
+    # Apply bold formatting to variable headers
+    for (row_idx in variable_header_rows) {
+        fp <- edit_plot(fp, 
+                       row = row_idx, 
+                       col = 1,  # First column (subgroup names)
+                       gp = gpar(fontface = "bold"))
+    }
+    
+    # Apply italic formatting to "No data available" rows
+    italic_rows <- which(plot_data$font_face == "italic")
+    for (row_idx in italic_rows) {
+        fp <- edit_plot(fp, 
+                       row = row_idx, 
+                       col = 1,  # First column (subgroup names)
+                       gp = gpar(fontface = "italic", col = "grey50"))
+    }
+    
+    return(fp)
 }

@@ -117,8 +117,13 @@ analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var,
     logit_model <- glm(formula, data = fix_event_data, family = binomial())
     print(summary(logit_model))
 
-    # Get variable labels for better readability
-    variable_labels <- get_variable_labels()
+    # Get variable labels for better readability - filter to only variables in the model
+    all_variable_labels <- get_variable_labels()
+    # Get the actual variable names from the model terms (not coefficient names)
+    model_terms <- attr(terms(logit_model), "term.labels")
+    model_var_names <- unique(c(group_var, model_terms))
+    # Filter labels to only include variables actually in the model
+    variable_labels <- all_variable_labels[intersect(names(all_variable_labels), model_var_names)]
     
     # Create table with regression results
     tbl <- tbl_regression(
@@ -126,8 +131,7 @@ analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var,
         intercept = FALSE,
         exponentiate = TRUE,
         show_single_row = group_var,
-
-        label = variable_labels  # Apply human-readable labels
+        label = variable_labels  # Apply filtered human-readable labels
     )
     
     # Add p-values based on toggle setting
@@ -295,6 +299,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         conf.int = FALSE,
         pval = TRUE,
         title = paste("Kaplan-Meier Survival Curves:", ylab),  # Add descriptive title
+        subtitle = if (!is.null(dataset_name)) paste("Cohort:", dataset_name) else NULL,  # Add cohort subtitle
         xlab = "Time (months)",
         ylab = ylab,
         # caption = "Vertical lines (|) indicate censored patients",  # Add caption explaining censoring
@@ -302,6 +307,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         ggtheme = theme_minimal(),
         break.time.by = 12,  # Break every 12 months (1 year)
         xlim = c(0, max(x_breaks)),
+        ylim = c(0, 1),  # Set Y-axis limits from 0 to 1 (0% to 100%)
         legend.labs = legend_labels,  # Dynamic legend labels
         risk.table.y.text = TRUE,   # Show strata labels in risk table
         tables.y.text = TRUE,       # Show strata labels in risk table
@@ -311,10 +317,14 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     )
 
     # Apply additional styling to ensure proper alignment and clean appearance
-    # Make main plot text bigger
+    # Make main plot text bigger and format Y-axis as percentages
     surv_plot$plot <- surv_plot$plot +
+        # Don't add scale_y_continuous here as ggsurvplot already sets ylim
+        # Instead, just modify the y-axis labels and title
+        labs(y = paste0(ylab, " (%)")) +  # Add (%) to the Y-axis label
         theme(
             plot.title = element_text(size = 16, face = "bold", hjust = 0.5),  # Bigger title
+            plot.subtitle = element_text(size = 14, face = "italic", hjust = 0.5, color = "gray40"),  # Subtitle styling
             axis.title.x = element_text(size = 14, face = "plain"),  # Bigger x-axis label
             axis.title.y = element_text(size = 14, face = "plain"),  # Bigger y-axis label
             axis.text.x = element_text(size = 12),  # Bigger x-axis tick labels
@@ -541,13 +551,18 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     # Check if group_var has only 2 levels for show_single_row
     group_levels <- length(unique(new_data[[group_var]]))
     
-    # Get variable labels for better readability
-    variable_labels <- get_variable_labels()
+    # Get variable labels for better readability - filter to only variables in the model
+    all_variable_labels <- get_variable_labels()
+    # Get the actual variable names from the model terms (not coefficient names)
+    model_terms <- attr(terms(cox_model), "term.labels")
+    model_var_names <- unique(c(group_var, model_terms))
+    # Filter labels to only include variables actually in the model
+    variable_labels <- all_variable_labels[intersect(names(all_variable_labels), model_var_names)]
     
     cox_table <- tbl_regression(
         cox_model,
         exponentiate = TRUE, # gives you HRs
-        label = variable_labels,  # Apply human-readable labels
+        label = variable_labels,  # Apply filtered human-readable labels
         show_single_row = if (group_levels == 2) group_var else NULL # only for binary variables
     )
     

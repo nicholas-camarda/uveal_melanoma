@@ -46,8 +46,8 @@ TREATMENT_LABELS <- c("GKSRS", "Plaque")
 FAVOURS_LABELS <- c("Favours GKSRS", "Favours Plaque")
 
 # Plot dimensions and settings
-FOREST_PLOT_WIDTH <- 12    # inches
-FOREST_PLOT_HEIGHT <- 8    # inches
+FOREST_PLOT_WIDTH <- 10    # inches (reduced from 12 for less horizontal space)
+FOREST_PLOT_HEIGHT <- 10   # inches (increased from 8 for more vertical space)
 SURVIVAL_PLOT_WIDTH <- 10  # inches  
 SURVIVAL_PLOT_HEIGHT <- 8  # inches
 RMST_PLOT_WIDTH <- 10      # inches

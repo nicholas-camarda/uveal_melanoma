@@ -1,6 +1,5 @@
 # Generate CONSORT Diagram Data for Collaborators
 # Author: Nicholas Camarda
-# Date: 2025-01-09
 # Description: Creates Excel file with patient status counts (Dead, Lost to F/U, Alive) 
 #              for each treatment arm in full and restricted cohorts
 

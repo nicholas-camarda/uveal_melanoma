@@ -6,6 +6,8 @@
 library(tidyverse)
 library(gt)
 library(gtsummary)
+library(forestploter)
+library(grid)
 
 # Source required scripts
 source("scripts/utils/analysis_config.R")
@@ -126,4 +128,45 @@ cat("     ✓ Bold title without '**' asterisks\n")
 cat("     ✓ Main variables (Age, Sex, Location, etc.) in BOLD\n")
 cat("     ✓ Factor levels (Male, Female, Anterior, etc.) INDENTED\n")
 cat("     ✓ Clean professional styling\n\n")
-cat("This shows the complete workflow working together!\n") 
+cat("This shows the complete workflow working together!\n")
+
+cat("=== TESTING CORRECTED HEADER FORMATTING ===\n")
+
+# Test the fixed header formatting
+# Create simple test data
+test_data <- data.frame(
+    Subgroup = c("Age at Diagnosis", "< 65 years", ">= 65 years"),
+    GKSRS_n = c("", "45/95", "35/75"),
+    Plaque_n = c("", "50/95", "40/75"),
+    CI_space = c("", "", ""),
+    Effect_CI = c("", "1.20 (0.90-1.60)", "0.80 (0.60-1.10)"),
+    p_value = c("", "0.15", "0.25"),
+    stringsAsFactors = FALSE
+)
+
+# Set proper column names for forestploter headers
+colnames(test_data) <- c("Subgroup", "GKSRS n/N", "Plaque n/N", " ", "HR (95% CI)", "p value")
+
+# Create estimates
+est_vals <- c(NA, 1.20, 0.80)
+lower_vals <- c(NA, 0.90, 0.60) 
+upper_vals <- c(NA, 1.60, 1.10)
+is_sum <- c(TRUE, FALSE, FALSE)
+
+# Create the forest plot
+p <- forest(test_data,
+            est = est_vals,
+            lower = lower_vals,
+            upper = upper_vals,
+            ci_column = 4,
+            is_summary = is_sum,
+            ref_line = 1,
+            title = "Test Forest Plot with Improved Formatting")
+
+# Save the plot
+png(file.path(test_output_dir, "test_header_formatting.png"), width = 800, height = 400, res = 150)
+plot(p)
+dev.off()
+
+cat("✓ Forest plot with improved headers saved to test_output/test_header_formatting.png\n")
+cat("=== HEADER FORMATTING TEST COMPLETE ===\n") 
