@@ -275,11 +275,7 @@ create_combined_forest_plot <- function(full_results,
     )
     
     # Find CI columns
-    ci_columns <- which(names(plot_data$data_frame) %in% c("Full_CI", "Restricted_CI"))
-    if (length(ci_columns) < 2) {
-        # Fallback: find columns with spaces
-        ci_columns <- which(sapply(plot_data$data_frame, function(x) any(grepl("^\\s+$", x))))
-    }
+    ci_columns <- c(2, 3)  # Full CI and Restricted CI blank columns
     
     # Create the forest plot with multiple CI columns
     fp <- forest(
@@ -324,25 +320,26 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
     # Process each variable in order
     for (var_name in variable_order) {
         
-                                        # Variable header row 
-                var_header <- data.frame(
-                    Subgroup = format_variable_name(var_name),
-                    GKSRS_n = "",
-                    Plaque_n = "",
-                    stringsAsFactors = FALSE
-                )
-                
-                # Add blank column for CI
-                var_header$` ` <- paste(rep(" ", 20), collapse = " ")
-                var_header$`HR (95% CI)` <- ""
-                
-                all_rows[[length(all_rows) + 1]] <- var_header
-                est_values <- c(est_values, NA)
-                lower_values <- c(lower_values, NA)
-                upper_values <- c(upper_values, NA)
-                is_summary <- c(is_summary, TRUE)
-                font_face <- c(font_face, "bold")
-                text_size <- c(text_size, 1.0)
+        # Variable header row 
+        var_header <- data.frame(
+            Subgroup = format_variable_name(var_name),
+            GKSRS_n = "",
+            Plaque_n = "",
+            stringsAsFactors = FALSE
+        )
+        
+        # Add blank column for CI and p-value column
+        var_header$` ` <- paste(rep(" ", 20), collapse = " ")
+        var_header$`HR (95% CI)` <- ""
+        var_header$`p-value` <- ""
+        
+        all_rows[[length(all_rows) + 1]] <- var_header
+        est_values <- c(est_values, NA)
+        lower_values <- c(lower_values, NA)
+        upper_values <- c(upper_values, NA)
+        is_summary <- c(is_summary, TRUE)
+        font_face <- c(font_face, "bold")
+        text_size <- c(text_size, 1.0)
         
         # Check if data exists for this variable
         if (var_name %in% names(subgroup_results)) {
@@ -361,12 +358,13 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                         stringsAsFactors = FALSE
                     )
                     
-                    # Add blank column for CI
+                    # Add blank column for CI and p-value
                     subgroup_row$` ` <- paste(rep(" ", 20), collapse = " ")
                     subgroup_row$`HR (95% CI)` <- sprintf("%.2f (%.2f-%.2f)", 
                                                          row_data$treatment_effect,
                                                          row_data$ci_lower,
                                                          row_data$ci_upper)
+                    subgroup_row$`p-value` <- format_p_value(row_data$p_value)
                     
                     all_rows[[length(all_rows) + 1]] <- subgroup_row
                     est_values <- c(est_values, row_data$treatment_effect)
@@ -385,9 +383,10 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                     stringsAsFactors = FALSE
                 )
                 
-                # Add blank column for CI
+                # Add blank column for CI and p-value
                 no_data_row$` ` <- paste(rep(" ", 20), collapse = " ")
                 no_data_row$`HR (95% CI)` <- ""
+                no_data_row$`p-value` <- ""
                 
                 all_rows[[length(all_rows) + 1]] <- no_data_row
                 est_values <- c(est_values, NA)
@@ -406,9 +405,10 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                 stringsAsFactors = FALSE
             )
             
-            # Add blank column for CI
+            # Add blank column for CI and p-value
             no_data_row$` ` <- paste(rep(" ", 20), collapse = " ")
             no_data_row$`HR (95% CI)` <- ""
+            no_data_row$`p-value` <- ""
             
             all_rows[[length(all_rows) + 1]] <- no_data_row
             est_values <- c(est_values, NA)
@@ -429,7 +429,8 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
         sprintf("%s n/N", treatment_labels[1]),
         sprintf("%s n/N", treatment_labels[2]),
         " ",  # Blank column for CI
-        sprintf("%s (95%% CI)", effect_measure)
+        sprintf("%s (95%% CI)", effect_measure),
+        "p-value"
     )
     
     return(list(
@@ -587,7 +588,7 @@ create_combined_forest_plot_data <- function(full_results, restricted_results, v
         " ",  # Restricted CI blank column  
         sprintf("Full Cohort (%s/%s)", treatment_labels[1], treatment_labels[2]),
         sprintf("Restricted Cohort (%s/%s)", treatment_labels[1], treatment_labels[2]),
-        "p value"
+        "p-value"
     )
     
     return(list(
