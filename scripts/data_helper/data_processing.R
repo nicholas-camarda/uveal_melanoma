@@ -407,6 +407,64 @@ create_derived_variables <- function(data) {
     data <- data %>%
         mutate(mets_free_at_baseline = !(mets_progression == "Y" & mets_progression_date < treatment_date))
 
+    log_enhanced("Creating GEP validation variables (Objective 4)", level = "INFO")
+    data <- data %>%
+        mutate(
+            # Create simplified GEP classes for primary analysis
+            gep_class_simple = case_when(
+                str_detect(biopsy1_gep, "Class_1A") ~ "Class 1A",
+                str_detect(biopsy1_gep, "Class_1B") ~ "Class 1B",
+                str_detect(biopsy1_gep, "Class_2") ~ "Class 2",
+                TRUE ~ NA_character_
+            ),
+            # Convert expected MFS to survival probability at multiple timepoints
+            expected_mfs_5yr = biopsy1_gep_mfs,
+            # Extrapolate to 7 and 10 years assuming exponential decay (constant hazard)
+            expected_mfs_7yr = case_when(
+                !is.na(biopsy1_gep_mfs) ~ biopsy1_gep_mfs^(7 / 5),
+                TRUE ~ NA_real_
+            ),
+            expected_mfs_10yr = case_when(
+                !is.na(biopsy1_gep_mfs) ~ biopsy1_gep_mfs^(10 / 5),
+                TRUE ~ NA_real_
+            ),
+            # Convert expected MSS to survival probability at multiple timepoints
+            expected_mss_5yr = biopsy1_gep_mss,
+            expected_mss_7yr = case_when(
+                !is.na(biopsy1_gep_mss) ~ biopsy1_gep_mss^(7 / 5),
+                TRUE ~ NA_real_
+            ),
+            expected_mss_10yr = case_when(
+                !is.na(biopsy1_gep_mss) ~ biopsy1_gep_mss^(10 / 5),
+                TRUE ~ NA_real_
+            ),
+            # Create PRAME status for secondary analysis
+            prame_status = case_when(
+                str_detect(biopsy1_gep, "PRAME_positive") ~ "Positive",
+                str_detect(biopsy1_gep, "PRAME_negative") ~ "Negative",
+                str_detect(biopsy1_gep, "PRAME_not_reported|PRAME_Unknown") ~ "Unknown",
+                TRUE ~ "Not Available"
+            )
+        ) %>%
+        mutate(
+            gep_class_simple = factor(gep_class_simple, levels = c("Class 1A", "Class 1B", "Class 2")),
+            prame_status = factor(prame_status, levels = c("Negative", "Positive", "Unknown", "Not Available"))
+        )
+
+    # Create training/testing split for GEP validation
+    log_enhanced("Creating training/testing split for GEP validation", level = "INFO")
+    set.seed(12345)  # For reproducible splits
+    data <- data %>%
+        mutate(
+            gep_validation_set = case_when(
+                # Only split patients with valid GEP data
+                !is.na(biopsy1_gep_mfs) & !is.na(biopsy1_gep_mss) & 
+                gep_class_simple %in% c("Class 1A", "Class 1B", "Class 2") ~ 
+                    sample(c("Training", "Testing"), n(), replace = TRUE, prob = c(0.7, 0.3)),
+                TRUE ~ "No GEP Data"
+            )
+        )
+
     # data %>%
     #     select(id, mets_free_at_baseline, tt_death, dod, death_event, treatment_group) %>%
     #     print(n = Inf)
@@ -559,6 +617,14 @@ prepare_factor_levels <- function(data) {
                     "Unknown",
                     "DISCORDANT CASTLE RESULTS: Class 1A, PRAME not reported"
                 ), ordered = TRUE
+            ),
+            
+            # GEP-related factors for analysis (Objective 4)
+            gep_class_simple = factor(gep_class_simple, 
+                levels = c("Class 1A", "Class 1B", "Class 2")
+            ),
+            prame_status = factor(prame_status, 
+                levels = c("Negative", "Positive", "Unknown", "Not Available")
             )
         )
 
@@ -649,7 +715,7 @@ calculate_treatment_duration_metrics <- function(data) {
     log_enhanced("\nTreatment duration summary:", level = "INFO")
     summary_stats <- data %>%
         group_by(treatment_group) %>%
-        summarize(
+        summarise(
             n_total = n(),
             n_valid_followup = sum(!is.na(total_followup_days) & total_followup_days >= 0),
             mean_followup_years = mean(total_years[!is.na(total_years) & total_years >= 0], na.rm = TRUE),

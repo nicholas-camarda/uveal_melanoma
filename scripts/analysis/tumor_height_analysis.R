@@ -31,7 +31,7 @@ analyze_tumor_height_changes <- function(data) {
     # Summary statistics (grouped)
     height_changes <- data_with_height_change %>%
         group_by(treatment_group) %>%
-        summarize(
+        summarise(
             n = n(),
             mean_change = mean(height_change, na.rm = TRUE),
             sd_change = sd(height_change, na.rm = TRUE),

@@ -31,7 +31,7 @@ analyze_visual_acuity_changes <- function(data) {
     # Summary statistics (grouped)
     vision_changes <- data_with_vision_change %>%
         group_by(treatment_group) %>%
-        summarize(
+        summarise(
             n = n(),
             mean_change = mean(vision_change, na.rm = TRUE),
             sd_change = sd(vision_change, na.rm = TRUE),
@@ -193,7 +193,7 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
     # Calculate rates by treatment group
     sequela_rates <- data %>%
         group_by(treatment_group) %>%
-        summarize(
+        summarise(
             n_total = n(),
             n_events = sum(.data[[outcome_var]] == "Y", na.rm = TRUE),
             rate_percent = round(100 * n_events / n_total, 1),

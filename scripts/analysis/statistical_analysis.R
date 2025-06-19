@@ -78,7 +78,7 @@ analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var,
     # Calculate rates by treatment group
     rates <- fix_event_data %>%
         group_by(!!sym(group_var)) %>%
-        summarize(
+        summarise(
             n = n(),
             events = sum(!!sym(event_var), na.rm = TRUE),
             rate = events / n * 100,
@@ -153,7 +153,7 @@ analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var,
 
         ) %>%
         modify_caption( # shorten the caption
-            md(sprintf("Adjusted Odds Ratios for **%s** by Treatment Group and Covariates", outcome_var))
+            sprintf("Adjusted Odds Ratios for %s by Treatment Group and Covariates", outcome_var)
         ) %>%
         modify_footnote(
             # apply the same footnote to every statistic column
@@ -820,7 +820,7 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL) {
     # Check if we have enough events per group for survival analysis
     events_per_group <- pfs2_data %>%
         group_by(recurrence1_treatment_clean) %>%
-        summarize(events = sum(pfs2_event), .groups = "drop")
+        summarise(events = sum(pfs2_event), .groups = "drop")
     
     total_events <- sum(pfs2_data$pfs2_event)
     groups_with_events <- sum(events_per_group$events > 0)

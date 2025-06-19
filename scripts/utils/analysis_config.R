@@ -94,6 +94,10 @@ TUMOR_DIAMETER_THRESHOLD <- 20         # mm
 FOLLOW_UP_YEARS <- 5                   # For 5-year outcomes
 UNITS_OF_TIME <- "months" # "days" or "months" or "years"
 
+# GEP Validation analysis constants (Objective 4)
+GEP_VALIDATION_TIMEPOINTS <- c(5, 7, 10)  # years for validation analysis
+GEP_BOOTSTRAP_ITERATIONS <- 200           # bootstrap samples for optimism correction
+
 # TOGGLE: Switch between standardized vs median cutoffs
 USE_STANDARDIZED_CUTOFFS <- TRUE
 
@@ -167,6 +171,14 @@ STANDARD_TABLE_LABELS <- list(
     initial_m_stage = "M Stage",
     initial_mets = "Initial Metastases",
     biopsy1_gep = "Gene Expression Profile",
+    gep_class_simple = "GEP Class",
+    prame_status = "PRAME Status",
+    expected_mfs_5yr = "Expected 5-Year MFS", # MFS = Metastasis-Free Survival
+    expected_mfs_7yr = "Expected 7-Year MFS",
+    expected_mfs_10yr = "Expected 10-Year MFS",
+    expected_mss_5yr = "Expected 5-Year MSS", # MSS = Melanoma-Specific Survival
+    expected_mss_7yr = "Expected 7-Year MSS",
+    expected_mss_10yr = "Expected 10-Year MSS",
     
     # Treatment
     treatment_group = "Treatment Group",
@@ -325,7 +337,18 @@ validate_cohort_integrity <- function(cohort_list) {
         log_enhanced("✓ Cohort size relationships are reasonable", level = "INFO")
     }
     
-    # Check 3: Verify cohort definitions match consort_group assignments
+    # Check 3: Validate GEP variables were created correctly (Objective 4)
+    log_enhanced("Validating GEP-related variables for Objective 4", level = "INFO")
+    gep_validation_result <- validate_gep_variables_with_report(cohort_list$uveal_melanoma_full_cohort)
+    gep_validation_passed <- gep_validation_result$validation_passed
+    if (!gep_validation_passed) {
+        log_enhanced("VALIDATION FAILED: GEP variables not created correctly", level = "ERROR")
+        validation_passed <- FALSE
+    } else {
+        log_enhanced("✓ GEP variables validated successfully", level = "INFO")
+    }
+    
+    # Check 4: Verify cohort definitions match consort_group assignments
     restricted_data <- cohort_list$uveal_melanoma_restricted_cohort
     gksrs_only_data <- cohort_list$uveal_melanoma_gksrs_only_cohort
     
@@ -959,6 +982,111 @@ generate_validation_report <- function(cohort_list, output_path = NULL) {
         )
     }
     
+    # GEP Validation Section (Objective 4)
+    gep_validation_result <- validate_gep_variables_with_report(full_data)
+    gep_validation_passed <- gep_validation_result$validation_passed
+    gep_details <- gep_validation_result$detailed_results
+    
+    report_content <- c(report_content,
+        "",
+        "================================================================================",
+        "                         GEP VALIDATION (OBJECTIVE 4)",
+        "================================================================================",
+        sprintf("GEP Variable Creation Status: %s", if(gep_validation_passed) "✅ PASSED" else "❌ FAILED")
+    )
+    
+    # Add missing variables if any
+    if (!is.null(gep_details$missing_variables) && length(gep_details$missing_variables) > 0) {
+        report_content <- c(report_content,
+            "",
+            "MISSING GEP VARIABLES:",
+            paste("  ❌", gep_details$missing_variables, collapse = "\n")
+        )
+    } else {
+        report_content <- c(report_content,
+            "✓ All required GEP variables present"
+        )
+    }
+    
+    # Add data availability information
+    if (!is.null(gep_details$data_availability)) {
+        avail <- gep_details$data_availability
+        report_content <- c(report_content,
+            "",
+            "GEP DATA AVAILABILITY:",
+            sprintf("  Total patients in cohort: %d", avail$total_patients),
+            sprintf("  Patients with valid GEP classification: %d (%.1f%%)", 
+                    avail$patients_with_gep, avail$gep_availability_rate),
+            sprintf("  Patients with MFS predictions: %d (%.1f%%)", 
+                    avail$patients_with_mfs, avail$mfs_availability_rate),
+            sprintf("  Patients with MSS predictions: %d (%.1f%%)", 
+                    avail$patients_with_mss, avail$mss_availability_rate)
+        )
+        
+        # Add training/testing split information if available
+        if (!is.null(avail$training_testing_split)) {
+            split_stats <- avail$training_testing_split
+            report_content <- c(report_content,
+                "",
+                "TRAINING/TESTING SPLIT:",
+                sprintf("  Training set: %d patients (%.1f%%)", split_stats$training_patients, split_stats$training_rate),
+                sprintf("  Testing set: %d patients (%.1f%%)", split_stats$testing_patients, split_stats$testing_rate),
+                sprintf("  No GEP data: %d patients", split_stats$no_gep_patients)
+            )
+        }
+        
+        # Add sample size warnings for validation
+        if (avail$patients_with_mfs < 100) {
+            report_content <- c(report_content,
+                sprintf("  ⚠️  MFS validation sample size: %d (recommend ≥100 for robust validation)", avail$patients_with_mfs)
+            )
+        }
+        if (avail$patients_with_mss < 100) {
+            report_content <- c(report_content,
+                sprintf("  ⚠️  MSS validation sample size: %d (recommend ≥100 for robust validation)", avail$patients_with_mss)
+            )
+        }
+        
+        # Add training/testing specific warnings if split is available
+        if (!is.null(avail$training_testing_split)) {
+            split_stats <- avail$training_testing_split
+            if (split_stats$testing_patients < 30) {
+                report_content <- c(report_content,
+                    sprintf("  ⚠️  Testing set very small: %d patients (recommend ≥30 for meaningful validation)", split_stats$testing_patients)
+                )
+            }
+        }
+    }
+    
+    # Add GEP distribution if available
+    if (!is.null(gep_details$gep_distribution)) {
+        gep_dist <- gep_details$gep_distribution
+        report_content <- c(report_content,
+            "",
+            "GEP CLASS DISTRIBUTION:",
+            paste(sprintf("  %s: %d", names(gep_dist), gep_dist), collapse = "\n")
+        )
+    }
+    
+    # Add PRAME distribution if available
+    if (!is.null(gep_details$prame_distribution)) {
+        prame_dist <- gep_details$prame_distribution
+        report_content <- c(report_content,
+            "",
+            "PRAME STATUS DISTRIBUTION:",
+            paste(sprintf("  %s: %d", names(prame_dist), prame_dist), collapse = "\n")
+        )
+    }
+    
+    # Add extrapolation validation
+    if (!is.null(gep_details$extrapolation_valid)) {
+        extrapolation_status <- if(gep_details$extrapolation_valid) "✅ PASSED" else "❌ FAILED"
+        report_content <- c(report_content,
+            "",
+            sprintf("Exponential extrapolation validation: %s", extrapolation_status)
+        )
+    }
+
     # Overall validation status
     all_checks_passed <- restricted_valid && gksrs_valid && 
                         nrow(restricted_violations) == 0 && 
@@ -966,7 +1094,8 @@ generate_validation_report <- function(cohort_list, output_path = NULL) {
                         length(overlap_patients) == 0 &&
                         nrow(full_data) >= nrow(restricted_data) && 
                         nrow(full_data) >= nrow(gksrs_only_data) &&
-                        factor_validation_passed
+                        factor_validation_passed &&
+                        gep_validation_passed
     
     report_content <- c(report_content,
         "",
@@ -1133,4 +1262,119 @@ get_interaction_coefficient_name <- function(model, treatment_var = "treatment_g
 #' @return Named list of variable labels
 get_variable_labels <- function() {
     return(STANDARD_TABLE_LABELS)
+}
+
+#' Validate GEP-related variables with detailed report (Objective 4)
+#'
+#' Performs comprehensive validation of all GEP-related variables and returns
+#' detailed results for inclusion in the validation report.
+#'
+#' @param data Data frame to validate (typically the full cohort)
+#' @return List with validation_passed (TRUE/FALSE) and detailed_results (list)
+validate_gep_variables_with_report <- function(data) {
+    log_enhanced("Starting GEP variable validation checks", level = "INFO", indent = 1)
+    validation_passed <- TRUE
+    detailed_results <- list()
+    
+    # Required GEP variables that should exist
+    required_gep_vars <- c(
+        "biopsy1_gep", "biopsy1_gep_mfs", "biopsy1_gep_mss",
+        "gep_class_simple", "prame_status",
+        "expected_mfs_5yr", "expected_mfs_7yr", "expected_mfs_10yr",
+        "expected_mss_5yr", "expected_mss_7yr", "expected_mss_10yr"
+    )
+    
+    # Check 1: Verify all required variables exist
+    missing_vars <- setdiff(required_gep_vars, names(data))
+    if (length(missing_vars) > 0) {
+        detailed_results$missing_variables <- missing_vars
+        validation_passed <- FALSE
+    } else {
+        detailed_results$missing_variables <- NULL
+    }
+    
+    # Data availability statistics
+    patients_with_gep <- sum(!is.na(data$biopsy1_gep) & 
+                           data$biopsy1_gep != "Failed" & 
+                           data$biopsy1_gep != "Unknown")
+    patients_with_mfs <- sum(!is.na(data$biopsy1_gep_mfs))
+    patients_with_mss <- sum(!is.na(data$biopsy1_gep_mss))
+    
+    # Training/testing split statistics (if available)
+    training_testing_stats <- NULL
+    if ("gep_validation_set" %in% names(data)) {
+        validation_set_counts <- table(data$gep_validation_set, useNA = "ifany")
+        training_count <- ifelse("Training" %in% names(validation_set_counts), validation_set_counts["Training"], 0)
+        testing_count <- ifelse("Testing" %in% names(validation_set_counts), validation_set_counts["Testing"], 0)
+        no_gep_count <- ifelse("No GEP Data" %in% names(validation_set_counts), validation_set_counts["No GEP Data"], 0)
+        
+        training_testing_stats <- list(
+            training_patients = training_count,
+            testing_patients = testing_count,
+            no_gep_patients = no_gep_count,
+            training_rate = round(100 * training_count / nrow(data), 1),
+            testing_rate = round(100 * testing_count / nrow(data), 1)
+        )
+    }
+    
+    detailed_results$data_availability <- list(
+        total_patients = nrow(data),
+        patients_with_gep = patients_with_gep,
+        patients_with_mfs = patients_with_mfs,
+        patients_with_mss = patients_with_mss,
+        gep_availability_rate = round(100 * patients_with_gep / nrow(data), 1),
+        mfs_availability_rate = round(100 * patients_with_mfs / nrow(data), 1),
+        mss_availability_rate = round(100 * patients_with_mss / nrow(data), 1),
+        training_testing_split = training_testing_stats
+    )
+    
+    # Only proceed with detailed checks if all variables exist
+    if (length(missing_vars) == 0) {
+        # GEP class distribution
+        if ("gep_class_simple" %in% names(data)) {
+            gep_distribution <- table(data$gep_class_simple, useNA = "ifany")
+            detailed_results$gep_distribution <- gep_distribution
+        }
+        
+        # PRAME status distribution
+        if ("prame_status" %in% names(data)) {
+            prame_distribution <- table(data$prame_status, useNA = "ifany")
+            detailed_results$prame_distribution <- prame_distribution
+        }
+        
+        # Validation of extrapolation logic
+        detailed_results$extrapolation_valid <- TRUE
+        if (all(c("expected_mfs_5yr", "expected_mfs_7yr") %in% names(data))) {
+            valid_data <- data[!is.na(data$expected_mfs_5yr) & data$expected_mfs_5yr > 0, ]
+            if (nrow(valid_data) > 0) {
+                expected_7yr <- valid_data$expected_mfs_5yr^(7/5)
+                actual_7yr <- valid_data$expected_mfs_7yr
+                extrapolation_errors <- sum(abs(expected_7yr - actual_7yr) > 1e-10, na.rm = TRUE)
+                if (extrapolation_errors > 0) {
+                    detailed_results$extrapolation_valid <- FALSE
+                    validation_passed <- FALSE
+                }
+            }
+        }
+    }
+    
+    detailed_results$validation_passed <- validation_passed
+    
+    return(list(
+        validation_passed = validation_passed,
+        detailed_results = detailed_results
+    ))
+}
+
+#' Validate GEP-related variables were created correctly (Objective 4)
+#'
+#' Performs comprehensive validation of all GEP-related variables created in data_processing.R
+#' to ensure they are properly formatted and contain expected values for the validation analysis.
+#'
+#' @param data Data frame to validate (typically the full cohort)
+#' @return TRUE if all validations pass, FALSE otherwise
+validate_gep_variables <- function(data) {
+    # Use the detailed validation function and return just the boolean result
+    result <- validate_gep_variables_with_report(data)
+    return(result$validation_passed)
 } 

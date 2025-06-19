@@ -256,17 +256,29 @@ All safety endpoint analyses have been implemented:
 - **Location:** `{cohort}/03_Repeat_Radiation/a_pfs2/`
 - **Note:** Analysis automatically skips survival modeling when insufficient events are present (minimum: 5 total events across 2+ treatment groups)
 
-### **OBJECTIVE 4: GEP Validation (NOT IMPLEMENTED)**
+### **OBJECTIVE 4: GEP Validation (FRAMEWORK IMPLEMENTED)**
 
-Gene expression profile validation analyses are not yet implemented:
+Advanced gene expression profile validation analyses using survival model validation methods:
 
 #### **4a. Metastasis-Free Survival Validation**
-- **Status:** Not implemented
-- **Planned Method:** Validation of GEP classification accuracy for metastasis prediction
+- **Status:** Framework implemented with advanced validation methods
+- **Method:** Multi-timepoint validation (5, 7, 10 years) with Nam-D'Agostino χ² calibration tests, Uno's C-index, cumulative ROC curves, decision curve analysis, and bootstrap validation
+- **Implementation:** `analyze_gep_mfs_validation()` function
+- **Outputs:** Comprehensive validation reports (.xlsx), calibration plots (.png), discrimination metrics (.xlsx), decision curves (.png)
+- **Location:** `{cohort}/04_GEP_Validation/a_metastasis_free_survival/`
 
 #### **4b. Melanoma-Specific Survival Validation**  
-- **Status:** Not implemented
-- **Planned Method:** Validation of GEP classification accuracy for melanoma-specific survival prediction
+- **Status:** Framework implemented with competing risk analysis
+- **Method:** Standard survival analysis plus Fine-Gray competing risk models with cumulative incidence functions
+- **Implementation:** `analyze_gep_mss_validation()` function  
+- **Outputs:** Standard and competing risk validation reports (.xlsx), cumulative incidence curves (.png), validation metrics (.xlsx)
+- **Location:** `{cohort}/04_GEP_Validation/b_melanoma_specific_survival/`
+
+#### **Secondary Analyses**
+- **PRAME-Augmented Models:** Net reclassification index comparing GEP-only vs GEP+PRAME models
+- **Missing Data Assessment:** Multiple imputation sensitivity analysis and baseline comparison of GEP-tested vs missing patients
+- **Bootstrap Validation:** Optimism-corrected calibration slopes and intercepts (200 bootstrap iterations)
+- **Events-per-Endpoint Analysis:** Automatic assessment of statistical power (target: ≥100 events per timepoint)
 
 ---
 
@@ -455,7 +467,7 @@ If **treatment_group** violates the PH assumption:
 ## Requirements
 
 ### **R Version**
-- **R >= 4.0.0**
+- **R >= 4.4.0**
 
 ### **Required R Packages**
 ```r

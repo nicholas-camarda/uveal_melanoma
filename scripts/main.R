@@ -32,6 +32,7 @@ use("readxl") # For reading Excel files
 use("writexl") # For writing Excel files
 use("lubridate") # Date handling
 use("janitor") # Data cleaning
+use("broom.helpers") # For broom helpers
 use("gtsummary") # Creating publication-ready tables
 
 # Core survival analysis
@@ -41,6 +42,7 @@ use("survRM2") # Survival analysis at different time points
 
 # Tables and plots
 use("gt") # Table formatting
+use("cardx") # Extended statistical functions for gtsummary
 use("forestploter") # Forest plots
 use("grid") # grid::unit(), viewport helpers
 use("cowplot") # Combining ggplots
@@ -63,7 +65,7 @@ use("mice") # Multiple imputation by chained equations
 
 # For installation of all required libraries, run the following command:
 # Requires R version 4.4.0 or higher
-# install.packages(c("tidyverse", "readxl", "writexl", "lubridate", "gtsummary", "janitor", "survival", "survminer", "gt", "forestploter", "grid", "cowplot", "DiagrammeR", "DiagrammeRsvg", "rsvg", "survRM2", "rms", "pec", "survcomp", "riskRegression", "cmprsk", "pROC", "rmda", "VIM", "mice"))
+# install.packages(c("tidyverse", "readxl", "writexl", "lubridate", "gtsummary", "janitor", "survival", "survminer", "gt", "cardx", "forestploter", "grid", "cowplot", "DiagrammeR", "DiagrammeRsvg", "rsvg", "survRM2", "rms", "pec", "survcomp", "riskRegression", "cmprsk", "pROC", "rmda", "VIM", "mice"))
 # if (!require("BiocManager", quietly = TRUE)) install.packages("BiocManager"); BiocManager::install("survcomp")
 
 # Source the analysis configuration first (contains all global variables)
@@ -679,8 +681,8 @@ run_my_analysis <- function(dataset_name) {
     mfs_validation <- analyze_gep_mfs_validation(
         data = data,
         dataset_name = dataset_name,
-        timepoints = c(5, 7, 10),
-        bootstrap_iterations = 200
+        timepoints = GEP_VALIDATION_TIMEPOINTS,
+        bootstrap_iterations = GEP_BOOTSTRAP_ITERATIONS
     )
     log_enhanced("GEP MFS validation completed", level = "INFO", indent = 1)
 
@@ -689,8 +691,8 @@ run_my_analysis <- function(dataset_name) {
     mss_validation <- analyze_gep_mss_validation(
         data = data,
         dataset_name = dataset_name,
-        timepoints = c(5, 7, 10),
-        bootstrap_iterations = 200
+        timepoints = GEP_VALIDATION_TIMEPOINTS,
+        bootstrap_iterations = GEP_BOOTSTRAP_ITERATIONS
     )
     log_enhanced("GEP MSS validation completed", level = "INFO", indent = 1)
     
