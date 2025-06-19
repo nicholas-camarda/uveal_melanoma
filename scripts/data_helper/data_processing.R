@@ -445,10 +445,6 @@ create_derived_variables <- function(data) {
                 str_detect(biopsy1_gep, "PRAME_not_reported|PRAME_Unknown") ~ "Unknown",
                 TRUE ~ "Not Available"
             )
-        ) %>%
-        mutate(
-            gep_class_simple = factor(gep_class_simple, levels = c("Class 1A", "Class 1B", "Class 2")),
-            prame_status = factor(prame_status, levels = c("Negative", "Positive", "Unknown", "Not Available"))
         )
 
     # Create training/testing split for GEP validation
