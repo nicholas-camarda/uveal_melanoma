@@ -5,27 +5,66 @@
 #              for uveal melanoma treatment, including both full and restricted cohort analyses
 # Main script to run the analysis
 
-########################################################
-############### REQUIRED LIBRARIES ####################
-########################################################
+######################################################################
+############### LOAD / INSTALL REQUIRED LIBRARIES ####################
+######################################################################
+use <- function(pkg) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    # Try CRAN first
+    tryCatch(
+      install.packages(pkg),
+      error = function(e) {
+        message(sprintf("→ %s not on CRAN, trying Bioconductor…", pkg))
+        if (!requireNamespace("BiocManager", quietly = TRUE))
+          install.packages("BiocManager")
+        BiocManager::install(pkg, ask = FALSE, update = FALSE)
+      }
+    )
+  }
+  suppressPackageStartupMessages(
+    library(pkg, character.only = TRUE)
+  )
+}
 
-# Load required libraries
-library(tidyverse) # For data manipulation and visualization
-library(readxl) # For reading Excel files
-library(writexl) # For writing Excel files
-library(lubridate) # Date handling
-library(gtsummary) # For creating publication-ready tables
-library(janitor) # Data cleaning
-library(survival) # For survival analysis
-library(survminer) # For survival visualization
-library(gt) # For table formatting
-library(forestploter) # For forest plots
-library(grid) # for unit()
-library(cowplot) # for combining plots
-library(DiagrammeR) # Creating CONSORT diagram
-library(DiagrammeRsvg) # SVG export for CONSORT diagram
-library(rsvg) # PNG conversion for CONSORT diagram
-library(survRM2, quietly = TRUE)
+# Data wrangling & core utilities
+use("tidyverse") # For data manipulation and visualization (dplyr, ggplot2, etc.)
+use("readxl") # For reading Excel files
+use("writexl") # For writing Excel files
+use("lubridate") # Date handling
+use("janitor") # Data cleaning
+use("gtsummary") # Creating publication-ready tables
+
+# Core survival analysis
+use("survival") # For survival analysis
+use("survminer") # For survival visualization
+use("survRM2") # Survival analysis at different time points
+
+# Tables and plots
+use("gt") # Table formatting
+use("forestploter") # Forest plots
+use("grid") # grid::unit(), viewport helpers
+use("cowplot") # Combining ggplots
+
+# CONSORT diagram creation and export
+use("DiagrammeR") # Create CONSORT diagram
+use("DiagrammeRsvg") # SVG export for CONSORT diagram
+use("rsvg") # PNG conversion for CONSORT diagram
+
+# Advanced GEP validation (Objective 4)
+use("rms") # Advanced regression modeling and validation
+use("pec") # Prediction-error curves & validation metrics
+use("survcomp") # Survival model comparison and validation (Bioconductor)
+use("riskRegression") # Risk regression & competing risks
+use("cmprsk") # Competing-risk analysis (Fine-Gray models)
+use("pROC") # ROC analysis
+use("rmda") # Risk-model decision analysis
+use("VIM") # Visualization & imputation of missing values
+use("mice") # Multiple imputation by chained equations
+
+# For installation of all required libraries, run the following command:
+# Requires R version 4.4.0 or higher
+# install.packages(c("tidyverse", "readxl", "writexl", "lubridate", "gtsummary", "janitor", "survival", "survminer", "gt", "forestploter", "grid", "cowplot", "DiagrammeR", "DiagrammeRsvg", "rsvg", "survRM2", "rms", "pec", "survcomp", "riskRegression", "cmprsk", "pROC", "rmda", "VIM", "mice"))
+# if (!require("BiocManager", quietly = TRUE)) install.packages("BiocManager"); BiocManager::install("survcomp")
 
 # Source the analysis configuration first (contains all global variables)
 source("scripts/utils/analysis_config.R")
@@ -68,6 +107,7 @@ source("scripts/analysis/statistical_analysis.R")
 source("scripts/analysis/tumor_height_analysis.R") 
 source("scripts/analysis/vision_safety_analysis.R")
 source("scripts/analysis/subgroup_analysis.R")
+source("scripts/analysis/gep_validation_analysis.R")
 # Primary outcomes subgroup analysis functions now in subgroup_analysis.R
 
 # Source the forest plot script
@@ -152,8 +192,11 @@ if (RECREATE_ANALYTIC_DATASETS) {
     log_enhanced("Set RECREATE_ANALYTIC_DATASETS = TRUE if you need to reprocess raw data", level = "INFO")
 }
 
-# TODO: Run analysis for each dataset
+########################################################
+############### ANALYSIS FUNCTION ####################
+########################################################
 
+# Run analysis for each dataset
 run_my_analysis <- function(dataset_name) {
     analysis_start_time <- Sys.time()
     
@@ -623,6 +666,35 @@ run_my_analysis <- function(dataset_name) {
     log_enhanced("PFS-2 analysis completed", level = "INFO", indent = 1)
     
     log_section_complete("STEP 3: REPEAT RADIATION EFFICACY", step3_start_time)
+    
+    ########################################################
+    ############### STEP 4: GEP VALIDATION ################
+    ########################################################
+    
+    step4_start_time <- Sys.time()
+    log_section_start("STEP 4: GEP PREDICTIVE ACCURACY VALIDATION", display_name)
+    
+    # 4a. Metastasis-Free Survival Validation
+    log_function("analyze_gep_mfs_validation", "GEP metastasis-free survival prediction validation")
+    mfs_validation <- analyze_gep_mfs_validation(
+        data = data,
+        dataset_name = dataset_name,
+        timepoints = c(5, 7, 10),
+        bootstrap_iterations = 200
+    )
+    log_enhanced("GEP MFS validation completed", level = "INFO", indent = 1)
+
+    # 4b. Melanoma-Specific Survival Validation  
+    log_function("analyze_gep_mss_validation", "GEP melanoma-specific survival prediction validation")
+    mss_validation <- analyze_gep_mss_validation(
+        data = data,
+        dataset_name = dataset_name,
+        timepoints = c(5, 7, 10),
+        bootstrap_iterations = 200
+    )
+    log_enhanced("GEP MSS validation completed", level = "INFO", indent = 1)
+    
+    log_section_complete("STEP 4: GEP PREDICTIVE ACCURACY VALIDATION", step4_start_time)
     
     # Complete analysis for this dataset
     log_section_complete(paste("STATISTICAL ANALYSIS -", display_name), analysis_start_time)
