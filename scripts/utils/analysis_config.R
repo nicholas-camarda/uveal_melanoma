@@ -98,6 +98,51 @@ UNITS_OF_TIME <- "months" # "days" or "months" or "years"
 GEP_VALIDATION_TIMEPOINTS <- c(5, 7, 10)  # years for validation analysis
 GEP_BOOTSTRAP_ITERATIONS <- 200           # bootstrap samples for optimism correction
 
+# =============================================================================
+# GEP VALIDATION CONFIGURATION CONSTANTS (OBJECTIVE 4)
+# =============================================================================
+# These constants control various aspects of the GEP validation analysis
+# Modify here to change validation behavior across all functions
+
+# PRAME augmentation constants
+GEP_PRAME_ADJUSTMENT_FACTOR <- 1.3    # 30% increase in risk for PRAME positive patients
+GEP_PRAME_REDUCTION_FACTOR <- 0.9     # 10% decrease in risk for PRAME negative patients  
+GEP_RISK_CAP_MAXIMUM <- 0.95          # Maximum allowed risk prediction (cap at 95%)
+
+# Risk stratification cutoffs for NRI analysis
+GEP_RISK_CUTOFFS <- c(0, 0.1, 0.3, 1.0)  # Risk categories: <10%, 10-30%, >30%
+GEP_RISK_LABELS <- c("Low", "Intermediate", "High")
+
+# Decision curve analysis thresholds
+GEP_DCA_THRESHOLD_MIN <- 0.01          # Minimum risk threshold (1%)
+GEP_DCA_THRESHOLD_MAX <- 0.50          # Maximum risk threshold (50%)
+GEP_DCA_THRESHOLD_STEP <- 0.01         # Step size for threshold sequence
+
+# Data cleaning and validation bounds
+GEP_MAX_FOLLOWUP_YEARS <- 50           # Maximum reasonable follow-up time in years
+GEP_MIN_FOLLOWUP_YEARS <- 0.01         # Minimum follow-up time in years
+GEP_MIN_RISK_PREDICTION <- 0.001       # Minimum allowed risk prediction (avoid zero)
+GEP_MAX_RISK_PREDICTION <- 0.999       # Maximum allowed risk prediction (avoid perfect)
+
+# Calibration analysis constants
+GEP_MIN_GROUP_SIZE <- 5                # Minimum patients per calibration group
+GEP_DEFAULT_N_GROUPS <- 10             # Default number of calibration groups
+GEP_MIN_N_GROUPS <- 3                  # Minimum number of calibration groups
+GEP_LOESS_SPAN <- 0.3                  # Smoothing parameter for loess calibration curves
+
+# Sample size requirements for analysis
+GEP_MIN_SAMPLE_SIZE <- 20              # Minimum sample size for any analysis
+GEP_MIN_EVENTS_COMPETING_RISK <- 5     # Minimum events for competing risk analysis
+GEP_MIN_BOOTSTRAP_SAMPLE <- 30         # Minimum sample size for bootstrap analysis
+GEP_MAX_BOOTSTRAP_ITERATIONS <- 100    # Maximum bootstrap iterations for speed
+
+# Missing data analysis constants
+GEP_MISSING_DATA_THRESHOLD <- 10       # Minimum patients needed for missing data analysis
+
+# Validation metrics thresholds (for warnings/interpretation)
+GEP_RECOMMENDED_VALIDATION_SAMPLE <- 100  # Recommended minimum for robust validation
+GEP_RECOMMENDED_TESTING_SAMPLE <- 30      # Recommended minimum for testing set
+
 # TOGGLE: Switch between standardized vs median cutoffs
 USE_STANDARDIZED_CUTOFFS <- TRUE
 

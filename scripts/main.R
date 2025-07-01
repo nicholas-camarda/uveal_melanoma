@@ -84,7 +84,7 @@ USE_LOGS <- TRUE
 
 # Toggle to control whether to recreate analytic datasets (default: FALSE)
 # Set to TRUE if you need to reprocess raw data or if data has changed
-RECREATE_ANALYTIC_DATASETS <- TRUE
+RECREATE_ANALYTIC_DATASETS <- FALSE
 
 # Set to FALSE to suppress detailed logging in analysis functions
 VERBOSE <- TRUE 
@@ -94,7 +94,7 @@ VERBOSE <- TRUE
 SHOW_ALL_PVALUES <- TRUE
 
 ########################################################
-############### DATA PROCESSING #######################
+############### DATA PROCESSING ########################
 ########################################################
 
 # Source the data processing script

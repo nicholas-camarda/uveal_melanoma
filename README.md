@@ -8,6 +8,21 @@ This project provides a complete pipeline for processing, cleaning, and analyzin
 
 ---
 
+## Quick Start
+
+1. Clone the repository and install the required R packages (see `scripts/utils/analysis_config.R` for package list). We recommend `renv` or `pak` for reproducible environments.
+2. Open an R session in the project root and run:
+
+```r
+source("scripts/main.R")          # full end-to-end pipeline
+# or, for a single cohort/time-saving run
+run_my_analysis("uveal_melanoma_full_cohort")
+```
+
+3. Outputs (Excel, HTML, PNG, RDS) and full log files are written to the `final_data/Analysis/` and `logs/` folders, organized exactly as described below.
+
+---
+
 ## Study Objectives
 
 The analysis is structured around four prioritized research objectives:
@@ -33,7 +48,7 @@ The analysis is structured around four prioritized research objectives:
 **Primary research question:** How effective are second-line treatments?
 - **3a.** Progression-Free Survival-2 (PFS-2) analysis
 
-### **Objective 4: GEP Predictive Accuracy (NOT IMPLEMENTED)**
+### **Objective 4: GEP Predictive Accuracy (COMPLETE)**
 **Primary research question:** How well do gene expression profiles predict outcomes?
 - **4a.** Metastasis-free survival validation
 - **4b.** Melanoma-specific survival validation
@@ -159,8 +174,6 @@ project_working_directory/
 └── README.md                               # This file
 ```
 
-
-
 ---
 
 ## Implementation Status: Analysis Pipeline
@@ -256,19 +269,19 @@ All safety endpoint analyses have been implemented:
 - **Location:** `{cohort}/03_Repeat_Radiation/a_pfs2/`
 - **Note:** Analysis automatically skips survival modeling when insufficient events are present (minimum: 5 total events across 2+ treatment groups)
 
-### **OBJECTIVE 4: GEP Validation (FRAMEWORK IMPLEMENTED)**
+### **OBJECTIVE 4: GEP Predictive Accuracy (COMPLETE)**
 
-Advanced gene expression profile validation analyses using survival model validation methods:
+Gene expression profile validation analyses using survival model validation methods:
 
 #### **4a. Metastasis-Free Survival Validation**
-- **Status:** Framework implemented with advanced validation methods
+- **Status:** Fully implemented (full validation suite)
 - **Method:** Multi-timepoint validation (5, 7, 10 years) with Nam-D'Agostino χ² calibration tests, Uno's C-index, cumulative ROC curves, decision curve analysis, and bootstrap validation
 - **Implementation:** `analyze_gep_mfs_validation()` function
 - **Outputs:** Comprehensive validation reports (.xlsx), calibration plots (.png), discrimination metrics (.xlsx), decision curves (.png)
 - **Location:** `{cohort}/04_GEP_Validation/a_metastasis_free_survival/`
 
 #### **4b. Melanoma-Specific Survival Validation**  
-- **Status:** Framework implemented with competing risk analysis
+- **Status:** Fully implemented with dual competing-risk models
 - **Method:** Standard survival analysis plus Fine-Gray competing risk models with cumulative incidence functions
 - **Implementation:** `analyze_gep_mss_validation()` function  
 - **Outputs:** Standard and competing risk validation reports (.xlsx), cumulative incidence curves (.png), validation metrics (.xlsx)
@@ -346,7 +359,7 @@ Comprehensive forest plot generation for subgroup analysis visualization:
 - **Features:**
   - Dynamic effect measure handling (HR, OR, MD)
   - Automatic log scale for HR/OR, linear scale for mean differences
-  - Professional formatting with confidence intervals
+  - Formatting with confidence intervals
   - Treatment direction indicators ("Favours GKSRS" vs "Favours Plaque")
   - High-resolution PNG output (300 DPI)
 - **Generated For:** All subgroup analyses across all primary outcomes
@@ -374,7 +387,7 @@ Set analysis settings globally to improve reproducibility:
 
 ---
 
-## Advanced Survival Analysis Features
+## Survival Analysis Features
 
 ### **Restricted Mean Survival Time (RMST) Analysis**
 
@@ -462,6 +475,55 @@ If **treatment_group** violates the PH assumption:
 - **Objective 1 (Efficacy)**: `{cohort}/01_Efficacy/h_proportional_hazards_diagnostics/`
 - **Objective 3 (PFS-2)**: `{cohort}/03_Repeat_Radiation/b_proportional_hazards_diagnostics/`
 
+### **Competing Risk Analysis (Objective 4: GEP Validation)**
+
+For melanoma-specific survival validation, the analysis employs **dual competing risk approaches** to provide comprehensive assessment of GEP predictive accuracy when patients can die from melanoma or other causes.
+
+#### **Why Two Different Competing Risk Models?**
+
+Both cause-specific Cox regression and Fine-Gray subdistribution hazards are appropriate but answer **different clinical questions**:
+
+**Cause-Specific Cox Regression (`riskRegression::CSC`)**
+- **Question:** "What factors affect the **rate** of melanoma death among patients who haven't died yet?"
+- **Interpretation:** How does GEP risk affect the hazard of dying from melanoma at any given time
+- **Clinical Use:** Understanding biological mechanisms, treatment effects on disease progression
+- **Result:** Cause-specific hazard ratio (HR)
+
+**Fine-Gray Subdistribution Hazards (`riskRegression::FGR`)**
+- **Question:** "What factors affect the **cumulative probability** of eventually dying from melanoma?"
+- **Interpretation:** How does GEP risk affect the absolute risk of melanoma death over time
+- **Clinical Use:** Patient counseling about long-term prognosis, clinical prediction models
+- **Result:** Subdistribution hazard ratio (SHR)
+
+#### **Practical Example**
+
+Consider a high-risk GEP patient:
+
+- **Cause-specific HR = 3.0**: "Among patients still alive, high-risk GEP patients have 3x the rate of melanoma death"
+- **Subdistribution SHR = 2.5**: "High-risk GEP patients have 2.5x higher cumulative probability of melanoma death"
+
+The cause-specific HR is typically larger because it conditions on survival, while the subdistribution SHR accounts for competing mortality reducing overall melanoma death risk.
+
+#### **Implementation Details**
+
+**Data Preparation:**
+- **Status coding:** 0 = alive, 1 = melanoma death, 2 = other-cause death
+- **Time variable:** Years from treatment to death or last follow-up
+- **Validation approach:** Both models tested against GEP predictions using Brier scores and IPA metrics
+
+**Validation Metrics:**
+- **Brier Score:** Lower = better prediction accuracy
+- **IPA (Index of Prediction Accuracy):** Higher = better improvement over null model
+- **Comparison:** Results compared against standard Kaplan-Meier (treating competing risks as censored)
+
+**Clinical Interpretation:**
+- **Concordant results:** Both approaches yield similar conclusions about GEP validity
+- **Discordant results:** May indicate that GEP affects instantaneous risk differently than cumulative risk
+- **Complementary value:** Both perspectives enhance understanding of GEP clinical utility
+
+**Outputs Location:**
+- **Competing Risk Analysis**: `{cohort}/04_GEP_Validation/b_melanoma_specific_survival/`
+
 ---
 
 ## Requirements
@@ -522,7 +584,7 @@ This executes the complete analysis pipeline:
 - Cohort creation (full, restricted, GKSRS-only)  
 - All 4 study objectives with comprehensive outputs
 - Forest plots and subgroup analyses
-- Professional tables and visualizations
+- Tables and visualizations
 
 ### **4. 🧪 Validation (Optional)**
 ```r
