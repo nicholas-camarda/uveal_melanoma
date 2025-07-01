@@ -337,9 +337,9 @@ The analysis pipeline includes built-in safeguards:
    - All limitations and skipped analyses are logged with timestamps
    - Detailed error messages explain exactly why analyses were skipped
 
-### **Example from Current Run**
+### **Example Run**
 
-The most recent analysis run (log timestamp: 20250610_181336) demonstrates this error handling:
+A recent run of the analysis demonstrates this error handling:
 
 **GKSRS-Only Cohort - Step 3 (PFS-2):**
 - Found 13 patients with local recurrence receiving second-line treatment

@@ -518,17 +518,10 @@ apply_criteria <- function(data) {
         log_enhanced(sprintf("Cohort '%s': %d patients", cohort, nrow(factored_filtered_data[[cohort]])), level = "INFO")
     }
 
-    # CRITICAL: Validate cohort integrity to prevent bugs like dataset naming issues
-    if (!validate_cohort_integrity(factored_filtered_data)) {
-        stop("COHORT VALIDATION FAILED: Critical data integrity issues detected. See validation output above.")
-    }
-    
-    # CRITICAL: Validate factor level consistency throughout analysis pipeline
-    if (!validate_factor_level_consistency(factored_filtered_data, phase = "data_processing")) {
-        stop("FACTOR LEVEL VALIDATION FAILED: Critical factor level inconsistencies detected. See validation output above.")
-    }
-    
-    # Generate validation report
+    # CRITICAL: Run all core validations (integrity, factor levels, GEP variables)
+    run_all_core_validations(factored_filtered_data, phase = "data_processing")
+
+    # Produce a comprehensive validation report for the logs directory (optional)
     generate_validation_report(factored_filtered_data)
 
     return(factored_filtered_data)
@@ -1056,6 +1049,9 @@ create_analytic_dataset <- function() {
             file.path(PROCESSED_DATA_DIR, paste0(cohort_name, ".rds"))
         )
     }
+
+    # Optional: generate a detailed log file for review
+    generate_validation_report(factored_filtered_data)
 
     return(list(
         analytic_data = factored_filtered_data,
