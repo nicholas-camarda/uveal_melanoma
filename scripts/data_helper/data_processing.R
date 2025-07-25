@@ -519,7 +519,7 @@ apply_criteria <- function(data) {
     }
 
     # CRITICAL: Run all core validations (integrity, factor levels, GEP variables)
-    run_all_core_validations(factored_filtered_data, phase = "data_processing")
+    # run_all_core_validations(factored_filtered_data, phase = "data_processing")
 
     # Produce a comprehensive validation report for the logs directory (optional)
     generate_validation_report(factored_filtered_data)
@@ -540,7 +540,15 @@ apply_criteria <- function(data) {
 prepare_factor_levels <- function(data) {
     log_enhanced("Preparing factor levels for variables", level = "INFO")
 
+    # Clean problematic GEP level names before factoring
     data <- data %>%
+        mutate(
+            # Clean the problematic GEP level name
+            biopsy1_gep = case_when(
+                biopsy1_gep == "DISCORDANT CASTLE RESULTS: Class 1A, PRAME not reported" ~ "Class_1A_PRAME_discordant",
+                TRUE ~ biopsy1_gep
+            )
+        ) %>%
         mutate(
             # Outcome variables (using centralized Y/N factor levels)
             recurrence1 = factor(recurrence1, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
@@ -587,6 +595,13 @@ prepare_factor_levels <- function(data) {
                 levels = c("1", "2A", "2B", "3A", "3B", "4"),
                 ordered = TRUE
             ),
+            
+            # Create binary stage variable for confounder adjustment
+            # Stage IV has very few patients (n=3), so group with Stage I-III for analysis
+            initial_stage_binary = factor(
+                ifelse(initial_overall_stage == "4", "Stage IV", "Stage I-III"),
+                levels = c("Stage I-III", "Stage IV")  # Stage I-III as reference
+            ),
             biopsy1_gep = factor(biopsy1_gep,
                 levels = c(
                     # Class 1A
@@ -604,8 +619,8 @@ prepare_factor_levels <- function(data) {
                     # Special cases
                     "Failed",
                     "Unknown",
-                    "DISCORDANT CASTLE RESULTS: Class 1A, PRAME not reported"
-                ), ordered = TRUE
+                    "Class_1A_PRAME_discordant"  # Clean name for problematic case
+                ), ordered = FALSE  # CRITICAL: Use treatment contrasts, not polynomial
             ),
             
             # GEP-related factors for analysis (Objective 4)

@@ -268,16 +268,13 @@ create_all_combined_forest_plots <- function(base_dir, cohort_names = c("full", 
                 # Determine effect measure
                 effect_measure <- ifelse(outcome_key %in% c("overall_survival", "progression_free_survival"), "HR", "OR")
                 
-                # Use consistent variable order for all forest plots
-                variable_order <- FOREST_PLOT_VARIABLE_ORDER
-                
                 # Create combined forest plot
                 combined_plot <- create_combined_forest_plot(
                     full_results = full_results,
                     restricted_results = restricted_results,
                     outcome_name = outcome_name,
                     treatment_labels = c("GKSRS", "Plaque"),
-                    variable_order = variable_order,
+                    variable_order = FOREST_PLOT_VARIABLE_ORDER,
                     effect_measure = effect_measure,
                     favours_labels = c("Favours GKSRS", "Favours Plaque")
                 )

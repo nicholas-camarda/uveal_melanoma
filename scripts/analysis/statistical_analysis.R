@@ -1037,7 +1037,10 @@ test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Surv
             # Create individual plot
             plot_filename <- file.path(output_dir, paste0(file_prefix, "schoenfeld_", gsub("[^A-Za-z0-9]", "_", var_name), ".png"))
             
-            png(plot_filename, width = 10, height = 6, units = "in", res = 300)
+            png(plot_filename, width = 10, height = 7, units = "in", res = 300)
+            
+            # Set margins to provide more space at top for title
+            par(mar = c(5, 4, 6, 2))
             
             # Plot Schoenfeld residuals vs time
             plot(schoenfeld_test[i], 
@@ -1075,8 +1078,8 @@ test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Surv
         n_cols <- min(3, n_plots)  # Max 3 columns
         n_rows <- ceiling(n_plots / n_cols)
         
-        png(combined_plot_filename, width = 4 * n_cols, height = 4 * n_rows, units = "in", res = 300)
-        par(mfrow = c(n_rows, n_cols), mar = c(4, 4, 3, 2))
+        png(combined_plot_filename, width = 4 * n_cols, height = 4 * n_rows + 1.5, units = "in", res = 300)
+        par(mfrow = c(n_rows, n_cols), mar = c(4, 4, 2, 2), oma = c(0, 0, 6, 0))
         
         for (i in seq_along(var_names)) {
             var_name <- var_names[i]
@@ -1096,11 +1099,11 @@ test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Surv
                   cex.main = 0.9)
         }
         
-        # Add overall title
+        # Add overall title with proper spacing from top
         mtext(sprintf("Proportional Hazards Diagnostics: %s\n%s", 
                      outcome_name, 
                      ifelse(is.null(dataset_name), "", paste("Dataset:", dataset_name))),
-              outer = TRUE, cex = 1.2, line = -2)
+              outer = TRUE, cex = 1.1, line = 2.5)
         
         dev.off()
         

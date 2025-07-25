@@ -33,6 +33,7 @@ use("writexl") # For writing Excel files
 use("lubridate") # Date handling
 use("janitor") # Data cleaning
 use("broom.helpers") # For broom helpers
+use("parameters") # For broom
 use("gtsummary") # Creating publication-ready tables
 
 # Core survival analysis
@@ -115,15 +116,14 @@ source("scripts/analysis/gep_validation_analysis.R")
 # Source the forest plot script
 source("scripts/visualization/forest_plot.R")
 
-# Create logs directory if it doesn't exist
+# Set up logging if enabled
 if (USE_LOGS) {
+    # Create logs directory if it doesn't exist
+
     if (!dir.exists("logs")) {
         dir.create("logs", showWarnings = FALSE)
     }
-}
 
-# Set up logging if enabled
-if (USE_LOGS) {
     # Create timestamp for log file
     timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
     log_file <- file.path("logs", paste0("run_log_", timestamp, ".txt"))
@@ -178,13 +178,9 @@ if (RECREATE_ANALYTIC_DATASETS) {
         temp_output_dirs_by_cohort[[cohort_name]] <- create_output_structure(cohort_base_dir)
     }
     
+    # Create summary tables
     summary_tables <- create_summary_tables(final_analytic_datasets_lst, temp_output_dirs_by_cohort)
 
-    # Create CONSORT diagram
-    # TODO: Add CONSORT diagram
-    # log_function("create_consort_diagram", "Creating patient flow diagram")
-    # create_consort_diagram(final_analytic_datasets_lst)
-    
     log_section_complete("DATA PREPROCESSING PHASE", data_start_time)
     
 } else {
@@ -195,7 +191,7 @@ if (RECREATE_ANALYTIC_DATASETS) {
 }
 
 ########################################################
-############### ANALYSIS FUNCTION ####################
+############### ANALYSIS FUNCTION ######################
 ########################################################
 
 # Run analysis for each dataset
@@ -403,6 +399,9 @@ run_my_analysis <- function(dataset_name) {
     # Create forest plots for tumor height subgroup analyses
     log_function("create_forest_plots_height", "Creating forest plots for tumor height subgroup analyses")
     
+    # Initialize diagnostics collector
+    diagnostics_list <- list()
+    
     # Forest plot for PRIMARY tumor height subgroup analysis (without baseline height)
     primary_height_forest_plot <- create_single_cohort_forest_plot(
         subgroup_results = primary_subgroup_results,
@@ -414,6 +413,9 @@ run_my_analysis <- function(dataset_name) {
         favours_labels = FAVOURS_LABELS,
         title = sprintf("Subgroup Analysis: Tumor Height Change - Primary (%s)", display_name)
     )
+    
+    # Collect diagnostics
+    diagnostics_list[["tumor_height_primary"]] <- get_forest_plot_diagnostics(primary_height_forest_plot)
     
     # Save the PRIMARY forest plot
     png(file.path(forest_plots_dir, paste0(prefix, "tumor_height_primary_subgroup_forest_plot.png")), 
@@ -433,6 +435,9 @@ run_my_analysis <- function(dataset_name) {
         favours_labels = FAVOURS_LABELS,
         title = sprintf("Subgroup Analysis: Tumor Height Change - Sensitivity (%s)", display_name)
     )
+    
+    # Collect diagnostics
+    diagnostics_list[["tumor_height_sensitivity"]] <- get_forest_plot_diagnostics(sensitivity_height_forest_plot)
     
     # Save the SENSITIVITY forest plot
     png(file.path(forest_plots_dir, paste0(prefix, "tumor_height_sensitivity_subgroup_forest_plot.png")), 
@@ -477,6 +482,9 @@ run_my_analysis <- function(dataset_name) {
         title = sprintf("Subgroup Analysis: Local Recurrence (%s)", display_name)
     )
     
+    # Collect diagnostics
+    diagnostics_list[["local_recurrence"]] <- get_forest_plot_diagnostics(recurrence_forest_plot)
+    
     # Save the forest plot
     png(file.path(forest_plots_dir, paste0(prefix, "local_recurrence_subgroup_forest_plot.png")), 
         width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI)
@@ -505,6 +513,9 @@ run_my_analysis <- function(dataset_name) {
         favours_labels = FAVOURS_LABELS,
         title = sprintf("Subgroup Analysis: Metastatic Progression (%s)", display_name)
     )
+    
+    # Collect diagnostics
+    diagnostics_list[["metastatic_progression"]] <- get_forest_plot_diagnostics(mets_forest_plot)
     
     # Save the forest plot
     png(file.path(forest_plots_dir, paste0(prefix, "metastatic_progression_subgroup_forest_plot.png")), 
@@ -536,6 +547,9 @@ run_my_analysis <- function(dataset_name) {
         title = sprintf("Subgroup Analysis: Overall Survival (%s)", display_name)
     )
     
+    # Collect diagnostics
+    diagnostics_list[["overall_survival"]] <- get_forest_plot_diagnostics(os_forest_plot)
+    
     # Save the forest plot
     png(file.path(forest_plots_dir, paste0(prefix, "overall_survival_subgroup_forest_plot.png")), 
         width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI)
@@ -565,6 +579,9 @@ run_my_analysis <- function(dataset_name) {
         favours_labels = FAVOURS_LABELS,
         title = sprintf("Subgroup Analysis: Progression-Free Survival (%s)", display_name)
     )
+    
+    # Collect diagnostics
+    diagnostics_list[["progression_free_survival"]] <- get_forest_plot_diagnostics(pfs_forest_plot)
     
     # Save the forest plot
     png(file.path(forest_plots_dir, paste0(prefix, "progression_free_survival_subgroup_forest_plot.png")), 
@@ -603,6 +620,11 @@ run_my_analysis <- function(dataset_name) {
     # Save all primary outcomes subgroup results as RDS
     saveRDS(primary_outcomes_subgroup_results, 
             file.path(primary_outcomes_subgroup_dir, paste0(prefix, "primary_outcomes_subgroup_results.rds")))
+    
+    # Write forest plot diagnostics Excel file
+    diagnostics_path <- file.path(forest_plots_dir, paste0(prefix, "forestplot_diagnostics.xlsx"))
+    write_diagnostics_excel(diagnostics_list, diagnostics_path)
+    log_enhanced(sprintf("Forest plot diagnostics written to %s", diagnostics_path), level = "INFO", indent = 1)
     
     log_section_complete("PRIMARY OUTCOMES SUBGROUP ANALYSIS", primary_outcomes_start_time)
     

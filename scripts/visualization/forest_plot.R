@@ -45,7 +45,7 @@ create_forest_plot <- function(subgroup_results,
             variable_order = variable_order,
             effect_measure = effect_measure,
             favours_labels = FAVOURS_LABELS,
-            clip = c(0.1, 10)
+            clip = NULL
         )
         
         # Save to file if output_path is provided
@@ -107,8 +107,11 @@ create_single_cohort_forest_plot <- function(subgroup_results,
         title <- sprintf("Subgroup Analysis: %s", outcome_name)
     }
     
-    # Set scale parameters based on effect measure
-    use_log_scale <- effect_measure %in% c("HR", "OR", "RR")
+    # Set scale parameters: data-driven detection of ratio vs difference measures
+    # If all estimates and CI bounds are positive, assume this is a ratio measure (HR/OR/RR)
+    all_values <- c(plot_data$est_values, plot_data$lower_values, plot_data$upper_values)
+    all_values <- all_values[!is.na(all_values)]
+    use_log_scale <- length(all_values) > 0 && all(all_values > 0)
     
     # Check for problematic values (≤ 0) when using log scale
     if (use_log_scale) {
@@ -124,9 +127,39 @@ create_single_cohort_forest_plot <- function(subgroup_results,
         }
     }
     
-    # Set default clipping if not provided
+    # Dynamic clipping: ensure reference line (1 or 0) is centered visually
     if (is.null(clip)) {
-        clip <- if (use_log_scale) c(0.1, 10) else c(-5, 5)
+        if (use_log_scale) {
+            clip <- symmetric_log_clip(plot_data$lower_values, plot_data$upper_values)
+        } else {
+            clip <- symmetric_linear_clip(plot_data$lower_values, plot_data$upper_values)
+        }
+    }
+    
+    # Calculate clean x-axis ticks
+    if (use_log_scale) {
+        # For log scale, use clean powers and half-powers of 10
+        if (clip[2] <= 2) {
+            xticks <- c(0.5, 1, 2)
+        } else if (clip[2] <= 5) {
+            xticks <- c(0.25, 0.5, 1, 2, 4)
+        } else {
+            xticks <- c(0.1, 0.5, 1, 2, 5, 10)
+        }
+        # Keep only ticks within clip range
+        xticks <- xticks[xticks >= clip[1] & xticks <= clip[2]]
+    } else {
+        # For linear scale, use clean intervals
+        span <- max(abs(clip))
+        if (span <= 2) {
+            xticks <- seq(-2, 2, by = 1)
+        } else if (span <= 5) {
+            xticks <- seq(-5, 5, by = 2.5)
+        } else {
+            xticks <- seq(-10, 10, by = 5)
+        }
+        # Keep only ticks within clip range
+        xticks <- xticks[xticks >= clip[1] & xticks <= clip[2]]
     }
     
     # Create improved theme for forestploter with proper formatting following documentation
@@ -148,7 +181,8 @@ create_single_cohort_forest_plot <- function(subgroup_results,
             fg_params = list(
                 fontface = "bold",
                 cex = 1.0,
-                hjust = 0.5
+                hjust = 0.5,
+                x = 0.5
             )
         ),
         # Core content formatting with dynamic font face and size
@@ -160,6 +194,9 @@ create_single_cohort_forest_plot <- function(subgroup_results,
         )
     )
     
+    # Optional footnote disabled by default to avoid clutter
+    footnote_text <- NULL
+    
     # Create the forest plot using correct forestploter syntax following documentation
     # CI column is position 4 (blank column after Subgroup, GKSRS_n, Plaque_n)
     fp <- forest(
@@ -169,130 +206,18 @@ create_single_cohort_forest_plot <- function(subgroup_results,
         upper = plot_data$upper_values,
         sizes = 0.4,
         is_summary = plot_data$is_summary,
-        ci_column = 4,  # Position of blank column
+        ci_column = 4,  # Position of blank column for CI graphics
         ref_line = if (use_log_scale) 1 else 0,
         arrow_lab = favours_labels,
         xlim = clip,
+        xticks = xticks,
         x_trans = if (use_log_scale) "log" else "none",
         theme = tm,
         title = title
     )
     
-    return(fp)
-}
-
-#' Create a combined forest plot for two cohorts
-#'
-#' @param full_results List of subgroup analysis results for full cohort
-#' @param restricted_results List of subgroup analysis results for restricted cohort
-#' @param outcome_name Character string for the outcome name
-#' @param treatment_labels Character vector of length 2 with treatment labels
-#' @param variable_order Character vector specifying the order of variables to display (REQUIRED for consistency)
-#' @param effect_measure Character string for the effect measure (default: "HR")
-#' @param favours_labels Character vector of length 2 for axis labels
-#' @param clip Numeric vector of length 2 for clipping range (default: c(0.1, 10))
-#' @param title Character string for plot title (optional)
-#' @return A combined forestploter object
-create_combined_forest_plot <- function(full_results, 
-                                       restricted_results,
-                                       outcome_name,
-                                       treatment_labels = TREATMENT_LABELS,
-                                       variable_order,  # Now required for consistency
-                                       effect_measure = "HR",
-                                       favours_labels = NULL,
-                                       clip = NULL,
-                                       title = NULL) {
-    
-    # Check that variable_order is provided
-    if (missing(variable_order) || is.null(variable_order)) {
-        stop("variable_order must be provided to ensure consistency across cohorts")
-    }
-    
-    # Set default favours labels if not provided
-    if (is.null(favours_labels)) {
-        favours_labels <- paste0("Favours ", treatment_labels)
-    }
-    
-    # Create data for both cohorts using the same variable order
-    plot_data <- create_combined_forest_plot_data(full_results, restricted_results, 
-                                                 variable_order, treatment_labels, effect_measure)
-    
-    # Set default title
-    if (is.null(title)) {
-        title <- sprintf("Subgroup Analysis: %s", outcome_name)
-    }
-    
-    # Set scale parameters based on effect measure
-    use_log_scale <- effect_measure %in% c("HR", "OR", "RR")
-    
-    # Check for problematic values (≤ 0) when using log scale
-    if (use_log_scale) {
-        problematic_values <- any(
-            !is.na(plot_data$est_values_full) & plot_data$est_values_full <= 0 |
-            !is.na(plot_data$lower_values_full) & plot_data$lower_values_full <= 0 |
-            !is.na(plot_data$upper_values_full) & plot_data$upper_values_full <= 0 |
-            !is.na(plot_data$est_values_restricted) & plot_data$est_values_restricted <= 0 |
-            !is.na(plot_data$lower_values_restricted) & plot_data$lower_values_restricted <= 0 |
-            !is.na(plot_data$upper_values_restricted) & plot_data$upper_values_restricted <= 0
-        )
-        
-        if (problematic_values) {
-            warning("Found values ≤ 0 in combined forest plot data. Switching to linear scale to avoid log transformation errors.")
-            use_log_scale <- FALSE
-        }
-    }
-    
-    # Set default clipping if not provided
-    if (is.null(clip)) {
-        clip <- if (use_log_scale) c(0.1, 10) else c(-5, 5)
-    }
-    
-    # Create theme for forestploter with multiple cohort colors
-    tm <- forest_theme(
-        base_size = 11,
-        ci_pch = c(15, 18),  # Different shapes for full vs restricted
-        ci_col = c("blue", "red"),
-        ci_fill = c("blue", "red"),
-        ci_alpha = 0.8,
-        ci_lty = 1,
-        ci_lwd = 1.5,
-        refline_gp = gpar(lwd = 1, lty = "solid", col = "black"),
-        vertline_lwd = 1,
-        vertline_lty = "solid",
-        vertline_col = "black",
-        footnote_gp = gpar(cex = 0.8),
-        legend_name = "Cohort",
-        legend_value = c("Full Cohort", "Restricted Cohort"),
-        # Set header rows to bold with improved formatting
-        colhead = list(fg_params = list(fontface = "bold", cex = 1.1, hjust = 0.5, x = 0.5)),
-        # Use dynamic row-specific formatting
-        core = list(
-            fg_params = list(
-                fontface = plot_data$font_face,  # Dynamic font faces
-                cex = plot_data$text_size        # Dynamic text sizes
-            )
-        )
-    )
-    
-    # Find CI columns
-    ci_columns <- c(2, 3)  # Full CI and Restricted CI blank columns
-    
-    # Create the forest plot with multiple CI columns
-    fp <- forest(
-        plot_data$data_frame,
-        est = list(plot_data$est_values_full, plot_data$est_values_restricted),
-        lower = list(plot_data$lower_values_full, plot_data$lower_values_restricted),
-        upper = list(plot_data$upper_values_full, plot_data$upper_values_restricted),
-        sizes = 0.25,
-        is_summary = plot_data$is_summary,
-        ci_column = ci_columns,
-        ref_line = if (use_log_scale) 1 else 0,
-        arrow_lab = favours_labels,
-        xlim = clip,
-        x_trans = if (use_log_scale) "log" else "none",
-        theme = tm,
-        title = title
-    )
+    # Attach diagnostics for external retrieval
+    attr(fp, "diagnostics") <- plot_data$diagnostics
     
     return(fp)
 }
@@ -314,11 +239,22 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
     is_summary <- c()
     font_face <- c()
     text_size <- c()
+    missing_interaction_vars <- character(0)  # Track variables where interaction p could not be estimated
+    diagnostics_rows <- list()
     
     # DO NOT create header row as data - forestploter creates headers from column names automatically
     
     # Process each variable in order
     for (var_name in variable_order) {
+        
+        # Skip variable entirely if there is absolutely no subgroup data available
+        data_available <- var_name %in% names(subgroup_results) &&
+            !is.null(subgroup_results[[var_name]]$subgroup_effects) &&
+            nrow(subgroup_results[[var_name]]$subgroup_effects) > 0
+
+        if (!data_available) {
+            next  # Omit variable from plot
+        }
         
         # Variable header row 
         var_header <- data.frame(
@@ -328,10 +264,46 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
             stringsAsFactors = FALSE
         )
         
-        # Add blank column for CI and p-value column
-        var_header$` ` <- paste(rep(" ", 20), collapse = " ")
+        # Add blank column for graphics, CI column, subgroup p-value, and interaction p-value columns
+        var_header$` ` <- paste(rep(" ", 20), collapse = " ")  # Blank column for CI graphics
         var_header$`HR (95% CI)` <- ""
         var_header$`p-value` <- ""
+        # Check for interaction p-value and capture failure reason
+        if (!is.null(subgroup_results[[var_name]]$interaction_p) && !is.na(subgroup_results[[var_name]]$interaction_p)) {
+            var_header$`Interaction p` <- format_p_value(subgroup_results[[var_name]]$interaction_p)
+            interaction_failure_reason <- ""  # No reason needed when successful
+        } else {
+            var_header$`Interaction p` <- ""
+            missing_interaction_vars <- c(missing_interaction_vars, var_name)
+            
+            # Get failure reason from interaction diagnostics
+            if (!is.null(subgroup_results[[var_name]]$interaction_diagnostics) && 
+                !is.null(subgroup_results[[var_name]]$interaction_diagnostics$failure_reason)) {
+                interaction_failure_reason <- subgroup_results[[var_name]]$interaction_diagnostics$failure_reason
+            } else if (!is.null(subgroup_results[[var_name]]$error)) {
+                interaction_failure_reason <- subgroup_results[[var_name]]$error
+            } else {
+                interaction_failure_reason <- "Unknown - no diagnostics available"
+            }
+        }
+        
+        # diagnostics for header
+        diagnostics_rows[[length(diagnostics_rows)+1]] <- data.frame(
+            variable = var_name,
+            level = "__HEADER__",
+            n_total = NA,
+            n_plaque = NA,
+            n_gksrs = NA,
+            events_plaque = NA,
+            events_gksrs = NA,
+            treatment_effect = NA,
+            ci_lower = NA,
+            ci_upper = NA,
+            p_value = subgroup_results[[var_name]]$interaction_p,
+            status = "header",
+            reason = if (interaction_failure_reason == "") "" else paste("Missing interaction p-value:", interaction_failure_reason),
+            stringsAsFactors = FALSE
+        )
         
         all_rows[[length(all_rows) + 1]] <- var_header
         est_values <- c(est_values, NA)
@@ -351,6 +323,79 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                 for (i in 1:nrow(effects_data)) {
                     row_data <- effects_data[i, ]
                     
+                    # Skip rows with NA, non-finite, or (for ratio measures) non-positive values
+                    invalid_numeric <- function(x) { is.na(x) || !is.finite(x) }
+                    if (invalid_numeric(row_data$treatment_effect) ||
+                        invalid_numeric(row_data$ci_lower) ||
+                        invalid_numeric(row_data$ci_upper)) {
+                        
+                        # Still record diagnostics for skipped rows
+                        diagnostics_rows[[length(diagnostics_rows)+1]] <- data.frame(
+                            variable = var_name,
+                            level = as.character(row_data$subgroup_level),
+                            n_total = row_data$n_total,
+                            n_plaque = row_data$n_plaque,
+                            n_gksrs = row_data$n_gksrs,
+                            events_plaque = if ("events_plaque" %in% names(row_data)) row_data$events_plaque else NA,
+                            events_gksrs = if ("events_gksrs" %in% names(row_data)) row_data$events_gksrs else NA,
+                            treatment_effect = row_data$treatment_effect,
+                            ci_lower = row_data$ci_lower,
+                            ci_upper = row_data$ci_upper,
+                            p_value = row_data$p_value,
+                            status = "skipped_non_finite",
+                            reason = "Treatment effect, CI bounds, or both are NA/non-finite",
+                            stringsAsFactors = FALSE
+                        )
+                        next  # skip this subgroup level completely
+                    }
+
+                    # Additional check for ratio measures (must be > 0)
+                    if (toupper(effect_measure) %in% c("HR", "OR", "RR")) {
+                        if (row_data$treatment_effect <= 0 || row_data$ci_lower <= 0) {
+                            # Still record diagnostics for skipped rows
+                            diagnostics_rows[[length(diagnostics_rows)+1]] <- data.frame(
+                                variable = var_name,
+                                level = as.character(row_data$subgroup_level),
+                                n_total = row_data$n_total,
+                                n_plaque = row_data$n_plaque,
+                                n_gksrs = row_data$n_gksrs,
+                                events_plaque = NA,  # Don't calculate events for invalid rows
+                                events_gksrs = NA,
+                                treatment_effect = row_data$treatment_effect,
+                                ci_lower = row_data$ci_lower,
+                                ci_upper = row_data$ci_upper,
+                                p_value = row_data$p_value,
+                                status = "skipped_non_positive",
+                                reason = "Treatment effect or CI bounds ≤ 0 (invalid for ratio measures)",
+                                stringsAsFactors = FALSE
+                            )
+                            next
+                        }
+                    }
+
+                    # This row will be plotted - get events from subgroup effects data
+                    events_plaque <- if ("events_plaque" %in% names(row_data)) row_data$events_plaque else NA
+                    events_gksrs <- if ("events_gksrs" %in% names(row_data)) row_data$events_gksrs else NA
+                    
+                    # Record valid subgroup level
+                    diagnostics_rows[[length(diagnostics_rows)+1]] <- data.frame(
+                        variable = var_name,
+                        level = as.character(row_data$subgroup_level),
+                        n_total = row_data$n_total,
+                        n_plaque = row_data$n_plaque,
+                        n_gksrs = row_data$n_gksrs,
+                        events_plaque = events_plaque,
+                        events_gksrs = events_gksrs,
+                        treatment_effect = row_data$treatment_effect,
+                        ci_lower = row_data$ci_lower,
+                        ci_upper = row_data$ci_upper,
+                        p_value = row_data$p_value,
+                        status = "plotted",
+                        reason = "",
+                        stringsAsFactors = FALSE
+                    )
+                    
+                    # Add this row to the plot
                     subgroup_row <- data.frame(
                         Subgroup = sprintf("  %s", row_data$subgroup_level),  # Indented subgroup levels
                         GKSRS_n = format_sample_size(row_data$n_gksrs, row_data$n_total),
@@ -358,13 +403,14 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                         stringsAsFactors = FALSE
                     )
                     
-                    # Add blank column for CI and p-value
-                    subgroup_row$` ` <- paste(rep(" ", 20), collapse = " ")
+                    # Add blank column for graphics, CI column, subgroup p-value, and interaction p-value
+                    subgroup_row$` ` <- paste(rep(" ", 20), collapse = " ")  # Blank column for CI graphics
                     subgroup_row$`HR (95% CI)` <- sprintf("%.2f (%.2f-%.2f)", 
                                                          row_data$treatment_effect,
                                                          row_data$ci_lower,
                                                          row_data$ci_upper)
                     subgroup_row$`p-value` <- format_p_value(row_data$p_value)
+                    subgroup_row$`Interaction p` <- ""
                     
                     all_rows[[length(all_rows) + 1]] <- subgroup_row
                     est_values <- c(est_values, row_data$treatment_effect)
@@ -383,16 +429,17 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                     stringsAsFactors = FALSE
                 )
                 
-                # Add blank column for CI and p-value
-                no_data_row$` ` <- paste(rep(" ", 20), collapse = " ")
+                # Add blank column for graphics, CI column, subgroup p-value, and interaction p-value
+                no_data_row$` ` <- paste(rep(" ", 20), collapse = " ")  # Blank column for CI graphics
                 no_data_row$`HR (95% CI)` <- ""
                 no_data_row$`p-value` <- ""
+                no_data_row$`Interaction p` <- ""
                 
                 all_rows[[length(all_rows) + 1]] <- no_data_row
                 est_values <- c(est_values, NA)
                 lower_values <- c(lower_values, NA)
                 upper_values <- c(upper_values, NA)
-                is_summary <- c(is_summary, FALSE)
+                is_summary <- c(is_summary, TRUE)
                 font_face <- c(font_face, "italic")
                 text_size <- c(text_size, 0.8)
             }
@@ -405,16 +452,17 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                 stringsAsFactors = FALSE
             )
             
-            # Add blank column for CI and p-value
-            no_data_row$` ` <- paste(rep(" ", 20), collapse = " ")
+            # Add blank column for graphics, CI column, subgroup p-value, and interaction p-value
+            no_data_row$` ` <- paste(rep(" ", 20), collapse = " ")  # Blank column for CI graphics
             no_data_row$`HR (95% CI)` <- ""
             no_data_row$`p-value` <- ""
+            no_data_row$`Interaction p` <- ""
             
             all_rows[[length(all_rows) + 1]] <- no_data_row
             est_values <- c(est_values, NA)
             lower_values <- c(lower_values, NA)
             upper_values <- c(upper_values, NA)
-            is_summary <- c(is_summary, FALSE)
+            is_summary <- c(is_summary, TRUE)
             font_face <- c(font_face, "italic")
             text_size <- c(text_size, 0.8)
         }
@@ -428,10 +476,27 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
         "Subgroup",
         sprintf("%s n/N", treatment_labels[1]),
         sprintf("%s n/N", treatment_labels[2]),
-        " ",  # Blank column for CI
-        sprintf("%s (95%% CI)", effect_measure),
-        "p-value"
+        " ",  # Blank column for CI graphics
+        sprintf("%s (95%% CI)", effect_measure),  # CI text column - header will be centered over the text values
+        "p-value",
+        "Int p"
     )
+    
+    # If using a ratio measure (HR, OR, RR), ensure positive values; otherwise keep as is.
+    ratio_measures <- c("HR", "OR", "RR")
+    if (toupper(effect_measure) %in% ratio_measures) {
+        for (i in seq_along(est_values)) {
+            if (!is.na(est_values[i]) && est_values[i] <= 0) {
+                est_values[i] <- NA; lower_values[i] <- NA; upper_values[i] <- NA; is_summary[i] <- TRUE
+            }
+            if (!is.na(lower_values[i]) && lower_values[i] <= 0) {
+                est_values[i] <- NA; lower_values[i] <- NA; upper_values[i] <- NA; is_summary[i] <- TRUE
+            }
+        }
+    }
+    
+    # Combine diagnostics rows into a data frame
+    diagnostics_df <- do.call(rbind, diagnostics_rows)
     
     return(list(
         data_frame = final_df,
@@ -440,229 +505,10 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
         upper_values = upper_values,
         is_summary = is_summary,
         font_face = font_face,
-        text_size = text_size
+        text_size = text_size,
+        missing_interaction_vars = missing_interaction_vars,
+        diagnostics = diagnostics_df
     ))
-}
-
-#' Create formatted data for combined cohort forest plot using forestploter format
-#'
-#' @param full_results List of subgroup analysis results for full cohort
-#' @param restricted_results List of subgroup analysis results for restricted cohort
-#' @param variable_order Character vector of variables to include (enforced for consistency)
-#' @param treatment_labels Character vector of treatment labels
-#' @param effect_measure Character string for effect measure
-#' @return List with formatted data for forestploter
-create_combined_forest_plot_data <- function(full_results, restricted_results, variable_order, treatment_labels, effect_measure) {
-    
-    # Initialize data collection
-    all_rows <- list()
-    est_values_full <- c()
-    lower_values_full <- c()
-    upper_values_full <- c()
-    est_values_restricted <- c()
-    lower_values_restricted <- c()
-    upper_values_restricted <- c()
-    is_summary <- c()
-    font_face <- c()
-    text_size <- c()
-    
-    # Note: Headers are set via column names, not as data rows in forestploter
-    
-    # Process each variable in order
-    for (var_name in variable_order) {
-        
-        # Variable header row with bold formatting
-        var_header <- data.frame(
-            Subgroup = format_variable_name(var_name),  # Clean variable names (will be made bold via theme)
-            Full_CI = "",
-            Restricted_CI = "",
-            Full_n = "",
-            Restricted_n = "",
-            p_value = "",
-            stringsAsFactors = FALSE
-        )
-        
-        all_rows[[length(all_rows) + 1]] <- var_header
-        est_values_full <- c(est_values_full, NA)
-        lower_values_full <- c(lower_values_full, NA)
-        upper_values_full <- c(upper_values_full, NA)
-        est_values_restricted <- c(est_values_restricted, NA)
-        lower_values_restricted <- c(lower_values_restricted, NA)
-        upper_values_restricted <- c(upper_values_restricted, NA)
-        is_summary <- c(is_summary, TRUE)
-        font_face <- c(font_face, "bold")
-        text_size <- c(text_size, 1.0)
-        
-        # Check if data exists for this variable in either cohort
-        full_var <- if (var_name %in% names(full_results)) full_results[[var_name]] else NULL
-        restricted_var <- if (var_name %in% names(restricted_results)) restricted_results[[var_name]] else NULL
-        
-        if (!is.null(full_var) || !is.null(restricted_var)) {
-            # Align subgroup levels between cohorts
-            aligned_data <- data.frame(subgroup_level = character(0), stringsAsFactors = FALSE)
-            
-            if (!is.null(full_var) && !is.null(restricted_var)) {
-                aligned_data <- align_subgroup_levels(full_var$subgroup_effects, restricted_var$subgroup_effects)
-            } else if (!is.null(full_var)) {
-                aligned_data <- full_var$subgroup_effects
-                # Add empty columns for restricted data
-                for (col in c("treatment_effect", "ci_lower", "ci_upper", "p_value", "n_gksrs", "n_plaque", "n_total")) {
-                    aligned_data[[paste0("restricted_", col)]] <- NA
-                    if (!paste0("full_", col) %in% names(aligned_data)) {
-                        aligned_data[[paste0("full_", col)]] <- aligned_data[[col]]
-                    }
-                }
-            } else {
-                aligned_data <- restricted_var$subgroup_effects
-                # Add empty columns for full data
-                for (col in c("treatment_effect", "ci_lower", "ci_upper", "p_value", "n_gksrs", "n_plaque", "n_total")) {
-                    aligned_data[[paste0("full_", col)]] <- NA
-                    if (!paste0("restricted_", col) %in% names(aligned_data)) {
-                        aligned_data[[paste0("restricted_", col)]] <- aligned_data[[col]]
-                    }
-                }
-            }
-            
-            # Add subgroup rows
-            for (i in 1:nrow(aligned_data)) {
-                row_data <- aligned_data[i, ]
-                
-                subgroup_row <- data.frame(
-                    Subgroup = sprintf("  %s", row_data$subgroup_level),  # Indented subgroup levels
-                    Full_CI = "",
-                    Restricted_CI = "",
-                    Full_n = if (!is.na(row_data$full_n_gksrs)) sprintf("%d/%d", row_data$full_n_gksrs, row_data$full_n_plaque) else "No data",
-                    Restricted_n = if (!is.na(row_data$restricted_n_gksrs)) sprintf("%d/%d", row_data$restricted_n_gksrs, row_data$restricted_n_plaque) else "No data",
-                    p_value = if (!is.na(row_data$full_p_value)) format_p_value(row_data$full_p_value) else if (!is.na(row_data$restricted_p_value)) format_p_value(row_data$restricted_p_value) else "",
-                    stringsAsFactors = FALSE
-                )
-                
-                all_rows[[length(all_rows) + 1]] <- subgroup_row
-                
-                # Full cohort values
-                est_values_full <- c(est_values_full, if (!is.na(row_data$full_treatment_effect)) row_data$full_treatment_effect else NA)
-                lower_values_full <- c(lower_values_full, if (!is.na(row_data$full_ci_lower)) row_data$full_ci_lower else NA)
-                upper_values_full <- c(upper_values_full, if (!is.na(row_data$full_ci_upper)) row_data$full_ci_upper else NA)
-                
-                # Restricted cohort values
-                est_values_restricted <- c(est_values_restricted, if (!is.na(row_data$restricted_treatment_effect)) row_data$restricted_treatment_effect else NA)
-                lower_values_restricted <- c(lower_values_restricted, if (!is.na(row_data$restricted_ci_lower)) row_data$restricted_ci_lower else NA)
-                upper_values_restricted <- c(upper_values_restricted, if (!is.na(row_data$restricted_ci_upper)) row_data$restricted_ci_upper else NA)
-                
-                is_summary <- c(is_summary, FALSE)
-                font_face <- c(font_face, "plain")  # Plain font for subgroup levels
-                text_size <- c(text_size, 0.9)
-            }
-        } else {
-            # No data available
-            no_data_row <- data.frame(
-                Subgroup = "  No data available",  # Clean text for no data
-                Full_CI = "",
-                Restricted_CI = "",
-                Full_n = "",
-                Restricted_n = "",
-                p_value = "",
-                stringsAsFactors = FALSE
-            )
-            
-            all_rows[[length(all_rows) + 1]] <- no_data_row
-            est_values_full <- c(est_values_full, NA)
-            lower_values_full <- c(lower_values_full, NA)
-            upper_values_full <- c(upper_values_full, NA)
-            est_values_restricted <- c(est_values_restricted, NA)
-            lower_values_restricted <- c(lower_values_restricted, NA)
-            upper_values_restricted <- c(upper_values_restricted, NA)
-            is_summary <- c(is_summary, FALSE)
-            font_face <- c(font_face, "italic")
-            text_size <- c(text_size, 0.9)
-        }
-    }
-    
-    # Combine all rows into a data frame
-    final_df <- do.call(rbind, all_rows)
-    
-    # Set proper column names for forestploter headers
-    colnames(final_df) <- c(
-        "Subgroup",
-        " ",  # Full CI blank column
-        " ",  # Restricted CI blank column  
-        sprintf("Full Cohort (%s/%s)", treatment_labels[1], treatment_labels[2]),
-        sprintf("Restricted Cohort (%s/%s)", treatment_labels[1], treatment_labels[2]),
-        "p-value"
-    )
-    
-    return(list(
-        data_frame = final_df,
-        est_values_full = est_values_full,
-        lower_values_full = lower_values_full,
-        upper_values_full = upper_values_full,
-        est_values_restricted = est_values_restricted,
-        lower_values_restricted = lower_values_restricted,
-        upper_values_restricted = upper_values_restricted,
-        is_summary = is_summary,
-        font_face = font_face,
-        text_size = text_size
-    ))
-}
-
-#' Align subgroup levels between two cohorts
-#'
-#' @param full_effects Data frame of subgroup effects for full cohort
-#' @param restricted_effects Data frame of subgroup effects for restricted cohort
-#' @return Data frame with aligned subgroup data
-align_subgroup_levels <- function(full_effects, restricted_effects) {
-    
-    # Get all unique subgroup levels
-    all_levels <- union(full_effects$subgroup_level, restricted_effects$subgroup_level)
-    
-    # Create aligned data frame with all necessary columns
-    aligned <- data.frame(
-        subgroup_level = all_levels,
-        stringsAsFactors = FALSE
-    )
-    
-    # Add full cohort data
-    full_cols <- c("treatment_effect", "ci_lower", "ci_upper", "p_value", "n_gksrs", "n_plaque", "n_total")
-    for (col in full_cols) {
-        aligned[[paste0("full_", col)]] <- NA
-    }
-    
-    # Add restricted cohort data
-    for (col in full_cols) {
-        aligned[[paste0("restricted_", col)]] <- NA
-    }
-    
-    # Fill in full cohort data
-    for (i in 1:nrow(aligned)) {
-        level <- aligned$subgroup_level[i]
-        if (level %in% full_effects$subgroup_level) {
-            full_row <- full_effects[full_effects$subgroup_level == level, ]
-            if (nrow(full_row) > 0) {
-                for (col in full_cols) {
-                    if (col %in% names(full_row)) {
-                        aligned[[paste0("full_", col)]][i] <- full_row[[col]][1]
-                    }
-                }
-            }
-        }
-    }
-    
-    # Fill in restricted cohort data
-    for (i in 1:nrow(aligned)) {
-        level <- aligned$subgroup_level[i]
-        if (level %in% restricted_effects$subgroup_level) {
-            restricted_row <- restricted_effects[restricted_effects$subgroup_level == level, ]
-            if (nrow(restricted_row) > 0) {
-                for (col in full_cols) {
-                    if (col %in% names(restricted_row)) {
-                        aligned[[paste0("restricted_", col)]][i] <- restricted_row[[col]][1]
-                    }
-                }
-            }
-        }
-    }
-    
-    return(aligned)
 }
 
 #' Format variable names for display
@@ -754,4 +600,106 @@ apply_forest_plot_formatting <- function(fp, plot_data) {
     }
     
     return(fp)
+}
+
+#' Helper: compute symmetric clip range around 1 on log scale with
+#' intelligent trimming so extreme outliers do not blow-out the axis.
+#'
+#' Logic:
+#' 1. Keep only positive, finite limits.
+#' 2. Work on base-10 logs centred at 0.
+#' 3. Trim the outer `trim_pct` fraction of |log| values (default 5 % on each tail)
+#'    so the axis is driven by the central 90 % of the data.
+#' 4. Convert the resulting span back to the original scale, add a small buffer,
+#'    and cap the span at `max_span_log` so axes never become absurdly wide.
+#'
+#' @param lower_vals Numeric vector of lower CI bounds.
+#' @param upper_vals Numeric vector of upper CI bounds.
+#' @param buffer Proportion (e.g. 0.1 = 10 %) added to each side after trimming.
+#' @param trim_pct Proportion to trim from each tail when determining span.
+#' @param max_span_log Maximum half-width (in log10 units) allowed for the axis.
+#' @return Numeric length-2 vector giving c(min, max) clip values.
+symmetric_log_clip <- function(lower_vals, upper_vals,
+                               buffer = 0.15, trim_pct = 0.05,
+                               max_span_log = 1.5) {
+    # Combine and clean values
+    vals <- c(lower_vals, upper_vals)
+    vals <- vals[is.finite(vals) & vals > 0]
+    if (length(vals) == 0) return(c(0.1, 10))
+
+    # Work on absolute log10 distances from 1
+    log_abs <- abs(log10(vals))
+    if (length(log_abs) < 3) {
+        span <- max(log_abs)
+    } else {
+        # Trim extreme tails symmetrically
+        span <- stats::quantile(log_abs, probs = 1 - trim_pct, names = FALSE)
+    }
+
+    # Cap to prevent comically wide axes
+    span <- min(span, max_span_log)
+
+    # Add buffer but don't round aggressively
+    span_buffered <- span * (1 + buffer)
+
+    clip_min <- 10^(-span_buffered)
+    clip_max <- 10^(span_buffered)
+
+    # Safety fallback
+    if (!is.finite(clip_min) || !is.finite(clip_max) || clip_min <= 0) {
+        return(c(0.1, 10))
+    }
+    c(clip_min, clip_max)
+}
+
+#' Helper: compute symmetric clip range for linear scales (e.g., mean
+#' differences) centred at 0. Extreme outliers are trimmed so they no longer
+#' explode the axis.
+#'
+#' @param lower_vals Numeric vector of lower CI bounds.
+#' @param upper_vals Numeric vector of upper CI bounds.
+#' @param buffer Proportion (e.g. 0.1 = 10 %) added to each side after trimming.
+#' @param trim_pct Proportion to trim from each tail when determining span.
+#' @param max_span Maximum half-width allowed for the axis (absolute units).
+#' @return Numeric length-2 vector giving c(min, max) clip values centred on 0.
+symmetric_linear_clip <- function(lower_vals, upper_vals,
+                                   buffer = 0.1, trim_pct = 0.05,
+                                   max_span = 5) {
+    vals <- c(lower_vals, upper_vals)
+    vals <- vals[is.finite(vals)]
+    if (length(vals) == 0) return(c(-1, 1))
+
+    # Work with absolute magnitude (distance from 0)
+    abs_vals <- abs(vals)
+
+    # Robust span: use high quantile after trimming extremes
+    if (length(abs_vals) < 3) {
+        span <- max(abs_vals)
+    } else {
+        span <- stats::quantile(abs_vals, probs = 1 - trim_pct, names = FALSE)
+    }
+
+    # Cap span
+    span <- min(span, max_span)
+
+    # Apply buffer
+    span <- span * (1 + buffer)
+
+    if (!is.finite(span) || span <= 0) span <- 1
+
+    c(-span, span)
+}
+
+#' Retrieve diagnostics from a forestploter object created by this script
+get_forest_plot_diagnostics <- function(fp) {
+    attr(fp, "diagnostics")
+}
+
+#' Write diagnostics list to an Excel workbook with one sheet per plot
+#'
+#' @param diagnostics_list Named list where each element is a data.frame of diagnostics
+#' @param file_path Full path of the .xlsx to create
+write_diagnostics_excel <- function(diagnostics_list, file_path) {
+    if (length(diagnostics_list) == 0) return(invisible(NULL))
+    writexl::write_xlsx(diagnostics_list, file_path)
 }

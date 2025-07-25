@@ -15,7 +15,7 @@ cat("=== TESTING FIXED FOREST PLOT IMPLEMENTATION ===\n")
 # Create mock subgroup results that match the expected structure
 create_mock_subgroup_results <- function() {
     # Create realistic mock data for testing
-    variables <- c("age_at_diagnosis", "sex", "location")
+    variables <- c("age_at_diagnosis", "sex", "location", "gep_class_simple")
     
     results <- list()
     
@@ -30,6 +30,8 @@ create_mock_subgroup_results <- function() {
                 n_gksrs = c(45, 38),
                 n_plaque = c(52, 41),
                 n_total = c(97, 79),
+                events_plaque = c(12, 8),
+                events_gksrs = c(8, 10),
                 stringsAsFactors = FALSE
             )
         } else if (var == "sex") {
@@ -42,6 +44,8 @@ create_mock_subgroup_results <- function() {
                 n_gksrs = c(40, 43),
                 n_plaque = c(42, 51),
                 n_total = c(82, 94),
+                events_plaque = c(9, 11),
+                events_gksrs = c(7, 11),
                 stringsAsFactors = FALSE
             )
         } else if (var == "location") {
@@ -54,13 +58,36 @@ create_mock_subgroup_results <- function() {
                 n_gksrs = c(35, 48),
                 n_plaque = c(38, 55),
                 n_total = c(73, 103),
+                events_plaque = c(8, 12),
+                events_gksrs = c(6, 12),
+                stringsAsFactors = FALSE
+            )
+        } else if (var == "gep_class_simple") {
+            subgroup_effects <- data.frame(
+                subgroup_level = c("Class 1A", "Class 1B", "Class 2"),
+                treatment_effect = c(0.75, 1.30, 1.60),
+                ci_lower = c(0.40, 0.80, 0.90),
+                ci_upper = c(1.40, 2.10, 2.85),
+                p_value = c(0.31, 0.26, 0.12),
+                n_gksrs = c(10, 8, 5),
+                n_plaque = c(18, 15, 9),
+                n_total = c(28, 23, 14),
+                events_plaque = c(3, 4, 4),
+                events_gksrs = c(2, 2, 3),
                 stringsAsFactors = FALSE
             )
         }
         
         results[[var]] <- list(
             subgroup_effects = subgroup_effects,
-            interaction_p = runif(1, 0.1, 0.8)
+            interaction_p = if (var == "gep_class_simple") NA else runif(1, 0.1, 0.8),
+            interaction_diagnostics = if (var == "gep_class_simple") {
+                list(failure_reason = "Interaction coefficient not found in model", 
+                     n_levels = 3, 
+                     subgroup_levels = c("Class 1A", "Class 1B", "Class 2"))
+            } else {
+                list(failure_reason = "None")
+            }
         )
     }
     
@@ -101,7 +128,7 @@ fp <- create_single_cohort_forest_plot(
     outcome_name = "Overall Survival",
     cohort_name = "Test Cohort",
     treatment_labels = c("GKSRS", "Plaque"),
-    variable_order = c("age_at_diagnosis", "sex", "location"),
+    variable_order = c("age_at_diagnosis", "sex", "location", "gep_class_simple", "optic_nerve"),
     effect_measure = "HR",
     favours_labels = c("Favours GKSRS", "Favours Plaque"),
     clip = c(0.5, 2.0),
@@ -117,4 +144,53 @@ print(fp)
 dev.off()
 
 cat("✓ Fixed forest plot saved to:", output_file, "\n")
+
+# --------------- OR plot ----------------
+fp_or <- create_single_cohort_forest_plot(
+    subgroup_results = mock_results,
+    outcome_name = "Progression-Free Survival (Binary)",
+    cohort_name = "Test Cohort",
+    treatment_labels = c("GKSRS", "Plaque"),
+    variable_order = c("age_at_diagnosis", "sex", "location", "gep_class_simple", "optic_nerve"),
+    effect_measure = "OR",
+    favours_labels = c("Favours GKSRS", "Favours Plaque"),
+    title = "Fixed Forest Plot Test – OR"
+)
+
+# Save OR plot
+output_file_or <- "test_output/fixed_forest_plot_OR.png"
+png(output_file_or, width = 12, height = 8, units = "in", res = 300)
+print(fp_or)
+dev.off()
+
+# --------------- MD plot (additive, centred at 0) ----------------
+# For MD we will tweak treatment_effects to be differences (can reuse)
+mock_md_results <- mock_results
+for (v in names(mock_md_results)) {
+    mock_md_results[[v]]$subgroup_effects$treatment_effect <- mock_md_results[[v]]$subgroup_effects$treatment_effect - 1  # shift so values around 0
+    mock_md_results[[v]]$subgroup_effects$ci_lower <- mock_md_results[[v]]$subgroup_effects$ci_lower - 1
+    mock_md_results[[v]]$subgroup_effects$ci_upper <- mock_md_results[[v]]$subgroup_effects$ci_upper - 1
+}
+
+fp_md <- create_single_cohort_forest_plot(
+    subgroup_results = mock_md_results,
+    outcome_name = "Mean Difference Outcome",
+    cohort_name = "Test Cohort",
+    treatment_labels = c("GKSRS", "Plaque"),
+    variable_order = c("age_at_diagnosis", "sex", "location", "gep_class_simple", "optic_nerve"),
+    effect_measure = "MD",
+    favours_labels = c("Lower", "Higher"),
+    clip = c(-2, 2),
+    title = "Fixed Forest Plot Test – MD"
+)
+
+output_file_md <- "test_output/fixed_forest_plot_MD.png"
+png(output_file_md, width = 12, height = 8, units = "in", res = 300)
+print(fp_md)
+dev.off()
+
+# Summaries
+cat("✓ Additional OR plot saved to:", output_file_or, "\n")
+cat("✓ Additional MD plot saved to:", output_file_md, "\n")
+
 cat("=== FIXED IMPLEMENTATION TEST COMPLETE ===\n") 

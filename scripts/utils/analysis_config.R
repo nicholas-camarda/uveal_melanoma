@@ -35,6 +35,19 @@ subgroup_vars <- c(
     "initial_tumor_height", "initial_tumor_diameter", "biopsy1_gep", "optic_nerve"
 )
 
+# TOGGLE: Switch between standardized vs median cutoffs
+USE_STANDARDIZED_CUTOFFS <- TRUE
+
+# Standardized cutoffs (when USE_STANDARDIZED_CUTOFFS = TRUE)
+# Updated to use T-stage clinical cutoffs from AJCC staging system
+STANDARDIZED_CUTOFFS <- list(
+    age_at_diagnosis = 65.0,  # Keep age cutoff as is
+    # T-stage clinical cutoffs for tumor height (mm)
+    initial_tumor_height = c(3.0, 6.0, 9.0, 12.0, 15.0),  # Creates bins: ≤3.0, 3.1-6.0, 6.1-9.0, 9.1-12.0, 12.1-15.0, >15.0
+    # T-stage clinical cutoffs for tumor diameter (mm) 
+    initial_tumor_diameter = c(3.0, 6.0, 9.0, 12.0, 15.0, 18.0)  # Creates bins: ≤3.0, 3.1-6.0, 6.1-9.0, 9.1-12.0, 12.1-15.0, 15.1-18.0, >18.0
+)
+
 # =============================================================================
 # GLOBAL CONFIGURATION VARIABLES
 # =============================================================================
@@ -46,7 +59,7 @@ TREATMENT_LABELS <- c("GKSRS", "Plaque")
 FAVOURS_LABELS <- c("Favours GKSRS", "Favours Plaque")
 
 # =============================================================================
-# FACTOR LEVEL CONFIGURATION (CRITICAL FOR ANALYSIS CONSISTENCY)
+# FACTOR LEVEL CONFIGURATION
 # =============================================================================
 # These variables define the factor levels and reference groups used throughout
 # the entire analysis pipeline. Changing these affects all models, tables, and plots.
@@ -77,8 +90,8 @@ YN_DISPLAY_LABELS <- c("No", "Yes")
 SEX_FACTOR_LEVELS <- c("Female", "Male")
 
 # Plot dimensions and settings
-FOREST_PLOT_WIDTH <- 10    # inches (reduced from 12 for less horizontal space)
-FOREST_PLOT_HEIGHT <- 10   # inches (increased from 8 for more vertical space)
+FOREST_PLOT_WIDTH <- 10    # inches (reasonable width)
+FOREST_PLOT_HEIGHT <- 12   # inches (increased height for all subgroup levels)
 SURVIVAL_PLOT_WIDTH <- 10  # inches  
 SURVIVAL_PLOT_HEIGHT <- 8  # inches
 RMST_PLOT_WIDTH <- 10      # inches
@@ -143,22 +156,16 @@ GEP_MISSING_DATA_THRESHOLD <- 10       # Minimum patients needed for missing dat
 GEP_RECOMMENDED_VALIDATION_SAMPLE <- 100  # Recommended minimum for robust validation
 GEP_RECOMMENDED_TESTING_SAMPLE <- 30      # Recommended minimum for testing set
 
-# TOGGLE: Switch between standardized vs median cutoffs
-USE_STANDARDIZED_CUTOFFS <- TRUE
-
-# Standardized cutoffs (when USE_STANDARDIZED_CUTOFFS = TRUE)
-STANDARDIZED_CUTOFFS <- list(
-    age_at_diagnosis = 65.0,
-    initial_tumor_height = 4.2,
-    initial_tumor_diameter = 11.0
-)
+########################################################
+############### TABLE LABELS ##########################
+########################################################
 
 # Define consistent variable order for forest plots and subgroup analysis
 # This ensures all plots and tables show variables in the same order across cohorts
 # Used by main.R, forest plot functions, and subgroup analysis to maintain consistency
 # To change the order of variables in all outputs, modify this single variable
 FOREST_PLOT_VARIABLE_ORDER <- c(
-    "age_at_diagnosis", "sex", "location", "initial_t_stage", 
+    "age_at_diagnosis", "sex", "location", "initial_t_stage",
     "initial_tumor_height", "initial_tumor_diameter", "biopsy1_gep", "optic_nerve"
 )
 
@@ -175,10 +182,6 @@ BASELINE_VARIABLES_TO_SUMMARIZE <- c(
     "initial_n_stage", "initial_m_stage",
     "initial_mets", "biopsy1_gep"
 )
-
-########################################################
-############### TABLE LABELS ##########################
-########################################################
 
 # Centralized table labels to ensure consistency across all gtsummary tables
 # These should match the labels used in data_processing.R baseline tables
@@ -1260,28 +1263,35 @@ get_interaction_coefficient_name <- function(model, treatment_var = "treatment_g
     # Get the actual factor levels from the data if available
     if (!is.null(data) && treatment_var %in% names(data)) {
         treatment_levels <- levels(data[[treatment_var]])
-        if (length(treatment_levels) > 1) {
-            treatment_nonref <- treatment_levels[2]  # Second level (non-reference)
-        } else {
-            treatment_nonref <- "GKSRS"  # fallback
-        }
+        # Try both possible non-reference levels
+        possible_nonref <- treatment_levels[treatment_levels != treatment_levels[1]]
     } else {
-        treatment_nonref <- "GKSRS"  # fallback
+        possible_nonref <- c("GKSRS", "Plaque")  # fallback to both possibilities
     }
     
-    # Try multiple interaction patterns
-    possible_patterns <- c(
-        paste0(treatment_var, treatment_nonref, ":", subgroup_var, subgroup_level),
-        paste0(treatment_var, "2:", subgroup_var, subgroup_level),
-        paste0(treatment_var, treatment_nonref, ":", subgroup_var, "2"),
-        paste0(treatment_var, "2:", subgroup_var, "2"),
-        paste0(treatment_var, "GKSRS:", subgroup_var, subgroup_level),
-        paste0(treatment_var, "GKSRS:", subgroup_var, "2"),
-        paste0(treatment_var, treatment_nonref, ":", subgroup_var, "Yes"),
-        paste0(treatment_var, treatment_nonref, ":", subgroup_var, "No"),
-        paste0(treatment_var, "2:", subgroup_var, "Yes"),
-        paste0(treatment_var, "2:", subgroup_var, "No")
-    )
+    # Try multiple interaction patterns for each possible treatment level
+    possible_patterns <- c()
+    for (treat_level in possible_nonref) {
+        possible_patterns <- c(possible_patterns,
+            paste0(treatment_var, treat_level, ":", subgroup_var, subgroup_level),
+            paste0(treatment_var, "2:", subgroup_var, subgroup_level),
+            paste0(treatment_var, treat_level, ":", subgroup_var, "2"),
+            paste0(treatment_var, "2:", subgroup_var, "2"),
+            paste0(treatment_var, "GKSRS:", subgroup_var, subgroup_level),
+            paste0(treatment_var, "GKSRS:", subgroup_var, "2"),
+            paste0(treatment_var, treat_level, ":", subgroup_var, "Yes"),
+            paste0(treatment_var, treat_level, ":", subgroup_var, "No"),
+            paste0(treatment_var, "2:", subgroup_var, "Yes"),
+            paste0(treatment_var, "2:", subgroup_var, "No")
+        )
+    }
+    
+    # Try exact matches first
+    for (pattern in possible_patterns) {
+        if (pattern %in% coef_names) {
+            return(pattern)
+        }
+    }
     
     # Try exact matches first
     for (pattern in possible_patterns) {
