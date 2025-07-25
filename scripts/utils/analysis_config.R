@@ -1433,3 +1433,49 @@ validate_gep_variables <- function(data) {
     result <- validate_gep_variables_with_report(data)
     return(result$validation_passed)
 } 
+
+#' Detect extreme regression estimates using forest plot logic
+#'
+#' Uses the same detection criteria as forest plots to identify problematic
+#' regression estimates that should be excluded from tables and documented.
+#' Reuses the symmetric clipping functions from forest plots.
+#'
+#' @param estimate Numeric vector of effect estimates (OR, HR, etc.)
+#' @param ci_lower Numeric vector of lower CI bounds
+#' @param ci_upper Numeric vector of upper CI bounds
+#' @param effect_measure Character string indicating measure type ("OR", "HR", etc.)
+#' @return List with extreme_indices (rows to exclude) and reasons for exclusion
+detect_extreme_regression_estimates <- function(estimate, ci_lower, ci_upper, effect_measure = "HR") {
+    
+    extreme_indices <- c()
+    exclusion_reasons <- c()
+    
+    for (i in seq_along(estimate)) {
+        reason <- NULL
+        
+        # Check for NA, non-finite values (same as forest plot logic)
+        if (is.na(estimate[i]) || !is.finite(estimate[i]) ||
+            is.na(ci_lower[i]) || !is.finite(ci_lower[i]) ||
+            is.na(ci_upper[i]) || !is.finite(ci_upper[i])) {
+            reason <- "Estimate or CI bounds are NA/non-finite"
+        }
+        
+        # Check for non-positive values in ratio measures (same as forest plot logic)
+        else if (toupper(effect_measure) %in% c("HR", "OR", "RR")) {
+            if (estimate[i] <= 0 || ci_lower[i] <= 0) {
+                reason <- "Estimate or CI bounds ≤ 0 (invalid for ratio measures)"
+            }
+        }
+        
+        # Record if extreme
+        if (!is.null(reason)) {
+            extreme_indices <- c(extreme_indices, i)
+            exclusion_reasons <- c(exclusion_reasons, reason)
+        }
+    }
+    
+    return(list(
+        extreme_indices = extreme_indices,
+        exclusion_reasons = exclusion_reasons
+    ))
+} 

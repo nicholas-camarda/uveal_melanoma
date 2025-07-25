@@ -283,6 +283,50 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
         # Filter labels to only include variables actually in the model
         variable_labels <- all_variable_labels[intersect(names(all_variable_labels), model_var_names)]
         
+        # Extract coefficient information to detect extreme estimates
+        model_summary <- summary(model)
+        coef_data <- data.frame(
+            term = rownames(model_summary$coefficients)[-1],  # Exclude intercept
+            estimate = exp(model_summary$coefficients[-1, "Estimate"]),  # OR (exponentiated)
+            ci_lower = exp(confint(model)[-1, 1]),  # Lower CI
+            ci_upper = exp(confint(model)[-1, 2]),  # Upper CI  
+            p_value = model_summary$coefficients[-1, "Pr(>|z|)"],
+            stringsAsFactors = FALSE
+        )
+        
+        # Detect extreme estimates using forest plot logic
+        extreme_detection <- detect_extreme_regression_estimates(
+            estimate = coef_data$estimate,
+            ci_lower = coef_data$ci_lower, 
+            ci_upper = coef_data$ci_upper,
+            effect_measure = "OR"
+        )
+        
+        # Create diagnostics for extreme estimates
+        safety_diagnostics <- data.frame(
+            analysis_type = "Safety Logistic Regression",
+            outcome = sequela_type,
+            dataset = dataset_name,
+            term = coef_data$term,
+            estimate = coef_data$estimate,
+            ci_lower = coef_data$ci_lower,
+            ci_upper = coef_data$ci_upper,
+            p_value = coef_data$p_value,
+            status = ifelse(seq_len(nrow(coef_data)) %in% extreme_detection$extreme_indices, "EXCLUDED", "INCLUDED"),
+            exclusion_reason = ifelse(seq_len(nrow(coef_data)) %in% extreme_detection$extreme_indices, 
+                                    extreme_detection$exclusion_reasons[match(seq_len(nrow(coef_data)), extreme_detection$extreme_indices)], 
+                                    ""),
+            stringsAsFactors = FALSE
+        )
+        
+        # Save diagnostics
+        writexl::write_xlsx(
+            safety_diagnostics,
+            path = file.path(output_dir, paste0(prefix, sequela_type, "_logistic_diagnostics.xlsx"))
+        )
+
+        # Note: For now, create full table and document extreme values in diagnostics
+        # Future enhancement could modify tbl_regression output post-creation
         model_result <- tbl_regression(model,
             exponentiate = TRUE,
             intercept = FALSE,

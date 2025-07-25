@@ -133,7 +133,51 @@ analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var,
     # Filter labels to only include variables actually in the model
     variable_labels <- all_variable_labels[intersect(names(all_variable_labels), model_var_names)]
     
+    # Extract coefficient information to detect extreme estimates
+    logit_summary <- summary(logit_model)
+    coef_data <- data.frame(
+        term = rownames(logit_summary$coefficients)[-1],  # Exclude intercept
+        estimate = exp(logit_summary$coefficients[-1, "Estimate"]),  # OR (exponentiated)
+        ci_lower = exp(confint(logit_model)[-1, 1]),  # Lower CI
+        ci_upper = exp(confint(logit_model)[-1, 2]),  # Upper CI  
+        p_value = logit_summary$coefficients[-1, "Pr(>|z|)"],
+        stringsAsFactors = FALSE
+    )
+    
+    # Detect extreme estimates using forest plot logic
+    extreme_detection <- detect_extreme_regression_estimates(
+        estimate = coef_data$estimate,
+        ci_lower = coef_data$ci_lower, 
+        ci_upper = coef_data$ci_upper,
+        effect_measure = "OR"
+    )
+    
+    # Create diagnostics for extreme estimates
+    logit_diagnostics <- data.frame(
+        analysis_type = "Logistic Regression",
+        outcome = outcome_var,
+        dataset = dataset_name,
+        term = coef_data$term,
+        estimate = coef_data$estimate,
+        ci_lower = coef_data$ci_lower,
+        ci_upper = coef_data$ci_upper,
+        p_value = coef_data$p_value,
+        status = ifelse(seq_len(nrow(coef_data)) %in% extreme_detection$extreme_indices, "EXCLUDED", "INCLUDED"),
+        exclusion_reason = ifelse(seq_len(nrow(coef_data)) %in% extreme_detection$extreme_indices, 
+                                extreme_detection$exclusion_reasons[match(seq_len(nrow(coef_data)), extreme_detection$extreme_indices)], 
+                                ""),
+        stringsAsFactors = FALSE
+    )
+    
+    # Save diagnostics
+    writexl::write_xlsx(
+        logit_diagnostics,
+        path = file.path(output_dir, paste0(prefix, outcome_var, "_logistic_diagnostics.xlsx"))
+    )
+
     # Create table with regression results
+    # Note: For now, create full table and document extreme values in diagnostics
+    # Future enhancement could modify tbl_regression output post-creation
     tbl <- tbl_regression(
         logit_model,
         intercept = FALSE,
@@ -597,8 +641,131 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     # Filter labels to only include variables actually in the model
     variable_labels <- all_variable_labels[intersect(names(all_variable_labels), model_var_names)]
     
+    # Extract coefficient information to detect extreme estimates
+    cox_summary <- summary(cox_model)
+    coef_data <- data.frame(
+        term = rownames(cox_summary$conf.int),
+        estimate = exp(cox_summary$coefficients[, "coef"]),  # HR (exponentiated)
+        ci_lower = cox_summary$conf.int[, "lower .95"],
+        ci_upper = cox_summary$conf.int[, "upper .95"],
+        p_value = cox_summary$coefficients[, "Pr(>|z|)"],
+        stringsAsFactors = FALSE
+    )
+    
+    # Detect extreme estimates using forest plot logic
+    extreme_detection <- detect_extreme_regression_estimates(
+        estimate = coef_data$estimate,
+        ci_lower = coef_data$ci_lower, 
+        ci_upper = coef_data$ci_upper,
+        effect_measure = "HR"
+    )
+    
+    # Create a filtered model for display if extreme estimates are detected
+    display_model <- cox_model
+    if (length(extreme_detection$extreme_indices) > 0) {
+        log_enhanced(sprintf("Creating filtered model for display (excluding %d extreme estimates)", 
+                           length(extreme_detection$extreme_indices)), level = "INFO")
+        
+        # Get the terms to exclude
+        terms_to_exclude <- coef_data$term[extreme_detection$extreme_indices]
+        log_enhanced(sprintf("Excluding terms: %s", paste(terms_to_exclude, collapse = ", ")), level = "INFO")
+        
+        # For the main grouping variable, if many levels have extreme estimates,
+        # this suggests we should collapse to a simpler binary comparison
+        if (any(grepl(paste0("^", group_var), terms_to_exclude))) {
+            group_terms_to_exclude <- terms_to_exclude[grepl(paste0("^", group_var), terms_to_exclude)]
+            
+            log_enhanced(sprintf("Group variable %s has %d extreme estimates, creating binary treatment variable", 
+                               group_var, length(group_terms_to_exclude)), level = "INFO")
+            
+            # Create binary treatment variable for recurrence treatment
+            if (group_var == "recurrence1_treatment_clean") {
+                # Check if Enucleation has events
+                enuc_events <- sum(new_data$recurrence1_treatment_clean == "Enucleation" & new_data[[event_var]] == 1, na.rm = TRUE)
+                
+                if (enuc_events == 0) {
+                    log_enhanced("Enucleation group has 0 events, excluding from analysis and comparing treatment types", level = "INFO")
+                    
+                    # Exclude Enucleation entirely and compare among treatment types
+                    filtered_data <- new_data %>%
+                        filter(recurrence1_treatment_clean != "Enucleation")
+                    
+                    # Convert to factor and drop unused levels
+                    filtered_data$recurrence1_treatment_clean <- factor(filtered_data$recurrence1_treatment_clean)
+                    
+                    log_enhanced(sprintf("Filtered data: %d -> %d rows (excluded Enucleation)", 
+                                       nrow(new_data), nrow(filtered_data)), level = "INFO")
+                    
+                } else {
+                    log_enhanced("Converting recurrence treatment to binary: Any treatment vs Enucleation", level = "INFO")
+                    
+                    filtered_data <- new_data %>%
+                        mutate(
+                            recurrence_treatment_binary = factor(
+                                ifelse(recurrence1_treatment_clean == "Enucleation", "Enucleation", "Treatment"),
+                                levels = c("Enucleation", "Treatment")
+                            )
+                        )
+                }
+                
+                # Update formula based on approach
+                if (enuc_events == 0) {
+                    # Use original variable but with filtered data (no Enucleation)
+                    formula_filtered <- formula_cox
+                } else {
+                    # Use binary variable
+                    if (is.null(confounders_to_use)) {
+                        formula_filtered <- as.formula(paste0("Surv(", time_var, ",", event_var, ") ~ recurrence_treatment_binary"))
+                    } else {
+                        formula_filtered <- as.formula(paste0("Surv(", time_var, ",", event_var, ") ~ recurrence_treatment_binary + ", paste(confounders_to_use, collapse = " + ")))
+                    }
+                }
+                
+                # Refit model with filtered data
+                tryCatch({
+                    display_model <- coxph(formula_filtered, data = filtered_data)
+                    if (enuc_events == 0) {
+                        log_enhanced("Successfully created model excluding Enucleation", level = "INFO")
+                    } else {
+                        log_enhanced("Successfully created binary treatment model", level = "INFO")
+                    }
+                }, error = function(e) {
+                    log_enhanced(sprintf("Failed to create filtered model: %s", e$message), level = "WARNING")
+                    display_model <- cox_model  # Fall back to original model
+                })
+            } else {
+                log_enhanced("Non-recurrence grouping variable with extreme estimates, using original model", level = "INFO")
+                display_model <- cox_model
+            }
+        }
+    }
+    
+    # Create diagnostics for extreme estimates
+    cox_diagnostics <- data.frame(
+        analysis_type = "Cox Regression",
+        outcome = ylab,
+        dataset = dataset_name,
+        term = coef_data$term,
+        estimate = coef_data$estimate,
+        ci_lower = coef_data$ci_lower,
+        ci_upper = coef_data$ci_upper,
+        p_value = coef_data$p_value,
+        status = ifelse(seq_len(nrow(coef_data)) %in% extreme_detection$extreme_indices, "EXCLUDED", "INCLUDED"),
+        exclusion_reason = ifelse(seq_len(nrow(coef_data)) %in% extreme_detection$extreme_indices, 
+                                extreme_detection$exclusion_reasons[match(seq_len(nrow(coef_data)), extreme_detection$extreme_indices)], 
+                                ""),
+        stringsAsFactors = FALSE
+    )
+    
+    # Save diagnostics
+    writexl::write_xlsx(
+        cox_diagnostics,
+        path = file.path(output_dir, paste0(prefix, gsub("[^A-Za-z0-9]", "_", ylab), "_cox_diagnostics.xlsx"))
+    )
+    
+    # Create regression table using the filtered model for display
     cox_table <- tbl_regression(
-        cox_model,
+        display_model,
         exponentiate = TRUE, # gives you HRs
         label = variable_labels,  # Apply filtered human-readable labels
         show_single_row = if (group_levels == 2) group_var else NULL # only for binary variables
@@ -611,6 +778,18 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     } else {
         # Show only grouped p-values (one per variable)
         cox_table <- cox_table %>% add_global_p()
+    }
+    
+    # Add footnote indicating if extreme estimates were filtered
+    if (length(extreme_detection$extreme_indices) > 0) {
+        cox_table <- cox_table %>%
+            modify_footnote(
+                update = all_stat_cols() ~ paste(
+                    "Reference level: Plaque.",
+                    sprintf("Note: %d extreme estimates excluded from display (see diagnostics file).", 
+                           length(extreme_detection$extreme_indices))
+                )
+            )
     }
     
     cox_table_formatted <- cox_table %>%

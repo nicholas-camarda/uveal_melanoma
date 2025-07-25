@@ -874,6 +874,43 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
         data <- data %>%
             select(all_of(vars_to_summarize), treatment_group) 
 
+        # Check for variables with insufficient levels for statistical testing (but keep all for display)
+        log_enhanced("Checking variable levels for statistical testing", level = "INFO")
+        vars_with_insufficient_levels <- c()
+        
+        for (var in vars_to_summarize) {
+            if (var %in% names(data)) {
+                if (is.factor(data[[var]]) || is.character(data[[var]])) {
+                    # Check levels for categorical variables
+                    level_counts <- table(data[[var]], useNA = "no")
+                    valid_levels <- sum(level_counts > 0)
+                    
+                    if (valid_levels < 2) {
+                        log_enhanced(sprintf("Variable '%s' has insufficient levels for statistical testing (%d levels). Will display but skip p-value. Counts: %s", 
+                                           var, valid_levels, paste(names(level_counts), "=", level_counts, collapse=", ")), 
+                                     level = "INFO")
+                        vars_with_insufficient_levels <- c(vars_with_insufficient_levels, var)
+                    }
+                }
+            } else {
+                log_enhanced(sprintf("Variable '%s' not found in data, excluding from summary table", var), level = "WARNING")
+            }
+        }
+        
+        # Keep all available variables for display (only exclude truly missing ones)
+        available_vars <- intersect(vars_to_summarize, names(data))
+        log_enhanced(sprintf("Displaying %d baseline variables (%d have insufficient levels for testing)", 
+                           length(available_vars), length(vars_with_insufficient_levels)), level = "INFO")
+        
+        if (length(vars_with_insufficient_levels) > 0) {
+            log_enhanced(sprintf("Variables with insufficient levels for p-values: %s", 
+                               paste(vars_with_insufficient_levels, collapse = ", ")), level = "INFO")
+        }
+        
+        # Update data selection to include all available variables
+        data <- data %>%
+            select(all_of(available_vars), treatment_group)
+
         log_enhanced("Creating summary table", level = "INFO")
         tbl <- data %>%
             tbl_summary(
@@ -890,18 +927,40 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
                 ),
                 digits = list(all_continuous() ~ 1, all_categorical() ~ 1),
                 missing = "no",
-                label = STANDARD_TABLE_LABELS
+                label = STANDARD_TABLE_LABELS[intersect(names(STANDARD_TABLE_LABELS), available_vars)]  # Only use labels for available variables
             ) %>%
-            add_overall() %>%
-            add_p(test = list(all_categorical() ~ "fisher.test"), 
-                  test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))) %>%
+            add_overall()
+        
+        # Add p-values with error handling for variables with insufficient levels
+        log_enhanced("Adding statistical tests (will skip variables with insufficient levels)", level = "INFO")
+        tbl <- tryCatch({
+            tbl %>%
+                add_p(test = list(all_categorical() ~ "fisher.test"), 
+                      test.args = list(all_categorical() ~ list(simulate.p.value = TRUE)))
+        }, error = function(e) {
+            log_enhanced(sprintf("Some statistical tests failed (expected for variables with <2 levels): %s", e$message), level = "INFO")
+            # Return table without p-values if there are issues
+            tbl
+        })
+        
+        # Continue with formatting
+        tbl <- tbl %>%
             bold_labels() %>%       # Built-in gtsummary function for bold variable labels!
             modify_header(
                 label = "**Characteristic**",
                 stat_0 = "**Overall**\nN = {N}"
             ) %>%
-            modify_caption("Baseline Characteristics") %>%
-            as_gt()
+            modify_caption("Baseline Characteristics")
+        
+        # Convert to gt with error handling
+        log_enhanced("Converting to gt table format", level = "INFO")
+        tbl <- tryCatch({
+            tbl %>% as_gt()
+        }, error = function(e) {
+            log_enhanced(sprintf("Error in as_gt(): %s", e$message), level = "ERROR")
+            log_enhanced("This may be due to variables with insufficient levels for statistical comparison", level = "INFO")
+            stop(sprintf("Failed to create baseline characteristics table: %s", e$message))
+        })
 
         # Add treatment duration metrics to the table
         log_enhanced("Adding treatment duration metrics to table", level = "INFO")
