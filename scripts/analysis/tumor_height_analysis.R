@@ -107,7 +107,7 @@ analyze_tumor_height_changes <- function(data) {
         modify_header(
             label = "**Characteristic**",
             estimate = "**Beta**",
-            ci = "**95% CI**",
+            conf.low = "**95% CI**",
             p.value = "**p-value**"
         ) %>%
         modify_caption("PRIMARY ANALYSIS: Linear Regression of Change in Tumor Height (without baseline height adjustment)") %>%
@@ -153,7 +153,7 @@ analyze_tumor_height_changes <- function(data) {
         modify_header(
             label = "**Characteristic**",
             estimate = "**Beta**",
-            ci = "**95% CI**",
+            conf.low = "**95% CI**",
             p.value = "**p-value**"
         ) %>%
         modify_caption("SENSITIVITY ANALYSIS: Linear Regression of Change in Tumor Height (with baseline height adjustment)") %>%

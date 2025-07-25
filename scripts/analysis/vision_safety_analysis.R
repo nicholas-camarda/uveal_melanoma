@@ -101,7 +101,7 @@ analyze_visual_acuity_changes <- function(data) {
         modify_header(
             label = "**Characteristic**",
             estimate = "**Beta**",
-            ci = "**95% CI**",
+            conf.low = "**95% CI**",
             p.value = "**p-value**"
         ) %>%
         modify_caption("Linear Regression of Change in Vision") %>%
@@ -129,7 +129,7 @@ analyze_visual_acuity_changes <- function(data) {
 #' Reuses the existing analyze_binary_outcome_rates function for consistency.
 #'
 #' @param data Data frame with radiation sequelae variables
-#' @param sequela_type Type of sequela to analyze ("retinopathy", "nvg", or "srg")
+#' @param sequela_type Type of sequela to analyze ("retinopathy", "nvg", or "srd")
 #' @param confounders Character vector of confounders for adjustment
 #' @param dataset_name Name of the dataset for output files
 #'
@@ -245,14 +245,25 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
         filename = file.path(output_dir, paste0(prefix, sequela_type, "_summary_table.html"))
     )
     
+    # Initialize variables that will be used in diagnostics
+    valid_confounders <- NULL
+    model_data <- data
+    
     # Fit logistic regression if there are enough events and confounders
     model_result <- NULL
     if (sum(data[[outcome_var]] == "Y", na.rm = TRUE) >= 10) {  # Require at least 10 events
         
+        # Apply rare category handling to main predictor variables to prevent extreme ORs
+        predictor_vars <- intersect(names(data), c("location", "initial_overall_stage", "initial_t_stage"))
+        if (length(predictor_vars) > 0) {
+            log_enhanced(sprintf("Applying rare category filtering to %s to prevent extreme ORs (threshold: %d)", 
+                               paste(predictor_vars, collapse=", "), THRESHOLD_RARITY), level = "INFO")
+            model_data <- handle_rare_categories(model_data, vars = predictor_vars, threshold = THRESHOLD_RARITY)
+        }
+        
         # Validate confounders
-        valid_confounders <- NULL
         if (!is.null(confounders) && length(confounders) > 0) {
-            valid_confounders <- generate_valid_confounders(data, confounders, threshold = THRESHOLD_RARITY)
+            valid_confounders <- generate_valid_confounders(model_data, confounders, threshold = THRESHOLD_RARITY)
         }
         
         # Fit logistic regression
@@ -262,7 +273,7 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
             formula_str <- paste0(outcome_var, " ~ treatment_group + ", paste(valid_confounders, collapse = " + "))
         }
         
-        model <- glm(as.formula(formula_str), data = data, family = binomial())
+        model <- glm(as.formula(formula_str), data = model_data, family = binomial())
         
         # Get variable labels for better readability - filter to only variables in the model
         all_variable_labels <- get_variable_labels()
@@ -292,7 +303,7 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
             modify_header(
                 label = "**Characteristic**",
                 estimate = "**OR**",
-                ci = "**95% CI**",
+                conf.low = "**95% CI**",
                 p.value = "**p-value**"
             ) %>%
             modify_caption(paste("Logistic Regression for", tools::toTitleCase(sequela_type))) %>%
@@ -310,6 +321,23 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
         log_enhanced(sprintf("Insufficient events for regression modeling (%d events)", sum(data[[outcome_var]] == "Y", na.rm = TRUE)))
     }
     
+    # Create diagnostics data frame for this analysis
+    diagnostics_data <- data.frame(
+        analysis_type = "safety_logistic_regression",
+        outcome = sequela_type,
+        n_total = nrow(data),
+        n_events = sum(data[[outcome_var]] == "Y", na.rm = TRUE),
+        model_fitted = !is.null(model_result),
+        confounders_used = if (!is.null(valid_confounders)) paste(valid_confounders, collapse = ", ") else "none",
+        notes = if (is.null(model_result)) "Insufficient events for modeling" else "Model fitted successfully",
+        stringsAsFactors = FALSE
+    )
+    
+    # Write diagnostics Excel file
+    diagnostics_path <- file.path(output_dir, paste0(prefix, sequela_type, "_diagnostics.xlsx"))
+    write_analysis_diagnostics_excel(diagnostics_data, diagnostics_path)
+    log_enhanced(sprintf("Safety analysis diagnostics written to %s", diagnostics_path), level = "INFO")
+
     return(list(
         rates = sequela_rates,
         table = tbl,

@@ -60,7 +60,15 @@ handle_rare_categories <- function(data, vars, threshold = 5) {
                     data[[var]] <- fct_collapse(data[[var]],
                         Other = rare_cats
                     ) %>%
-                        fct_relevel("Other", after = Inf)
+                        fct_drop() %>%  # Drop unused factor levels to prevent rank deficient model matrix
+                        fct_relevel("Other", after = Inf) %>%
+                        factor()  # Explicitly recreate factor to ensure clean levels
+                    
+                    # Diagnostic logging to verify the fix worked
+                    if (VERBOSE) {
+                        log_enhanced(sprintf("After collapse - %s levels: %s", var, paste(levels(data[[var]]), collapse=", ")))
+                        log_enhanced(sprintf("After collapse - %s counts: %s", var, paste(names(table(data[[var]])), "=", table(data[[var]]), collapse=", ")))
+                    }
                 } else {
                     if (VERBOSE) {
                         log_enhanced(sprintf("\nSkipping collapse for %s: would result in insufficient valid levels", var))
@@ -82,10 +90,11 @@ handle_rare_categories <- function(data, vars, threshold = 5) {
 #' @param data Data frame.
 #' @param confounders Character vector of confounder variable names.
 #' @param threshold Minimum number of observations required to keep a category (default: THRESHOLD_RARITY).
+#' @param verbose Logical indicating whether to log the removal of confounders (default: TRUE).
 #' @return Character vector of valid confounders.
 #' @examples
 #' generate_valid_confounders(data, confounders)
-generate_valid_confounders <- function(data, confounders, threshold = THRESHOLD_RARITY) {
+generate_valid_confounders <- function(data, confounders, threshold = THRESHOLD_RARITY, verbose = TRUE) {
     # Before fitting the model, filter confounders to those with >1 level and at least THRESHOLD_RARITY counts per level
     keep_cfs <- sapply(confounders, function(var) {
         var_data <- data[[var]]
@@ -99,7 +108,7 @@ generate_valid_confounders <- function(data, confounders, threshold = THRESHOLD_
     })
     valid_confounders <- confounders[keep_cfs]
     # Check if any confounders were removed
-    if (VERBOSE && length(confounders) != length(valid_confounders)) {
+    if (verbose && length(confounders) != length(valid_confounders)) {
         log_enhanced("Removed confounders with only 1 level or <THRESHOLD_RARITY counts:")
         log_enhanced(paste(setdiff(confounders, valid_confounders), collapse = ", "))
     }

@@ -206,7 +206,7 @@ create_single_cohort_forest_plot <- function(subgroup_results,
         upper = plot_data$upper_values,
         sizes = 0.4,
         is_summary = plot_data$is_summary,
-        ci_column = 4,  # Position of blank column for CI graphics
+        ci_column = 4,  # Position of blank column
         ref_line = if (use_log_scale) 1 else 0,
         arrow_lab = favours_labels,
         xlim = clip,
@@ -264,8 +264,8 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
             stringsAsFactors = FALSE
         )
         
-        # Add blank column for graphics, CI column, subgroup p-value, and interaction p-value columns
-        var_header$` ` <- paste(rep(" ", 20), collapse = " ")  # Blank column for CI graphics
+        # Add blank column for CI, subgroup p-value, and interaction p-value columns
+        var_header$` ` <- paste(rep(" ", 20), collapse = " ")
         var_header$`HR (95% CI)` <- ""
         var_header$`p-value` <- ""
         # Check for interaction p-value and capture failure reason
@@ -403,8 +403,8 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                         stringsAsFactors = FALSE
                     )
                     
-                    # Add blank column for graphics, CI column, subgroup p-value, and interaction p-value
-                    subgroup_row$` ` <- paste(rep(" ", 20), collapse = " ")  # Blank column for CI graphics
+                    # Add blank column for CI, subgroup p-value, and interaction p-value
+                    subgroup_row$` ` <- paste(rep(" ", 20), collapse = " ")
                     subgroup_row$`HR (95% CI)` <- sprintf("%.2f (%.2f-%.2f)", 
                                                          row_data$treatment_effect,
                                                          row_data$ci_lower,
@@ -429,8 +429,8 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                     stringsAsFactors = FALSE
                 )
                 
-                # Add blank column for graphics, CI column, subgroup p-value, and interaction p-value
-                no_data_row$` ` <- paste(rep(" ", 20), collapse = " ")  # Blank column for CI graphics
+                # Add blank column for CI, subgroup p-value, and interaction p-value
+                no_data_row$` ` <- paste(rep(" ", 20), collapse = " ")
                 no_data_row$`HR (95% CI)` <- ""
                 no_data_row$`p-value` <- ""
                 no_data_row$`Interaction p` <- ""
@@ -452,8 +452,8 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                 stringsAsFactors = FALSE
             )
             
-            # Add blank column for graphics, CI column, subgroup p-value, and interaction p-value
-            no_data_row$` ` <- paste(rep(" ", 20), collapse = " ")  # Blank column for CI graphics
+            # Add blank column for CI, subgroup p-value, and interaction p-value
+            no_data_row$` ` <- paste(rep(" ", 20), collapse = " ")
             no_data_row$`HR (95% CI)` <- ""
             no_data_row$`p-value` <- ""
             no_data_row$`Interaction p` <- ""
@@ -476,8 +476,8 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
         "Subgroup",
         sprintf("%s n/N", treatment_labels[1]),
         sprintf("%s n/N", treatment_labels[2]),
-        " ",  # Blank column for CI graphics
-        sprintf("%s (95%% CI)", effect_measure),  # CI text column - header will be centered over the text values
+        " ",  # Blank column for CI
+        sprintf("%s (95%% CI)", effect_measure),
         "p-value",
         "Int p"
     )
@@ -495,8 +495,90 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
         }
     }
     
-    # Combine diagnostics rows into a data frame
-    diagnostics_df <- do.call(rbind, diagnostics_rows)
+    # USE THE EXISTING SUBGROUP ANALYSIS DIAGNOSTICS INSTEAD OF CREATING OUR OWN
+    # Extract diagnostics from subgroup_results instead of re-calculating everything
+    combined_diagnostics <- list()
+    for (var_name in variable_order) {
+        if (var_name %in% names(subgroup_results)) {
+            var_result <- subgroup_results[[var_name]]
+            
+            # Add the actual subgroup effects as diagnostics
+            if (!is.null(var_result$subgroup_effects) && nrow(var_result$subgroup_effects) > 0) {
+                effects_df <- var_result$subgroup_effects
+                
+                # Rename subgroup_variable to variable for consistency
+                if ("subgroup_variable" %in% names(effects_df)) {
+                    effects_df$variable <- effects_df$subgroup_variable
+                    effects_df$subgroup_variable <- NULL
+                } else {
+                    effects_df$variable <- var_name
+                }
+                
+                effects_df$status <- "plotted"
+                effects_df$reason <- ""
+                combined_diagnostics[[length(combined_diagnostics) + 1]] <- effects_df
+            }
+            
+            # Add interaction diagnostics information
+            if (!is.null(var_result$interaction_diagnostics)) {
+                diag <- var_result$interaction_diagnostics
+                
+                # Add excluded levels information
+                for (key in names(diag)) {
+                    if (grepl("^excluded_", key)) {
+                        level_name <- gsub("^excluded_", "", key)
+                        reason <- if (is.list(diag[[key]])) diag[[key]]$reason else diag[[key]]
+                        
+                        excluded_row <- data.frame(
+                            variable = var_name,
+                            subgroup_level = level_name,
+                            n_total = NA,
+                            n_plaque = NA,
+                            n_gksrs = NA,
+                            events_plaque = NA,
+                            events_gksrs = NA,
+                            treatment_effect = NA,
+                            ci_lower = NA,
+                            ci_upper = NA,
+                            p_value = NA,
+                            status = "EXCLUDED",
+                            reason = reason,
+                            stringsAsFactors = FALSE
+                        )
+                        combined_diagnostics[[length(combined_diagnostics) + 1]] <- excluded_row
+                    }
+                }
+                
+                # Add interaction p-value failure information
+                if (!is.null(diag$failure_reason) && diag$failure_reason != "None") {
+                    header_row <- data.frame(
+                        variable = var_name,
+                        subgroup_level = "__HEADER__",
+                        n_total = NA,
+                        n_plaque = NA,
+                        n_gksrs = NA,
+                        events_plaque = NA,
+                        events_gksrs = NA,
+                        treatment_effect = NA,
+                        ci_lower = NA,
+                        ci_upper = NA,
+                        p_value = var_result$interaction_p,
+                        status = "header",
+                        reason = paste("Missing interaction p-value:", diag$failure_reason),
+                        stringsAsFactors = FALSE
+                    )
+                    combined_diagnostics[[length(combined_diagnostics) + 1]] <- header_row
+                }
+            }
+        }
+    }
+    
+    # Combine all diagnostics
+    diagnostics_df <- if (length(combined_diagnostics) > 0) {
+        do.call(rbind, combined_diagnostics)
+    } else {
+        data.frame()
+    }
     
     return(list(
         data_frame = final_df,

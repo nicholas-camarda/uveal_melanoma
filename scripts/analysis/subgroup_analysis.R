@@ -52,10 +52,18 @@ analyze_treatment_effect_subgroups_survival <- function(data, time_var, event_va
                 processed_results$confounders_to_use
             )
             
-            # Calculate effects for each subgroup level
+            # Calculate effects for each subgroup level using the same filtered data as the interaction test
+            if (!is.null(model_results$filtered_data)) {
+                log_enhanced(sprintf("  SURVIVAL: Using filtered data with %d rows for %s (original had %d)", nrow(model_results$filtered_data), subgroup_var, nrow(processed_results$data)), level = "DEBUG")
+                data_for_effects <- model_results$filtered_data
+            } else {
+                log_enhanced(sprintf("  SURVIVAL WARNING: No filtered data for %s, using original %d rows", subgroup_var, nrow(processed_results$data)), level = "WARN")
+                data_for_effects <- processed_results$data
+            }
+            
             subgroup_effects <- calculate_subgroup_effects(
                 model_results$model,
-                processed_results$data,
+                data_for_effects,
                 processed_results$subgroup_var_to_use,
                 outcome_config$type,
                 subgroup_var
@@ -131,10 +139,16 @@ analyze_treatment_effect_subgroups_binary <- function(data, outcome_var, subgrou
                 processed_results$confounders_to_use
             )
             
-            # Calculate effects for each subgroup level
+            # Calculate effects for each subgroup level using the same filtered data as the interaction test
+            data_for_effects <- if (!is.null(model_results$filtered_data)) {
+                model_results$filtered_data
+            } else {
+                processed_results$data  # Fallback to original data if filtering failed
+            }
+            
             subgroup_effects <- calculate_subgroup_effects(
                 model_results$model,
-                processed_results$data,
+                data_for_effects,
                 processed_results$subgroup_var_to_use,
                 outcome_config$type,
                 subgroup_var
@@ -242,10 +256,18 @@ analyze_treatment_effect_subgroups_height <- function(data, subgroup_var, percen
         processed_results$confounders_to_use
     )
     
-    # Calculate effects for each subgroup level
+    # Calculate effects for each subgroup level using the same filtered data as the interaction test
+    if (!is.null(model_results$filtered_data)) {
+        log_enhanced(sprintf("  CONTINUOUS: Using filtered data with %d rows for %s (original had %d)", nrow(model_results$filtered_data), subgroup_var, nrow(processed_results$data)), level = "DEBUG")
+        data_for_effects <- model_results$filtered_data
+    } else {
+        log_enhanced(sprintf("  CONTINUOUS WARNING: No filtered data for %s, using original %d rows", subgroup_var, nrow(processed_results$data)), level = "WARN")
+        data_for_effects <- processed_results$data
+    }
+    
     subgroup_effects <- calculate_subgroup_effects(
         model_results$model,
-        processed_results$data,
+        data_for_effects,
         processed_results$subgroup_var_to_use,
         outcome_config$type,
         subgroup_var
@@ -257,7 +279,8 @@ analyze_treatment_effect_subgroups_height <- function(data, subgroup_var, percen
         model = model_results$model,
         subgroup_var_used = processed_results$subgroup_var_to_use,
         formula_used = model_results$formula_used,
-        confounders_used = processed_results$confounders_to_use
+        confounders_used = processed_results$confounders_to_use,
+        interaction_diagnostics = model_results$interaction_diagnostics  # CRITICAL: This was missing!
     ))
 }
 
@@ -317,6 +340,10 @@ process_subgroup_data <- function(data, subgroup_var, confounders, include_basel
             processed_data[[subgroup_var_binned]] <- create_clinical_bins(data[[subgroup_var]], cutoff_val, subgroup_var)
             subgroup_var_to_use <- subgroup_var_binned
             cutoff_value <- cutoff_val
+            
+            # CRITICAL FIX: Apply rare category handling to T-stage clinical bins
+            processed_data <- handle_rare_categories(processed_data, vars = subgroup_var_binned, threshold = THRESHOLD_RARITY)
+            
         } else {
             # Use simple binary split (original logic)
             log_enhanced(sprintf("Using %s cutoff for %s: %.1f", cutoff_type, subgroup_var, cutoff_val), level = "INFO")
@@ -386,6 +413,134 @@ fit_subgroup_model <- function(data, outcome_config, subgroup_var_to_use, confou
     # Initialize interaction diagnostics
     interaction_diagnostics <- list()
     
+    # Initialize interaction_p variable at function scope
+    interaction_p <- NA
+    
+    # CRITICAL FIX: Filter data to only include subgroup levels that will produce valid effects
+    # This ensures the interaction test runs on the same data that gets displayed
+    valid_levels <- c()
+    subgroup_levels <- levels(data[[subgroup_var_to_use]])
+    
+    for (level in subgroup_levels) {
+        level_data <- data[data[[subgroup_var_to_use]] == level, ]
+        
+        # Check if this level has sufficient data for both treatment groups
+        n_plaque <- sum(level_data$treatment_group == "Plaque", na.rm = TRUE)
+        n_gksrs <- sum(level_data$treatment_group == "GKSRS", na.rm = TRUE)
+        
+        # CRITICAL DEBUG: Log exact counts for problematic levels
+        if (level %in% c("T4b", "12.1-15", "Other")) {
+            log_enhanced(sprintf("  DEBUG PROBLEMATIC LEVEL %s: n_plaque=%d, n_gksrs=%d, total_rows=%d", 
+                               level, n_plaque, n_gksrs, nrow(level_data)), level = "ERROR")
+        }
+        
+        # For survival outcomes, also check event counts
+        if (outcome_config$type == "survival") {
+            # Find the event variable
+            event_vars <- c("death_event", "mets_event", "pfs_event", "event")
+            event_var <- NULL
+            for (ev in event_vars) {
+                if (ev %in% names(level_data)) {
+                    event_var <- ev
+                    break
+                }
+            }
+            
+            if (!is.null(event_var)) {
+                # Count events by treatment group
+                plaque_events <- sum(level_data$treatment_group == "Plaque" & level_data[[event_var]] == 1, na.rm = TRUE)
+                gksrs_events <- sum(level_data$treatment_group == "GKSRS" & level_data[[event_var]] == 1, na.rm = TRUE)
+                
+                # Require at least 2 patients AND at least 1 event in each treatment group
+                if (n_plaque >= 2 && n_gksrs >= 2 && plaque_events >= 1 && gksrs_events >= 1) {
+                    valid_levels <- c(valid_levels, level)
+                    log_enhanced(sprintf("  SURVIVAL: INCLUDED level %s (n_plaque=%d, n_gksrs=%d, events_plaque=%d, events_gksrs=%d)", 
+                                       level, n_plaque, n_gksrs, plaque_events, gksrs_events), level = "DEBUG")
+                }
+                # Store diagnostics for excluded levels
+                if (!(n_plaque >= 2 && n_gksrs >= 2 && plaque_events >= 1 && gksrs_events >= 1)) {
+                    interaction_diagnostics[[paste0("excluded_", level)]] <- list(
+                        n_plaque = n_plaque, n_gksrs = n_gksrs,
+                        events_plaque = plaque_events, events_gksrs = gksrs_events,
+                        reason = sprintf("Insufficient data: n_plaque=%d, n_gksrs=%d, events_plaque=%d, events_gksrs=%d", 
+                                       n_plaque, n_gksrs, plaque_events, gksrs_events)
+                    )
+                }
+            } else {
+                # No event variable found, fall back to patient count only
+                interaction_diagnostics[[paste0("no_event_var_", level)]] <- list(
+                    n_plaque = n_plaque, n_gksrs = n_gksrs,
+                    reason = sprintf("No event variable found, using patient counts: n_plaque=%d, n_gksrs=%d", n_plaque, n_gksrs)
+                )
+                if (n_plaque >= 2 && n_gksrs >= 2) {
+                    valid_levels <- c(valid_levels, level)
+                    interaction_diagnostics[[paste0("included_", level)]] <- "Included based on patient counts"
+                    log_enhanced(sprintf("  NO_EVENT_VAR: INCLUDED level %s (n_plaque=%d, n_gksrs=%d)", 
+                                       level, n_plaque, n_gksrs), level = "DEBUG")
+                } else {
+                    interaction_diagnostics[[paste0("excluded_", level)]] <- sprintf(
+                        "Excluded: insufficient patients n_plaque=%d, n_gksrs=%d (need >=2 each)", n_plaque, n_gksrs
+                    )
+                }
+            }
+        } else {
+            # For binary outcomes, just require sufficient patients
+            # TODO: Could also check for outcome event counts here
+            if (n_plaque >= 2 && n_gksrs >= 2) {
+                valid_levels <- c(valid_levels, level)
+                log_enhanced(sprintf("  BINARY/CONTINUOUS: INCLUDED level %s (n_plaque=%d, n_gksrs=%d)", 
+                                   level, n_plaque, n_gksrs), level = "DEBUG")
+            } else {
+                log_enhanced(sprintf("  BINARY/CONTINUOUS: EXCLUDED level %s (n_plaque=%d, n_gksrs=%d)", 
+                                   level, n_plaque, n_gksrs), level = "DEBUG")
+            }
+        }
+    }
+    
+    # Filter data to only include valid levels
+    if (length(valid_levels) == 0) {
+        if (outcome_config$type == "survival") {
+            interaction_diagnostics$failure_reason <- "No subgroup levels with sufficient patients (>=2 each) AND events (>=1 each) in both treatment groups"
+        } else {
+            interaction_diagnostics$failure_reason <- "No subgroup levels with sufficient patients (>=2 each) in both treatment groups"
+        }
+        return(list(
+            model = NULL,
+            interaction_p = NA,
+            formula_used = NA,
+            interaction_diagnostics = interaction_diagnostics,
+            filtered_data = NULL  # Return NULL filtered_data when no valid levels
+        ))
+    }
+    
+    # Filter the data to only valid levels
+    if (length(valid_levels) > 0) {
+        filtered_data <- data[data[[subgroup_var_to_use]] %in% valid_levels, ]
+        
+        # CRITICAL: Force factor to only have valid levels
+        filtered_data[[subgroup_var_to_use]] <- factor(
+            filtered_data[[subgroup_var_to_use]], 
+            levels = valid_levels
+        )
+        
+        # Log the filtering results
+        log_enhanced(sprintf("  FILTERING: %s reduced from %d to %d rows, levels from %d to %d", 
+                           subgroup_var_to_use, nrow(data), nrow(filtered_data), 
+                           length(subgroup_levels), length(valid_levels)), level = "INFO")
+        log_enhanced(sprintf("  EXCLUDED LEVELS: %s", paste(setdiff(subgroup_levels, valid_levels), collapse = ", ")), level = "INFO")
+    } else {
+        filtered_data <- data[FALSE, ]  # Empty data frame with same structure
+    }
+    
+    interaction_diagnostics$original_levels <- length(subgroup_levels)
+    interaction_diagnostics$original_level_names <- paste(subgroup_levels, collapse = ", ")
+    interaction_diagnostics$valid_levels <- length(valid_levels)
+    interaction_diagnostics$valid_level_names <- paste(valid_levels, collapse = ", ")
+    interaction_diagnostics$excluded_level_names <- paste(setdiff(subgroup_levels, valid_levels), collapse = ", ")
+    
+    # Initialize interaction_p variable at function scope
+    interaction_p <- NA
+    
     # Build base formula components
     confounders_str <- if (is.null(confounders_to_use) || length(confounders_to_use) == 0) {
         ""
@@ -395,32 +550,32 @@ fit_subgroup_model <- function(data, outcome_config, subgroup_var_to_use, confou
     
     interaction_term <- paste0("treatment_group * ", subgroup_var_to_use)
     
-    # Build formula based on outcome type
+    # Build formula based on outcome type - using filtered_data
     if (outcome_config$type == "survival") {
         formula_str <- paste0("Surv(", outcome_config$time_var, ", ", outcome_config$event_var, ") ~ ", 
                              interaction_term, confounders_str)
-        model <- coxph(as.formula(formula_str), data = data)
+        model <- coxph(as.formula(formula_str), data = filtered_data)
         no_interaction_formula <- paste0("Surv(", outcome_config$time_var, ", ", outcome_config$event_var, ") ~ ", 
                                         "treatment_group + ", subgroup_var_to_use, confounders_str)
-        no_interaction_model <- coxph(as.formula(no_interaction_formula), data = data)
+        no_interaction_model <- coxph(as.formula(no_interaction_formula), data = filtered_data)
         
     } else if (outcome_config$type == "binary") {
         formula_str <- paste0(outcome_config$outcome_var, " ~ ", interaction_term, confounders_str)
-        model <- glm(as.formula(formula_str), data = data, family = binomial())
+        model <- glm(as.formula(formula_str), data = filtered_data, family = binomial())
         no_interaction_formula <- paste0(outcome_config$outcome_var, " ~ ", 
                                         "treatment_group + ", subgroup_var_to_use, confounders_str)
-        no_interaction_model <- glm(as.formula(no_interaction_formula), data = data, family = binomial())
+        no_interaction_model <- glm(as.formula(no_interaction_formula), data = filtered_data, family = binomial())
         
     } else if (outcome_config$type == "continuous") {
         formula_str <- paste0(outcome_config$outcome_var, " ~ ", interaction_term, confounders_str)
-        model <- lm(as.formula(formula_str), data = data)
+        model <- lm(as.formula(formula_str), data = filtered_data)
         no_interaction_formula <- paste0(outcome_config$outcome_var, " ~ ", 
                                         "treatment_group + ", subgroup_var_to_use, confounders_str)
-        no_interaction_model <- lm(as.formula(no_interaction_formula), data = data)
+        no_interaction_model <- lm(as.formula(no_interaction_formula), data = filtered_data)
     }
     
     # Calculate interaction p-value with detailed diagnostics
-    subgroup_levels <- levels(data[[subgroup_var_to_use]])
+    subgroup_levels <- levels(filtered_data[[subgroup_var_to_use]])
     interaction_diagnostics$subgroup_levels <- subgroup_levels
     interaction_diagnostics$n_levels <- length(subgroup_levels)
     
@@ -428,13 +583,14 @@ fit_subgroup_model <- function(data, outcome_config, subgroup_var_to_use, confou
     if (is.null(model) || inherits(model, "try-error")) {
         interaction_p <- NA
         interaction_diagnostics$failure_reason <- "Model fitting failed"
+        interaction_diagnostics$model_error <- if (inherits(model, "try-error")) as.character(model) else "Model is NULL"
     } else if (length(subgroup_levels) < 2) {
         interaction_p <- NA
         interaction_diagnostics$failure_reason <- "Insufficient subgroup levels (<2)"
     } else if (length(subgroup_levels) == 2) {
         # Simple interaction test for binary subgroup
         interaction_coef_name <- get_interaction_coefficient_name(
-            model, "treatment_group", subgroup_var_to_use, subgroup_levels[2], data
+            model, "treatment_group", subgroup_var_to_use, subgroup_levels[2], filtered_data
         )
         interaction_diagnostics$coefficient_name <- interaction_coef_name
         
@@ -459,40 +615,93 @@ fit_subgroup_model <- function(data, outcome_config, subgroup_var_to_use, confou
                 interaction_diagnostics$failure_reason <<- paste("Error extracting p-value:", e$message)
             })
         }
-    } else {
-        # Multiple levels - use likelihood ratio test
-        tryCatch({
-            if (outcome_config$type == "survival") {
+            } else {
+            # Multiple levels - use likelihood ratio test
+            interaction_diagnostics$anova_attempt_reason <- sprintf("Attempting ANOVA with %d levels: %s", 
+                                                                   length(subgroup_levels), paste(subgroup_levels, collapse=", "))
+            tryCatch({
+                if (outcome_config$type == "survival") {
                 interaction_test <- anova(no_interaction_model, model)
-                if (nrow(interaction_test) >= 2 && "Pr(>Chi)" %in% names(interaction_test)) {
-                    interaction_p <- interaction_test$`Pr(>Chi)`[2]
-                    interaction_diagnostics$failure_reason <- "None"
+                # Add detailed diagnostics
+                interaction_diagnostics$anova_nrows <- nrow(interaction_test)
+                interaction_diagnostics$anova_colnames <- names(interaction_test)
+                interaction_diagnostics$anova_has_pr_chi <- "Pr(>Chi)" %in% names(interaction_test)
+                interaction_diagnostics$anova_pr_chi_values <- if ("Pr(>Chi)" %in% names(interaction_test)) interaction_test$`Pr(>Chi)` else "MISSING"
+                interaction_diagnostics$anova_result_summary <- capture.output(print(interaction_test))
+                
+                if (nrow(interaction_test) >= 2) {
+                    # Try different ways to extract the p-value
+                    pr_chi_col <- NULL
+                    for (col_name in names(interaction_test)) {
+                        if (grepl("Pr.*Chi", col_name, ignore.case = TRUE)) {
+                            pr_chi_col <- col_name
+                            break
+                        }
+                    }
+                    
+                    if (!is.null(pr_chi_col) && length(interaction_test[[pr_chi_col]]) >= 2) {
+                        interaction_p <- interaction_test[[pr_chi_col]][2]
+                        interaction_diagnostics$failure_reason <- "None"
+                        interaction_diagnostics$pr_chi_column_used <- pr_chi_col
+                    } else {
+                        interaction_p <- NA
+                        interaction_diagnostics$failure_reason <- sprintf(
+                            "ANOVA p-value extraction failed: nrows=%d, pr_chi_col=%s, colnames=%s", 
+                            nrow(interaction_test),
+                            ifelse(is.null(pr_chi_col), "NULL", pr_chi_col),
+                            paste(names(interaction_test), collapse=", ")
+                        )
+                    }
                 } else {
                     interaction_p <- NA
-                    interaction_diagnostics$failure_reason <- "ANOVA test failed (insufficient rows or missing p-value column)"
+                    interaction_diagnostics$failure_reason <- sprintf("ANOVA insufficient rows: %d", nrow(interaction_test))
                 }
             } else if (outcome_config$type == "binary") {
                 interaction_test <- anova(no_interaction_model, model, test = "Chisq")
+                # Add detailed diagnostics
+                interaction_diagnostics$anova_nrows <- nrow(interaction_test)
+                interaction_diagnostics$anova_colnames <- names(interaction_test)
+                interaction_diagnostics$anova_result <- interaction_test
+                
                 if (nrow(interaction_test) >= 2 && "Pr(>Chi)" %in% names(interaction_test)) {
                     interaction_p <- interaction_test$`Pr(>Chi)`[2]
                     interaction_diagnostics$failure_reason <- "None"
                 } else {
                     interaction_p <- NA
-                    interaction_diagnostics$failure_reason <- "Chi-square test failed (insufficient rows or missing p-value column)"
+                    interaction_diagnostics$failure_reason <- sprintf(
+                        "Chi-square test failed: nrows=%d, has_pr_chi=%s, colnames=%s", 
+                        nrow(interaction_test),
+                        "Pr(>Chi)" %in% names(interaction_test),
+                        paste(names(interaction_test), collapse=", ")
+                    )
                 }
             } else {
+                # For continuous outcomes (like tumor height change)
                 interaction_test <- anova(no_interaction_model, model)
+                interaction_diagnostics$anova_nrows_continuous <- nrow(interaction_test)
+                interaction_diagnostics$anova_colnames_continuous <- names(interaction_test)
+                interaction_diagnostics$anova_result_continuous <- capture.output(print(interaction_test))
+                
                 if (nrow(interaction_test) >= 2 && "Pr(>F)" %in% names(interaction_test)) {
                     interaction_p <- interaction_test$`Pr(>F)`[2]
                     interaction_diagnostics$failure_reason <- "None"
+                    interaction_diagnostics$anova_p_value_extracted <- interaction_p
                 } else {
                     interaction_p <- NA
-                    interaction_diagnostics$failure_reason <- "F-test failed (insufficient rows or missing p-value column)"
+                    interaction_diagnostics$failure_reason <- sprintf(
+                        "F-test failed: nrows=%d, has_pr_f=%s, colnames=%s", 
+                        nrow(interaction_test),
+                        "Pr(>F)" %in% names(interaction_test),
+                        paste(names(interaction_test), collapse=", ")
+                    )
                 }
             }
         }, error = function(e) {
             interaction_p <- NA
             interaction_diagnostics$failure_reason <- paste("Likelihood ratio test error:", e$message)
+            interaction_diagnostics$anova_error_details <- e$message
+            interaction_diagnostics$model_summary <- if (!is.null(model)) capture.output(summary(model)) else "Model is NULL"
+            interaction_diagnostics$no_interaction_model_summary <- if (!is.null(no_interaction_model)) capture.output(summary(no_interaction_model)) else "No-interaction model is NULL"
         })
     }
     
@@ -500,7 +709,8 @@ fit_subgroup_model <- function(data, outcome_config, subgroup_var_to_use, confou
         model = model,
         interaction_p = interaction_p,
         formula_used = formula_str,
-        interaction_diagnostics = interaction_diagnostics
+        interaction_diagnostics = interaction_diagnostics,
+        filtered_data = filtered_data  # Return the filtered data so subgroup effects use the same data
     ))
 }
 
@@ -512,16 +722,34 @@ fit_subgroup_model <- function(data, outcome_config, subgroup_var_to_use, confou
 #' @param original_var_name Original variable name
 #' @return Data frame of subgroup effects
 calculate_subgroup_effects <- function(model, data, subgroup_var_to_use, outcome_type, original_var_name) {
+    # Only process levels that actually exist in the filtered data
     subgroup_levels <- levels(data[[subgroup_var_to_use]])
+    actual_levels <- unique(data[[subgroup_var_to_use]][!is.na(data[[subgroup_var_to_use]])])
+    
+    # CRITICAL DEBUG: Log what we're processing
+    log_enhanced(sprintf("    CALCULATE_EFFECTS DEBUG for %s:", original_var_name), level = "DEBUG")
+    log_enhanced(sprintf("      Data rows: %d", nrow(data)), level = "DEBUG")
+    log_enhanced(sprintf("      Factor levels: %s", paste(subgroup_levels, collapse=", ")), level = "DEBUG")
+    log_enhanced(sprintf("      Actual levels in data: %s", paste(actual_levels, collapse=", ")), level = "DEBUG")
+    
+    # Use only levels that have data (intersection of factor levels and actual data)
+    levels_to_process <- intersect(subgroup_levels, actual_levels)
+    log_enhanced(sprintf("      Levels to process: %s", paste(levels_to_process, collapse=", ")), level = "DEBUG")
+    
     subgroup_effects <- data.frame()
 
-    for (i in seq_along(subgroup_levels)) {
-        level <- subgroup_levels[i]
+    for (i in seq_along(levels_to_process)) {
+        level <- levels_to_process[i]
         level_data <- data[data[[subgroup_var_to_use]] == level, ]
 
         n_total <- nrow(level_data)
         n_plaque <- sum(level_data$treatment_group == "Plaque", na.rm = TRUE)
         n_gksrs <- sum(level_data$treatment_group == "GKSRS", na.rm = TRUE)
+        
+        # Skip levels with no data (should not happen with proper filtering, but safety check)
+        if (n_total == 0) {
+            next
+        }
 
         # Calculate events by treatment group based on outcome type
         events_plaque <- NA
@@ -723,14 +951,14 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
     if (is.null(subgroup_results) || length(subgroup_results) == 0) {
         warning("No subgroup results provided for formatting")
         return(NULL)
-    }
+        }
     
     # Create structured table data with factor grouping
     all_table_rows <- list()
-    
-    for (var_name in names(subgroup_results)) {
-        result <- subgroup_results[[var_name]]
         
+        for (var_name in names(subgroup_results)) {
+            result <- subgroup_results[[var_name]]
+
         # Skip if no valid results
         if (is.null(result) || is.null(result$subgroup_effects) || 
             !is.data.frame(result$subgroup_effects) || nrow(result$subgroup_effects) == 0) {
@@ -765,9 +993,9 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
         
         # Add subgroup level rows
         subgroup_effects <- result$subgroup_effects
-        required_cols <- c("subgroup_level", "n_total", "n_plaque", "n_gksrs", 
-                          "treatment_effect", "ci_lower", "ci_upper", "p_value")
-        
+                required_cols <- c("subgroup_level", "n_total", "n_plaque", "n_gksrs", 
+                                  "treatment_effect", "ci_lower", "ci_upper", "p_value")
+                
         if (all(required_cols %in% names(subgroup_effects))) {
             for (i in 1:nrow(subgroup_effects)) {
                 row_data <- subgroup_effects[i, ]
@@ -785,7 +1013,7 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
                 
                 # Create subgroup row
                 subgroup_row <- data.frame(
-                    subgroup_level = level_name,  # No manual indentation - handled in HTML formatting
+                    subgroup_level = paste0("  ", level_name),  # Indent subgroup levels
                     sample_size = sprintf("%d (%d Plaque + %d GKSRS)", 
                                         row_data$n_total, row_data$n_plaque, row_data$n_gksrs),
                     treatment_effect_ci = sprintf("%.2f (%.2f, %.2f)", 
@@ -802,58 +1030,181 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
             }
         }
     }
-    
+
     if (length(all_table_rows) == 0) {
         warning("No valid data to format")
         return(NULL)
     }
-    
+
     # Combine all rows
     final_table <- do.call(rbind, all_table_rows)
+    
+    # Create diagnostics data frame from subgroup results
+    diagnostics_rows <- list()
+    for (var_name in names(subgroup_results)) {
+        var_data <- subgroup_results[[var_name]]
+        
+        # Add header row diagnostics
+        diagnostics_rows[[length(diagnostics_rows) + 1]] <- data.frame(
+            variable = var_name,
+            level = "__HEADER__",
+            n_total = NA,
+            n_plaque = NA,
+            n_gksrs = NA,
+            treatment_effect = NA,
+            ci_lower = NA,
+            ci_upper = NA,
+            p_value = if (!is.null(var_data$interaction_p)) var_data$interaction_p else NA,
+            interaction_p_available = !is.null(var_data$interaction_p) && !is.na(var_data$interaction_p),
+            failure_reason = if (is.null(var_data$interaction_p) || is.na(var_data$interaction_p)) {
+                if (!is.null(var_data$error)) var_data$error else "Unknown - no interaction p-value calculated"
+            } else "",
+            stringsAsFactors = FALSE
+        )
+        
+        # Add subgroup level diagnostics
+        if (!is.null(var_data$subgroup_effects) && nrow(var_data$subgroup_effects) > 0) {
+            for (i in 1:nrow(var_data$subgroup_effects)) {
+                row_data <- var_data$subgroup_effects[i, ]
+                diagnostics_rows[[length(diagnostics_rows) + 1]] <- data.frame(
+                    variable = var_name,
+                    level = as.character(row_data$subgroup_level),
+                    n_total = row_data$n_total,
+                    n_plaque = row_data$n_plaque,
+                    n_gksrs = row_data$n_gksrs,
+                    treatment_effect = row_data$treatment_effect,
+                    ci_lower = row_data$ci_lower,
+                    ci_upper = row_data$ci_upper,
+                    p_value = row_data$p_value,
+                    interaction_p_available = !is.null(var_data$interaction_p) && !is.na(var_data$interaction_p),
+                    failure_reason = "",
+                    stringsAsFactors = FALSE
+                )
+            }
+        }
+    }
+    
+    diagnostics_df <- if (length(diagnostics_rows) > 0) {
+        do.call(rbind, diagnostics_rows)
+    } else {
+        data.frame(
+            variable = character(0),
+            level = character(0),
+            n_total = numeric(0),
+            n_plaque = numeric(0),
+            n_gksrs = numeric(0),
+            treatment_effect = numeric(0),
+            ci_lower = numeric(0),
+            ci_upper = numeric(0),
+            p_value = numeric(0),
+            interaction_p_available = logical(0),
+            failure_reason = character(0),
+            stringsAsFactors = FALSE
+        )
+    }
+    
+    # ADD EXCLUDED LEVELS INFORMATION TO DIAGNOSTICS
+    excluded_levels_info <- list()
+    for (var_name in names(subgroup_results)) {
+        if (!is.null(subgroup_results[[var_name]]$interaction_diagnostics)) {
+            diag <- subgroup_results[[var_name]]$interaction_diagnostics
+            
+            # Add excluded levels information
+            for (key in names(diag)) {
+                if (grepl("^excluded_", key)) {
+                    level_name <- gsub("^excluded_", "", key)
+                    reason <- if (is.list(diag[[key]])) diag[[key]]$reason else diag[[key]]
+                    
+                    excluded_levels_info[[length(excluded_levels_info) + 1]] <- data.frame(
+                        variable = var_name,
+                        level = level_name,
+                        n_total = NA,
+                        n_plaque = NA,
+                        n_gksrs = NA,
+                        treatment_effect = NA,
+                        ci_lower = NA,
+                        ci_upper = NA,
+                        p_value = NA,
+                        status = "EXCLUDED",
+                        reason = reason,
+                        stringsAsFactors = FALSE
+                    )
+                }
+            }
+        }
+    }
+    
+    # Add excluded levels to diagnostics_df
+    if (length(excluded_levels_info) > 0) {
+        excluded_df <- do.call(rbind, excluded_levels_info)
+        # Make sure column names match
+        if (nrow(diagnostics_df) > 0) {
+            # Add missing columns to excluded_df to match diagnostics_df
+            missing_cols <- setdiff(names(diagnostics_df), names(excluded_df))
+            for (col in missing_cols) {
+                excluded_df[[col]] <- NA
+            }
+            # Reorder columns to match
+            excluded_df <- excluded_df[names(diagnostics_df)]
+        }
+        diagnostics_df <- rbind(diagnostics_df, excluded_df)
+    }
     
     # Set appropriate column names
     colnames(final_table) <- c(
         "Subgroup Level",
         "Sample Size", 
-        sprintf("Treatment Effect (95%% CI)", effect_measure),
+        sprintf("%s (95%% CI)", effect_measure),
         "P-value",
         "Interaction P",
         "is_header",
         "variable_name"
     )
-    
+
     # Create Excel version (clean, no formatting columns)
     excel_table <- final_table %>%
         select(-is_header, -variable_name)
-    
+
     # Save Excel table if path provided
     if (!is.null(output_path)) {
         writexl::write_xlsx(excel_table, output_path)
         log_enhanced(sprintf("Subgroup analysis table saved to: %s", output_path), level = "INFO")
         
-        # Create styled HTML version with proper factor level indentation
+        # Write diagnostics Excel file
+        diagnostics_path <- gsub("\\.xlsx$", "_diagnostics.xlsx", output_path)
+        write_analysis_diagnostics_excel(diagnostics_df, diagnostics_path)
+        log_enhanced(sprintf("Subgroup analysis diagnostics written to %s", diagnostics_path), level = "INFO")
+        
+        # Create styled HTML version
         tryCatch({
-            # Create HTML table with proper factor level indentation matching other project tables
+            # Create HTML table with gtsummary-style formatting
             html_table <- final_table %>%
                 select(-variable_name) %>%
-                # Apply proper factor level indentation by modifying the data directly
-                mutate(
-                    `Subgroup Level` = ifelse(
-                        is_header == TRUE,
-                        paste0("<b>", `Subgroup Level`, "</b>"),  # Main variables: bold
-                        paste0("&nbsp;&nbsp;&nbsp;&nbsp;", `Subgroup Level`)  # Factor levels: indented with HTML spaces
-                    )
-                ) %>%
-                select(-is_header) %>%  # Remove helper column
                 gt() %>%
-                # Enable HTML formatting in first column
-                fmt_markdown(columns = `Subgroup Level`) %>%
                 # Title and subtitle
                 tab_header(
                     title = md(sprintf("**Subgroup Analysis: %s**", outcome_name)),
                     subtitle = md(sprintf("**Treatment Effect on %s**", 
                                         gsub("Subgroup Analysis: ", "", outcome_name)))
                 ) %>%
+                # Style header rows (factor names) as bold
+                tab_style(
+                    style = cell_text(weight = "bold"),
+                    locations = cells_body(
+                        columns = everything(),
+                        rows = is_header == TRUE
+                    )
+                ) %>%
+                # Style subgroup levels as italic and indented
+                tab_style(
+                    style = cell_text(style = "italic"),
+                    locations = cells_body(
+                        columns = `Subgroup Level`,
+                        rows = is_header == FALSE
+                    )
+                ) %>%
+                # Hide the is_header column
+                cols_hide(columns = is_header) %>%
                 # Replace missing with blank
                 sub_missing(columns = everything(), missing_text = "") %>%
                 # Bold column headers
@@ -871,6 +1222,6 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
             warning(sprintf("Failed to create HTML version: %s", e$message))
         })
     }
-    
+
     return(excel_table)
 } 

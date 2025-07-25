@@ -386,3 +386,19 @@ apply_publication_styling <- function(gt_table) {
             locations = cells_column_labels()
         )
 }
+
+#' Write diagnostics data frame or list of data frames to an Excel workbook
+#'
+#' @param diagnostics Either a data.frame (single sheet) or named list of data.frames (multiple sheets)
+#' @param file_path Full path of the .xlsx to create
+#' @return Invisible NULL
+write_analysis_diagnostics_excel <- function(diagnostics, file_path) {
+  if (is.null(diagnostics) || length(diagnostics) == 0) return(invisible(NULL))
+  if (is.data.frame(diagnostics)) {
+    writexl::write_xlsx(list(Diagnostics = diagnostics), file_path)
+  } else if (is.list(diagnostics)) {
+    writexl::write_xlsx(diagnostics, file_path)
+  } else {
+    stop("diagnostics must be a data.frame or a named list of data.frames")
+  }
+}

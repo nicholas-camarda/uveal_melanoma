@@ -55,7 +55,15 @@ analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var,
     rare_fix_data <- data
     if (!is.null(confounders) && handle_rare) {
         rare_fix_data <- handle_rare_categories(data, confounders, threshold = THRESHOLD_RARITY)
-    } 
+    }
+    
+    # Apply rare category handling to main predictor variables to prevent extreme ORs
+    predictor_vars <- intersect(names(rare_fix_data), c("location", "initial_overall_stage", "initial_t_stage"))
+    if (length(predictor_vars) > 0 && handle_rare) {
+        log_enhanced(sprintf("Applying rare category filtering to %s to prevent extreme ORs (threshold: %d)", 
+                           paste(predictor_vars, collapse=", "), THRESHOLD_RARITY), level = "INFO")
+        rare_fix_data <- handle_rare_categories(rare_fix_data, vars = predictor_vars, threshold = THRESHOLD_RARITY)
+    }
 
     # Remove rows that have events before treatment
     fix_event_data <- rare_fix_data 
@@ -149,8 +157,8 @@ analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var,
         modify_header(
             label     = "**Variable**",
             estimate  = "**OR**",
-            p.value   = "**p-value**",
-
+            conf.low  = "**95% CI**",
+            p.value   = "**p-value**"
         ) %>%
         modify_caption( # shorten the caption
             sprintf("Adjusted Odds Ratios for %s by Treatment Group and Covariates", outcome_var)
@@ -183,6 +191,24 @@ analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var,
         filename = file.path(output_dir, paste0(prefix, outcome_var, "_rates.html"))
     )
     
+    # Create diagnostics data frame
+    diagnostics_data <- data.frame(
+        analysis_type = "binary_outcome_logistic_regression",
+        outcome = outcome_var,
+        n_total = nrow(rare_fix_data),
+        n_events = sum(rare_fix_data[[outcome_var]] == "Y", na.rm = TRUE),
+        n_excluded_before_treatment = if (exclude_before_treatment) nrow(rare_fix_data) - nrow(fix_event_data) else 0,
+        confounders_used = if (!is.null(confounders_to_use)) paste(confounders_to_use, collapse = ", ") else "none",
+        model_fitted = TRUE,
+        formula_used = formula_str,
+        stringsAsFactors = FALSE
+    )
+    
+    # Write diagnostics Excel file
+    diagnostics_path <- file.path(output_dir, paste0(prefix, outcome_var, "_logistic_diagnostics.xlsx"))
+    write_analysis_diagnostics_excel(diagnostics_data, diagnostics_path)
+    log_enhanced(sprintf("Binary outcome analysis diagnostics written to %s", diagnostics_path), level = "INFO")
+
     return(list(
         rates = rates,
         table = gt_tbl,
@@ -235,6 +261,14 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     rare_fix_data <- data
     if (!is.null(confounders) && handle_rare) {
         rare_fix_data <- handle_rare_categories(data, confounders, threshold = THRESHOLD_RARITY)
+    }
+    
+    # Apply rare category handling to main predictor variables to prevent extreme ORs
+    predictor_vars <- intersect(names(rare_fix_data), c("location", "initial_overall_stage", "initial_t_stage"))
+    if (length(predictor_vars) > 0 && handle_rare) {
+        log_enhanced(sprintf("Applying rare category filtering to %s to prevent extreme ORs (threshold: %d)", 
+                           paste(predictor_vars, collapse=", "), THRESHOLD_RARITY), level = "INFO")
+        rare_fix_data <- handle_rare_categories(rare_fix_data, vars = predictor_vars, threshold = THRESHOLD_RARITY)
     }
 
     # Remove rows that have events before treatment
@@ -650,6 +684,25 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     # Create RMST p-value progression plot
     rmst_plot <- plot_rmst_pvalue_progression(rmst_results, ylab)
     
+    # Create diagnostics data frame  
+    survival_diagnostics_data <- data.frame(
+        analysis_type = "survival_cox_regression",
+        outcome = sprintf("%s_%s", time_var, event_var),
+        n_total = nrow(rare_fix_data),
+        n_events = sum(rare_fix_data[[event_var]] == 1, na.rm = TRUE),
+        n_excluded_before_treatment = if (exclude_before_treatment) nrow(rare_fix_data) - nrow(fix_event_data) else 0,
+        confounders_used = if (!is.null(confounders_to_use)) paste(confounders_to_use, collapse = ", ") else "none",
+        model_fitted = TRUE,
+        formula_used = formula_str,
+        ph_assumption_tested = !is.null(ph_diagnostics),
+        stringsAsFactors = FALSE
+    )
+    
+    # Write diagnostics Excel file
+    survival_diagnostics_path <- file.path(output_dir, paste0(prefix, ylab, "_cox_diagnostics.xlsx"))
+    write_analysis_diagnostics_excel(survival_diagnostics_data, survival_diagnostics_path)
+    log_enhanced(sprintf("Survival analysis diagnostics written to %s", survival_diagnostics_path), level = "INFO")
+
     return(list(
         fit = surv_fit,
         plot = surv_plot,
