@@ -499,6 +499,35 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
     # Extract diagnostics from subgroup_results instead of re-calculating everything
     combined_diagnostics <- list()
     for (var_name in variable_order) {
+        # Determine interaction p-value and reason
+        interaction_p <- if (!is.null(subgroup_results[[var_name]]$interaction_p)) subgroup_results[[var_name]]$interaction_p else NA
+        interaction_diag <- subgroup_results[[var_name]]$interaction_diagnostics
+        interaction_failure_reason <- ""
+        if (is.null(interaction_p) || is.na(interaction_p)) {
+            if (!is.null(interaction_diag) && !is.null(interaction_diag$failure_reason)) {
+                interaction_failure_reason <- paste("Missing interaction p-value:", interaction_diag$failure_reason)
+            } else {
+                interaction_failure_reason <- "Missing interaction p-value: No valid test could be performed (insufficient data or model failure)"
+            }
+        }
+        # Always add header row to combined_diagnostics, using the same column names as the factor level rows
+        header_row <- data.frame(
+            variable = var_name,
+            subgroup_level = format_variable_name(var_name),
+            n_total = NA,
+            n_plaque = NA,
+            n_gksrs = NA,
+            events_plaque = NA,
+            events_gksrs = NA,
+            treatment_effect = NA,
+            ci_lower = NA,
+            ci_upper = NA,
+            p_value = interaction_p,
+            status = "header",
+            reason = interaction_failure_reason,
+            stringsAsFactors = FALSE
+        )
+        combined_diagnostics[[length(combined_diagnostics) + 1]] <- header_row
         if (var_name %in% names(subgroup_results)) {
             var_result <- subgroup_results[[var_name]]
             
@@ -571,6 +600,17 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                 }
             }
         }
+    }
+    # After collecting all rows, enforce column order and names for all rows
+    if (length(combined_diagnostics) > 0) {
+        col_order <- c("variable", "subgroup_level", "n_total", "n_plaque", "n_gksrs", "events_plaque", "events_gksrs", "treatment_effect", "ci_lower", "ci_upper", "p_value", "status", "reason")
+        combined_diagnostics <- lapply(combined_diagnostics, function(df) {
+            # Add any missing columns as NA
+            for (col in setdiff(col_order, names(df))) df[[col]] <- NA
+            # Reorder columns
+            df <- df[, col_order, drop=FALSE]
+            return(df)
+        })
     }
     
     # Combine all diagnostics

@@ -245,10 +245,17 @@ analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var,
         stringsAsFactors = FALSE
     )
     
-    # Write diagnostics Excel file
+    # Write consolidated diagnostics Excel file with multiple tabs
     diagnostics_path <- file.path(output_dir, paste0(prefix, outcome_var, "_logistic_diagnostics.xlsx"))
-    write_analysis_diagnostics_excel(diagnostics_data, diagnostics_path)
-    log_enhanced(sprintf("Binary outcome analysis diagnostics written to %s", diagnostics_path), level = "INFO")
+    
+    # Combine both diagnostic types into one file
+    all_diagnostics <- list(
+        "Model_Summary" = diagnostics_data,
+        "Coefficient_Details" = logit_diagnostics
+    )
+    
+    write_diagnostics_excel(all_diagnostics, diagnostics_path)
+    log_enhanced(sprintf("Logistic regression diagnostics written to %s with %d tabs", diagnostics_path, length(all_diagnostics)), level = "INFO")
 
     return(list(
         rates = rates,
@@ -872,10 +879,17 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         stringsAsFactors = FALSE
     )
     
-    # Write diagnostics Excel file
-    survival_diagnostics_path <- file.path(output_dir, paste0(prefix, ylab, "_cox_diagnostics.xlsx"))
-    write_analysis_diagnostics_excel(survival_diagnostics_data, survival_diagnostics_path)
-    log_enhanced(sprintf("Survival analysis diagnostics written to %s", survival_diagnostics_path), level = "INFO")
+    # Write consolidated diagnostics Excel file with multiple tabs
+    survival_diagnostics_path <- file.path(output_dir, paste0(prefix, gsub("[^A-Za-z0-9]", "_", ylab), "_cox_diagnostics.xlsx"))
+    
+    # Combine both diagnostic types into one file
+    all_diagnostics <- list(
+        "Model_Summary" = survival_diagnostics_data,
+        "Coefficient_Details" = cox_diagnostics
+    )
+    
+    write_diagnostics_excel(all_diagnostics, survival_diagnostics_path)
+    log_enhanced(sprintf("Cox regression diagnostics written to %s with %d tabs", survival_diagnostics_path, length(all_diagnostics)), level = "INFO")
 
     return(list(
         fit = surv_fit,

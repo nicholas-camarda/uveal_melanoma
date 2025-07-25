@@ -149,10 +149,11 @@ bin_continuous <- function(vec, bins = 2, custom_breaks = NULL, varname = NULL, 
 #' @param data Data frame.
 #'
 #' @return None. Side effect: prints summary to console.
+#' @param verbose Logical indicating whether to log the summary (default: TRUE).
 #' @examples
 #' summarize_data(data)
-summarize_data <- function(data) {
-    if (VERBOSE) {
+summarize_data <- function(data, verbose = TRUE) {
+    if (verbose) {
         log_enhanced("\nData Summary:")
         log_enhanced(sprintf("Total patients: %d", nrow(data)))
         

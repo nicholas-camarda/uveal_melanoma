@@ -8,28 +8,6 @@
 # Source the analysis configuration first (all global variables), required libraries, and helper functions
 source("scripts/utils/all_helper_functions.R")
 
-# Create necessary directories now that libraries are loaded
-dir.create(PROCESSED_DATA_DIR, showWarnings = FALSE, recursive = TRUE)
-dir.create(OUTPUT_DIR, showWarnings = FALSE, recursive = TRUE)
-
-########################################################
-############### ANALYSIS SETTINGS #####################
-########################################################
-
-# Toggle logging functionality
-USE_LOGS <- TRUE
-
-# Toggle to control whether to recreate analytic datasets (default: FALSE)
-# Set to TRUE if you need to reprocess raw data or if data has changed
-RECREATE_ANALYTIC_DATASETS <- FALSE
-
-# Set to FALSE to suppress detailed logging in analysis functions
-VERBOSE <- TRUE 
-
-# Set to TRUE to show all individual p-values in regression tables
-# Set to FALSE to show only grouped p-values (one per variable group)
-SHOW_ALL_PVALUES <- TRUE
-
 ########################################################
 ############### DATA PROCESSING ########################
 ########################################################
@@ -164,9 +142,6 @@ run_my_analysis <- function(dataset_name) {
                         length(confounders), paste(confounders, collapse = ", ")), 
                 level = "INFO", indent = 1)
 
-    # Initialize diagnostics collector for all analyses
-    diagnostics_list <- list()
-    
     # 1a. Rates of recurrence
     log_function("analyze_binary_outcome_rates", "Local recurrence rates analysis")
     recurrence_rates <- analyze_binary_outcome_rates(
@@ -179,10 +154,7 @@ run_my_analysis <- function(dataset_name) {
         handle_rare = TRUE, 
         dataset_name = dataset_name
     )
-    # Collect diagnostics
-    if (!is.null(recurrence_rates$diagnostics)) {
-        diagnostics_list[["recurrence_logistic"]] <- recurrence_rates$diagnostics
-    }
+
     log_enhanced("Local recurrence analysis completed", level = "INFO", indent = 1)
 
     # 1b. Rates of metastatic progression
@@ -197,10 +169,7 @@ run_my_analysis <- function(dataset_name) {
         handle_rare = TRUE,
         dataset_name = dataset_name
     )
-    # Collect diagnostics
-    if (!is.null(mets_rates$diagnostics)) {
-        diagnostics_list[["metastatic_progression_logistic"]] <- mets_rates$diagnostics
-    }
+
     log_enhanced("Metastatic progression analysis completed", level = "INFO", indent = 1)
 
     # 1c. Overall Survival
@@ -216,10 +185,7 @@ run_my_analysis <- function(dataset_name) {
         handle_rare = TRUE,
         dataset_name = dataset_name
     )
-    # Collect diagnostics
-    if (!is.null(os_analysis$diagnostics)) {
-        diagnostics_list[["overall_survival_cox"]] <- os_analysis$diagnostics
-    }
+
     log_enhanced("Overall survival analysis completed", level = "INFO", indent = 1)
 
     # 1d. Progression Free Survival (includes both progression AND death)
@@ -235,10 +201,7 @@ run_my_analysis <- function(dataset_name) {
         handle_rare = TRUE,
         dataset_name = dataset_name
     )
-    # Collect diagnostics
-    if (!is.null(pfs_analysis$diagnostics)) {
-        diagnostics_list[["progression_free_survival_cox"]] <- pfs_analysis$diagnostics
-    }
+
     log_enhanced("Progression-free survival analysis completed", level = "INFO", indent = 1)
 
     # 1e. Tumor height changes
@@ -336,7 +299,8 @@ run_my_analysis <- function(dataset_name) {
     # Create forest plots for tumor height subgroup analyses
     log_function("create_forest_plots_height", "Creating forest plots for tumor height subgroup analyses")
     
-    # Continue collecting diagnostics (initialized earlier for all analyses)
+    # Initialize forest plot diagnostics collector
+    diagnostics_list <- list()
     
     # Forest plot for PRIMARY tumor height subgroup analysis (without baseline height)
     primary_height_forest_plot <- create_single_cohort_forest_plot(
@@ -388,6 +352,52 @@ run_my_analysis <- function(dataset_name) {
     
     saveRDS(sensitivity_subgroup_results, 
             file.path(output_dirs$obj1_subgroup_sensitivity, paste0(prefix, "sensitivity_subgroup_interactions.rds")))
+    
+    # PRIMARY TUMOR HEIGHT SUBGROUP ANALYSIS CONSOLIDATION
+    primary_diagnostics_list <- list()
+    for (i in seq_along(subgroup_vars)) {
+        subgroup_var <- subgroup_vars[i]
+        log_progress(i, length(subgroup_vars), subgroup_var, "Testing PRIMARY interaction")
+        result <- analyze_treatment_effect_subgroups_height(
+            data = data,
+            subgroup_var = subgroup_var,
+            percentile_cut = 0.5,
+            confounders = confounders,
+            include_baseline_height = FALSE
+        )
+        if (!is.null(result$subgroup_effects) && nrow(result$subgroup_effects) > 0) {
+            tab_name <- tools::toTitleCase(gsub("_", " ", subgroup_var))
+            tab_name <- gsub("[^A-Za-z0-9_]", "_", tab_name)
+            tab_name <- substr(tab_name, 1, 31)
+            primary_diagnostics_list[[tab_name]] <- result$subgroup_effects
+        }
+    }
+    consolidated_primary_path <- file.path(output_dirs$obj1_subgroup_primary, paste0(prefix, "primary_tumor_height_diagnostics.xlsx"))
+    writexl::write_xlsx(primary_diagnostics_list, consolidated_primary_path)
+    log_enhanced(sprintf("Primary tumor height diagnostics written to %s with %d tabs", consolidated_primary_path, length(primary_diagnostics_list)), level = "INFO", indent = 1)
+    
+    # SENSITIVITY TUMOR HEIGHT SUBGROUP ANALYSIS CONSOLIDATION
+    sensitivity_diagnostics_list <- list()
+    for (i in seq_along(subgroup_vars)) {
+        subgroup_var <- subgroup_vars[i]
+        log_progress(i, length(subgroup_vars), subgroup_var, "Testing SENSITIVITY interaction")
+        result <- analyze_treatment_effect_subgroups_height(
+            data = data,
+            subgroup_var = subgroup_var,
+            percentile_cut = 0.5,
+            confounders = confounders,
+            include_baseline_height = TRUE
+        )
+        if (!is.null(result$subgroup_effects) && nrow(result$subgroup_effects) > 0) {
+            tab_name <- tools::toTitleCase(gsub("_", " ", subgroup_var))
+            tab_name <- gsub("[^A-Za-z0-9_]", "_", tab_name)
+            tab_name <- substr(tab_name, 1, 31)
+            sensitivity_diagnostics_list[[tab_name]] <- result$subgroup_effects
+        }
+    }
+    consolidated_sensitivity_path <- file.path(output_dirs$obj1_subgroup_sensitivity, paste0(prefix, "sensitivity_tumor_height_diagnostics.xlsx"))
+    writexl::write_xlsx(sensitivity_diagnostics_list, consolidated_sensitivity_path)
+    log_enhanced(sprintf("Sensitivity tumor height diagnostics written to %s with %d tabs", consolidated_sensitivity_path, length(sensitivity_diagnostics_list)), level = "INFO", indent = 1)
     
     # 1g. PRIMARY OUTCOMES SUBGROUP ANALYSIS
     log_function("primary_outcomes_subgroup_analysis", "Subgroup analysis for primary clinical outcomes")
@@ -540,18 +550,23 @@ run_my_analysis <- function(dataset_name) {
         dir.create(primary_outcomes_subgroup_dir, recursive = TRUE, showWarnings = FALSE)
     }
     
-    # Save formatted tables for each primary outcome
+    # CLINICAL OUTCOMES SUBGROUP ANALYSIS CONSOLIDATION
+    clinical_outcomes_diagnostics <- list()
     for (outcome_name in names(primary_outcomes_subgroup_results)) {
         outcome_results <- primary_outcomes_subgroup_results[[outcome_name]]
-        effect_measure <- ifelse(outcome_name %in% c("overall_survival", "progression_free_survival"), "HR", "OR")
-        
-        formatted_table <- format_subgroup_analysis_results(
-            subgroup_results = outcome_results,
-            outcome_name = tools::toTitleCase(gsub("_", " ", outcome_name)),
-            effect_measure = effect_measure,
-            output_path = file.path(primary_outcomes_subgroup_dir, paste0(prefix, outcome_name, "_subgroup_analysis.xlsx"))
-        )
+        for (var_name in names(outcome_results)) {
+            var_result <- outcome_results[[var_name]]
+            if (!is.null(var_result$subgroup_effects) && nrow(var_result$subgroup_effects) > 0) {
+                tab_name <- paste0(tools::toTitleCase(gsub("_", " ", outcome_name)), "_", tools::toTitleCase(gsub("_", " ", var_name)))
+                tab_name <- gsub("[^A-Za-z0-9_]", "_", tab_name)
+                tab_name <- substr(tab_name, 1, 31)
+                clinical_outcomes_diagnostics[[tab_name]] <- var_result$subgroup_effects
+            }
+        }
     }
+    consolidated_clinical_path <- file.path(primary_outcomes_subgroup_dir, paste0(prefix, "clinical_outcomes_diagnostics.xlsx"))
+    writexl::write_xlsx(clinical_outcomes_diagnostics, consolidated_clinical_path)
+    log_enhanced(sprintf("Clinical outcomes diagnostics written to %s with %d tabs", consolidated_clinical_path, length(clinical_outcomes_diagnostics)), level = "INFO", indent = 1)
     
     # Save all primary outcomes subgroup results as RDS
     saveRDS(primary_outcomes_subgroup_results, 
@@ -589,10 +604,7 @@ run_my_analysis <- function(dataset_name) {
         confounders = confounders,
         dataset_name = dataset_name
     )
-    # Collect diagnostics
-    if (!is.null(retinopathy_rates$diagnostics)) {
-        diagnostics_list[["retinopathy_logistic"]] <- retinopathy_rates$diagnostics
-    }
+
     log_enhanced("Retinopathy analysis completed", level = "INFO", indent = 1)
     
     # 2b2. Neovascular glaucoma (NVG)
@@ -603,10 +615,7 @@ run_my_analysis <- function(dataset_name) {
         confounders = confounders,
         dataset_name = dataset_name
     )
-    # Collect diagnostics
-    if (!is.null(nvg_rates$diagnostics)) {
-        diagnostics_list[["nvg_logistic"]] <- nvg_rates$diagnostics
-    }
+
     log_enhanced("Neovascular glaucoma analysis completed", level = "INFO", indent = 1)
     
     # 2b3. Serous retinal detachment (SRD) - only radiation-induced
@@ -617,16 +626,8 @@ run_my_analysis <- function(dataset_name) {
         confounders = confounders,
         dataset_name = dataset_name
     )
-    # Collect diagnostics
-    if (!is.null(srd_rates$diagnostics)) {
-        diagnostics_list[["srd_logistic"]] <- srd_rates$diagnostics
-    }
+
     log_enhanced("Serous retinal detachment analysis completed", level = "INFO", indent = 1)
-    
-    # Write consolidated diagnostics Excel file for all analyses
-    consolidated_diagnostics_path <- file.path(output_dirs[["efficacy"]], paste0(prefix, "consolidated_diagnostics.xlsx"))
-    write_diagnostics_excel(diagnostics_list, consolidated_diagnostics_path)
-    log_enhanced(sprintf("Consolidated diagnostics written to %s with %d tabs", consolidated_diagnostics_path, length(diagnostics_list)), level = "INFO", indent = 1)
     
     log_section_complete("STEP 2: SAFETY/TOXICITY ANALYSIS", step2_start_time)
     

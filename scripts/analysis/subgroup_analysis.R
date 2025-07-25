@@ -203,7 +203,7 @@ analyze_treatment_effect_subgroups_binary <- function(data, outcome_var, subgrou
 #'
 #' @examples
 #' analyze_treatment_effect_subgroups_height(data, "age_at_diagnosis", confounders = c("sex", "location"))
-analyze_treatment_effect_subgroups_height <- function(data, subgroup_var, percentile_cut = 0.5, confounders = NULL, include_baseline_height = FALSE, create_tables = FALSE) {
+analyze_treatment_effect_subgroups_height <- function(data, subgroup_var, percentile_cut = 0.5, confounders = NULL, include_baseline_height = FALSE, create_tables = CREATE_SUBGROUP_TABLES) {
     # Calculate tumor height change if not already present
     if (!("height_change" %in% names(data))) {
         data <- data %>%
@@ -896,8 +896,9 @@ calculate_subgroup_effects <- function(model, data, subgroup_var_to_use, outcome
 #' @param dataset_name Character string for the dataset name
 #' @param subgroup_dir Character string for the output directory
 #' @param prefix Character string for file prefix
+#' @param create_tables Logical, whether to create formatted HTML tables (default: FALSE for individual calls)
 #' @return None (saves tables as side effect)
-format_subgroup_analysis_tables <- function(subgroup_results, dataset_name, subgroup_dir, prefix) {
+format_subgroup_analysis_tables <- function(subgroup_results, dataset_name, subgroup_dir, prefix, create_tables = CREATE_SUBGROUP_TABLES) {
     
     if (is.null(subgroup_results) || length(subgroup_results) == 0) {
         warning("No subgroup results provided for formatting")
@@ -924,7 +925,8 @@ format_subgroup_analysis_tables <- function(subgroup_results, dataset_name, subg
                 subgroup_results = setNames(list(var_results), var_name),
                 outcome_name = paste("Tumor Height Change -", dataset_name),
                 effect_measure = "MD",  # Mean Difference for height change
-                output_path = file.path(subgroup_dir, paste0(prefix, var_name, "_subgroup_analysis.xlsx"))
+                output_path = file.path(subgroup_dir, paste0(prefix, var_name, "_subgroup_analysis.xlsx")),
+                create_tables = create_tables
             )
             
         }, error = function(e) {
@@ -945,8 +947,9 @@ format_subgroup_analysis_tables <- function(subgroup_results, dataset_name, subg
 #' @param outcome_name Name of the outcome being analyzed
 #' @param effect_measure Type of effect measure ("HR" for hazard ratio, "OR" for odds ratio, "MD" for mean difference)
 #' @param output_path Full path for saving the Excel table (HTML will be saved with .html extension)
+#' @param create_tables Logical, whether to create formatted HTML tables (default: FALSE for individual calls)
 #' @return Formatted data frame
-format_subgroup_analysis_results <- function(subgroup_results, outcome_name, effect_measure = "HR", output_path = NULL) {
+format_subgroup_analysis_results <- function(subgroup_results, outcome_name, effect_measure = "HR", output_path = NULL, create_tables = CREATE_SUBGROUP_TABLES) {
     
     if (is.null(subgroup_results) || length(subgroup_results) == 0) {
         warning("No subgroup results provided for formatting")
@@ -1166,16 +1169,20 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
         select(-is_header, -variable_name)
 
     # Save Excel table if path provided
+    # (DISABLED: Do not write Excel diagnostics file here)
+    # if (!is.null(output_path)) {
+    #     if (create_tables) {
+    #         consolidated_data <- list(
+    #             "Results" = excel_table,
+    #             "Diagnostics" = diagnostics_df
+    #         )
+    #         write_diagnostics_excel(consolidated_data, output_path)
+    #         log_enhanced(sprintf("Subgroup analysis saved to: %s with %d tabs", output_path, length(consolidated_data)), level = "INFO")
+    #     }
+    # }
+
+    # Create styled HTML version
     if (!is.null(output_path)) {
-        writexl::write_xlsx(excel_table, output_path)
-        log_enhanced(sprintf("Subgroup analysis table saved to: %s", output_path), level = "INFO")
-        
-        # Write diagnostics Excel file
-        diagnostics_path <- gsub("\\.xlsx$", "_diagnostics.xlsx", output_path)
-        write_analysis_diagnostics_excel(diagnostics_df, diagnostics_path)
-        log_enhanced(sprintf("Subgroup analysis diagnostics written to %s", diagnostics_path), level = "INFO")
-        
-        # Create styled HTML version
         tryCatch({
             # Create HTML table with gtsummary-style formatting
             html_table <- final_table %>%
@@ -1212,14 +1219,12 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
                     style = cell_text(weight = "bold"),
                     locations = cells_column_labels()
                 )
-            
             # Save HTML version
             html_path <- gsub("\\.xlsx$", ".html", output_path)
             save_gt_html(html_table, filename = html_path)
             log_enhanced(sprintf("Styled HTML subgroup analysis table saved to: %s", html_path), level = "INFO")
-            
         }, error = function(e) {
-            warning(sprintf("Failed to create HTML version: %s", e$message))
+            warning(sprintf("Failed to save HTML table for %s: %s", outcome_name, e$message))
         })
     }
 

@@ -1,3 +1,23 @@
+########################################################
+############### ANALYSIS SETTINGS #####################
+########################################################
+
+# Toggle logging functionality
+USE_LOGS <- TRUE
+
+# Toggle to control whether to recreate analytic datasets (default: FALSE)
+# Set to TRUE if you need to reprocess raw data or if data has changed
+RECREATE_ANALYTIC_DATASETS <- FALSE
+
+# Set to FALSE to suppress detailed logging in analysis functions
+VERBOSE <- TRUE
+
+# Set to TRUE to show all individual p-values in regression tables
+# Set to FALSE to show only grouped p-values (one per variable group)
+SHOW_ALL_PVALUES <- TRUE
+
+CREATE_SUBGROUP_TABLES <- TRUE
+
 ######################################################################
 ############### LOAD / INSTALL REQUIRED LIBRARIES ####################
 ######################################################################
@@ -19,6 +39,23 @@ use <- function(pkg) {
         library(pkg, character.only = TRUE)
     )
 }
+
+######################################################################
+############### CREATE NECESSARY DIRECTORIES ##########################
+######################################################################
+
+# Create necessary directories now that libraries are loaded
+dir.create(PROCESSED_DATA_DIR, showWarnings = FALSE, recursive = TRUE)
+dir.create(OUTPUT_DIR, showWarnings = FALSE, recursive = TRUE)
+
+######################################################################
+############### LOAD / INSTALL REQUIRED LIBRARIES ####################
+######################################################################
+
+# For installation of all required libraries, run the following command:
+# Requires R version 4.4.0 or higher
+# install.packages(c("tidyverse", "readxl", "writexl", "lubridate", "gtsummary", "janitor", "survival", "survminer", "gt", "cardx", "forestploter", "grid", "cowplot", "DiagrammeR", "DiagrammeRsvg", "rsvg", "survRM2", "rms", "pec", "survcomp", "riskRegression", "cmprsk", "pROC", "rmda", "VIM", "mice"))
+# if (!require("BiocManager", quietly = TRUE)) install.packages("BiocManager"); BiocManager::install("survcomp")
 
 # Data wrangling & core utilities
 use("tidyverse") # For data manipulation and visualization (dplyr, ggplot2, etc.)
@@ -58,10 +95,9 @@ use("rmda") # Risk-model decision analysis
 use("VIM") # Visualization & imputation of missing values
 use("mice") # Multiple imputation by chained equations
 
-# For installation of all required libraries, run the following command:
-# Requires R version 4.4.0 or higher
-# install.packages(c("tidyverse", "readxl", "writexl", "lubridate", "gtsummary", "janitor", "survival", "survminer", "gt", "cardx", "forestploter", "grid", "cowplot", "DiagrammeR", "DiagrammeRsvg", "rsvg", "survRM2", "rms", "pec", "survcomp", "riskRegression", "cmprsk", "pROC", "rmda", "VIM", "mice"))
-# if (!require("BiocManager", quietly = TRUE)) install.packages("BiocManager"); BiocManager::install("survcomp")
+######################################################################
+############### SOURCE ALL NECESSARY SCRIPTS #########################
+######################################################################
 
 # Source the analysis configuration first (contains all global variables)
 source("scripts/utils/analysis_config.R")
