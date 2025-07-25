@@ -41,14 +41,6 @@ use <- function(pkg) {
 }
 
 ######################################################################
-############### CREATE NECESSARY DIRECTORIES ##########################
-######################################################################
-
-# Create necessary directories now that libraries are loaded
-dir.create(PROCESSED_DATA_DIR, showWarnings = FALSE, recursive = TRUE)
-dir.create(OUTPUT_DIR, showWarnings = FALSE, recursive = TRUE)
-
-######################################################################
 ############### LOAD / INSTALL REQUIRED LIBRARIES ####################
 ######################################################################
 
@@ -119,3 +111,11 @@ source("scripts/analysis/gep_validation_analysis.R")
 
 # Source the forest plot script
 source("scripts/visualization/forest_plot.R")
+
+######################################################################
+############### CREATE NECESSARY DIRECTORIES ##########################
+######################################################################
+
+# Create necessary directories now that libraries are loaded
+dir.create(PROCESSED_DATA_DIR, showWarnings = FALSE, recursive = TRUE)
+dir.create(OUTPUT_DIR, showWarnings = FALSE, recursive = TRUE)

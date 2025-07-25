@@ -53,8 +53,11 @@ analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var,
 
     # Handle rare categories in confounders for model stability
     rare_fix_data <- data
+    other_map <- list()
     if (!is.null(confounders) && handle_rare) {
-        rare_fix_data <- handle_rare_categories(data, confounders, threshold = THRESHOLD_RARITY)
+        rare_result <- handle_rare_categories(data, confounders, threshold = THRESHOLD_RARITY)
+        rare_fix_data <- rare_result$data
+        other_map <- rare_result$other_map
     }
     
     # Apply rare category handling to main predictor variables to prevent extreme ORs
@@ -62,7 +65,9 @@ analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var,
     if (length(predictor_vars) > 0 && handle_rare) {
         log_enhanced(sprintf("Applying rare category filtering to %s to prevent extreme ORs (threshold: %d)", 
                            paste(predictor_vars, collapse=", "), THRESHOLD_RARITY), level = "INFO")
-        rare_fix_data <- handle_rare_categories(rare_fix_data, vars = predictor_vars, threshold = THRESHOLD_RARITY)
+        rare_result2 <- handle_rare_categories(rare_fix_data, vars = predictor_vars, threshold = THRESHOLD_RARITY)
+        rare_fix_data <- rare_result2$data
+        other_map <- c(other_map, rare_result2$other_map)
     }
 
     # Remove rows that have events before treatment
@@ -209,11 +214,20 @@ analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var,
             update = all_stat_cols() ~ "Reference level: Plaque"
         )
 
-    # Add source note to the table
+    # Add source note to the table, checking all covariates for 'Other'
+    other_caption <- ""
+    covariates_to_check <- unique(c(group_var, confounders_to_use))
+    for (covar in covariates_to_check) {
+        if (!is.null(fix_event_data[[covar]]) && is.factor(fix_event_data[[covar]]) &&
+            "Other" %in% levels(fix_event_data[[covar]]) &&
+            !is.null(other_map[[covar]]) && length(other_map[[covar]]) > 0) {
+            other_caption <- paste0(other_caption, sprintf("\n\n'Other' in %s includes: %s", covar, paste(other_map[[covar]], collapse = ", ")))
+        }
+    }
     gt_tbl <- as_gt(tbl) %>% 
         tab_source_note(
             source_note = md(sprintf(
-                "Reference %s level: **%s**\n\nModel: *%s*\n\n%s\n\n%s",
+                "Reference %s level: **%s**\n\nModel: *%s*\n\n%s\n\n%s%s",
                 group_var,
                 levels(fix_event_data[[group_var]])[1], 
                 formula_str,
@@ -222,7 +236,8 @@ analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var,
                 } else {
                     sprintf("Number of rows included with %s before treatment: %d", event_var, nrow(rare_fix_data) - nrow(fix_event_data))
                 },
-                sprintf("Dataset: %s", dataset_name)
+                sprintf("Dataset: %s", dataset_name),
+                other_caption
             ))
         )
     
@@ -308,8 +323,11 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
 
     # Handle rare categories in confounders for model stability
     rare_fix_data <- data
+    other_map <- list()
     if (!is.null(confounders) && handle_rare) {
-        rare_fix_data <- handle_rare_categories(data, confounders, threshold = THRESHOLD_RARITY)
+       rare_result <- handle_rare_categories(data, confounders, threshold = THRESHOLD_RARITY)
+       rare_fix_data <- rare_result$data
+       other_map <- rare_result$other_map
     }
     
     # Apply rare category handling to main predictor variables to prevent extreme ORs
@@ -317,7 +335,9 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     if (length(predictor_vars) > 0 && handle_rare) {
         log_enhanced(sprintf("Applying rare category filtering to %s to prevent extreme ORs (threshold: %d)", 
                            paste(predictor_vars, collapse=", "), THRESHOLD_RARITY), level = "INFO")
-        rare_fix_data <- handle_rare_categories(rare_fix_data, vars = predictor_vars, threshold = THRESHOLD_RARITY)
+        rare_result2 <- handle_rare_categories(rare_fix_data, vars = predictor_vars, threshold = THRESHOLD_RARITY)
+        rare_fix_data <- rare_result2$data
+        other_map <- c(other_map, rare_result2$other_map)
     }
 
     # Remove rows that have events before treatment
@@ -807,11 +827,15 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         )
 
     # Add source note
+    other_caption <- ""
+    if ("Other" %in% levels(fix_event_data[[group_var]]) && !is.null(other_map[[group_var]]) && length(other_map[[group_var]]) > 0) {
+        other_caption <- sprintf("\n\n'Other' includes: %s", paste(other_map[[group_var]], collapse = ", "))
+    }
     cox_table <- cox_table_formatted %>%
         as_gt() %>%
         tab_source_note(
             source_note = md(sprintf(
-                "Reference %s level: **%s**\n\nModel: *%s*\n\n%s\n\n%s",
+                "Reference %s level: **%s**\n\nModel: *%s*\n\n%s\n\n%s%s",
                 group_var,
                 levels(fix_event_data[[group_var]])[1],
                 formula_str,
@@ -820,7 +844,8 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
                 } else {
                     sprintf("Number of rows included with %s before treatment: %d", event_var, nrow(rare_fix_data) - nrow(fix_event_data))
                 },
-                sprintf("Dataset: %s", dataset_name)
+                sprintf("Dataset: %s", dataset_name),
+                other_caption
             ))
         )
 

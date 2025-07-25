@@ -236,8 +236,24 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
         modify_caption(paste("Rates of", tools::toTitleCase(sequela_type), "by Treatment Group"))
     
     # Convert to gt table and save
+    other_caption <- ""
+    if ("Other" %in% levels(data[[outcome_var]]) && !is.null(other_map[[outcome_var]]) && length(other_map[[outcome_var]]) > 0) {
+        other_caption <- sprintf("\n\n'Other' includes: %s", paste(other_map[[outcome_var]], collapse = ", "))
+    }
     tbl <- tbl_summary_obj %>%
-        as_gt()
+        as_gt() %>%
+        tab_source_note(
+            source_note = md(paste0("Summary table generated automatically.", other_caption))
+        )
+    
+    # Add caption for 'Other' if present
+    if ("Other" %in% levels(data[[outcome_var]]) && !is.null(other_map[[outcome_var]]) && length(other_map[[outcome_var]]) > 0) {
+        tbl <- tbl %>%
+            tab_footnote(
+                footnote = md(sprintf("'Other' includes: %s", paste(other_map[[outcome_var]], collapse = ", "))),
+                locations = cells_title(groups = "title")
+            )
+    }
     
     # Save summary table
     save_gt_html(
@@ -255,10 +271,13 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
         
         # Apply rare category handling to main predictor variables to prevent extreme ORs
         predictor_vars <- intersect(names(data), c("location", "initial_overall_stage", "initial_t_stage"))
+        other_map <- list()
         if (length(predictor_vars) > 0) {
             log_enhanced(sprintf("Applying rare category filtering to %s to prevent extreme ORs (threshold: %d)", 
                                paste(predictor_vars, collapse=", "), THRESHOLD_RARITY), level = "INFO")
-            model_data <- handle_rare_categories(model_data, vars = predictor_vars, threshold = THRESHOLD_RARITY)
+            rare_result <- handle_rare_categories(model_data, vars = predictor_vars, threshold = THRESHOLD_RARITY)
+            model_data <- rare_result$data
+            other_map <- rare_result$other_map
         }
         
         # Validate confounders
@@ -378,8 +397,15 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
             )
         
         # Save regression table
+        other_caption <- ""
+        if ("Other" %in% levels(data[[outcome_var]]) && !is.null(other_map[[outcome_var]]) && length(other_map[[outcome_var]]) > 0) {
+            other_caption <- sprintf("\n\n'Other' includes: %s", paste(other_map[[outcome_var]], collapse = ", "))
+        }
         save_gt_html(
-            model_result %>% as_gt(),
+            model_result %>% as_gt() %>%
+                tab_source_note(
+                    source_note = md(paste0("Logistic regression table generated automatically.", other_caption))
+                ),
             filename = file.path(output_dir, paste0(prefix, sequela_type, "_logistic_regression.html"))
         )
         

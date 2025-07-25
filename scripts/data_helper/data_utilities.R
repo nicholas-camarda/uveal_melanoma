@@ -29,6 +29,7 @@ list_available_datasets <- function() {
 #' @examples
 #' handle_rare_categories(data, vars = c("sex", "location"), threshold = 5)
 handle_rare_categories <- function(data, vars, threshold = 5) {
+    other_map <- list()
     if (VERBOSE) {
         log_enhanced(sprintf("\nChecking for rare categories (threshold: %d):", threshold))
     }
@@ -43,7 +44,6 @@ handle_rare_categories <- function(data, vars, threshold = 5) {
 
             if (length(rare_cats) > 0) {
                 # Check if collapsing would leave at least 2 valid levels
-                # (1 from valid_cats + 1 from combined rare_cats)
                 total_rare_count <- sum(cat_counts[rare_cats])
                 would_have_valid_other <- total_rare_count >= threshold
                 final_valid_levels <- length(valid_cats) + (if (would_have_valid_other) 1 else 0)
@@ -60,10 +60,13 @@ handle_rare_categories <- function(data, vars, threshold = 5) {
                     data[[var]] <- fct_collapse(data[[var]],
                         Other = rare_cats
                     ) %>%
-                        fct_drop() %>%  # Drop unused factor levels to prevent rank deficient model matrix
+                        fct_drop() %>%
                         fct_relevel("Other", after = Inf) %>%
-                        factor()  # Explicitly recreate factor to ensure clean levels
+                        factor()
                     
+                    # Track which categories were collapsed into Other
+                    other_map[[var]] <- rare_cats
+
                     # Diagnostic logging to verify the fix worked
                     if (VERBOSE) {
                         log_enhanced(sprintf("After collapse - %s levels: %s", var, paste(levels(data[[var]]), collapse=", ")))
@@ -80,7 +83,8 @@ handle_rare_categories <- function(data, vars, threshold = 5) {
         }
     }
 
-    return(data)
+    # Return both the modified data and the mapping of 'Other' categories
+    return(list(data = data, other_map = other_map))
 }
 
 #' Generate valid confounders

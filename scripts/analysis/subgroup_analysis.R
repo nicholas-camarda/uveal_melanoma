@@ -163,7 +163,8 @@ analyze_treatment_effect_subgroups_binary <- function(data, outcome_var, subgrou
                 confounders_used = processed_results$confounders_to_use,
                 was_continuous = processed_results$was_continuous,
                 cutoff_value = processed_results$cutoff_value,
-                interaction_diagnostics = model_results$interaction_diagnostics
+                interaction_diagnostics = model_results$interaction_diagnostics,
+                other_map = processed_results$other_map # Collect other_map from process_subgroup_data
             )
 
             log_enhanced(sprintf("  Interaction p-value: %.4f", ifelse(is.na(model_results$interaction_p), 999, model_results$interaction_p)), level = "INFO")
@@ -178,7 +179,18 @@ analyze_treatment_effect_subgroups_binary <- function(data, outcome_var, subgrou
         })
     }
 
-    return(subgroup_results)
+    # Collect other_map from all variables
+    other_map <- list()
+    for (var_name in names(subgroup_results)) {
+        if (!is.null(subgroup_results[[var_name]]) && !is.null(subgroup_results[[var_name]]$other_map)) {
+            other_map[[var_name]] <- subgroup_results[[var_name]]$other_map
+        }
+    }
+
+    return(list(
+        subgroup_results = subgroup_results,
+        other_map = other_map
+    ))
 }
 
 #' Analyze treatment effects across subgroups for tumor height change
@@ -280,7 +292,8 @@ analyze_treatment_effect_subgroups_height <- function(data, subgroup_var, percen
         subgroup_var_used = processed_results$subgroup_var_to_use,
         formula_used = model_results$formula_used,
         confounders_used = processed_results$confounders_to_use,
-        interaction_diagnostics = model_results$interaction_diagnostics  # CRITICAL: This was missing!
+        interaction_diagnostics = model_results$interaction_diagnostics,
+        other_map = if (!is.null(processed_results$other_map)) processed_results$other_map else list()
     ))
 }
 
@@ -291,6 +304,9 @@ analyze_treatment_effect_subgroups_height <- function(data, subgroup_var, percen
 #' @param include_baseline_height For tumor height analysis - include initial height
 #' @return List with processed data and variable names
 process_subgroup_data <- function(data, subgroup_var, confounders, include_baseline_height = FALSE) {
+    # Initialize other_map
+    other_map <- list()
+    
     # Check if subgroup variable exists
     if (!subgroup_var %in% names(data)) {
         stop(sprintf("Variable '%s' not found in data", subgroup_var))
@@ -342,7 +358,9 @@ process_subgroup_data <- function(data, subgroup_var, confounders, include_basel
             cutoff_value <- cutoff_val
             
             # CRITICAL FIX: Apply rare category handling to T-stage clinical bins
-            processed_data <- handle_rare_categories(processed_data, vars = subgroup_var_binned, threshold = THRESHOLD_RARITY)
+            rare_result <- handle_rare_categories(processed_data, vars = subgroup_var_binned, threshold = THRESHOLD_RARITY)
+            processed_data <- rare_result$data
+            other_map <- rare_result$other_map
             
         } else {
             # Use simple binary split (original logic)
@@ -366,7 +384,9 @@ process_subgroup_data <- function(data, subgroup_var, confounders, include_basel
         if (!is.factor(processed_data[[subgroup_var]])) {
             processed_data[[subgroup_var]] <- as.factor(processed_data[[subgroup_var]])
         }
-        processed_data <- handle_rare_categories(processed_data, vars = subgroup_var, threshold = THRESHOLD_RARITY)
+        rare_result <- handle_rare_categories(processed_data, vars = subgroup_var, threshold = THRESHOLD_RARITY)
+        processed_data <- rare_result$data
+        other_map <- rare_result$other_map
         subgroup_var_to_use <- subgroup_var
     }
 
@@ -398,7 +418,8 @@ process_subgroup_data <- function(data, subgroup_var, confounders, include_basel
         subgroup_var_to_use = subgroup_var_to_use,
         confounders_to_use = confounders_to_use,
         was_continuous = was_continuous,
-        cutoff_value = cutoff_value
+        cutoff_value = cutoff_value,
+        other_map = other_map
     ))
 }
 
@@ -887,6 +908,23 @@ calculate_subgroup_effects <- function(model, data, subgroup_var_to_use, outcome
     return(subgroup_effects)
 }
 
+#' Format p-values for display
+#'
+#' @param p_value Numeric p-value
+#' @return Character string of formatted p-value
+format_p_value <- function(p_value) {
+    if (is.na(p_value) || is.null(p_value)) {
+        return("")
+    }
+    if (p_value < 0.001) {
+        return("<0.001")
+    } else if (p_value < 0.01) {
+        return(sprintf("%.3f", p_value))
+    } else {
+        return(sprintf("%.2f", p_value))
+    }
+}
+
 #' Format Subgroup Analysis Tables (wrapper function for main.R)
 #'
 #' This is a wrapper function that main.R calls to format subgroup analysis tables.
@@ -905,18 +943,39 @@ format_subgroup_analysis_tables <- function(subgroup_results, dataset_name, subg
         return(invisible(NULL))
     }
     
+    # Handle nested list structure (subgroup_results and other_map)
+    if ("subgroup_results" %in% names(subgroup_results)) {
+        actual_subgroup_results <- subgroup_results$subgroup_results
+        other_map <- if ("other_map" %in% names(subgroup_results)) subgroup_results$other_map else NULL
+    } else {
+        actual_subgroup_results <- subgroup_results
+        other_map <- NULL
+    }
+    
+    if (is.null(actual_subgroup_results) || length(actual_subgroup_results) == 0) {
+        warning("No subgroup results provided for formatting")
+        return(invisible(NULL))
+    }
+    
     # Create the output directory if it doesn't exist
     if (!dir.exists(subgroup_dir)) {
         dir.create(subgroup_dir, recursive = TRUE, showWarnings = FALSE)
     }
     
     # Format tables for each subgroup variable
-    for (var_name in names(subgroup_results)) {
-        var_results <- subgroup_results[[var_name]]
+    for (var_name in names(actual_subgroup_results)) {
+        var_results <- actual_subgroup_results[[var_name]]
         
         # Skip if no valid results
         if (is.null(var_results) || is.null(var_results$subgroup_effects)) {
             next
+        }
+        
+        # Get variable-specific other_map
+        var_other_map <- if (!is.null(other_map) && length(other_map) > 0 && var_name %in% names(other_map) && !is.null(other_map[[var_name]]) && length(other_map[[var_name]]) > 0) {
+            setNames(list(other_map[[var_name]]), var_name)
+        } else {
+            NULL
         }
         
         # Create formatted table using the existing function
@@ -926,7 +985,8 @@ format_subgroup_analysis_tables <- function(subgroup_results, dataset_name, subg
                 outcome_name = paste("Tumor Height Change -", dataset_name),
                 effect_measure = "MD",  # Mean Difference for height change
                 output_path = file.path(subgroup_dir, paste0(prefix, var_name, "_subgroup_analysis.xlsx")),
-                create_tables = create_tables
+                create_tables = create_tables,
+                other_map = var_other_map
             )
             
         }, error = function(e) {
@@ -948,8 +1008,9 @@ format_subgroup_analysis_tables <- function(subgroup_results, dataset_name, subg
 #' @param effect_measure Type of effect measure ("HR" for hazard ratio, "OR" for odds ratio, "MD" for mean difference)
 #' @param output_path Full path for saving the Excel table (HTML will be saved with .html extension)
 #' @param create_tables Logical, whether to create formatted HTML tables (default: FALSE for individual calls)
+#' @param other_map A list mapping subgroup variable names to their "Other" categories
 #' @return Formatted data frame
-format_subgroup_analysis_results <- function(subgroup_results, outcome_name, effect_measure = "HR", output_path = NULL, create_tables = CREATE_SUBGROUP_TABLES) {
+format_subgroup_analysis_results <- function(subgroup_results, outcome_name, effect_measure = "HR", output_path = NULL, create_tables = CREATE_SUBGROUP_TABLES, other_map = NULL) {
     
     if (is.null(subgroup_results) || length(subgroup_results) == 0) {
         warning("No subgroup results provided for formatting")
@@ -1010,9 +1071,7 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
                 
                 # Format subgroup level name with indentation
                 level_name <- as.character(row_data$subgroup_level)
-                if (var_name == "optic_nerve") {
-                    level_name <- ifelse(level_name == "Y", "Yes", "No")
-                }
+                # Remove the incorrect optic_nerve conversion - let the actual data values be used
                 
                 # Create subgroup row
                 subgroup_row <- data.frame(
@@ -1219,7 +1278,28 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
                     style = cell_text(weight = "bold"),
                     locations = cells_column_labels()
                 )
-            # Save HTML version
+            # Add 'Other' info to source note if present
+            other_caption <- ""
+            has_other_categories <- any(grepl('Other', final_table$`Subgroup Level`))
+            
+            if (!is.null(other_map) && length(other_map) > 0 && has_other_categories) {
+                for (var_name in names(subgroup_results)) {
+                    if (var_name %in% names(other_map) && !is.null(other_map[[var_name]]) && length(other_map[[var_name]]) > 0) {
+                        other_caption <- paste0(other_caption, sprintf("\n\n'Other' in %s includes: %s", var_name, paste(other_map[[var_name]], collapse = ", ")))
+                    }
+                }
+            }
+            
+            if (other_caption == "" && has_other_categories) {
+                other_caption <- "\n\n'Other' category exists but no specific categories were documented as collapsed."
+            } else if (other_caption == "" && !has_other_categories) {
+                other_caption <- "\n\nNo rare categories were collapsed into 'Other'."
+            }
+            
+            html_table <- html_table %>%
+                tab_source_note(
+                    source_note = md(other_caption)
+                )
             html_path <- gsub("\\.xlsx$", ".html", output_path)
             save_gt_html(html_table, filename = html_path)
             log_enhanced(sprintf("Styled HTML subgroup analysis table saved to: %s", html_path), level = "INFO")

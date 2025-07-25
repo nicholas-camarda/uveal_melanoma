@@ -15,12 +15,14 @@
 #' @param effect_measure Character string for the effect measure (default: "HR") 
 #' @param dataset_name Character string for the dataset name
 #' @param output_path Character string for output file path (optional)
+#' @param other_map List mapping variable names to "Other" category contents (optional)
 #' @return A forestploter object
 create_forest_plot <- function(subgroup_results, 
                                outcome_name,
                                effect_measure = "HR",
                                dataset_name = "Dataset",
-                               output_path = NULL) {
+                               output_path = NULL,
+                               other_map = NULL) {
     
     # Handle empty or NULL results
     if (is.null(subgroup_results) || length(subgroup_results) == 0) {
@@ -45,7 +47,8 @@ create_forest_plot <- function(subgroup_results,
             variable_order = variable_order,
             effect_measure = effect_measure,
             favours_labels = FAVOURS_LABELS,
-            clip = NULL
+            clip = NULL,
+            other_map = other_map
         )
         
         # Save to file if output_path is provided
@@ -78,6 +81,7 @@ create_forest_plot <- function(subgroup_results,
 #' @param favours_labels Character vector of length 2 for axis labels (e.g., c("Favours GKSRS", "Favours Plaque"))
 #' @param clip Numeric vector of length 2 for clipping range (default: c(0.1, 10))
 #' @param title Character string for plot title (optional)
+#' @param other_map List mapping variable names to "Other" category contents (optional)
 #' @return A forestploter object
 create_single_cohort_forest_plot <- function(subgroup_results, 
                                             outcome_name,
@@ -87,7 +91,8 @@ create_single_cohort_forest_plot <- function(subgroup_results,
                                             effect_measure = "HR",
                                             favours_labels = NULL,
                                             clip = NULL,
-                                            title = NULL) {
+                                            title = NULL,
+                                            other_map = NULL) {
     
     # Check that variable_order is provided
     if (missing(variable_order) || is.null(variable_order)) {
@@ -100,7 +105,7 @@ create_single_cohort_forest_plot <- function(subgroup_results,
     }
     
     # Create the formatted data for forestploter
-    plot_data <- create_forest_plot_data(subgroup_results, variable_order, treatment_labels, effect_measure)
+    plot_data <- create_forest_plot_data(subgroup_results, variable_order, treatment_labels, effect_measure, other_map)
     
     # Set default title
     if (is.null(title)) {
@@ -228,8 +233,9 @@ create_single_cohort_forest_plot <- function(subgroup_results,
 #' @param variable_order Character vector of variables to include (enforced for consistency)
 #' @param treatment_labels Character vector of treatment labels
 #' @param effect_measure Character string for effect measure
+#' @param other_map List mapping variable names to "Other" category contents (optional)
 #' @return List with formatted data for forestploter
-create_forest_plot_data <- function(subgroup_results, variable_order, treatment_labels, effect_measure) {
+create_forest_plot_data <- function(subgroup_results, variable_order, treatment_labels, effect_measure, other_map = NULL) {
     
     # Initialize data collection
     all_rows <- list()
@@ -242,18 +248,60 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
     missing_interaction_vars <- character(0)  # Track variables where interaction p could not be estimated
     diagnostics_rows <- list()
     
+    # Handle empty variable_order case
+    if (length(variable_order) == 0) {
+        # Return empty data structure
+        return(list(
+            data_frame = data.frame(
+                Subgroup = character(),
+                `GKSRS n/N` = character(),
+                `Plaque n/N` = character(),
+                ` ` = character(),
+                `HR (95% CI)` = character(),
+                `p-value` = character(),
+                `Int p` = character(),
+                stringsAsFactors = FALSE
+            ),
+            est_values = numeric(),
+            lower_values = numeric(),
+            upper_values = numeric(),
+            is_summary = logical(),
+            font_face = character(),
+            text_size = numeric(),
+            missing_interaction_vars = character(),
+            diagnostics = data.frame()
+        ))
+    }
+    
     # DO NOT create header row as data - forestploter creates headers from column names automatically
     
     # Process each variable in order
     for (var_name in variable_order) {
         
-        # Skip variable entirely if there is absolutely no subgroup data available
-        data_available <- var_name %in% names(subgroup_results) &&
-            !is.null(subgroup_results[[var_name]]$subgroup_effects) &&
-            nrow(subgroup_results[[var_name]]$subgroup_effects) > 0
-
-        if (!data_available) {
-            next  # Omit variable from plot
+        # Check if variable exists in results at all
+        if (!(var_name %in% names(subgroup_results))) {
+            # Variable missing from results - create a "no data" header
+            no_data_row <- data.frame(
+                Subgroup = format_variable_name(var_name),
+                GKSRS_n = "",
+                Plaque_n = "",
+                stringsAsFactors = FALSE
+            )
+            
+            # Add blank column for CI, subgroup p-value, and interaction p-value
+            no_data_row$` ` <- paste(rep(" ", 20), collapse = " ")
+            no_data_row$`HR (95% CI)` <- ""
+            no_data_row$`p-value` <- ""
+            no_data_row$`Interaction p` <- ""
+            
+            all_rows[[length(all_rows) + 1]] <- no_data_row
+            est_values <- c(est_values, NaN)
+            lower_values <- c(lower_values, NaN)
+            upper_values <- c(upper_values, NaN)
+            is_summary <- c(is_summary, TRUE)
+            font_face <- c(font_face, "italic")
+            text_size <- c(text_size, 0.8)
+            next
         }
         
         # Variable header row 
@@ -306,9 +354,9 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
         )
         
         all_rows[[length(all_rows) + 1]] <- var_header
-        est_values <- c(est_values, NA)
-        lower_values <- c(lower_values, NA)
-        upper_values <- c(upper_values, NA)
+        est_values <- c(est_values, NaN)
+        lower_values <- c(lower_values, NaN)
+        upper_values <- c(upper_values, NaN)
         is_summary <- c(is_summary, TRUE)
         font_face <- c(font_face, "bold")
         text_size <- c(text_size, 1.0)
@@ -405,7 +453,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                     
                     # Add blank column for CI, subgroup p-value, and interaction p-value
                     subgroup_row$` ` <- paste(rep(" ", 20), collapse = " ")
-                    subgroup_row$`HR (95% CI)` <- sprintf("%.2f (%.2f-%.2f)", 
+                    subgroup_row$`HR (95% CI)` <- sprintf("%.2f (%.2f, %.2f)", 
                                                          row_data$treatment_effect,
                                                          row_data$ci_lower,
                                                          row_data$ci_upper)
@@ -436,9 +484,9 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                 no_data_row$`Interaction p` <- ""
                 
                 all_rows[[length(all_rows) + 1]] <- no_data_row
-                est_values <- c(est_values, NA)
-                lower_values <- c(lower_values, NA)
-                upper_values <- c(upper_values, NA)
+                est_values <- c(est_values, NaN)
+                lower_values <- c(lower_values, NaN)
+                upper_values <- c(upper_values, NaN)
                 is_summary <- c(is_summary, TRUE)
                 font_face <- c(font_face, "italic")
                 text_size <- c(text_size, 0.8)
@@ -459,9 +507,9 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
             no_data_row$`Interaction p` <- ""
             
             all_rows[[length(all_rows) + 1]] <- no_data_row
-            est_values <- c(est_values, NA)
-            lower_values <- c(lower_values, NA)
-            upper_values <- c(upper_values, NA)
+            est_values <- c(est_values, NaN)
+            lower_values <- c(lower_values, NaN)
+            upper_values <- c(upper_values, NaN)
             is_summary <- c(is_summary, TRUE)
             font_face <- c(font_face, "italic")
             text_size <- c(text_size, 0.8)
@@ -469,7 +517,40 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
     }
     
     # Combine all rows into a data frame
-    final_df <- do.call(rbind, all_rows)
+    # Filter out NULL or invalid elements
+    valid_indices <- sapply(all_rows, function(x) !is.null(x) && is.data.frame(x) && nrow(x) > 0)
+    valid_rows <- all_rows[valid_indices]
+    
+    # Filter the corresponding vectors to maintain alignment
+    if (length(valid_rows) > 0) {
+        final_df <- do.call(rbind, valid_rows)
+        # Filter vectors to match the valid rows
+        est_values <- est_values[valid_indices]
+        lower_values <- lower_values[valid_indices]
+        upper_values <- upper_values[valid_indices]
+        is_summary <- is_summary[valid_indices]
+        font_face <- font_face[valid_indices]
+        text_size <- text_size[valid_indices]
+    } else {
+        # Create empty data frame with proper structure
+        final_df <- data.frame(
+            Subgroup = character(),
+            `GKSRS n/N` = character(),
+            `Plaque n/N` = character(),
+            ` ` = character(),
+            `HR (95% CI)` = character(),
+            `p-value` = character(),
+            `Int p` = character(),
+            stringsAsFactors = FALSE
+        )
+        # Reset vectors to empty
+        est_values <- numeric()
+        lower_values <- numeric()
+        upper_values <- numeric()
+        is_summary <- logical()
+        font_face <- character()
+        text_size <- numeric()
+    }
     
     # Set proper column names that will become the forestploter headers
     colnames(final_df) <- c(
@@ -487,10 +568,10 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
     if (toupper(effect_measure) %in% ratio_measures) {
         for (i in seq_along(est_values)) {
             if (!is.na(est_values[i]) && est_values[i] <= 0) {
-                est_values[i] <- NA; lower_values[i] <- NA; upper_values[i] <- NA; is_summary[i] <- TRUE
+                est_values[i] <- NaN; lower_values[i] <- NaN; upper_values[i] <- NaN; is_summary[i] <- TRUE
             }
             if (!is.na(lower_values[i]) && lower_values[i] <= 0) {
-                est_values[i] <- NA; lower_values[i] <- NA; upper_values[i] <- NA; is_summary[i] <- TRUE
+                est_values[i] <- NaN; lower_values[i] <- NaN; upper_values[i] <- NaN; is_summary[i] <- TRUE
             }
         }
     }
@@ -615,9 +696,51 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
     
     # Combine all diagnostics
     diagnostics_df <- if (length(combined_diagnostics) > 0) {
-        do.call(rbind, combined_diagnostics)
+        # Filter out NULL or invalid elements
+        valid_diagnostics <- combined_diagnostics[sapply(combined_diagnostics, function(x) !is.null(x) && is.data.frame(x) && nrow(x) > 0)]
+        if (length(valid_diagnostics) > 0) {
+            do.call(rbind, valid_diagnostics)
+        } else {
+            data.frame()
+        }
     } else {
         data.frame()
+    }
+    
+    # Add "Other" category information to diagnostics if available
+    if (!is.null(other_map) && length(other_map) > 0) {
+        other_info_rows <- list()
+        for (var_name in names(other_map)) {
+            if (!is.null(other_map[[var_name]]) && length(other_map[[var_name]]) > 0) {
+                other_row <- data.frame(
+                    variable = var_name,
+                    subgroup_level = "Other",
+                    n_total = NA,
+                    n_plaque = NA,
+                    n_gksrs = NA,
+                    events_plaque = NA,
+                    events_gksrs = NA,
+                    treatment_effect = NA,
+                    ci_lower = NA,
+                    ci_upper = NA,
+                    p_value = NA,
+                    status = "OTHER_CATEGORY",
+                    reason = sprintf("Categories collapsed into 'Other': %s", paste(other_map[[var_name]], collapse = ", ")),
+                    stringsAsFactors = FALSE
+                )
+                other_info_rows[[length(other_info_rows) + 1]] <- other_row
+            }
+        }
+        
+        # Add other category information to diagnostics
+        if (length(other_info_rows) > 0) {
+            # Filter out NULL or invalid elements
+            valid_other_rows <- other_info_rows[sapply(other_info_rows, function(x) !is.null(x) && is.data.frame(x) && nrow(x) > 0)]
+            if (length(valid_other_rows) > 0) {
+                other_df <- do.call(rbind, valid_other_rows)
+                diagnostics_df <- rbind(diagnostics_df, other_df)
+            }
+        }
     }
     
     return(list(

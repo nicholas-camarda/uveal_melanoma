@@ -1,5 +1,5 @@
 # Uveal Melanoma Treatment Outcomes Analysis
-# Author: Nicholas Camarda
+# Author: Nicholas Camarda 
 # Date: 5/10/2025
 # Description: Analysis comparing outcomes between Gamma Knife and plaque brachytherapy
 #              for uveal melanoma treatment, including both full and restricted cohort analyses
@@ -219,6 +219,7 @@ run_my_analysis <- function(dataset_name) {
     primary_start_time <- Sys.time()
     log_enhanced("PRIMARY SUBGROUP ANALYSIS (without baseline height adjustment)", level = "PROGRESS", indent = 1)
     primary_subgroup_results <- list()
+    primary_other_maps <- list()  # Collect other_map from all variables
     
     for (i in seq_along(subgroup_vars)) {
         subgroup_var <- subgroup_vars[i]
@@ -236,6 +237,16 @@ run_my_analysis <- function(dataset_name) {
         # Store results
         primary_subgroup_results[[subgroup_var]] <- result
         
+        # Collect other_map if available (only if result is not NULL)
+        if (!is.null(result) && !is.null(result$other_map) && length(result$other_map) > 0) {
+            # Use a more robust way to combine lists
+            for (var_name in names(result$other_map)) {
+                if (!is.null(result$other_map[[var_name]]) && length(result$other_map[[var_name]]) > 0) {
+                    primary_other_maps[[var_name]] <- result$other_map[[var_name]]
+                }
+            }
+        }
+        
         # Log the interaction p-value
         if (!is.na(result$interaction_p)) {
             p_status <- if (result$interaction_p < 0.05) "SIGNIFICANT" else "non-significant"
@@ -251,6 +262,7 @@ run_my_analysis <- function(dataset_name) {
     sensitivity_start_time <- Sys.time()
     log_enhanced("SENSITIVITY SUBGROUP ANALYSIS (with baseline height adjustment)", level = "PROGRESS", indent = 1)
     sensitivity_subgroup_results <- list()
+    sensitivity_other_maps <- list()  # Collect other_map from all variables
     
     for (i in seq_along(subgroup_vars)) {
         subgroup_var <- subgroup_vars[i]
@@ -268,6 +280,16 @@ run_my_analysis <- function(dataset_name) {
         # Store results
         sensitivity_subgroup_results[[subgroup_var]] <- result
         
+        # Collect other_map if available (only if result is not NULL)
+        if (!is.null(result) && !is.null(result$other_map) && length(result$other_map) > 0) {
+            # Use a more robust way to combine lists
+            for (var_name in names(result$other_map)) {
+                if (!is.null(result$other_map[[var_name]]) && length(result$other_map[[var_name]]) > 0) {
+                    sensitivity_other_maps[[var_name]] <- result$other_map[[var_name]]
+                }
+            }
+        }
+        
         # Log the interaction p-value
         if (!is.na(result$interaction_p)) {
             p_status <- if (result$interaction_p < 0.05) "SIGNIFICANT" else "non-significant"
@@ -282,7 +304,10 @@ run_my_analysis <- function(dataset_name) {
     # Create formatted HTML tables for subgroup analyses
     log_function("format_subgroup_analysis_tables", "Creating formatted PRIMARY subgroup analysis tables")
     format_subgroup_analysis_tables(
-        subgroup_results = primary_subgroup_results,
+        subgroup_results = list(
+            subgroup_results = primary_subgroup_results,
+            other_map = primary_other_maps
+        ),
         dataset_name = paste("PRIMARY -", display_name),
         subgroup_dir = output_dirs$obj1_subgroup_primary,
         prefix = paste0(prefix, "primary_")
@@ -290,7 +315,10 @@ run_my_analysis <- function(dataset_name) {
     
     log_function("format_subgroup_analysis_tables", "Creating formatted SENSITIVITY subgroup analysis tables")
     format_subgroup_analysis_tables(
-        subgroup_results = sensitivity_subgroup_results,
+        subgroup_results = list(
+            subgroup_results = sensitivity_subgroup_results,
+            other_map = sensitivity_other_maps
+        ),
         dataset_name = paste("SENSITIVITY -", display_name),
         subgroup_dir = output_dirs$obj1_subgroup_sensitivity,
         prefix = paste0(prefix, "sensitivity_")
@@ -311,7 +339,8 @@ run_my_analysis <- function(dataset_name) {
         variable_order = FOREST_PLOT_VARIABLE_ORDER,
         effect_measure = "MD",  # Mean Difference for continuous outcome
         favours_labels = FAVOURS_LABELS,
-        title = sprintf("Subgroup Analysis: Tumor Height Change - Primary (%s)", display_name)
+        title = sprintf("Subgroup Analysis: Tumor Height Change - Primary (%s)", display_name),
+        other_map = primary_other_maps # Pass the collected other_maps for diagnostics
     )
     
     # Collect diagnostics
@@ -333,7 +362,8 @@ run_my_analysis <- function(dataset_name) {
         variable_order = FOREST_PLOT_VARIABLE_ORDER,
         effect_measure = "MD",  # Mean Difference for continuous outcome
         favours_labels = FAVOURS_LABELS,
-        title = sprintf("Subgroup Analysis: Tumor Height Change - Sensitivity (%s)", display_name)
+        title = sprintf("Subgroup Analysis: Tumor Height Change - Sensitivity (%s)", display_name),
+        other_map = sensitivity_other_maps # Pass the collected other_maps for diagnostics
     )
     
     # Collect diagnostics
@@ -414,19 +444,23 @@ run_my_analysis <- function(dataset_name) {
     
     # 1g1. Local Recurrence Subgroup Analysis
     log_enhanced("Analyzing subgroup effects for Local Recurrence", level = "INFO", indent = 1)
-    recurrence_subgroup_results <- analyze_treatment_effect_subgroups_binary(
+    recurrence_subgroup_analysis <- analyze_treatment_effect_subgroups_binary(
         data = data,
         outcome_var = "recurrence1",
         subgroup_vars = subgroup_vars,
         confounders = confounders,
         outcome_name = "Local Recurrence"
     )
+    recurrence_subgroup_results <- recurrence_subgroup_analysis$subgroup_results
+    recurrence_other_map <- recurrence_subgroup_analysis$other_map
+    
     format_subgroup_analysis_results(
         subgroup_results = recurrence_subgroup_results,
         outcome_name = "Local Recurrence",
         effect_measure = "OR",
         output_path = file.path(primary_outcomes_subgroup_dir, paste0(prefix, "local_recurrence_subgroup_analysis.xlsx")),
-        create_tables = TRUE
+        create_tables = TRUE,
+        other_map = recurrence_other_map
     )
     
     # Create forest plot for local recurrence
@@ -438,7 +472,8 @@ run_my_analysis <- function(dataset_name) {
         variable_order = FOREST_PLOT_VARIABLE_ORDER,
         effect_measure = "OR",
         favours_labels = FAVOURS_LABELS,
-        title = sprintf("Subgroup Analysis: Local Recurrence (%s)", display_name)
+        title = sprintf("Subgroup Analysis: Local Recurrence (%s)", display_name),
+        other_map = recurrence_other_map # Pass for diagnostics
     )
     
     # Collect diagnostics
@@ -453,19 +488,23 @@ run_my_analysis <- function(dataset_name) {
     
     # 1g2. Metastatic Progression Subgroup Analysis
     log_enhanced("Analyzing subgroup effects for Metastatic Progression", level = "INFO", indent = 1)
-    mets_subgroup_results <- analyze_treatment_effect_subgroups_binary(
+    mets_subgroup_analysis <- analyze_treatment_effect_subgroups_binary(
         data = data,
         outcome_var = "mets_progression",
         subgroup_vars = subgroup_vars,
         confounders = confounders,
         outcome_name = "Metastatic Progression"
     )
+    mets_subgroup_results <- mets_subgroup_analysis$subgroup_results
+    mets_other_map <- mets_subgroup_analysis$other_map
+    
     format_subgroup_analysis_results(
         subgroup_results = mets_subgroup_results,
         outcome_name = "Metastatic Progression",
         effect_measure = "OR",
         output_path = file.path(primary_outcomes_subgroup_dir, paste0(prefix, "metastatic_progression_subgroup_analysis.xlsx")),
-        create_tables = TRUE
+        create_tables = TRUE,
+        other_map = mets_other_map
     )
     
     # Create forest plot for metastatic progression
@@ -477,7 +516,8 @@ run_my_analysis <- function(dataset_name) {
         variable_order = FOREST_PLOT_VARIABLE_ORDER,
         effect_measure = "OR",
         favours_labels = FAVOURS_LABELS,
-        title = sprintf("Subgroup Analysis: Metastatic Progression (%s)", display_name)
+        title = sprintf("Subgroup Analysis: Metastatic Progression (%s)", display_name),
+        other_map = mets_other_map # Pass for diagnostics
     )
     
     # Collect diagnostics
@@ -492,7 +532,7 @@ run_my_analysis <- function(dataset_name) {
     
     # 1g3. Overall Survival Subgroup Analysis
     log_enhanced("Analyzing subgroup effects for Overall Survival", level = "INFO", indent = 1)
-    os_subgroup_results <- analyze_treatment_effect_subgroups_survival(
+    os_subgroup_analysis <- analyze_treatment_effect_subgroups_survival(
         data = data,
         time_var = "tt_death_months",
         event_var = "death_event",
@@ -500,12 +540,16 @@ run_my_analysis <- function(dataset_name) {
         confounders = confounders,
         outcome_name = "Overall Survival"
     )
+    os_subgroup_results <- os_subgroup_analysis$subgroup_results
+    os_other_map <- os_subgroup_analysis$other_map
+    
     format_subgroup_analysis_results(
         subgroup_results = os_subgroup_results,
         outcome_name = "Overall Survival",
         effect_measure = "HR",
         output_path = file.path(primary_outcomes_subgroup_dir, paste0(prefix, "overall_survival_subgroup_analysis.xlsx")),
-        create_tables = TRUE
+        create_tables = TRUE,
+        other_map = os_other_map
     )
     
     # Create forest plot for overall survival
@@ -517,7 +561,8 @@ run_my_analysis <- function(dataset_name) {
         variable_order = FOREST_PLOT_VARIABLE_ORDER,
         effect_measure = "HR",
         favours_labels = FAVOURS_LABELS,
-        title = sprintf("Subgroup Analysis: Overall Survival (%s)", display_name)
+        title = sprintf("Subgroup Analysis: Overall Survival (%s)", display_name),
+        other_map = os_other_map # Pass for diagnostics
     )
     
     # Collect diagnostics
@@ -532,7 +577,7 @@ run_my_analysis <- function(dataset_name) {
     
     # 1g4. Progression-Free Survival Subgroup Analysis
     log_enhanced("Analyzing subgroup effects for Progression-Free Survival", level = "INFO", indent = 1)
-    pfs_subgroup_results <- analyze_treatment_effect_subgroups_survival(
+    pfs_subgroup_analysis <- analyze_treatment_effect_subgroups_survival(
         data = data,
         time_var = "tt_pfs_months",
         event_var = "pfs_event",
@@ -540,12 +585,16 @@ run_my_analysis <- function(dataset_name) {
         confounders = confounders,
         outcome_name = "Progression-Free Survival"
     )
+    pfs_subgroup_results <- pfs_subgroup_analysis$subgroup_results
+    pfs_other_map <- pfs_subgroup_analysis$other_map
+    
     format_subgroup_analysis_results(
         subgroup_results = pfs_subgroup_results,
         outcome_name = "Progression-Free Survival",
         effect_measure = "HR",
         output_path = file.path(primary_outcomes_subgroup_dir, paste0(prefix, "progression_free_survival_subgroup_analysis.xlsx")),
-        create_tables = TRUE
+        create_tables = TRUE,
+        other_map = pfs_other_map
     )
     
     # Create forest plot for progression-free survival
@@ -557,7 +606,8 @@ run_my_analysis <- function(dataset_name) {
         variable_order = FOREST_PLOT_VARIABLE_ORDER,
         effect_measure = "HR",
         favours_labels = FAVOURS_LABELS,
-        title = sprintf("Subgroup Analysis: Progression-Free Survival (%s)", display_name)
+        title = sprintf("Subgroup Analysis: Progression-Free Survival (%s)", display_name),
+        other_map = pfs_other_map # Pass for diagnostics
     )
     
     # Collect diagnostics
