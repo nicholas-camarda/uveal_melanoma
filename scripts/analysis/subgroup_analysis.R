@@ -1191,8 +1191,8 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
                 # Title and subtitle
                 tab_header(
                     title = md(sprintf("**Subgroup Analysis: %s**", outcome_name)),
-                    subtitle = md(sprintf("**Treatment Effect on %s**", 
-                                        gsub("Subgroup Analysis: ", "", outcome_name)))
+                    # subtitle = md(sprintf("**Treatment Effect on %s**", 
+                    #                     gsub("Subgroup Analysis: ", "", outcome_name)))
                 ) %>%
                 # Style header rows (factor names) as bold
                 tab_style(
@@ -1204,7 +1204,7 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
                 ) %>%
                 # Style subgroup levels as italic and indented
                 tab_style(
-                    style = cell_text(style = "italic"),
+                    style = list(cell_text(style = "italic"), cell_text(align = "left"), cell_text(indent = "1em")),
                     locations = cells_body(
                         columns = `Subgroup Level`,
                         rows = is_header == FALSE

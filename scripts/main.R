@@ -405,6 +405,12 @@ run_my_analysis <- function(dataset_name) {
     # Perform subgroup analysis for each primary outcome
     primary_outcomes_start_time <- Sys.time()
     log_enhanced("PRIMARY OUTCOMES SUBGROUP ANALYSIS", level = "PROGRESS", indent = 1)
+
+    # Create organized directory for primary outcomes subgroup results
+    primary_outcomes_subgroup_dir <- output_dirs$obj1_subgroup_clinical
+    if (!dir.exists(primary_outcomes_subgroup_dir)) {
+        dir.create(primary_outcomes_subgroup_dir, recursive = TRUE, showWarnings = FALSE)
+    }
     
     # 1g1. Local Recurrence Subgroup Analysis
     log_enhanced("Analyzing subgroup effects for Local Recurrence", level = "INFO", indent = 1)
@@ -414,6 +420,13 @@ run_my_analysis <- function(dataset_name) {
         subgroup_vars = subgroup_vars,
         confounders = confounders,
         outcome_name = "Local Recurrence"
+    )
+    format_subgroup_analysis_results(
+        subgroup_results = recurrence_subgroup_results,
+        outcome_name = "Local Recurrence",
+        effect_measure = "OR",
+        output_path = file.path(primary_outcomes_subgroup_dir, paste0(prefix, "local_recurrence_subgroup_analysis.xlsx")),
+        create_tables = TRUE
     )
     
     # Create forest plot for local recurrence
@@ -446,6 +459,13 @@ run_my_analysis <- function(dataset_name) {
         subgroup_vars = subgroup_vars,
         confounders = confounders,
         outcome_name = "Metastatic Progression"
+    )
+    format_subgroup_analysis_results(
+        subgroup_results = mets_subgroup_results,
+        outcome_name = "Metastatic Progression",
+        effect_measure = "OR",
+        output_path = file.path(primary_outcomes_subgroup_dir, paste0(prefix, "metastatic_progression_subgroup_analysis.xlsx")),
+        create_tables = TRUE
     )
     
     # Create forest plot for metastatic progression
@@ -480,6 +500,13 @@ run_my_analysis <- function(dataset_name) {
         confounders = confounders,
         outcome_name = "Overall Survival"
     )
+    format_subgroup_analysis_results(
+        subgroup_results = os_subgroup_results,
+        outcome_name = "Overall Survival",
+        effect_measure = "HR",
+        output_path = file.path(primary_outcomes_subgroup_dir, paste0(prefix, "overall_survival_subgroup_analysis.xlsx")),
+        create_tables = TRUE
+    )
     
     # Create forest plot for overall survival
     os_forest_plot <- create_single_cohort_forest_plot(
@@ -513,6 +540,13 @@ run_my_analysis <- function(dataset_name) {
         confounders = confounders,
         outcome_name = "Progression-Free Survival"
     )
+    format_subgroup_analysis_results(
+        subgroup_results = pfs_subgroup_results,
+        outcome_name = "Progression-Free Survival",
+        effect_measure = "HR",
+        output_path = file.path(primary_outcomes_subgroup_dir, paste0(prefix, "progression_free_survival_subgroup_analysis.xlsx")),
+        create_tables = TRUE
+    )
     
     # Create forest plot for progression-free survival
     pfs_forest_plot <- create_single_cohort_forest_plot(
@@ -543,13 +577,6 @@ run_my_analysis <- function(dataset_name) {
         overall_survival = os_subgroup_results,
         progression_free_survival = pfs_subgroup_results
     )
-    
-    # Create organized directory for primary outcomes subgroup results
-    primary_outcomes_subgroup_dir <- output_dirs$obj1_subgroup_clinical
-    if (!dir.exists(primary_outcomes_subgroup_dir)) {
-        dir.create(primary_outcomes_subgroup_dir, recursive = TRUE, showWarnings = FALSE)
-    }
-    
     # CLINICAL OUTCOMES SUBGROUP ANALYSIS CONSOLIDATION
     clinical_outcomes_diagnostics <- list()
     for (outcome_name in names(primary_outcomes_subgroup_results)) {
