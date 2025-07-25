@@ -6,16 +6,13 @@ VERBOSE <- TRUE
 
 # Load required libraries
 library(tidyverse)
-library(readxl)
-library(writexl)
 library(gt)
-library(gtsummary)
+library(writexl)
 
 # Source required scripts
 source("scripts/utils/analysis_config.R")
-source("scripts/utils/subgroup_config.R")
-source("scripts/utils/output_utilities.R")  # Add this line
-source("scripts/data_helper/data_processing.R")
+source("scripts/utils/subgroup_config.R") 
+source("scripts/data_helper/data_utilities.R")
 source("scripts/analysis/subgroup_analysis.R")
 source("scripts/visualization/forest_plot.R")
 
