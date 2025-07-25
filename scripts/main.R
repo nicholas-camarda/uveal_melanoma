@@ -6,7 +6,7 @@
 # Main script to run the analysis
 
 # Source the analysis configuration first (all global variables), required libraries, and helper functions
-source("scripts/all_helper_functions.R")
+source("scripts/utils/all_helper_functions.R")
 
 # Create necessary directories now that libraries are loaded
 dir.create(PROCESSED_DATA_DIR, showWarnings = FALSE, recursive = TRUE)
@@ -21,7 +21,7 @@ USE_LOGS <- TRUE
 
 # Toggle to control whether to recreate analytic datasets (default: FALSE)
 # Set to TRUE if you need to reprocess raw data or if data has changed
-RECREATE_ANALYTIC_DATASETS <- TRUE
+RECREATE_ANALYTIC_DATASETS <- FALSE
 
 # Set to FALSE to suppress detailed logging in analysis functions
 VERBOSE <- TRUE 
@@ -164,6 +164,9 @@ run_my_analysis <- function(dataset_name) {
                         length(confounders), paste(confounders, collapse = ", ")), 
                 level = "INFO", indent = 1)
 
+    # Initialize diagnostics collector for all analyses
+    diagnostics_list <- list()
+    
     # 1a. Rates of recurrence
     log_function("analyze_binary_outcome_rates", "Local recurrence rates analysis")
     recurrence_rates <- analyze_binary_outcome_rates(
@@ -176,6 +179,10 @@ run_my_analysis <- function(dataset_name) {
         handle_rare = TRUE, 
         dataset_name = dataset_name
     )
+    # Collect diagnostics
+    if (!is.null(recurrence_rates$diagnostics)) {
+        diagnostics_list[["recurrence_logistic"]] <- recurrence_rates$diagnostics
+    }
     log_enhanced("Local recurrence analysis completed", level = "INFO", indent = 1)
 
     # 1b. Rates of metastatic progression
@@ -190,6 +197,10 @@ run_my_analysis <- function(dataset_name) {
         handle_rare = TRUE,
         dataset_name = dataset_name
     )
+    # Collect diagnostics
+    if (!is.null(mets_rates$diagnostics)) {
+        diagnostics_list[["metastatic_progression_logistic"]] <- mets_rates$diagnostics
+    }
     log_enhanced("Metastatic progression analysis completed", level = "INFO", indent = 1)
 
     # 1c. Overall Survival
@@ -205,6 +216,10 @@ run_my_analysis <- function(dataset_name) {
         handle_rare = TRUE,
         dataset_name = dataset_name
     )
+    # Collect diagnostics
+    if (!is.null(os_analysis$diagnostics)) {
+        diagnostics_list[["overall_survival_cox"]] <- os_analysis$diagnostics
+    }
     log_enhanced("Overall survival analysis completed", level = "INFO", indent = 1)
 
     # 1d. Progression Free Survival (includes both progression AND death)
@@ -220,6 +235,10 @@ run_my_analysis <- function(dataset_name) {
         handle_rare = TRUE,
         dataset_name = dataset_name
     )
+    # Collect diagnostics
+    if (!is.null(pfs_analysis$diagnostics)) {
+        diagnostics_list[["progression_free_survival_cox"]] <- pfs_analysis$diagnostics
+    }
     log_enhanced("Progression-free survival analysis completed", level = "INFO", indent = 1)
 
     # 1e. Tumor height changes
@@ -317,8 +336,7 @@ run_my_analysis <- function(dataset_name) {
     # Create forest plots for tumor height subgroup analyses
     log_function("create_forest_plots_height", "Creating forest plots for tumor height subgroup analyses")
     
-    # Initialize diagnostics collector
-    diagnostics_list <- list()
+    # Continue collecting diagnostics (initialized earlier for all analyses)
     
     # Forest plot for PRIMARY tumor height subgroup analysis (without baseline height)
     primary_height_forest_plot <- create_single_cohort_forest_plot(
@@ -571,6 +589,10 @@ run_my_analysis <- function(dataset_name) {
         confounders = confounders,
         dataset_name = dataset_name
     )
+    # Collect diagnostics
+    if (!is.null(retinopathy_rates$diagnostics)) {
+        diagnostics_list[["retinopathy_logistic"]] <- retinopathy_rates$diagnostics
+    }
     log_enhanced("Retinopathy analysis completed", level = "INFO", indent = 1)
     
     # 2b2. Neovascular glaucoma (NVG)
@@ -581,6 +603,10 @@ run_my_analysis <- function(dataset_name) {
         confounders = confounders,
         dataset_name = dataset_name
     )
+    # Collect diagnostics
+    if (!is.null(nvg_rates$diagnostics)) {
+        diagnostics_list[["nvg_logistic"]] <- nvg_rates$diagnostics
+    }
     log_enhanced("Neovascular glaucoma analysis completed", level = "INFO", indent = 1)
     
     # 2b3. Serous retinal detachment (SRD) - only radiation-induced
@@ -591,7 +617,16 @@ run_my_analysis <- function(dataset_name) {
         confounders = confounders,
         dataset_name = dataset_name
     )
+    # Collect diagnostics
+    if (!is.null(srd_rates$diagnostics)) {
+        diagnostics_list[["srd_logistic"]] <- srd_rates$diagnostics
+    }
     log_enhanced("Serous retinal detachment analysis completed", level = "INFO", indent = 1)
+    
+    # Write consolidated diagnostics Excel file for all analyses
+    consolidated_diagnostics_path <- file.path(output_dirs[["efficacy"]], paste0(prefix, "consolidated_diagnostics.xlsx"))
+    write_diagnostics_excel(diagnostics_list, consolidated_diagnostics_path)
+    log_enhanced(sprintf("Consolidated diagnostics written to %s with %d tabs", consolidated_diagnostics_path, length(diagnostics_list)), level = "INFO", indent = 1)
     
     log_section_complete("STEP 2: SAFETY/TOXICITY ANALYSIS", step2_start_time)
     

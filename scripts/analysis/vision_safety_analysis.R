@@ -319,11 +319,8 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
             stringsAsFactors = FALSE
         )
         
-        # Save diagnostics
-        writexl::write_xlsx(
-            safety_diagnostics,
-            path = file.path(output_dir, paste0(prefix, sequela_type, "_logistic_diagnostics.xlsx"))
-        )
+        # Store diagnostics for later consolidation (don't write individual file)
+        # Individual files will be replaced by consolidated diagnostics in main.R
 
         # Note: For now, create full table and document extreme values in diagnostics
         # Future enhancement could modify tbl_regression output post-creation
@@ -385,6 +382,7 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
     return(list(
         rates = sequela_rates,
         table = tbl,
-        model = model_result
+        model = model_result,
+        diagnostics = if (exists("safety_diagnostics")) safety_diagnostics else NULL  # Add diagnostics for consolidation
     ))
 } 

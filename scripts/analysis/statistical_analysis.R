@@ -169,11 +169,8 @@ analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var,
         stringsAsFactors = FALSE
     )
     
-    # Save diagnostics
-    writexl::write_xlsx(
-        logit_diagnostics,
-        path = file.path(output_dir, paste0(prefix, outcome_var, "_logistic_diagnostics.xlsx"))
-    )
+    # Store diagnostics for later consolidation (don't write individual file)
+    # Individual files will be replaced by consolidated diagnostics in main.R
 
     # Create table with regression results
     # Note: For now, create full table and document extreme values in diagnostics
@@ -256,7 +253,8 @@ analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var,
     return(list(
         rates = rates,
         table = gt_tbl,
-        model = logit_model
+        model = logit_model,
+        diagnostics = logit_diagnostics  # Add diagnostics for consolidation
     ))
 }
 
@@ -757,11 +755,8 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         stringsAsFactors = FALSE
     )
     
-    # Save diagnostics
-    writexl::write_xlsx(
-        cox_diagnostics,
-        path = file.path(output_dir, paste0(prefix, gsub("[^A-Za-z0-9]", "_", ylab), "_cox_diagnostics.xlsx"))
-    )
+    # Store diagnostics for later consolidation (don't write individual file)
+    # Individual files will be replaced by consolidated diagnostics in main.R
     
     # Create regression table using the filtered model for display
     cox_table <- tbl_regression(
@@ -891,7 +886,8 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         rmst_plot = rmst_plot,
         cox_model = cox_model,
         cox_table = cox_table,
-        ph_diagnostics = ph_diagnostics
+        ph_diagnostics = ph_diagnostics,
+        diagnostics = cox_diagnostics  # Add diagnostics for consolidation
     ))
 }
 
