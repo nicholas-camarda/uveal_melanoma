@@ -12,7 +12,7 @@
 #' @return List with elements: changes (summary data frame), table (gtsummary object), regression_model (lm object), regression_table (gtsummary object).
 #' @examples
 #' analyze_visual_acuity_changes(data)
-analyze_visual_acuity_changes <- function(data) {
+analyze_visual_acuity_changes <- function(data, other_map = list()) {
     # Calculate vision changes (row-level)
     data_with_vision_change <- data %>%
         mutate(
@@ -71,49 +71,29 @@ analyze_visual_acuity_changes <- function(data) {
     
     # Linear regression model
     log_enhanced("Fitting linear regression model for vision changes")
-    vision_lm <- lm(vision_change ~ treatment_group + recurrence1, data = data_with_vision_change)
     
-    # Get variable labels for better readability - filter to only variables in the model
-    all_variable_labels <- get_variable_labels()
-    # Get the actual variable names from the model terms (not coefficient names)
-    model_terms <- attr(terms(vision_lm), "term.labels")
-    model_var_names <- unique(c("treatment_group", model_terms))
-    # Filter labels to only include variables actually in the model
-    variable_labels <- all_variable_labels[intersect(names(all_variable_labels), model_var_names)]
-    
-    vision_lm_tbl <- tbl_regression(vision_lm,
-        exponentiate = FALSE,
-        intercept = FALSE,
-        label = variable_labels  # Apply filtered human-readable labels
+    # Use the unified table generation system for linear regression
+    # Use the same standardized confounders as all other analyses
+    vision_result <- generate_regression_table(
+        data = data_with_vision_change,
+        outcome_var = "vision_change",
+        predictor_vars = "treatment_group",
+        confounders = confounders,
+        model_type = "linear",
+        effect_measure = "MD",  # Mean Difference for continuous outcome
+        analysis_name = "vision_change_linear",
+        dataset_name = "vision_safety",
+        output_dir = output_dirs$obj2_vision,
+        prefix = prefix,
+        # handle_rare = FALSE, # REMOVED
+        exclude_before_treatment = FALSE,
+        other_map = other_map
     )
     
-    # Add p-values based on toggle setting
-    if (SHOW_ALL_PVALUES) {
-        # Show individual p-values for each coefficient
-        vision_lm_tbl <- vision_lm_tbl  # No modification needed
-    } else {
-        # Show only grouped p-values (one per variable)
-        vision_lm_tbl <- vision_lm_tbl %>% add_global_p()
-    }
+    vision_lm <- vision_result$model
+    vision_lm_tbl <- vision_result$table
     
-    vision_lm_tbl <- vision_lm_tbl %>%
-        bold_labels() %>%
-        modify_header(
-            label = "**Characteristic**",
-            estimate = "**Beta**",
-            conf.low = "**95% CI**",
-            p.value = "**p-value**"
-        ) %>%
-        modify_caption("Linear Regression of Change in Vision") %>%
-        modify_footnote(
-            update = all_stat_cols() ~ "Adjusted for treatment group and recurrence status. Reference level: Plaque."
-        )
-    
-    # Save regression table
-    save_gt_html(
-        vision_lm_tbl %>% as_gt(),
-        filename = file.path(output_dirs$obj2_vision, paste0(prefix, "vision_regression.html"))
-    )
+    # Note: Table formatting and saving are now handled by the unified table generation system
 
     return(list(
         changes = vision_changes,
@@ -136,7 +116,7 @@ analyze_visual_acuity_changes <- function(data) {
 #' @return Results from analyze_binary_outcome_rates function
 #' @examples
 #' analyze_radiation_complications(data, "retinopathy", confounders, "uveal_full")
-analyze_radiation_complications <- function(data, sequela_type, confounders = NULL, dataset_name = NULL) {
+analyze_radiation_complications <- function(data, sequela_type, confounders = NULL, dataset_name = NULL, other_map = list()) {
     
     # Validate sequela type
     valid_sequelae <- c("retinopathy", "nvg", "srd")
@@ -178,24 +158,23 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
     
     log_enhanced(sprintf("Analyzing %s rates (binary outcome)", toupper(sequela_type)))
     
-    # Convert to binary if needed and ensure it's a factor
+    # Convert to binary if needed and ensure it's numeric for glm
     data <- data %>%
         mutate(
             !!outcome_var := case_when(
-                .data[[outcome_var]] == "Y" ~ "Y",
-                .data[[outcome_var]] == "N" ~ "N",
-                is.na(.data[[outcome_var]]) ~ "N",
-                TRUE ~ "N"
+                .data[[outcome_var]] == "Y" ~ 1,
+                .data[[outcome_var]] == "N" ~ 0,
+                is.na(.data[[outcome_var]]) ~ 0,
+                TRUE ~ 0
             )
-        ) %>%
-        mutate(!!outcome_var := factor(.data[[outcome_var]], levels = c("Y", "N")))
+        )
     
     # Calculate rates by treatment group
     sequela_rates <- data %>%
         group_by(treatment_group) %>%
         summarise(
             n_total = n(),
-            n_events = sum(.data[[outcome_var]] == "Y", na.rm = TRUE),
+            n_events = sum(.data[[outcome_var]] == 1, na.rm = TRUE),
             rate_percent = round(100 * n_events / n_total, 1),
             .groups = "drop"
         )
@@ -261,189 +240,44 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
         filename = file.path(output_dir, paste0(prefix, sequela_type, "_summary_table.html"))
     )
     
-    # Initialize variables that will be used in diagnostics
-    valid_confounders <- NULL
-    model_data <- data
-    
     # Fit logistic regression if there are enough events and confounders
     model_result <- NULL
-    if (sum(data[[outcome_var]] == "Y", na.rm = TRUE) >= 10) {  # Require at least 10 events
+    if (sum(data[[outcome_var]] == 1, na.rm = TRUE) >= 10) {  # Require at least 10 events
         
-        # Apply rare category handling to main predictor variables to prevent extreme ORs
-        predictor_vars <- intersect(names(data), c("location", "initial_overall_stage", "initial_t_stage"))
-        other_map <- list()
-        if (length(predictor_vars) > 0) {
-            log_enhanced(sprintf("Applying rare category filtering to %s to prevent extreme ORs (threshold: %d)", 
-                               paste(predictor_vars, collapse=", "), THRESHOLD_RARITY), level = "INFO")
-            rare_result <- handle_rare_categories(model_data, vars = predictor_vars, threshold = THRESHOLD_RARITY)
-            model_data <- rare_result$data
-            other_map <- rare_result$other_map
-        }
+        # Use the unified table generation system for logistic regression
+        # Use standardized confounders from centralized configuration
+        srd_confounders <- confounders
         
-        # Validate confounders
-        if (!is.null(confounders) && length(confounders) > 0) {
-            valid_confounders <- generate_valid_confounders(model_data, confounders, threshold = THRESHOLD_RARITY)
-        }
-        
-        # Fit logistic regression
-        if (is.null(valid_confounders) || length(valid_confounders) == 0) {
-            formula_str <- paste0(outcome_var, " ~ treatment_group")
-        } else {
-            formula_str <- paste0(outcome_var, " ~ treatment_group + ", paste(valid_confounders, collapse = " + "))
-        }
-        
-        model <- glm(as.formula(formula_str), data = model_data, family = binomial())
-        
-        # Get variable labels for better readability - filter to only variables in the model
-        all_variable_labels <- get_variable_labels()
-        # Get the actual variable names from the model terms (not coefficient names)
-        model_terms <- attr(terms(model), "term.labels")
-        model_var_names <- unique(c("treatment_group", model_terms))
-        # Filter labels to only include variables actually in the model
-        variable_labels <- all_variable_labels[intersect(names(all_variable_labels), model_var_names)]
-        
-        # Extract coefficient information to detect extreme estimates
-        model_summary <- summary(model)
-        
-        # Check if model has coefficients beyond intercept
-        if (nrow(model_summary$coefficients) > 1) {
-            coef_data <- data.frame(
-                term = rownames(model_summary$coefficients)[-1],  # Exclude intercept
-                estimate = exp(model_summary$coefficients[-1, "Estimate"]),  # OR (exponentiated)
-                ci_lower = exp(confint(model)[-1, 1]),  # Lower CI
-                ci_upper = exp(confint(model)[-1, 2]),  # Upper CI  
-                p_value = model_summary$coefficients[-1, "Pr(>|z|)"],
-                stringsAsFactors = FALSE
-            )
-            
-            # Detect extreme estimates using forest plot logic
-            extreme_detection <- detect_extreme_regression_estimates(
-                estimate = coef_data$estimate,
-                ci_lower = coef_data$ci_lower, 
-                ci_upper = coef_data$ci_upper,
-                effect_measure = "OR"
-            )
-            
-            # Create diagnostics for extreme estimates
-            status_vec <- rep("INCLUDED", nrow(coef_data))
-            exclusion_reason_vec <- rep("", nrow(coef_data))
-            
-            if (length(extreme_detection$extreme_indices) > 0) {
-                status_vec[extreme_detection$extreme_indices] <- "EXCLUDED"
-                exclusion_reason_vec[extreme_detection$extreme_indices] <- extreme_detection$exclusion_reasons
-            }
-            
-            safety_diagnostics <- data.frame(
-                analysis_type = "Safety Logistic Regression",
-                outcome = sequela_type,
-                dataset = dataset_name,
-                term = coef_data$term,
-                estimate = coef_data$estimate,
-                ci_lower = coef_data$ci_lower,
-                ci_upper = coef_data$ci_upper,
-                p_value = coef_data$p_value,
-                status = status_vec,
-                exclusion_reason = exclusion_reason_vec,
-                stringsAsFactors = FALSE
-            )
-        } else {
-            # No coefficients beyond intercept - create empty diagnostics
-            safety_diagnostics <- data.frame(
-                analysis_type = character(0),
-                outcome = character(0),
-                dataset = character(0),
-                term = character(0),
-                estimate = numeric(0),
-                ci_lower = numeric(0),
-                ci_upper = numeric(0),
-                p_value = numeric(0),
-                status = character(0),
-                exclusion_reason = character(0),
-                stringsAsFactors = FALSE
-            )
-        }
-        
-        # Store diagnostics for later consolidation (don't write individual file)
-        # Individual files will be replaced by consolidated diagnostics in main.R
-
-        # Note: For now, create full table and document extreme values in diagnostics
-        # Future enhancement could modify tbl_regression output post-creation
-        model_result <- tbl_regression(model,
-            exponentiate = TRUE,
-            intercept = FALSE,
-            label = variable_labels  # Apply filtered human-readable labels
+        regression_result <- generate_regression_table(
+            data = data,
+            outcome_var = outcome_var,
+            predictor_vars = "treatment_group",
+            confounders = srd_confounders,
+            model_type = "logistic",
+            effect_measure = "OR",
+            analysis_name = paste0(sequela_type, "_logistic"),
+            dataset_name = dataset_name,
+            output_dir = output_dir,
+            prefix = prefix,
+            # handle_rare = FALSE, # REMOVED
+            exclude_before_treatment = FALSE,  # Safety analysis doesn't exclude before treatment
+            other_map = other_map
         )
         
-        # Add p-values based on toggle setting
-        if (SHOW_ALL_PVALUES) {
-            # Show individual p-values for each coefficient
-            model_result <- model_result  # No modification needed
-        } else {
-            # Show only grouped p-values (one per variable)
-            model_result <- model_result %>% add_global_p()
-        }
-        
-        model_result <- model_result %>%
-            bold_labels() %>%
-            modify_header(
-                label = "**Characteristic**",
-                estimate = "**OR**",
-                conf.low = "**95% CI**",
-                p.value = "**p-value**"
-            ) %>%
-            modify_caption(paste("Logistic Regression for", tools::toTitleCase(sequela_type))) %>%
-            modify_footnote(
-                update = all_stat_cols() ~ "OR = Odds Ratio. Reference level: Plaque."
-            )
-        
-        # Save regression table
-        other_caption <- ""
-        if ("Other" %in% levels(data[[outcome_var]]) && !is.null(other_map[[outcome_var]]) && length(other_map[[outcome_var]]) > 0) {
-            other_caption <- sprintf("\n\n'Other' includes: %s", paste(other_map[[outcome_var]], collapse = ", "))
-        }
-        save_gt_html(
-            model_result %>% as_gt() %>%
-                tab_source_note(
-                    source_note = md(paste0("Logistic regression table generated automatically.", other_caption))
-                ),
-            filename = file.path(output_dir, paste0(prefix, sequela_type, "_logistic_regression.html"))
-        )
+        # Extract the model and table from the result
+        model_result <- regression_result$model
+        safety_diagnostics <- regression_result$diagnostics
+        regression_table <- regression_result$table  # Get the regression table
         
     } else {
         log_enhanced(sprintf("Insufficient events for regression modeling (%d events)", sum(data[[outcome_var]] == "Y", na.rm = TRUE)))
     }
     
-    # Create diagnostics data frame for this analysis
-    diagnostics_data <- data.frame(
-        analysis_type = "safety_logistic_regression",
-        outcome = sequela_type,
-        n_total = nrow(data),
-        n_events = sum(data[[outcome_var]] == "Y", na.rm = TRUE),
-        model_fitted = !is.null(model_result),
-        confounders_used = if (!is.null(valid_confounders)) paste(valid_confounders, collapse = ", ") else "none",
-        notes = if (is.null(model_result)) "Insufficient events for modeling" else "Model fitted successfully",
-        stringsAsFactors = FALSE
-    )
-    
-    # Write consolidated diagnostics Excel file with multiple tabs
-    diagnostics_path <- file.path(output_dir, paste0(prefix, sequela_type, "_diagnostics.xlsx"))
-    
-    # Combine both diagnostic types into one file
-    all_diagnostics <- list(
-        "Model_Summary" = diagnostics_data
-    )
-    
-    # Add coefficient-level diagnostics if available
-    if (exists("safety_diagnostics") && !is.null(safety_diagnostics)) {
-        all_diagnostics[["Coefficient_Details"]] <- safety_diagnostics
-    }
-    
-    write_diagnostics_excel(all_diagnostics, diagnostics_path)
-    log_enhanced(sprintf("Safety analysis diagnostics written to %s with %d tabs", diagnostics_path, length(all_diagnostics)), level = "INFO")
+    # Note: Diagnostics are now handled by the unified table generation system
 
     return(list(
         rates = sequela_rates,
-        table = tbl,
+        table = if (exists("regression_table")) regression_table else tbl,  # Return regression table if available, otherwise summary table
         model = model_result,
         diagnostics = if (exists("safety_diagnostics")) safety_diagnostics else NULL  # Add diagnostics for consolidation
     ))

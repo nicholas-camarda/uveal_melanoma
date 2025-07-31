@@ -421,6 +421,28 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                         }
                     }
 
+                    # Check for extreme estimates (above threshold)
+                    if (abs(row_data$treatment_effect) > EXTREME_ESTIMATE_THRESHOLD) {
+                        # Still record diagnostics for skipped rows
+                        diagnostics_rows[[length(diagnostics_rows)+1]] <- data.frame(
+                            variable = var_name,
+                            level = as.character(row_data$subgroup_level),
+                            n_total = row_data$n_total,
+                            n_plaque = row_data$n_plaque,
+                            n_gksrs = row_data$n_gksrs,
+                            events_plaque = if ("events_plaque" %in% names(row_data)) row_data$events_plaque else NA,
+                            events_gksrs = if ("events_gksrs" %in% names(row_data)) row_data$events_gksrs else NA,
+                            treatment_effect = row_data$treatment_effect,
+                            ci_lower = row_data$ci_lower,
+                            ci_upper = row_data$ci_upper,
+                            p_value = row_data$p_value,
+                            status = "skipped_extreme",
+                            reason = sprintf("Estimate (%.2f) exceeds threshold of %.0f", row_data$treatment_effect, EXTREME_ESTIMATE_THRESHOLD),
+                            stringsAsFactors = FALSE
+                        )
+                        next
+                    }
+
                     # This row will be plotted - get events from subgroup effects data
                     events_plaque <- if ("events_plaque" %in% names(row_data)) row_data$events_plaque else NA
                     events_gksrs <- if ("events_gksrs" %in% names(row_data)) row_data$events_gksrs else NA

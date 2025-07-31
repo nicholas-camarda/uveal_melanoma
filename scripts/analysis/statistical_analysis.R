@@ -13,82 +13,83 @@
 # - analyze_tumor_height_changes() is in tumor_height_analysis.R
 # - analyze_visual_acuity_changes() and analyze_radiation_complications() are in vision_safety_analysis.R
 
-#' Analyze binary outcome rates and create regression tables
+#' Analyze binary outcome rates with logistic regression
 #'
-#' Calculates event rates by group and fits a logistic regression model, returning rates, a regression table, and the model object.
+#' Performs logistic regression analysis for binary outcomes with comprehensive diagnostics.
 #'
 #' @param data Data frame.
-#' @param outcome_var Name of the outcome variable (character).
+#' @param outcome_var Name of the binary outcome variable (character).
 #' @param time_var Name of the time-to-event variable (character).
 #' @param event_var Name of the event indicator variable (character).
 #' @param group_var Name of the grouping variable (default: 'treatment_group').
 #' @param confounders Character vector of confounder variable names (default: NULL).
-#' @param exclude_before_treatment Logical (default: TRUE). If TRUE, rows with events before treatment are excluded.
-#' @param handle_rare Logical (default: TRUE). If TRUE, rare categories in confounders are collapsed into 'Other'.
+#' @param analysis_type Character string (default: "post_treatment_only"). Either "post_treatment_only" (removes patients with pre-treatment events) or "all_patients" (includes all patients).
 #' @param dataset_name Name of the dataset (character).
+#' @param other_map List containing mapping of what categories were collapsed into "Other".
 #'
-#' @return List with elements: rates (data frame), table (gtsummary object), model (glm object).
+#' @return List with elements: rates (data frame), table (gtsummary object), model (glm object), diagnostics (list).
 #' @examples
-#' analyze_binary_outcome_rates(data, "recurrence1", "tt_recurrence", "recurrence_event")
-analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var, group_var = "treatment_group", confounders = NULL, exclude_before_treatment = TRUE, handle_rare = TRUE, dataset_name = NULL) {
+#' analyze_binary_outcome_rates(data, "recurrence1", "tt_recurrence_months", "recurrence_event", confounders = c("age", "sex"))
+analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var, group_var = "treatment_group", confounders = NULL, analysis_type = "post_treatment_only", dataset_name = NULL, other_map = NULL) {
     # DEBUGGING:
     # outcome_var = "recurrence1"
-    # time_var = "tt_recurrence"
+    # time_var = "tt_recurrence_months"
     # event_var = "recurrence_event"
     # group_var = "treatment_group"
-    # handle_rare = TRUE; exclude_before_treatment = TRUE
+    # confounders = c("age_at_diagnosis", "sex", "location", "internal_reflectivity", "srf", "flashes_photopsia", "floaters", "initial_overall_stage_modified", "initial_t_stage", "optic_nerve")
+    # analysis_type = "post_treatment_only"
+    # dataset_name = "uveal_melanoma_full_cohort"
 
-     # if the grouping factor has <2 levels, don't fit glm()
-     if (length(unique(data[[group_var]])) < 2) {
-         warning(sprintf(
-             "Only one level of %s present (%s); skipping logistic regression.",
-             group_var, unique(data[[group_var]])
-         ))
-         return(list(
-             rates = NULL,
-             table = NULL,
-             model = NULL
-         ))
-     }
-
-    # Handle rare categories in confounders for model stability
-    rare_fix_data <- data
-    other_map <- list()
-    if (!is.null(confounders) && handle_rare) {
-        rare_result <- handle_rare_categories(data, confounders, threshold = THRESHOLD_RARITY)
-        rare_fix_data <- rare_result$data
-        other_map <- rare_result$other_map
-    }
-    
-    # Apply rare category handling to main predictor variables to prevent extreme ORs
-    predictor_vars <- intersect(names(rare_fix_data), c("location", "initial_overall_stage", "initial_t_stage"))
-    if (length(predictor_vars) > 0 && handle_rare) {
-        log_enhanced(sprintf("Applying rare category filtering to %s to prevent extreme ORs (threshold: %d)", 
-                           paste(predictor_vars, collapse=", "), THRESHOLD_RARITY), level = "INFO")
-        rare_result2 <- handle_rare_categories(rare_fix_data, vars = predictor_vars, threshold = THRESHOLD_RARITY)
-        rare_fix_data <- rare_result2$data
-        other_map <- c(other_map, rare_result2$other_map)
+    # If only one level of group_var, don't fit logistic model
+    if (length(unique(data[[group_var]])) < 2) {
+        warning(sprintf(
+            "Only one level of %s present (%s); skipping logistic model.",
+            group_var, unique(data[[group_var]])
+        ))
+        return(list(
+            rates = NULL,
+            table = NULL,
+            model = NULL,
+            diagnostics = NULL
+        ))
     }
 
-    # Remove rows that have events before treatment
-    fix_event_data <- rare_fix_data 
-    if (exclude_before_treatment) {
-        fix_event_data <- fix_event_data %>%
+    # Determine which time variable to use based on analysis type
+    if (analysis_type == "post_treatment_only") {
+        # Remove patients with pre-treatment events and use original time variables
+        analysis_time_var <- time_var
+        fix_event_data <- data %>%
             filter(!!sym(time_var) >= 0)
-        log_enhanced(sprintf("Removed %d rows with %s before treatment", nrow(rare_fix_data) - nrow(fix_event_data), event_var))
+        log_enhanced(sprintf("Removed %d patients with %s before treatment for post-treatment only analysis", 
+                           nrow(data) - nrow(fix_event_data), event_var))
+    } else if (analysis_type == "all_patients") {
+        # Use original time variables (include all patients)
+        analysis_time_var <- time_var
+        fix_event_data <- data
+        log_enhanced(sprintf("Using all patients analysis with %s", analysis_time_var))
+    } else {
+        stop(sprintf("Invalid analysis_type: %s. Must be 'post_treatment_only' or 'all_patients'", analysis_type))
     }
     
     # Ensure consistent factor contrasts for modeling
     fix_event_data <- ensure_consistent_contrasts(fix_event_data)
 
-    # Filter and validate confounders using existing function
-    if (!is.null(confounders)) {
-        confounders_to_use <- generate_valid_confounders(data, confounders, threshold = THRESHOLD_RARITY)
-    } else {
-        confounders_to_use <- NULL
+    # Pre-filter confounders to remove variables with zero variance in the analysis subset
+    confounders_to_use <- confounders[sapply(confounders, function(c) {
+        if (c %in% names(fix_event_data)) {
+            length(unique(fix_event_data[[c]])) > 1
+        } else {
+            FALSE
+        }
+    })]
+    
+    if (length(confounders_to_use) < length(confounders)) {
+        removed_confounders <- setdiff(confounders, confounders_to_use)
+        log_enhanced(sprintf("Removed confounders with zero variance for this analysis: %s", 
+                           paste(removed_confounders, collapse = ", ")), level = "WARN")
     }
 
-    # Calculate rates by treatment group
+    # Create rates summary using the appropriate time variable
     rates <- fix_event_data %>%
         group_by(!!sym(group_var)) %>%
         summarise(
@@ -98,6 +99,7 @@ analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var,
             .groups = "drop"
         )
 
+    # Save rates summary
     # Determine output directory based on outcome (Objective 1: Efficacy)
     if (outcome_var == "recurrence1") {
         output_dir <- output_dirs$obj1_recurrence
@@ -107,176 +109,35 @@ analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var,
         output_dir <- output_dirs$baseline_characteristics  # fallback to general
     }
     
-    # Save high-level summary table of event rates
+    # Use the global prefix that's already set
     writexl::write_xlsx(
         rates,
         path = file.path(output_dir, paste0(prefix, outcome_var, "_rates_summary.xlsx"))
     )
-    
-    # check factor levels of all variables in formula
-    # fix_event_data %>%
-    #     select(all_of(c(outcome_var, group_var, valid_confounders))) %>%
-    #     map(~ table(.) %>% .[. > THRESHOLD_RARITY])
-    
-    # Then use valid_confounders in your formula
-    if (length(confounders_to_use) == 0) {
-        formula_str <- paste0(outcome_var, " ~ ", group_var)
-    } else {
-        formula_str <- paste0(outcome_var, " ~ ", group_var, " + ", paste(confounders_to_use, collapse = " + "))
-    }
-    formula <- as.formula(formula_str)
 
-    # Fit logistic regression
-    logit_model <- glm(formula, data = fix_event_data, family = binomial())
-    print(summary(logit_model))
+    # Use the unified table generation system
+    result <- generate_regression_table(
+        data = fix_event_data,  # Use the processed data
+        outcome_var = outcome_var,
+        predictor_vars = group_var,
+        confounders = confounders_to_use,
+        model_type = "logistic",
+        effect_measure = "OR",
+        analysis_name = paste0(outcome_var, "_", analysis_type, "_logistic"),
+        dataset_name = dataset_name,
+        output_dir = output_dir,
+        prefix = prefix,
+        time_var = analysis_time_var,  # Use the appropriate time variable
+        event_var = event_var,
+        other_map = other_map  # Pass the other_map parameter
+    )
 
-    # Get variable labels for better readability - filter to only variables in the model
-    all_variable_labels <- get_variable_labels()
-    # Get the actual variable names from the model terms (not coefficient names)
-    model_terms <- attr(terms(logit_model), "term.labels")
-    model_var_names <- unique(c(group_var, model_terms))
-    # Filter labels to only include variables actually in the model
-    variable_labels <- all_variable_labels[intersect(names(all_variable_labels), model_var_names)]
-    
-    # Extract coefficient information to detect extreme estimates
-    logit_summary <- summary(logit_model)
-    coef_data <- data.frame(
-        term = rownames(logit_summary$coefficients)[-1],  # Exclude intercept
-        estimate = exp(logit_summary$coefficients[-1, "Estimate"]),  # OR (exponentiated)
-        ci_lower = exp(confint(logit_model)[-1, 1]),  # Lower CI
-        ci_upper = exp(confint(logit_model)[-1, 2]),  # Upper CI  
-        p_value = logit_summary$coefficients[-1, "Pr(>|z|)"],
-        stringsAsFactors = FALSE
-    )
-    
-    # Detect extreme estimates using forest plot logic
-    extreme_detection <- detect_extreme_regression_estimates(
-        estimate = coef_data$estimate,
-        ci_lower = coef_data$ci_lower, 
-        ci_upper = coef_data$ci_upper,
-        effect_measure = "OR"
-    )
-    
-    # Create diagnostics for extreme estimates
-    logit_diagnostics <- data.frame(
-        analysis_type = "Logistic Regression",
-        outcome = outcome_var,
-        dataset = dataset_name,
-        term = coef_data$term,
-        estimate = coef_data$estimate,
-        ci_lower = coef_data$ci_lower,
-        ci_upper = coef_data$ci_upper,
-        p_value = coef_data$p_value,
-        status = ifelse(seq_len(nrow(coef_data)) %in% extreme_detection$extreme_indices, "EXCLUDED", "INCLUDED"),
-        exclusion_reason = ifelse(seq_len(nrow(coef_data)) %in% extreme_detection$extreme_indices, 
-                                extreme_detection$exclusion_reasons[match(seq_len(nrow(coef_data)), extreme_detection$extreme_indices)], 
-                                ""),
-        stringsAsFactors = FALSE
-    )
-    
-    # Store diagnostics for later consolidation (don't write individual file)
-    # Individual files will be replaced by consolidated diagnostics in main.R
-
-    # Create table with regression results
-    # Note: For now, create full table and document extreme values in diagnostics
-    # Future enhancement could modify tbl_regression output post-creation
-    tbl <- tbl_regression(
-        logit_model,
-        intercept = FALSE,
-        exponentiate = TRUE,
-        show_single_row = group_var,
-        label = variable_labels  # Apply filtered human-readable labels
-    )
-    
-    # Add p-values based on toggle setting
-    if (SHOW_ALL_PVALUES) {
-        # Show individual p-values for each coefficient
-        tbl <- tbl  # No modification needed - individual p-values shown by default
-    } else {
-        # Show only grouped p-values (one per variable)
-        tbl <- tbl %>% add_global_p()
-    }
-    
-    tbl <- tbl %>%
-        bold_labels() %>%
-        # change the column names
-        modify_header(
-            label     = "**Variable**",
-            estimate  = "**OR**",
-            conf.low  = "**95% CI**",
-            p.value   = "**p-value**"
-        ) %>%
-        modify_caption( # shorten the caption
-            sprintf("Adjusted Odds Ratios for %s by Treatment Group and Covariates", outcome_var)
-        ) %>%
-        modify_footnote(
-            # apply the same footnote to every statistic column
-            update = all_stat_cols() ~ "Reference level: Plaque"
-        )
-
-    # Add source note to the table, checking all covariates for 'Other'
-    other_caption <- ""
-    covariates_to_check <- unique(c(group_var, confounders_to_use))
-    for (covar in covariates_to_check) {
-        if (!is.null(fix_event_data[[covar]]) && is.factor(fix_event_data[[covar]]) &&
-            "Other" %in% levels(fix_event_data[[covar]]) &&
-            !is.null(other_map[[covar]]) && length(other_map[[covar]]) > 0) {
-            other_caption <- paste0(other_caption, sprintf("\n\n'Other' in %s includes: %s", covar, paste(other_map[[covar]], collapse = ", ")))
-        }
-    }
-    gt_tbl <- as_gt(tbl) %>% 
-        tab_source_note(
-            source_note = md(sprintf(
-                "Reference %s level: **%s**\n\nModel: *%s*\n\n%s\n\n%s%s",
-                group_var,
-                levels(fix_event_data[[group_var]])[1], 
-                formula_str,
-                if (exclude_before_treatment) {
-                    sprintf("Number of rows excluded with %s before treatment: %d", event_var, nrow(rare_fix_data) - nrow(fix_event_data))
-                } else {
-                    sprintf("Number of rows included with %s before treatment: %d", event_var, nrow(rare_fix_data) - nrow(fix_event_data))
-                },
-                sprintf("Dataset: %s", dataset_name),
-                other_caption
-            ))
-        )
-    
-    # Save table
-    save_gt_html(
-        gt_tbl,
-        filename = file.path(output_dir, paste0(prefix, outcome_var, "_rates.html"))
-    )
-    
-    # Create diagnostics data frame
-    diagnostics_data <- data.frame(
-        analysis_type = "binary_outcome_logistic_regression",
-        outcome = outcome_var,
-        n_total = nrow(rare_fix_data),
-        n_events = sum(rare_fix_data[[outcome_var]] == "Y", na.rm = TRUE),
-        n_excluded_before_treatment = if (exclude_before_treatment) nrow(rare_fix_data) - nrow(fix_event_data) else 0,
-        confounders_used = if (!is.null(confounders_to_use)) paste(confounders_to_use, collapse = ", ") else "none",
-        model_fitted = TRUE,
-        formula_used = formula_str,
-        stringsAsFactors = FALSE
-    )
-    
-    # Write consolidated diagnostics Excel file with multiple tabs
-    diagnostics_path <- file.path(output_dir, paste0(prefix, outcome_var, "_logistic_diagnostics.xlsx"))
-    
-    # Combine both diagnostic types into one file
-    all_diagnostics <- list(
-        "Model_Summary" = diagnostics_data,
-        "Coefficient_Details" = logit_diagnostics
-    )
-    
-    write_diagnostics_excel(all_diagnostics, diagnostics_path)
-    log_enhanced(sprintf("Logistic regression diagnostics written to %s with %d tabs", diagnostics_path, length(all_diagnostics)), level = "INFO")
-
+    # Return the same structure as the original function for compatibility
     return(list(
         rates = rates,
-        table = gt_tbl,
-        model = logit_model,
-        diagnostics = logit_diagnostics  # Add diagnostics for consolidation
+        table = result$table,
+        model = result$model,
+        diagnostics = result$diagnostics
     ))
 }
 
@@ -290,21 +151,24 @@ analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var,
 #' @param group_var Name of the grouping variable (default: 'treatment_group').
 #' @param confounders Character vector of confounder variable names (default: NULL).
 #' @param ylab Label for y-axis (character).
-#' @param exclude_before_treatment Logical (default: TRUE). If TRUE, rows with events before treatment are excluded.
-#' @param handle_rare Logical (default: TRUE). If TRUE, rare categories in confounders are collapsed into 'Other'.
+#' @param analysis_type Character string (default: "post_treatment_only"). Either "post_treatment_only" (removes patients with pre-treatment events) or "all_patients" (includes all patients).
 #' @param dataset_name Name of the dataset (character).
 #' @param legend_labels Character vector of labels for the legend (default: NULL, uses factor levels of group_var).
 #'
 #' @return List with elements: fit (survfit object), plot (ggplot object), survival_rates (data frame), survival_rates_wide (data frame), rmst_analysis (data frame), rmst_plot (ggplot object), cox_model (coxph object), cox_table (gtsummary object).
 #' @examples
 #' analyze_time_to_event_outcomes(data, "tt_os_months", "os_event", confounders = c("age", "sex"))
-analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var = "treatment_group", confounders = NULL, ylab = "Survival Probability", exclude_before_treatment = TRUE, handle_rare = TRUE, dataset_name = NULL, legend_labels = NULL) {
+analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var = "treatment_group", confounders = NULL, ylab = "Survival Probability", analysis_type = "post_treatment_only", dataset_name = NULL, legend_labels = NULL, other_map = list()) {
     # DEBUGGING:
-    # time_var = "tt_death"
+    # time_var = "tt_death_months"
     # event_var = "death_event"
     # group_var = "treatment_group"
     # ylab = "Survival Probability"
-    # exclude_before_treatment = TRUE
+    # analysis_type = "post_treatment_only"
+    # dataset_name = "uveal_melanoma_full_cohort"
+
+    # Convert ylab to filename-safe string early in function
+    ylab_safe <- make_filename_safe(ylab)
 
     # If only one level of group_var, don't fit cox model
     if (length(unique(data[[group_var]])) < 2) {
@@ -321,42 +185,26 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         ))
     }
 
-    # Handle rare categories in confounders for model stability
-    rare_fix_data <- data
-    other_map <- list()
-    if (!is.null(confounders) && handle_rare) {
-       rare_result <- handle_rare_categories(data, confounders, threshold = THRESHOLD_RARITY)
-       rare_fix_data <- rare_result$data
-       other_map <- rare_result$other_map
-    }
-    
-    # Apply rare category handling to main predictor variables to prevent extreme ORs
-    predictor_vars <- intersect(names(rare_fix_data), c("location", "initial_overall_stage", "initial_t_stage"))
-    if (length(predictor_vars) > 0 && handle_rare) {
-        log_enhanced(sprintf("Applying rare category filtering to %s to prevent extreme ORs (threshold: %d)", 
-                           paste(predictor_vars, collapse=", "), THRESHOLD_RARITY), level = "INFO")
-        rare_result2 <- handle_rare_categories(rare_fix_data, vars = predictor_vars, threshold = THRESHOLD_RARITY)
-        rare_fix_data <- rare_result2$data
-        other_map <- c(other_map, rare_result2$other_map)
-    }
-
-    # Remove rows that have events before treatment
-    fix_event_data <- rare_fix_data
-    if (exclude_before_treatment) {
-        fix_event_data <- fix_event_data %>%
+    # Determine which analysis approach to use
+    if (analysis_type == "post_treatment_only") {
+        # Remove patients with pre-treatment events
+        fix_event_data <- data %>%
             filter(!!sym(time_var) >= 0)
-        log_enhanced(sprintf("Removed %d rows with %s before treatment", nrow(rare_fix_data) - nrow(fix_event_data), event_var))
+        log_enhanced(sprintf("Removed %d patients with %s before treatment for post-treatment only analysis", 
+                           nrow(data) - nrow(fix_event_data), event_var))
+    } else if (analysis_type == "all_patients") {
+        # Include all patients regardless of pre-treatment events
+        fix_event_data <- data
+        log_enhanced(sprintf("Using all patients analysis with %s", time_var))
+    } else {
+        stop(sprintf("Invalid analysis_type: %s. Must be 'post_treatment_only' or 'all_patients'", analysis_type))
     }
     
     # Ensure consistent factor contrasts for modeling
     fix_event_data <- ensure_consistent_contrasts(fix_event_data)
 
-    # Filter and validate confounders using existing function
-    if (!is.null(confounders)) {
-        confounders_to_use <- generate_valid_confounders(data, confounders, threshold = THRESHOLD_RARITY)
-    } else {
-        confounders_to_use <- NULL
-    }
+    # Use confounders as-is (no processing in analysis)
+    confounders_to_use <- confounders
 
     # Create formula for survival analysis
     surv_formula <- as.formula(
@@ -632,20 +480,20 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     # Save survival rate tables
     writexl::write_xlsx(
         surv_rates,
-        path = file.path(output_dir, paste0(prefix, ylab, "_survival_rates.xlsx"))
+        path = file.path(output_dir, paste0(prefix, ylab_safe, "_survival_rates.xlsx"))
     )
     writexl::write_xlsx(
         surv_rates_wide_with_rmst,
-        path = file.path(output_dir, paste0(prefix, ylab, "_survival_rates_wide.xlsx"))
+        path = file.path(output_dir, paste0(prefix, ylab_safe, "_survival_rates_wide.xlsx"))
     )
     
     # Save detailed RMST analysis results
     writexl::write_xlsx(
         rmst_results,
-        path = file.path(output_dir, paste0(prefix, ylab, "_rmst_analysis.xlsx"))
+        path = file.path(output_dir, paste0(prefix, ylab_safe, "_rmst_analysis.xlsx"))
     )
 
-    # Cox model: use original data, not new_data
+    # Cox model: use unified table generation system
     if (is.null(confounders_to_use)) {
         formula_cox <- as.formula(paste0("Surv(", time_var, ",", event_var, ") ~ ", group_var))
         formula_str <- paste0("Surv(", time_var, ",", event_var, ") ~ ", group_var)
@@ -653,207 +501,31 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         formula_cox <- as.formula(paste0("Surv(", time_var, ",", event_var, ") ~ ", group_var, " + ", paste(confounders_to_use, collapse = " + ")))
         formula_str <- paste0("Surv(", time_var, ",", event_var, ") ~ ", group_var, " + ", paste(confounders_to_use, collapse = " + "))
     }
-    cox_model <- coxph(formula_cox, data = new_data)
-
-    # Check if group_var has only 2 levels for show_single_row
-    group_levels <- length(unique(new_data[[group_var]]))
     
-    # Get variable labels for better readability - filter to only variables in the model
-    all_variable_labels <- get_variable_labels()
-    # Get the actual variable names from the model terms (not coefficient names)
-    model_terms <- attr(terms(cox_model), "term.labels")
-    model_var_names <- unique(c(group_var, model_terms))
-    # Filter labels to only include variables actually in the model
-    variable_labels <- all_variable_labels[intersect(names(all_variable_labels), model_var_names)]
-    
-    # Extract coefficient information to detect extreme estimates
-    cox_summary <- summary(cox_model)
-    coef_data <- data.frame(
-        term = rownames(cox_summary$conf.int),
-        estimate = exp(cox_summary$coefficients[, "coef"]),  # HR (exponentiated)
-        ci_lower = cox_summary$conf.int[, "lower .95"],
-        ci_upper = cox_summary$conf.int[, "upper .95"],
-        p_value = cox_summary$coefficients[, "Pr(>|z|)"],
-        stringsAsFactors = FALSE
+    # Use the unified table generation system for Cox regression
+    cox_result <- generate_regression_table(
+        data = new_data,
+        outcome_var = time_var,  # For Cox models, we pass the time variable
+        predictor_vars = group_var,
+        confounders = confounders_to_use,
+        model_type = "cox",
+        effect_measure = "HR",
+        analysis_name = paste0(ylab, "_cox"),
+        dataset_name = dataset_name,
+        output_dir = output_dir,
+        prefix = prefix,
+        # handle_rare = handle_rare, # REMOVED
+        time_var = time_var,
+        event_var = event_var,
+        other_map = other_map  # Pass the other_map parameter
     )
     
-    # Detect extreme estimates using forest plot logic
-    extreme_detection <- detect_extreme_regression_estimates(
-        estimate = coef_data$estimate,
-        ci_lower = coef_data$ci_lower, 
-        ci_upper = coef_data$ci_upper,
-        effect_measure = "HR"
-    )
+    # Extract the Cox model and table from the result
+    cox_model <- cox_result$model
+    cox_table <- cox_result$table
+    cox_diagnostics <- cox_result$diagnostics
     
-    # Create a filtered model for display if extreme estimates are detected
-    display_model <- cox_model
-    if (length(extreme_detection$extreme_indices) > 0) {
-        log_enhanced(sprintf("Creating filtered model for display (excluding %d extreme estimates)", 
-                           length(extreme_detection$extreme_indices)), level = "INFO")
-        
-        # Get the terms to exclude
-        terms_to_exclude <- coef_data$term[extreme_detection$extreme_indices]
-        log_enhanced(sprintf("Excluding terms: %s", paste(terms_to_exclude, collapse = ", ")), level = "INFO")
-        
-        # For the main grouping variable, if many levels have extreme estimates,
-        # this suggests we should collapse to a simpler binary comparison
-        if (any(grepl(paste0("^", group_var), terms_to_exclude))) {
-            group_terms_to_exclude <- terms_to_exclude[grepl(paste0("^", group_var), terms_to_exclude)]
-            
-            log_enhanced(sprintf("Group variable %s has %d extreme estimates, creating binary treatment variable", 
-                               group_var, length(group_terms_to_exclude)), level = "INFO")
-            
-            # Create binary treatment variable for recurrence treatment
-            if (group_var == "recurrence1_treatment_clean") {
-                # Check if Enucleation has events
-                enuc_events <- sum(new_data$recurrence1_treatment_clean == "Enucleation" & new_data[[event_var]] == 1, na.rm = TRUE)
-                
-                if (enuc_events == 0) {
-                    log_enhanced("Enucleation group has 0 events, excluding from analysis and comparing treatment types", level = "INFO")
-                    
-                    # Exclude Enucleation entirely and compare among treatment types
-                    filtered_data <- new_data %>%
-                        filter(recurrence1_treatment_clean != "Enucleation")
-                    
-                    # Convert to factor and drop unused levels
-                    filtered_data$recurrence1_treatment_clean <- factor(filtered_data$recurrence1_treatment_clean)
-                    
-                    log_enhanced(sprintf("Filtered data: %d -> %d rows (excluded Enucleation)", 
-                                       nrow(new_data), nrow(filtered_data)), level = "INFO")
-                    
-                } else {
-                    log_enhanced("Converting recurrence treatment to binary: Any treatment vs Enucleation", level = "INFO")
-                    
-                    filtered_data <- new_data %>%
-                        mutate(
-                            recurrence_treatment_binary = factor(
-                                ifelse(recurrence1_treatment_clean == "Enucleation", "Enucleation", "Treatment"),
-                                levels = c("Enucleation", "Treatment")
-                            )
-                        )
-                }
-                
-                # Update formula based on approach
-                if (enuc_events == 0) {
-                    # Use original variable but with filtered data (no Enucleation)
-                    formula_filtered <- formula_cox
-                } else {
-                    # Use binary variable
-                    if (is.null(confounders_to_use)) {
-                        formula_filtered <- as.formula(paste0("Surv(", time_var, ",", event_var, ") ~ recurrence_treatment_binary"))
-                    } else {
-                        formula_filtered <- as.formula(paste0("Surv(", time_var, ",", event_var, ") ~ recurrence_treatment_binary + ", paste(confounders_to_use, collapse = " + ")))
-                    }
-                }
-                
-                # Refit model with filtered data
-                tryCatch({
-                    display_model <- coxph(formula_filtered, data = filtered_data)
-                    if (enuc_events == 0) {
-                        log_enhanced("Successfully created model excluding Enucleation", level = "INFO")
-                    } else {
-                        log_enhanced("Successfully created binary treatment model", level = "INFO")
-                    }
-                }, error = function(e) {
-                    log_enhanced(sprintf("Failed to create filtered model: %s", e$message), level = "WARNING")
-                    display_model <- cox_model  # Fall back to original model
-                })
-            } else {
-                log_enhanced("Non-recurrence grouping variable with extreme estimates, using original model", level = "INFO")
-                display_model <- cox_model
-            }
-        }
-    }
-    
-    # Create diagnostics for extreme estimates
-    cox_diagnostics <- data.frame(
-        analysis_type = "Cox Regression",
-        outcome = ylab,
-        dataset = dataset_name,
-        term = coef_data$term,
-        estimate = coef_data$estimate,
-        ci_lower = coef_data$ci_lower,
-        ci_upper = coef_data$ci_upper,
-        p_value = coef_data$p_value,
-        status = ifelse(seq_len(nrow(coef_data)) %in% extreme_detection$extreme_indices, "EXCLUDED", "INCLUDED"),
-        exclusion_reason = ifelse(seq_len(nrow(coef_data)) %in% extreme_detection$extreme_indices, 
-                                extreme_detection$exclusion_reasons[match(seq_len(nrow(coef_data)), extreme_detection$extreme_indices)], 
-                                ""),
-        stringsAsFactors = FALSE
-    )
-    
-    # Store diagnostics for later consolidation (don't write individual file)
-    # Individual files will be replaced by consolidated diagnostics in main.R
-    
-    # Create regression table using the filtered model for display
-    cox_table <- tbl_regression(
-        display_model,
-        exponentiate = TRUE, # gives you HRs
-        label = variable_labels,  # Apply filtered human-readable labels
-        show_single_row = if (group_levels == 2) group_var else NULL # only for binary variables
-    )
-    
-    # Add p-values based on toggle setting
-    if (SHOW_ALL_PVALUES) {
-        # Show individual p-values for each coefficient
-        cox_table <- cox_table  # No modification needed - individual p-values shown by default
-    } else {
-        # Show only grouped p-values (one per variable)
-        cox_table <- cox_table %>% add_global_p()
-    }
-    
-    # Add footnote indicating if extreme estimates were filtered
-    if (length(extreme_detection$extreme_indices) > 0) {
-        cox_table <- cox_table %>%
-            modify_footnote(
-                update = all_stat_cols() ~ paste(
-                    "Reference level: Plaque.",
-                    sprintf("Note: %d extreme estimates excluded from display (see diagnostics file).", 
-                           length(extreme_detection$extreme_indices))
-                )
-            )
-    }
-    
-    cox_table_formatted <- cox_table %>%
-        bold_labels() %>%
-        modify_header(
-            label    = "**Variable**",
-            estimate = "**HR (95 % CI)**",
-            p.value  = "**p-value**"
-        ) %>%
-        modify_caption(sprintf("%s: Adjusted Cox Proportional-Hazards Model", ylab)) %>%
-        modify_footnote(
-            update = all_stat_cols() ~ "Reference level: Plaque"
-        )
-
-    # Add source note
-    other_caption <- ""
-    if ("Other" %in% levels(fix_event_data[[group_var]]) && !is.null(other_map[[group_var]]) && length(other_map[[group_var]]) > 0) {
-        other_caption <- sprintf("\n\n'Other' includes: %s", paste(other_map[[group_var]], collapse = ", "))
-    }
-    cox_table <- cox_table_formatted %>%
-        as_gt() %>%
-        tab_source_note(
-            source_note = md(sprintf(
-                "Reference %s level: **%s**\n\nModel: *%s*\n\n%s\n\n%s%s",
-                group_var,
-                levels(fix_event_data[[group_var]])[1],
-                formula_str,
-                if (exclude_before_treatment) {
-                    sprintf("Number of rows excluded with %s before treatment: %d", event_var, nrow(rare_fix_data) - nrow(fix_event_data))
-                } else {
-                    sprintf("Number of rows included with %s before treatment: %d", event_var, nrow(rare_fix_data) - nrow(fix_event_data))
-                },
-                sprintf("Dataset: %s", dataset_name),
-                other_caption
-            ))
-        )
-
-    # Save table
-    save_gt_html(
-        cox_table,
-        filename = file.path(output_dir, paste0(prefix, ylab, "_cox.html"))
-    )
+    # Note: Cox regression table and diagnostics are now handled by the unified table generation system
     
     # Test proportional hazards assumption using Schoenfeld residuals
     log_enhanced("Testing proportional hazards assumption for Cox model", level = "INFO", indent = 1)
@@ -869,7 +541,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         cox_model = cox_model,
         outcome_name = ylab,
         output_dir = ph_output_dir,
-        file_prefix = paste0(prefix, gsub("[^A-Za-z0-9]", "_", ylab), "_"),
+        file_prefix = paste0(prefix, ylab_safe, "_"),
         dataset_name = dataset_name
     )
     
@@ -882,7 +554,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     )
 
     ggsave(
-        file.path(output_dir, paste0(prefix, ylab, "_survival.png")),
+        file.path(output_dir, paste0(prefix, ylab_safe, "_survival.png")),
         combined,
         width = SURVIVAL_PLOT_WIDTH, height = SURVIVAL_PLOT_HEIGHT, dpi = PLOT_DPI, bg = "white"
     )
@@ -890,31 +562,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     # Create RMST p-value progression plot
     rmst_plot <- plot_rmst_pvalue_progression(rmst_results, ylab)
     
-    # Create diagnostics data frame  
-    survival_diagnostics_data <- data.frame(
-        analysis_type = "survival_cox_regression",
-        outcome = sprintf("%s_%s", time_var, event_var),
-        n_total = nrow(rare_fix_data),
-        n_events = sum(rare_fix_data[[event_var]] == 1, na.rm = TRUE),
-        n_excluded_before_treatment = if (exclude_before_treatment) nrow(rare_fix_data) - nrow(fix_event_data) else 0,
-        confounders_used = if (!is.null(confounders_to_use)) paste(confounders_to_use, collapse = ", ") else "none",
-        model_fitted = TRUE,
-        formula_used = formula_str,
-        ph_assumption_tested = !is.null(ph_diagnostics),
-        stringsAsFactors = FALSE
-    )
-    
-    # Write consolidated diagnostics Excel file with multiple tabs
-    survival_diagnostics_path <- file.path(output_dir, paste0(prefix, gsub("[^A-Za-z0-9]", "_", ylab), "_cox_diagnostics.xlsx"))
-    
-    # Combine both diagnostic types into one file
-    all_diagnostics <- list(
-        "Model_Summary" = survival_diagnostics_data,
-        "Coefficient_Details" = cox_diagnostics
-    )
-    
-    write_diagnostics_excel(all_diagnostics, survival_diagnostics_path)
-    log_enhanced(sprintf("Cox regression diagnostics written to %s with %d tabs", survival_diagnostics_path, length(all_diagnostics)), level = "INFO")
+    # Note: Diagnostics are now handled by the unified table generation system
 
     return(list(
         fit = surv_fit,
@@ -1018,9 +666,10 @@ plot_rmst_pvalue_progression <- function(rmst_results, outcome_label) {
     
     # Save the plot
     output_dir <- switch(
-        gsub(".*:", "", outcome_label),
-        " Overall Survival Probability" = output_dirs$obj1_os,
-        " Progression-Free Survival Probability" = output_dirs$obj1_pfs,
+        outcome_label,
+        "Overall Survival Probability" = output_dirs$obj1_os,
+        "Progression-Free Survival Probability" = output_dirs$obj1_pfs,
+        "PFS-2 Probability (Freedom from 2nd Recurrence)" = output_dirs$obj3_pfs2,
         output_dirs$baseline_characteristics  # fallback
     )
     
@@ -1044,7 +693,7 @@ plot_rmst_pvalue_progression <- function(rmst_results, outcome_label) {
 #' @return List with elements: pfs2_data (data frame), survival_analysis (list), summary_table (gtsummary object).
 #' @examples
 #' analyze_pfs2(data, confounders = c("age", "sex"))
-analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL) {
+analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, other_map = list()) {
     log_enhanced("Starting PFS-2 analysis for recurrent patients")
     
     # Filter to patients with valid PFS-2 data (variables now created in data processing)
@@ -1117,10 +766,11 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL) {
             group_var = "recurrence1_treatment_clean",
             confounders = confounders,
             ylab = "PFS-2 Probability (Freedom from 2nd Recurrence)",
-            exclude_before_treatment = FALSE,  # Already filtered appropriately
-            handle_rare = TRUE,
+            analysis_type = "all_patients",  # PFS-2 analysis includes all recurrent patients
+            # handle_rare = FALSE, # REMOVED
             dataset_name = paste0(dataset_name, "_pfs2_recurrent"),
-            legend_labels = levels(pfs2_data$recurrence1_treatment_clean)
+            legend_labels = levels(pfs2_data$recurrence1_treatment_clean),
+            other_map = other_map
         )
     }
     

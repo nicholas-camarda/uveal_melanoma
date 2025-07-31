@@ -1,6 +1,5 @@
 # Uveal Melanoma Treatment Outcomes Analysis
 # Author: Nicholas Camarda 
-# Date: 5/10/2025
 # Description: Analysis comparing outcomes between Gamma Knife and plaque brachytherapy
 #              for uveal melanoma treatment, including both full and restricted cohort analyses
 # Main script to run the analysis
@@ -15,7 +14,6 @@ source("scripts/utils/all_helper_functions.R")
 # Set up logging if enabled
 if (USE_LOGS) {
     # Create logs directory if it doesn't exist
-
     if (!dir.exists("logs")) {
         dir.create("logs", showWarnings = FALSE)
     }
@@ -45,7 +43,9 @@ if (RECREATE_ANALYTIC_DATASETS) {
 
     # Prepare factor levels
     log_function("prepare_factor_levels", "Setting up factor levels for analysis")
-    factored_data <- prepare_factor_levels(derived_data)
+    factored_result <- prepare_factor_levels(derived_data)
+    factored_data <- factored_result$data
+    other_map <- factored_result$other_map
 
     # Apply inclusion/exclusion criteria (split into cohorts)
     log_function("apply_criteria", "Applying inclusion/exclusion criteria and creating cohorts")
@@ -54,6 +54,10 @@ if (RECREATE_ANALYTIC_DATASETS) {
     # Save each cohort separately
     log_function("save_cohorts", "Saving processed cohorts to RDS files")
     save_cohorts(final_analytic_datasets_lst)
+    
+    # Save the other_map information for use in analysis
+    log_function("saveRDS", "Saving other_map information for tracking collapsed categories")
+    saveRDS(other_map, file.path(PROCESSED_DATA_DIR, "other_map.rds"))
 
     # Create summary tables with organized output structure
     log_function("create_summary_tables", "Creating baseline characteristics tables")
@@ -87,54 +91,19 @@ if (RECREATE_ANALYTIC_DATASETS) {
 }
 
 ########################################################
-############### ANALYSIS FUNCTION ######################
+############### MODULAR ANALYSIS FUNCTIONS #############
 ########################################################
 
-# Run analysis for each dataset
-run_my_analysis <- function(dataset_name) {
-    analysis_start_time <- Sys.time()
-    
-    # dataset_name <- "uveal_melanoma_full_cohort"
-
-    # Clean dataset name for display
-    display_name <- tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name)))
-    log_section_start("STATISTICAL ANALYSIS", display_name)
-
-    # Set up cohort information
-    cohort_info <- case_when(
-        grepl("full", dataset_name) ~ list(prefix = "full_cohort_", dir_name = "uveal_full"),
-        grepl("restricted", dataset_name) ~ list(prefix = "restricted_cohort_", dir_name = "uveal_restricted"), 
-        grepl("gksrs", dataset_name) ~ list(prefix = "gksrs_only_cohort_", dir_name = "gksrs"),
-        TRUE ~ list(prefix = paste0(dataset_name, "_"), dir_name = dataset_name)
-    )
-    
-    prefix <<- cohort_info$prefix
-    cohort_dir_name <- cohort_info$dir_name
-    
-    # CRITICAL: Validate naming consistency to prevent bugs
-    if (!validate_naming_consistency(dataset_name, prefix, cohort_dir_name)) {
-        stop(sprintf("NAMING VALIDATION FAILED for dataset: %s", dataset_name))
-    }
-    
-    # Create cohort-specific directory structure
-    cohort_base_dir <<- file.path("final_data/Analysis", cohort_dir_name)
-    log_function("create_output_structure", sprintf("Creating cohort-specific directory structure for %s", cohort_dir_name))
-    output_dirs <<- create_output_structure(cohort_base_dir)
-    
-    # Forest plots go directly into the objective 1 folder
-    forest_plots_dir <- output_dirs$obj1_forest_plots
-    log_enhanced(sprintf("All outputs organized by objectives under: %s", cohort_base_dir), level = "INFO", indent = 1)
-
-    # Load analytic dataset
-    log_function("readRDS", paste("Loading analytic dataset:", dataset_name))
-    data <- readRDS(file.path(PROCESSED_DATA_DIR, paste0(dataset_name, ".rds")))
-    log_enhanced(sprintf("Successfully loaded %d patients for analysis", nrow(data)), level = "INFO", indent = 1)
-
-    ########################################################
-    ############### STEP 1: PRIMARY OUTCOMES ###############
-    ########################################################
-
+#' Run Objective 1: Primary Outcomes Analysis
+#' 
+#' @param data Data frame with analytic dataset
+#' @param dataset_name Character string for dataset name
+#' @param output_dirs List of output directories
+#' @param prefix Character string for file prefix
+#' @return List of analysis results
+run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map = list()) {
     step1_start_time <- Sys.time()
+    display_name <- tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name)))
     log_section_start("STEP 1: PRIMARY OUTCOMES ANALYSIS", display_name)
 
     # Show confounders being used
@@ -142,37 +111,35 @@ run_my_analysis <- function(dataset_name) {
                         length(confounders), paste(confounders, collapse = ", ")), 
                 level = "INFO", indent = 1)
 
-    # 1a. Rates of recurrence
-    log_function("analyze_binary_outcome_rates", "Local recurrence rates analysis")
+    # 1a. Rates of recurrence (post-treatment only)
+    log_function("analyze_binary_outcome_rates", "Local recurrence rates analysis (post-treatment only)")
     recurrence_rates <- analyze_binary_outcome_rates(
         data,
         outcome_var = "recurrence1",
         time_var = "tt_recurrence_months",
         event_var = "recurrence_event",
         confounders = confounders,
-        exclude_before_treatment = TRUE,
-        handle_rare = TRUE, 
-        dataset_name = dataset_name
+        analysis_type = "post_treatment_only",
+        dataset_name = dataset_name,
+        other_map = other_map
     )
-
     log_enhanced("Local recurrence analysis completed", level = "INFO", indent = 1)
 
-    # 1b. Rates of metastatic progression
-    log_function("analyze_binary_outcome_rates", "Metastatic progression rates analysis")
+    # 1b. Rates of metastatic progression (post-treatment only)
+    log_function("analyze_binary_outcome_rates", "Metastatic progression rates analysis (post-treatment only)")
     mets_rates <- analyze_binary_outcome_rates(
         data,
         outcome_var = "mets_progression",
         time_var = "tt_mets_months",
         event_var = "mets_event",
         confounders = confounders,
-        exclude_before_treatment = TRUE,
-        handle_rare = TRUE,
-        dataset_name = dataset_name
+        analysis_type = "post_treatment_only",
+        dataset_name = dataset_name,
+        other_map = other_map
     )
-
     log_enhanced("Metastatic progression analysis completed", level = "INFO", indent = 1)
 
-    # 1c. Overall Survival
+    # 1c. Overall Survival (post-treatment only)
     log_function("analyze_time_to_event_outcomes", "Overall survival analysis (Kaplan-Meier & Cox regression)")
     os_analysis <- analyze_time_to_event_outcomes(
         data,
@@ -181,11 +148,10 @@ run_my_analysis <- function(dataset_name) {
         group_var = "treatment_group",
         confounders = confounders,
         ylab = "Overall Survival Probability",
-        exclude_before_treatment = TRUE,
-        handle_rare = TRUE,
-        dataset_name = dataset_name
+        analysis_type = "post_treatment_only",
+        dataset_name = dataset_name,
+        other_map = other_map
     )
-
     log_enhanced("Overall survival analysis completed", level = "INFO", indent = 1)
 
     # 1d. Progression Free Survival (includes both progression AND death)
@@ -197,16 +163,15 @@ run_my_analysis <- function(dataset_name) {
         group_var = "treatment_group",
         confounders = confounders,
         ylab = "Progression-Free Survival Probability",
-        exclude_before_treatment = TRUE,
-        handle_rare = TRUE,
-        dataset_name = dataset_name
+        analysis_type = "post_treatment_only",
+        dataset_name = dataset_name,
+        other_map = other_map
     )
-
     log_enhanced("Progression-free survival analysis completed", level = "INFO", indent = 1)
 
     # 1e. Tumor height changes
     log_function("analyze_tumor_height_changes", "Primary and sensitivity tumor height analysis")
-    height_changes <- analyze_tumor_height_changes(data)
+    height_changes <- analyze_tumor_height_changes(data, other_map)
     log_enhanced("Tumor height changes analysis completed", level = "INFO", indent = 1)
 
     # 1f. Subgroup analysis with interaction terms
@@ -347,7 +312,7 @@ run_my_analysis <- function(dataset_name) {
     diagnostics_list[["tumor_height_primary"]] <- get_forest_plot_diagnostics(primary_height_forest_plot)
     
     # Save the PRIMARY forest plot
-    png(file.path(forest_plots_dir, paste0(prefix, "tumor_height_primary_subgroup_forest_plot.png")), 
+    png(file.path(output_dirs$obj1_forest_plots, paste0(prefix, "tumor_height_primary_subgroup_forest_plot.png")), 
         width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI)
     plot(primary_height_forest_plot)
     dev.off()
@@ -370,7 +335,7 @@ run_my_analysis <- function(dataset_name) {
     diagnostics_list[["tumor_height_sensitivity"]] <- get_forest_plot_diagnostics(sensitivity_height_forest_plot)
     
     # Save the SENSITIVITY forest plot
-    png(file.path(forest_plots_dir, paste0(prefix, "tumor_height_sensitivity_subgroup_forest_plot.png")), 
+    png(file.path(output_dirs$obj1_forest_plots, paste0(prefix, "tumor_height_sensitivity_subgroup_forest_plot.png")), 
         width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI)
     plot(sensitivity_height_forest_plot)
     dev.off()
@@ -476,11 +441,8 @@ run_my_analysis <- function(dataset_name) {
         other_map = recurrence_other_map # Pass for diagnostics
     )
     
-    # Collect diagnostics
-    diagnostics_list[["local_recurrence"]] <- get_forest_plot_diagnostics(recurrence_forest_plot)
-    
     # Save the forest plot
-    png(file.path(forest_plots_dir, paste0(prefix, "local_recurrence_subgroup_forest_plot.png")), 
+    png(file.path(output_dirs$obj1_forest_plots, paste0(prefix, "local_recurrence_subgroup_forest_plot.png")), 
         width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI)
     plot(recurrence_forest_plot)
     dev.off()
@@ -520,11 +482,8 @@ run_my_analysis <- function(dataset_name) {
         other_map = mets_other_map # Pass for diagnostics
     )
     
-    # Collect diagnostics
-    diagnostics_list[["metastatic_progression"]] <- get_forest_plot_diagnostics(mets_forest_plot)
-    
     # Save the forest plot
-    png(file.path(forest_plots_dir, paste0(prefix, "metastatic_progression_subgroup_forest_plot.png")), 
+    png(file.path(output_dirs$obj1_forest_plots, paste0(prefix, "metastatic_progression_subgroup_forest_plot.png")), 
         width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI)
     plot(mets_forest_plot)
     dev.off()
@@ -565,11 +524,8 @@ run_my_analysis <- function(dataset_name) {
         other_map = os_other_map # Pass for diagnostics
     )
     
-    # Collect diagnostics
-    diagnostics_list[["overall_survival"]] <- get_forest_plot_diagnostics(os_forest_plot)
-    
     # Save the forest plot
-    png(file.path(forest_plots_dir, paste0(prefix, "overall_survival_subgroup_forest_plot.png")), 
+    png(file.path(output_dirs$obj1_forest_plots, paste0(prefix, "overall_survival_subgroup_forest_plot.png")), 
         width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI)
     plot(os_forest_plot)
     dev.off()
@@ -610,11 +566,8 @@ run_my_analysis <- function(dataset_name) {
         other_map = pfs_other_map # Pass for diagnostics
     )
     
-    # Collect diagnostics
-    diagnostics_list[["progression_free_survival"]] <- get_forest_plot_diagnostics(pfs_forest_plot)
-    
     # Save the forest plot
-    png(file.path(forest_plots_dir, paste0(prefix, "progression_free_survival_subgroup_forest_plot.png")), 
+    png(file.path(output_dirs$obj1_forest_plots, paste0(prefix, "progression_free_survival_subgroup_forest_plot.png")), 
         width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI)
     plot(pfs_forest_plot)
     dev.off()
@@ -627,6 +580,7 @@ run_my_analysis <- function(dataset_name) {
         overall_survival = os_subgroup_results,
         progression_free_survival = pfs_subgroup_results
     )
+    
     # CLINICAL OUTCOMES SUBGROUP ANALYSIS CONSOLIDATION
     clinical_outcomes_diagnostics <- list()
     for (outcome_name in names(primary_outcomes_subgroup_results)) {
@@ -649,165 +603,281 @@ run_my_analysis <- function(dataset_name) {
     saveRDS(primary_outcomes_subgroup_results, 
             file.path(primary_outcomes_subgroup_dir, paste0(prefix, "primary_outcomes_subgroup_results.rds")))
     
-    # Write forest plot diagnostics Excel file
-    diagnostics_path <- file.path(forest_plots_dir, paste0(prefix, "forestplot_diagnostics.xlsx"))
-    write_diagnostics_excel(diagnostics_list, diagnostics_path)
-    log_enhanced(sprintf("Forest plot diagnostics written to %s", diagnostics_path), level = "INFO", indent = 1)
-    
     log_section_complete("PRIMARY OUTCOMES SUBGROUP ANALYSIS", primary_outcomes_start_time)
     
     log_section_complete("STEP 1: PRIMARY OUTCOMES ANALYSIS", step1_start_time)
     
-    ########################################################
-    ############### STEP 2: SAFETY/TOXICITY ###############
-    ########################################################
-    
-    step2_start_time <- Sys.time()
-    log_section_start("STEP 2: SAFETY/TOXICITY ANALYSIS", display_name)
-    
-    # 2a. Vision changes analysis (similar to tumor height changes)
-    log_function("analyze_visual_acuity_changes", "Vision changes analysis")
-    vision_changes <- analyze_visual_acuity_changes(data)
-    log_enhanced("Vision changes analysis completed", level = "INFO", indent = 1)
-    
-    # 2b. Rates of radiation sequelae
-    log_enhanced("Analyzing radiation sequelae rates", level = "INFO", indent = 1)
-    
-    # 2b1. Retinopathy
-    log_function("analyze_radiation_complications", "Radiation retinopathy analysis")
-    retinopathy_rates <- analyze_radiation_complications(
-        data = data,
-        sequela_type = "retinopathy",
-        confounders = confounders,
-        dataset_name = dataset_name
-    )
-
-    log_enhanced("Retinopathy analysis completed", level = "INFO", indent = 1)
-    
-    # 2b2. Neovascular glaucoma (NVG)
-    log_function("analyze_radiation_complications", "Neovascular glaucoma (NVG) analysis")
-    nvg_rates <- analyze_radiation_complications(
-        data = data,
-        sequela_type = "nvg",
-        confounders = confounders,
-        dataset_name = dataset_name
-    )
-
-    log_enhanced("Neovascular glaucoma analysis completed", level = "INFO", indent = 1)
-    
-    # 2b3. Serous retinal detachment (SRD) - only radiation-induced
-    log_function("analyze_radiation_complications", "Serous retinal detachment (radiation-induced only)")
-    srd_rates <- analyze_radiation_complications(
-        data = data,
-        sequela_type = "srd",
-        confounders = confounders,
-        dataset_name = dataset_name
-    )
-
-    log_enhanced("Serous retinal detachment analysis completed", level = "INFO", indent = 1)
-    
-    log_section_complete("STEP 2: SAFETY/TOXICITY ANALYSIS", step2_start_time)
-    
-    ########################################################
-    ############### STEP 3: REPEAT RADIATION ##############
-    ########################################################
-    
-    step3_start_time <- Sys.time()
-    log_section_start("STEP 3: REPEAT RADIATION EFFICACY", display_name)
-    
-    # 3a. Progression-Free Survival-2 (PFS-2) for recurrent patients
-    log_function("analyze_pfs2", "PFS-2 analysis for patients with local recurrence")
-    pfs2_results <- analyze_pfs2(data, confounders = confounders, dataset_name = dataset_name)
-    log_enhanced("PFS-2 analysis completed", level = "INFO", indent = 1)
-    
-    log_section_complete("STEP 3: REPEAT RADIATION EFFICACY", step3_start_time)
-    
-    ########################################################
-    ############### STEP 4: GEP VALIDATION ################
-    ########################################################
-    
-    step4_start_time <- Sys.time()
-    log_section_start("STEP 4: GEP PREDICTIVE ACCURACY VALIDATION", display_name)
-    
-    # 4a. Metastasis-Free Survival Validation
-    log_function("analyze_gep_mfs_validation", "GEP metastasis-free survival prediction validation")
-    mfs_validation <- analyze_gep_mfs_validation(
-        data = data,
-        dataset_name = dataset_name,
-        timepoints = GEP_VALIDATION_TIMEPOINTS,
-        bootstrap_iterations = GEP_BOOTSTRAP_ITERATIONS
-    )
-    log_enhanced("GEP MFS validation completed", level = "INFO", indent = 1)
-
-    # 4b. Melanoma-Specific Survival Validation  
-    log_function("analyze_gep_mss_validation", "GEP melanoma-specific survival prediction validation")
-    mss_validation <- analyze_gep_mss_validation(
-        data = data,
-        dataset_name = dataset_name,
-        timepoints = GEP_VALIDATION_TIMEPOINTS,
-        bootstrap_iterations = GEP_BOOTSTRAP_ITERATIONS
-    )
-    log_enhanced("GEP MSS validation completed", level = "INFO", indent = 1)
-    
-    log_section_complete("STEP 4: GEP PREDICTIVE ACCURACY VALIDATION", step4_start_time)
-    
-    # Complete analysis for this dataset
-    log_section_complete(paste("STATISTICAL ANALYSIS -", display_name), analysis_start_time)
-    
+    return(list(
+        recurrence_rates = recurrence_rates,
+        mets_rates = mets_rates,
+        os_analysis = os_analysis,
+        pfs_analysis = pfs_analysis,
+        height_changes = height_changes,
+        primary_subgroup_results = primary_subgroup_results,
+        sensitivity_subgroup_results = sensitivity_subgroup_results
+    ))
 }
 
+#' Run Objective 2: Safety/Toxicity Analysis
+#' 
+#' @param data Data frame with analytic dataset
+#' @param dataset_name Character string for dataset name
+#' @param output_dirs List of output directories
+#' @param prefix Character string for file prefix
+#' @return List of analysis results
+run_objective_2 <- function(data, dataset_name, output_dirs, prefix, other_map = list()) {
+    step2_start_time <- Sys.time()
+    display_name <- tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name)))
+    log_section_start("STEP 2: SAFETY/TOXICITY ANALYSIS", display_name)
+
+    # 2a. Vision changes
+    log_function("analyze_visual_acuity_changes", "Vision changes analysis")
+    vision_changes <- analyze_visual_acuity_changes(data, other_map)
+    log_enhanced("Vision changes analysis completed", level = "INFO", indent = 1)
+
+    # 2b. Radiation complications
+    log_function("analyze_radiation_complications", "Radiation complications analysis")
+    
+    # Retinopathy
+    retinopathy_analysis <- analyze_radiation_complications(data, "retinopathy", confounders, dataset_name, other_map)
+    log_enhanced("Retinopathy analysis completed", level = "INFO", indent = 1)
+    
+    # Neovascular glaucoma
+    nvg_analysis <- analyze_radiation_complications(data, "nvg", confounders, dataset_name, other_map)
+    log_enhanced("Neovascular glaucoma analysis completed", level = "INFO", indent = 1)
+    
+    # Serous retinal detachment
+    srd_analysis <- analyze_radiation_complications(data, "srd", confounders, dataset_name, other_map)
+    log_enhanced("Serous retinal detachment analysis completed", level = "INFO", indent = 1)
+
+    log_section_complete("STEP 2: SAFETY/TOXICITY ANALYSIS", step2_start_time)
+    
+    return(list(
+        vision_changes = vision_changes,
+        retinopathy_analysis = retinopathy_analysis,
+        nvg_analysis = nvg_analysis,
+        srd_analysis = srd_analysis
+    ))
+}
+
+#' Run Objective 3: Repeat Radiation Efficacy
+#' 
+#' @param data Data frame with analytic dataset
+#' @param dataset_name Character string for dataset name
+#' @param output_dirs List of output directories
+#' @param prefix Character string for file prefix
+#' @return List of analysis results
+run_objective_3 <- function(data, dataset_name, output_dirs, prefix, other_map = list()) {
+    step3_start_time <- Sys.time()
+    display_name <- tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name)))
+    log_section_start("STEP 3: REPEAT RADIATION EFFICACY", display_name)
+
+    # PFS-2 analysis (freedom from second recurrence)
+    log_function("analyze_pfs2", "PFS-2 analysis (freedom from second recurrence)")
+    pfs2_analysis <- analyze_pfs2(data, dataset_name, other_map)
+    log_enhanced("PFS-2 analysis completed", level = "INFO", indent = 1)
+
+    log_section_complete("STEP 3: REPEAT RADIATION EFFICACY", step3_start_time)
+    
+    return(list(
+        pfs2_analysis = pfs2_analysis
+    ))
+}
+
+#' Run Objective 4: GEP Validation
+#' 
+#' @param data Data frame with analytic dataset
+#' @param dataset_name Character string for dataset name
+#' @param output_dirs List of output directories
+#' @param prefix Character string for file prefix
+#' @return List of analysis results
+run_objective_4 <- function(data, dataset_name, output_dirs, prefix, other_map = list()) {
+    step4_start_time <- Sys.time()
+    display_name <- tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name)))
+    log_section_start("STEP 4: GEP PREDICTIVE ACCURACY VALIDATION", display_name)
+
+    # Comprehensive GEP validation
+    log_function("comprehensive_gep_validation", "Comprehensive GEP validation analysis")
+    comprehensive_gep_results <- comprehensive_gep_validation(data, dataset_name)
+    log_enhanced("Comprehensive GEP validation completed", level = "INFO", indent = 1)
+
+    # Simple GEP validation
+    log_function("simple_gep_validation", "Simple GEP validation - Actual vs Expected rates")
+    simple_gep_results <- simple_gep_validation(data, dataset_name)
+    log_enhanced("Simple GEP validation completed", level = "INFO", indent = 1)
+
+    log_section_complete("STEP 4: GEP PREDICTIVE ACCURACY VALIDATION", step4_start_time)
+    
+    return(list(
+        comprehensive_gep_results = comprehensive_gep_results,
+        simple_gep_results = simple_gep_results
+    ))
+}
+
+########################################################
+############### MAIN ANALYSIS FUNCTION #################
+########################################################
+
 # Run analysis for each dataset
-log_section_start("MAIN EXECUTION PHASE")
-main_start_time <- Sys.time()
+run_my_analysis <- function(dataset_name, objectives_to_run = c(1, 2, 3, 4)) {
+    analysis_start_time <- Sys.time()
+    
+    # Clean dataset name for display
+    display_name <- tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name)))
+    log_section_start("STATISTICAL ANALYSIS", display_name)
 
-available_datasets <- list_available_datasets()
-results <- list()
+    # Set up cohort outputs using centralized function
+    cohort_outputs <- setup_cohort_outputs(dataset_name)
+    
+    prefix <<- cohort_outputs$prefix
+    cohort_base_dir <<- cohort_outputs$cohort_base_dir
+    output_dirs <<- cohort_outputs$output_dirs
+    
+    # CRITICAL: Validate naming consistency to prevent bugs
+    if (!validate_naming_consistency(dataset_name, prefix, basename(cohort_base_dir))) {
+        stop(sprintf("NAMING VALIDATION FAILED for dataset: %s", dataset_name))
+    }
+    
+    log_enhanced(sprintf("All outputs organized by objectives under: %s", cohort_base_dir), level = "INFO", indent = 1)
 
-# Wrap main execution in tryCatch to ensure proper cleanup
-tryCatch({
-    log_enhanced(sprintf("Beginning analysis of %d datasets", length(available_datasets)), level = "INFO")
+    # Load analytic dataset
+    log_function("readRDS", paste("Loading analytic dataset:", dataset_name))
+    data <- readRDS(file.path(PROCESSED_DATA_DIR, paste0(dataset_name, ".rds")))
+    log_enhanced(sprintf("Successfully loaded %d patients for analysis", nrow(data)), level = "INFO", indent = 1)
+
+    # Load other_map information for tracking collapsed categories
+    other_map_file <- file.path(PROCESSED_DATA_DIR, "other_map.rds")
+    if (file.exists(other_map_file)) {
+        log_function("readRDS", "Loading other_map information for collapsed categories")
+        all_other_maps <- readRDS(other_map_file)
+        other_map <- all_other_maps[[dataset_name]]
+        if (is.null(other_map)) {
+            other_map <- list()
+            log_enhanced("No other_map found for this dataset, using empty list", level = "INFO", indent = 1)
+        } else {
+            log_enhanced(sprintf("Loaded other_map with %d variables having collapsed categories", length(other_map)), level = "INFO", indent = 1)
+            # Log what categories were collapsed
+            for (var_name in names(other_map)) {
+                collapsed_cats <- other_map[[var_name]]
+                log_enhanced(sprintf("  %s: %s collapsed into 'Other'", var_name, paste(collapsed_cats, collapse = ", ")), level = "INFO", indent = 2)
+            }
+        }
+    } else {
+        other_map <- list()
+        log_enhanced("No other_map.rds file found, using empty list", level = "INFO", indent = 1)
+    }
+
+    # Run selected objectives
+    results <- list()
     
-    # DEBUG: Only run for one dataset
-    # for (i in seq_along(available_datasets)) {
-    i <- 1
-    dataset <- available_datasets[i]
-    dataset_display <- tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset)))
-    log_progress(i, length(available_datasets), dataset_display, "Analyzing dataset")
+    if (1 %in% objectives_to_run) {
+        log_enhanced("Running Objective 1: Primary Outcomes", level = "INFO")
+        results$objective_1 <- run_objective_1(data, dataset_name, output_dirs, prefix, other_map)
+    }
     
-    results[[dataset]] <- run_my_analysis(dataset)
+    if (2 %in% objectives_to_run) {
+        log_enhanced("Running Objective 2: Safety/Toxicity", level = "INFO")
+        results$objective_2 <- run_objective_2(data, dataset_name, output_dirs, prefix, other_map)
+    }
     
-    log_enhanced(sprintf("Dataset %d/%d completed: %s", i, length(available_datasets), dataset_display), 
-                level = "PROGRESS")
-    # }
+    if (3 %in% objectives_to_run) {
+        log_enhanced("Running Objective 3: Repeat Radiation Efficacy", level = "INFO")
+        results$objective_3 <- run_objective_3(data, dataset_name, output_dirs, prefix, other_map)
+    }
     
-    # NOTE: Forest plot combining functionality is available in scripts/utils/output_utilities.R
-    # but not being run automatically. Collaborator can decide whether to use it later.
-    log_section_complete("MAIN EXECUTION PHASE", main_start_time)
+    if (4 %in% objectives_to_run) {
+        log_enhanced("Running Objective 4: GEP Validation", level = "INFO")
+        results$objective_4 <- run_objective_4(data, dataset_name, output_dirs, prefix, other_map)
+    }
+
+    log_section_complete("STATISTICAL ANALYSIS", analysis_start_time)
+    
+    return(results)
+}
+
+########################################################
+############### MAIN EXECUTION #########################
+########################################################
+
+# Main execution
+main_execution <- function() {
+    main_start_time <- Sys.time()
+    log_section_start("MAIN EXECUTION PHASE")
+    
+    # Define datasets to analyze
+    # this should be generated from the list_available_datasets function and named appropriately so that run_my_analysis can be called with the correct dataset name
+    datasets_to_analyze <- c(
+        "uveal_melanoma_full_cohort",
+        "uveal_melanoma_restricted_cohort", 
+        "uveal_melanoma_gksrs_only_cohort"
+    )
+    
+    # Run analysis for each dataset
+    for (i in seq_along(datasets_to_analyze)) {
+        dataset_name <- datasets_to_analyze[i]
+        log_enhanced(sprintf(">>> Dataset %d/%d: %s", i, length(datasets_to_analyze), dataset_name), level = "PROGRESS")
+        
+        tryCatch({
+            results <- run_my_analysis(dataset_name)
+            log_enhanced(sprintf(">>> Dataset %d/%d completed: %s", i, length(datasets_to_analyze), dataset_name), level = "PROGRESS")
+        }, error = function(e) {
+            log_enhanced(sprintf("ERROR in dataset %s: %s", dataset_name, e$message), level = "ERROR")
+        })
+    }
     
     # Merge baseline tables from all cohorts
     log_enhanced("Merging baseline tables from all cohorts", level = "INFO")
-    merge_cohort_tables(
-        full_cohort_data = readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds")),
-        restricted_cohort_data = readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_restricted_cohort.rds")),
-        output_path = file.path("final_data", "Analysis", "merged_tables")
-    )
+    log_enhanced("=== STARTING TABLE MERGING: Full and Restricted Cohorts ===", level = "INFO")
     
-    # Final summary
-    log_enhanced("", level = "SECTION")
-    log_enhanced("ALL ANALYSES COMPLETED SUCCESSFULLY!", level = "PROGRESS")
-    log_enhanced(sprintf("Total execution time: %.1f minutes", 
-                        as.numeric(difftime(Sys.time(), main_start_time, units = "mins"))), 
-                level = "PROGRESS")
-    log_enhanced(sprintf("Datasets analyzed: %d", length(available_datasets)), level = "PROGRESS")
+    # Create merged tables directory
+    merged_dir <- file.path(OUTPUT_DIR, "merged_tables")
+    if (!dir.exists(merged_dir)) {
+        dir.create(merged_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+    
+    log_enhanced(sprintf("Merging tables will be saved to: %s", merged_dir), level = "INFO")
+    
+    # Load both datasets for merging
+    full_data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
+    restricted_data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_restricted_cohort.rds"))
+    
+    # Create merged baseline characteristics table using the correct function
+    merge_cohort_tables(full_data, restricted_data, merged_dir)
+    log_enhanced("=== COMPLETED TABLE MERGING ===", level = "INFO")
+    log_enhanced(sprintf("Merged baseline characteristics table saved to: %s", merged_dir), level = "INFO")
+    log_enhanced("Files created: merged_baseline_characteristics.xlsx and merged_baseline_characteristics.html", level = "INFO")
+    
+    log_enhanced("===  ===", level = "INFO")
+    log_enhanced(">>> ALL ANALYSES COMPLETED SUCCESSFULLY!", level = "SUCCESS")
+    log_enhanced(sprintf(">>> Total execution time: %.1f minutes", as.numeric(difftime(Sys.time(), main_start_time, units = "mins"))), level = "SUCCESS")
+    log_enhanced(sprintf(">>> Datasets analyzed: %d", length(datasets_to_analyze)), level = "SUCCESS")
     log_enhanced("Check the logs above for detailed progress and any warnings.", level = "INFO")
     log_enhanced("Each cohort has its own complete set of analyses for easy comparison!", level = "INFO")
     
-}, finally = {
-    # Clean up logging if it was enabled
-    if (USE_LOGS) {
-        sink(type = "message")
-        sink()
-        close(log_con)
-        log_enhanced("Log file closed successfully", level = "INFO")
-    }
-})
+    log_section_complete("MAIN EXECUTION PHASE", main_start_time)
+}
+
+# Run specific objective for testing
+run_specific_objective <- function(dataset_name, objective_number) {
+    log_enhanced(sprintf("Running only Objective %d for dataset: %s", objective_number, dataset_name), level = "INFO")
+    results <- run_my_analysis(dataset_name, objectives_to_run = objective_number)
+    return(results)
+}
+
+# Uncomment the appropriate line below to run:
+
+# Run full analysis (all objectives, all datasets)
+# main_execution()
+
+# Run specific objective for specific dataset and objective number, 
+# e.g. 1 for primary outcomes, 2 for safety/toxicity, 3 for repeat radiation efficacy, 4 for GEP validation
+run_specific_objective("uveal_melanoma_full_cohort", 1)
+
+# Close logging if enabled
+if (USE_LOGS) {
+    sink(type = "message")
+    sink()
+    close(log_con)
+    log_enhanced("Log file closed successfully")
+}
+

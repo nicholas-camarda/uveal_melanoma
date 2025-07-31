@@ -6,6 +6,8 @@
 # Source centralized configuration (must be first)
 source("scripts/utils/analysis_config.R")
 
+
+
 # Note: Directory creation is handled in main.R after libraries are loaded
 
 # NOTE: Old cohort directory structure no longer used
@@ -360,6 +362,15 @@ create_derived_variables <- function(data) {
                 mets_progression == "Y" ~ time_length(interval(treatment_date, mets_progression_date), "years"),
                 TRUE ~ time_length(interval(treatment_date, last_known_alive_date), "years")
             ),
+            
+            # Calculate height changes (row-level)
+            height_change = case_when(
+                # Calculate height change as the difference between the initial 
+                # tumor height and the height at the time of recurrence *or* last follow-up
+                # Post treatment1 height = recurrence1 pretreatment height
+                recurrence1 == "Y" ~ initial_tumor_height - recurrence1_pretreatment_height,
+                TRUE ~ initial_tumor_height - last_height
+            ),
             tt_death_years = case_when(
                 !is.na(dod) ~ time_length(interval(treatment_date, dod), "years"),
                 TRUE ~ time_length(interval(treatment_date, last_known_alive_date), "years")
@@ -370,7 +381,18 @@ create_derived_variables <- function(data) {
                 recurrence1 == "Y" & !is.na(recurrence1_treatment_date) ~ 
                     time_length(interval(recurrence1_treatment_date, last_known_alive_date), "years"),
                 TRUE ~ NA_real_
-            )
+            ),
+            
+            # Analysis flags for pre-treatment events
+            mets_before_treatment = tt_mets_months < 0,
+            recurrence_before_treatment = tt_recurrence_months < 0,
+            death_before_treatment = tt_death_months < 0,
+            
+            # Analysis-ready time variables (set negative values to 0 for post-treatment analyses)
+            tt_mets_months_analysis = if_else(tt_mets_months < 0, 0, tt_mets_months),
+            tt_recurrence_months_analysis = if_else(tt_recurrence_months < 0, 0, tt_recurrence_months),
+            tt_death_months_analysis = if_else(tt_death_months < 0, 0, tt_death_months),
+            tt_pfs_months_analysis = pmin(tt_recurrence_months_analysis, tt_death_months_analysis, na.rm = FALSE)
         )
 
     # data %>%
@@ -459,6 +481,22 @@ create_derived_variables <- function(data) {
                     sample(c("Training", "Testing"), n(), replace = TRUE, prob = c(0.7, 0.3)),
                 TRUE ~ "No GEP Data"
             )
+        )
+
+    # Create modified overall stage variable (excluding stages with insufficient numbers)
+    log_enhanced(sprintf("Creating modified overall stage variable (excluding stages: %s)", 
+                        paste(STAGES_TO_EXCLUDE_FROM_MODIFIED, collapse = ", ")), level = "INFO")
+    data <- data %>%
+        mutate(
+            initial_overall_stage_modified = case_when(
+                initial_overall_stage %in% STAGES_TO_EXCLUDE_FROM_MODIFIED ~ NA_character_,
+                TRUE ~ as.character(initial_overall_stage)
+            )
+        ) %>%
+        mutate(
+            initial_overall_stage_modified = factor(initial_overall_stage_modified, 
+                                                   levels = c("1", "2A", "2B", "3A"),
+                                                   ordered = FALSE)  # CRITICAL: Use treatment contrasts, not polynomial
         )
 
     # data %>%
@@ -561,7 +599,8 @@ prepare_factor_levels <- function(data) {
             
             # Recurrence treatment group for PFS-2 analysis
             recurrence1_treatment_clean = factor(recurrence1_treatment_clean,
-                levels = c("Enucleation", "GKSRS", "TTT", "Other")
+                levels = c("Enucleation", "GKSRS", "TTT", "Other"),
+                ordered = FALSE  # CRITICAL: Use treatment contrasts, not polynomial
             ),
 
             # Demographics (using centralized factor levels)
@@ -571,7 +610,8 @@ prepare_factor_levels <- function(data) {
             ),
             location = factor(location,
                 levels = c("Choroidal", "Ciliary_Body", "Cilio_Choroidal", "Conjunctival", "Irido_Ciliary", "Iris"),
-                labels = c("Choroidal", "Ciliary Body", "Cilio-Choroidal", "Conjunctival", "Irido-Ciliary", "Iris")
+                labels = c("Choroidal", "Ciliary Body", "Cilio-Choroidal", "Conjunctival", "Irido-Ciliary", "Iris"),
+                ordered = FALSE  # CRITICAL: Use treatment contrasts, not polynomial
             ),
             optic_nerve = factor(optic_nerve, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
 
@@ -579,7 +619,7 @@ prepare_factor_levels <- function(data) {
             internal_reflectivity = factor(internal_reflectivity,
                 levels = c("Very_Low", "Low", "Low_Medium", "Medium", "Medium_High", "High", "Unknown"),
                 labels = c("Very Low", "Low", "Low-Medium", "Medium", "Medium-High", "High", "Unknown"),
-                ordered = TRUE
+                ordered = FALSE  # CRITICAL: Use treatment contrasts, not polynomial
             ),
             srf = factor(srf, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
             op = factor(op, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
@@ -592,15 +632,16 @@ prepare_factor_levels <- function(data) {
 
             # Staging
             initial_overall_stage = factor(initial_overall_stage,
-                levels = c("1", "2A", "2B", "3A", "3B", "4"),
-                ordered = TRUE
+                levels = c("1", "2A", "2B", "3A", "3B", "3C", "4"),
+                ordered = FALSE  # CRITICAL: Use treatment contrasts, not polynomial
             ),
             
             # Create binary stage variable for confounder adjustment
             # Stage IV has very few patients (n=3), so group with Stage I-III for analysis
             initial_stage_binary = factor(
                 ifelse(initial_overall_stage == "4", "Stage IV", "Stage I-III"),
-                levels = c("Stage I-III", "Stage IV")  # Stage I-III as reference
+                levels = c("Stage I-III", "Stage IV"),  # Stage I-III as reference
+                ordered = FALSE  # CRITICAL: Use treatment contrasts, not polynomial
             ),
             biopsy1_gep = factor(biopsy1_gep,
                 levels = c(
@@ -625,10 +666,12 @@ prepare_factor_levels <- function(data) {
             
             # GEP-related factors for analysis (Objective 4)
             gep_class_simple = factor(gep_class_simple, 
-                levels = c("Class 1A", "Class 1B", "Class 2")
+                levels = c("Class 1A", "Class 1B", "Class 2"),
+                ordered = FALSE  # CRITICAL: Use treatment contrasts, not polynomial
             ),
             prame_status = factor(prame_status, 
-                levels = c("Negative", "Positive", "Unknown", "Not Available")
+                levels = c("Negative", "Positive", "Unknown", "Not Available"),
+                ordered = FALSE  # CRITICAL: Use treatment contrasts, not polynomial
             )
         )
 
@@ -642,6 +685,89 @@ prepare_factor_levels <- function(data) {
         }
     }
 
+    # CRITICAL: Create ALL subgroup variables (both static and dynamic) in data processing
+    log_enhanced("Creating all subgroup variables for analysis", level = "INFO")
+    data <- create_all_subgroup_variables(data)
+    
+    # CRITICAL: Apply rare category handling to ALL variables that need it (confounders + subgroup variables)
+    log_enhanced("Applying rare category handling to all variables", level = "INFO")
+    subgroup_vars_to_process <- paste0(continuous_subgroup_vars, "_binned")
+    all_vars_to_process <- c(confounders, subgroup_vars_to_process)
+    
+    rare_result <- handle_rare_categories(data, vars = all_vars_to_process, threshold = THRESHOLD_RARITY)
+    data <- rare_result$data
+    
+    # Log rare category changes for all variables
+    if (length(rare_result$other_map) > 0) {
+        log_enhanced("Rare categories were collapsed into 'Other':", level = "INFO")
+        for (var in names(rare_result$other_map)) {
+            log_enhanced(sprintf("  %s: %s", var, paste(rare_result$other_map[[var]], collapse = ", ")), level = "INFO")
+        }
+    }
+    
+    # CRITICAL: Ensure all factors are unordered for modeling (use treatment contrasts, not polynomial)
+    data <- enforce_unordered_factors(data, verbose = VERBOSE)
+
+    return(list(data = data, other_map = rare_result$other_map))
+}
+
+#' Create all subgroup variables for analysis
+#'
+#' Creates both static and dynamic subgroup variables for all cohorts.
+#' This includes binned versions of continuous variables and any other
+#' subgroup variables needed for analysis.
+#'
+#' @param data Data frame
+#' @return Data frame with all subgroup variables added
+create_all_subgroup_variables <- function(data) {
+    log_enhanced("Creating subgroup variables for analysis", level = "INFO")
+    
+    # Create binned versions of continuous variables
+    data <- data %>%
+        mutate(
+            # Age at diagnosis - median split
+            age_at_diagnosis_binned = factor(
+                ifelse(age_at_diagnosis < median(age_at_diagnosis, na.rm = TRUE),
+                       paste0("< ", round(median(age_at_diagnosis, na.rm = TRUE), 1)),
+                       paste0("≥ ", round(median(age_at_diagnosis, na.rm = TRUE), 1))),
+                levels = c(
+                    paste0("< ", round(median(age_at_diagnosis, na.rm = TRUE), 1)),
+                    paste0("≥ ", round(median(age_at_diagnosis, na.rm = TRUE), 1))
+                )
+            ),
+            
+            # Tumor height - T-stage clinical bins
+            initial_tumor_height_binned = factor(
+                case_when(
+                    initial_tumor_height <= 3.0 ~ "≤ 3.0 mm",
+                    initial_tumor_height <= 6.0 ~ "3.1-6.0 mm", 
+                    initial_tumor_height <= 9.0 ~ "6.1-9.0 mm",
+                    initial_tumor_height <= 12.0 ~ "9.1-12.0 mm",
+                    initial_tumor_height <= 15.0 ~ "12.1-15.0 mm",
+                    initial_tumor_height > 15.0 ~ "> 15.0 mm",
+                    TRUE ~ NA_character_
+                ),
+                levels = c("≤ 3.0 mm", "3.1-6.0 mm", "6.1-9.0 mm", 
+                          "9.1-12.0 mm", "12.1-15.0 mm", "> 15.0 mm")
+            ),
+            
+            # Tumor diameter - T-stage clinical bins  
+            initial_tumor_diameter_binned = factor(
+                case_when(
+                    initial_tumor_diameter <= 3.0 ~ "≤ 3.0 mm",
+                    initial_tumor_diameter <= 6.0 ~ "3.1-6.0 mm",
+                    initial_tumor_diameter <= 9.0 ~ "6.1-9.0 mm", 
+                    initial_tumor_diameter <= 12.0 ~ "9.1-12.0 mm",
+                    initial_tumor_diameter <= 15.0 ~ "12.1-15.0 mm",
+                    initial_tumor_diameter <= 18.0 ~ "15.1-18.0 mm",
+                    initial_tumor_diameter > 18.0 ~ "> 18.0 mm",
+                    TRUE ~ NA_character_
+                ),
+                levels = c("≤ 3.0 mm", "3.1-6.0 mm", "6.1-9.0 mm",
+                          "9.1-12.0 mm", "12.1-15.0 mm", "15.1-18.0 mm", "> 18.0 mm")
+            )
+        )
+    
     return(data)
 }
 
@@ -735,75 +861,6 @@ calculate_treatment_duration_metrics <- function(data) {
         interval_metrics = interval_metrics,
         summary_stats = summary_stats
     ))
-}
-
-#' Create CONSORT diagram for cohorts
-#'
-#' Generates and saves a CONSORT diagram as a PNG summarizing cohort sizes and treatment groups.
-#'
-#' @param data_list List of data frames. Each element is a cohort data frame.
-#'
-#' @return None. Side effect: saves a PNG file to the analysis directory.
-#'
-#' @examples
-#' create_consort_diagram(list(full_cohort = df1, ...), level = "INFO")
-create_consort_diagram <- function(data_list) {
-    # Get counts for each cohort
-    counts <- lapply(data_list, function(data) {
-        list(
-            total = nrow(data),
-            plaque = sum(data$treatment_group == "Plaque"),
-            gksrs = sum(data$treatment_group == "GKSRS")
-        )
-    })
-
-    grViz(sprintf(
-        '
-    digraph consort {
-      graph [rankdir = TB, nodesep = 1.0, ranksep = 1.0, splines = ortho]
-      node [shape = box, style = filled, fillcolor = lightblue, fontname = "Arial", width=3, height=1.2, fontsize=18]
-      edge [fontname = "Arial", fontsize=16]
-
-      patients [label = "Patients Evaluated\n(n = %d)"]
-      eligibility [label = "Eligibility Assessment\n(n = %d)"]
-      treated [label = "Treated with Plaque or Gamma Knife SRS\n(n = %d)"]
-
-      restricted [label = "Eligible for Both Treatments\n(Restricted Cohort)\n(n = %d)"]
-      restricted_plaque [label = "Treated with Plaque Brachytherapy\n(n = %d)"]
-      restricted_gksrs [label = "Treated with Gamma Knife SRS\n(n = %d)"]
-
-      gksrs_only [label = "Ineligible for Plaque\n(GKSRS-Only Cohort)\n(n = %d)"]
-      gksrs_only_plaque [label = "Treated with Plaque Brachytherapy\n(n = %d)"]
-      gksrs_only_gksrs [label = "Treated with Gamma Knife SRS\n(n = %d)"]
-
-      patients -> eligibility
-      eligibility -> treated
-      treated -> restricted [label = "T_height ≤ 10 mm,\nT_diam ≤ 20 mm,\nNo Optic Nerve Abutment", fontsize=14]
-      treated -> gksrs_only [label = "T_height > 10 mm,\nT_diam > 20 mm,\nYes Optic Nerve Abutment", fontsize=14]
-
-      restricted -> restricted_plaque
-      restricted -> restricted_gksrs
-      gksrs_only -> gksrs_only_plaque
-      gksrs_only -> gksrs_only_gksrs
-    }
-  ',
-        counts$full_cohort$total,
-        counts$full_cohort$total,
-        counts$full_cohort$total,
-        counts$restricted_cohort$total,
-        counts$restricted_cohort$plaque,
-        counts$restricted_cohort$gksrs,
-        counts$gksrs_only_cohort$total,
-        counts$gksrs_only_cohort$plaque,
-        counts$gksrs_only_cohort$gksrs
-    )) %>%
-        DiagrammeRsvg::export_svg() %>%
-        charToRaw() %>%
-        rsvg::rsvg_png(
-            file.path(ANALYSIS_DIR, "consort_diagram.png"),
-            width = 1400,
-            height = 900
-        )
 }
 
 #' Create summary tables using gtsummary
@@ -1073,6 +1130,7 @@ save_cohorts <- function(cohort_data) {
 #' @return A list with:
 #'   - analytic_data: Named list of processed cohort data frames.
 #'   - summary_tables: Named list of summary tables for each cohort.
+#'   - other_map: Named list mapping variable names to categories collapsed into "Other" for each cohort.
 #'
 #' @examples
 #' create_analytic_dataset()
@@ -1081,7 +1139,7 @@ create_analytic_dataset <- function() {
 
     # Load and clean raw data
     log_enhanced("Loading and cleaning raw data", level = "INFO")
-    raw_data <- load_and_clean_data()
+    raw_data <- load_and_clean_data(INPUT_FILENAME)
     log_enhanced(sprintf("Loaded %d rows of raw data", nrow(raw_data)), level = "INFO")
 
     # Create derived variables BEFORE splitting into cohorts
@@ -1099,14 +1157,45 @@ create_analytic_dataset <- function() {
         log_enhanced(sprintf("Cohort '%s': %d patients", cohort, nrow(factored_filtered_data[[cohort]])), level = "INFO")
     }
 
+    # Collapse rare categories and track which categories were collapsed into "Other"
+    log_enhanced("Collapsing rare categories", level = "INFO")
+    other_map <- list()
+    for (cohort_name in names(factored_filtered_data)) {
+        log_enhanced(sprintf("Processing rare categories for cohort: %s", cohort_name), level = "INFO")
+        
+        # Get the list of variables that might need category collapsing
+        # Focus on categorical variables that are commonly used in analysis
+        potential_vars <- c("location", "initial_t_stage", "biopsy1_gep", "srd_cause")
+        
+        # Filter to variables that exist in the data and are factors
+        factor_vars <- intersect(potential_vars, names(factored_filtered_data[[cohort_name]]))
+        factor_vars <- factor_vars[sapply(factored_filtered_data[[cohort_name]][factor_vars], is.factor)]
+        
+        if (length(factor_vars) > 0) {
+            # Collapse rare categories for this cohort
+            collapse_result <- collapse_rare_categories(factored_filtered_data[[cohort_name]], factor_vars)
+            factored_filtered_data[[cohort_name]] <- collapse_result$data
+            other_map[[cohort_name]] <- collapse_result$other_map
+            
+            # Log what was collapsed
+            if (length(collapse_result$other_map) > 0) {
+                log_enhanced(sprintf("Categories collapsed into 'Other' for cohort %s:", cohort_name), level = "INFO")
+                for (var_name in names(collapse_result$other_map)) {
+                    collapsed_cats <- collapse_result$other_map[[var_name]]
+                    log_enhanced(sprintf("  %s: %s", var_name, paste(collapsed_cats, collapse = ", ")), level = "INFO")
+                }
+            } else {
+                log_enhanced(sprintf("No categories collapsed for cohort %s", cohort_name), level = "INFO")
+            }
+        } else {
+            other_map[[cohort_name]] <- list()
+            log_enhanced(sprintf("No factor variables to process for cohort %s", cohort_name), level = "INFO")
+        }
+    }
+
     # Create summary tables
     log_enhanced("Creating summary tables", level = "INFO")
     summary_tables <- create_summary_tables(factored_filtered_data)
-
-    # Create CONSORT diagram
-    # TODO: Add CONSORT diagram
-    # log_enhanced("Creating CONSORT diagram", level = "INFO")
-    # create_consort_diagram(factored_filtered_data)
 
     # Save each cohort separately
     log_enhanced("Saving processed data", level = "INFO")
@@ -1124,12 +1213,17 @@ create_analytic_dataset <- function() {
         )
     }
 
+    # Save the other_map information for use in analysis
+    saveRDS(other_map, file.path(PROCESSED_DATA_DIR, "other_map.rds"))
+    log_enhanced("Saved other_map information for tracking collapsed categories", level = "INFO")
+
     # Optional: generate a detailed log file for review
     generate_validation_report(factored_filtered_data)
 
     return(list(
         analytic_data = factored_filtered_data,
-        summary_tables = summary_tables
+        summary_tables = summary_tables,
+        other_map = other_map
     ))
 }
 

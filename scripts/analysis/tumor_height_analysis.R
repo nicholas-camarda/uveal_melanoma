@@ -12,21 +12,9 @@
 #' @return List with elements: changes (summary data frame), table (gtsummary object), primary_regression_model (lm object), primary_regression_table (gtsummary object), sensitivity_regression_model (lm object), sensitivity_regression_table (gtsummary object).
 #' @examples
 #' analyze_tumor_height_changes(data)
-analyze_tumor_height_changes <- function(data) {
-    # Calculate height changes (row-level)
-    data_with_height_change <- data %>%
-        mutate(
-            # Calculate height change as the difference between the initial 
-            # tumor height and the height at the time of recurrence *or* last follow-up
-            # Post treatment1 height = recurrence1 pretreatment height
-            height_change = case_when(
-                recurrence1 == "Y" ~ initial_tumor_height - recurrence1_pretreatment_height,
-                TRUE ~ initial_tumor_height - last_height
-            )
-        )
-    
-    # Ensure consistent factor contrasts for modeling
-    data_with_height_change <- ensure_consistent_contrasts(data_with_height_change)
+analyze_tumor_height_changes <- function(data, other_map = list()) {
+    # Use height_change variable that was already calculated in data_processing.R
+    data_with_height_change <- ensure_consistent_contrasts(data)
 
     # Summary statistics (grouped)
     height_changes <- data_with_height_change %>%
@@ -77,95 +65,47 @@ analyze_tumor_height_changes <- function(data) {
     
     # PRIMARY ANALYSIS: Linear regression WITHOUT initial tumor height adjustment
     log_enhanced("Fitting PRIMARY linear regression model for tumor height changes (without baseline height adjustment)")
-    primary_height_lm <- lm(height_change ~ treatment_group + recurrence1, data = data_with_height_change)
     
-    # Get variable labels for better readability - filter to only variables in the model
-    all_variable_labels <- get_variable_labels()
-    # Get the actual variable names from the model terms (not coefficient names)
-    model_terms <- attr(terms(primary_height_lm), "term.labels")
-    model_var_names <- unique(c("treatment_group", model_terms))
-    # Filter labels to only include variables actually in the model
-    variable_labels <- all_variable_labels[intersect(names(all_variable_labels), model_var_names)]
-    
-    primary_height_lm_tbl <- tbl_regression(primary_height_lm,
-        exponentiate = FALSE,
-        intercept = FALSE,
-        label = variable_labels  # Apply filtered human-readable labels
+    # Use the unified table generation system for primary analysis
+    primary_result <- generate_regression_table(
+        data = data_with_height_change,
+        outcome_var = "height_change",
+        predictor_vars = "treatment_group",
+        confounders = confounders,
+        model_type = "linear",
+        effect_measure = "MD",  # Mean Difference for continuous outcome
+        analysis_name = "height_change_primary",
+        dataset_name = "tumor_height",
+        output_dir = output_dirs$obj1_height_primary,
+        prefix = prefix,
+        # handle_rare = TRUE, # REMOVED
+        other_map = other_map
     )
     
-    # Add p-values based on toggle setting
-    if (SHOW_ALL_PVALUES) {
-        # Show individual p-values for each coefficient
-        primary_height_lm_tbl <- primary_height_lm_tbl  # No modification needed
-    } else {
-        # Show only grouped p-values (one per variable)
-        primary_height_lm_tbl <- primary_height_lm_tbl %>% add_global_p()
-    }
-    
-    primary_height_lm_tbl <- primary_height_lm_tbl %>%
-        bold_labels() %>%
-        modify_header(
-            label = "**Characteristic**",
-            estimate = "**Beta**",
-            conf.low = "**95% CI**",
-            p.value = "**p-value**"
-        ) %>%
-        modify_caption("PRIMARY ANALYSIS: Linear Regression of Change in Tumor Height (without baseline height adjustment)") %>%
-        modify_footnote(
-            update = all_stat_cols() ~ "Adjusted for treatment group and recurrence status only. Reference level: Plaque. Primary analysis to avoid overadjustment bias."
-        )
-    
-    # Save primary table
-    save_gt_html(
-        primary_height_lm_tbl %>% as_gt(),
-        filename = file.path(output_dirs$obj1_height_primary, paste0(prefix, "height_lm_primary.html"))
-    )
+    primary_height_lm <- primary_result$model
+    primary_height_lm_tbl <- primary_result$table
 
     # SENSITIVITY ANALYSIS: Linear regression WITH initial tumor height adjustment
     log_enhanced("Fitting SENSITIVITY linear regression model for tumor height changes (with baseline height adjustment)")
-    sensitivity_height_lm <- lm(height_change ~ treatment_group + recurrence1 + initial_tumor_height, data = data_with_height_change)
     
-    # Get variable labels for sensitivity model - filter to only variables in the model
-    all_variable_labels_sens <- get_variable_labels()
-    # Get the actual variable names from the model terms (not coefficient names)
-    model_terms_sens <- attr(terms(sensitivity_height_lm), "term.labels")
-    model_var_names_sens <- unique(c("treatment_group", model_terms_sens))
-    # Filter labels to only include variables actually in the model
-    variable_labels_sens <- all_variable_labels_sens[intersect(names(all_variable_labels_sens), model_var_names_sens)]
-    
-    sensitivity_height_lm_tbl <- tbl_regression(sensitivity_height_lm,
-        exponentiate = FALSE,
-        intercept = FALSE,
-        label = variable_labels_sens  # Apply filtered human-readable labels
+    # Use the unified table generation system for sensitivity analysis
+    sensitivity_result <- generate_regression_table(
+        data = data_with_height_change,
+        outcome_var = "height_change",
+        predictor_vars = "treatment_group",
+        confounders = c(confounders, "initial_tumor_height"),
+        model_type = "linear",
+        effect_measure = "MD",  # Mean Difference for continuous outcome
+        analysis_name = "height_change_sensitivity",
+        dataset_name = "tumor_height",
+        output_dir = output_dirs$obj1_height_sensitivity,
+        prefix = prefix,
+        # handle_rare = TRUE, # REMOVED
+        other_map = other_map
     )
     
-    # Add p-values based on toggle setting
-    if (SHOW_ALL_PVALUES) {
-        # Show individual p-values for each coefficient
-        sensitivity_height_lm_tbl <- sensitivity_height_lm_tbl  # No modification needed
-    } else {
-        # Show only grouped p-values (one per variable)
-        sensitivity_height_lm_tbl <- sensitivity_height_lm_tbl %>% add_global_p()
-    }
-    
-    sensitivity_height_lm_tbl <- sensitivity_height_lm_tbl %>%
-        bold_labels() %>%
-        modify_header(
-            label = "**Characteristic**",
-            estimate = "**Beta**",
-            conf.low = "**95% CI**",
-            p.value = "**p-value**"
-        ) %>%
-        modify_caption("SENSITIVITY ANALYSIS: Linear Regression of Change in Tumor Height (with baseline height adjustment)") %>%
-        modify_footnote(
-            update = all_stat_cols() ~ "Adjusted for treatment group, recurrence status, and initial tumor height. Reference level: Plaque. Sensitivity analysis including baseline adjustment."
-        )
-    
-    # Save sensitivity table
-    save_gt_html(
-        sensitivity_height_lm_tbl %>% as_gt(),
-        filename = file.path(output_dirs$obj1_height_sensitivity, paste0(prefix, "height_lm_sensitivity.html"))
-    )
+    sensitivity_height_lm <- sensitivity_result$model
+    sensitivity_height_lm_tbl <- sensitivity_result$table
 
     return(list(
         changes = height_changes,

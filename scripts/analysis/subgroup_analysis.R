@@ -78,7 +78,8 @@ analyze_treatment_effect_subgroups_survival <- function(data, time_var, event_va
                 confounders_used = processed_results$confounders_to_use,
                 was_continuous = processed_results$was_continuous,
                 cutoff_value = processed_results$cutoff_value,
-                interaction_diagnostics = model_results$interaction_diagnostics
+                interaction_diagnostics = model_results$interaction_diagnostics,
+                other_map = processed_results$other_map # Collect other_map from process_subgroup_data
             )
 
             log_enhanced(sprintf("  Interaction p-value: %.4f", ifelse(is.na(model_results$interaction_p), 999, model_results$interaction_p)), level = "INFO")
@@ -93,7 +94,18 @@ analyze_treatment_effect_subgroups_survival <- function(data, time_var, event_va
         })
     }
 
-    return(subgroup_results)
+    # Collect other_map from all variables
+    other_map <- list()
+    for (var_name in names(subgroup_results)) {
+        if (!is.null(subgroup_results[[var_name]]) && !is.null(subgroup_results[[var_name]]$other_map)) {
+            other_map[[var_name]] <- subgroup_results[[var_name]]$other_map
+        }
+    }
+
+    return(list(
+        subgroup_results = subgroup_results,
+        other_map = other_map
+    ))
 }
 
 #' Analyze treatment effects across subgroups for binary outcomes
@@ -216,16 +228,7 @@ analyze_treatment_effect_subgroups_binary <- function(data, outcome_var, subgrou
 #' @examples
 #' analyze_treatment_effect_subgroups_height(data, "age_at_diagnosis", confounders = c("sex", "location"))
 analyze_treatment_effect_subgroups_height <- function(data, subgroup_var, percentile_cut = 0.5, confounders = NULL, include_baseline_height = FALSE, create_tables = CREATE_SUBGROUP_TABLES) {
-    # Calculate tumor height change if not already present
-    if (!("height_change" %in% names(data))) {
-        data <- data %>%
-            mutate(
-                height_change = case_when(
-                    recurrence1 == "Y" ~ initial_tumor_height - recurrence1_pretreatment_height,
-                    TRUE ~ initial_tumor_height - last_height
-                )
-            )
-    }
+    # height_change variable should already be calculated in data_processing.R
     
     # Check if subgroup variable exists and has variation
     if (!subgroup_var %in% names(data)) {
@@ -357,10 +360,8 @@ process_subgroup_data <- function(data, subgroup_var, confounders, include_basel
             subgroup_var_to_use <- subgroup_var_binned
             cutoff_value <- cutoff_val
             
-            # CRITICAL FIX: Apply rare category handling to T-stage clinical bins
-            rare_result <- handle_rare_categories(processed_data, vars = subgroup_var_binned, threshold = THRESHOLD_RARITY)
-            processed_data <- rare_result$data
-            other_map <- rare_result$other_map
+                    # Rare category handling already done in data processing
+        other_map <- list()
             
         } else {
             # Use simple binary split (original logic)
@@ -384,9 +385,8 @@ process_subgroup_data <- function(data, subgroup_var, confounders, include_basel
         if (!is.factor(processed_data[[subgroup_var]])) {
             processed_data[[subgroup_var]] <- as.factor(processed_data[[subgroup_var]])
         }
-        rare_result <- handle_rare_categories(processed_data, vars = subgroup_var, threshold = THRESHOLD_RARITY)
-        processed_data <- rare_result$data
-        other_map <- rare_result$other_map
+        # Rare category handling already done in data processing
+        other_map <- list()
         subgroup_var_to_use <- subgroup_var
     }
 
@@ -571,28 +571,149 @@ fit_subgroup_model <- function(data, outcome_config, subgroup_var_to_use, confou
     
     interaction_term <- paste0("treatment_group * ", subgroup_var_to_use)
     
+    # Simple check: if only one level remains, skip model creation
+    if (length(unique(filtered_data[[subgroup_var_to_use]])) < 2) {
+        interaction_diagnostics$failure_reason <- "Only one factor level remains after filtering"
+        return(list(
+            model = NULL,
+            interaction_p = NA,
+            formula_used = NA,
+            interaction_diagnostics = interaction_diagnostics,
+            filtered_data = filtered_data
+        ))
+    }
+    
+    # Check all factor variables in the model for sufficient levels
+    all_vars <- c("treatment_group", subgroup_var_to_use, confounders_to_use)
+    
+    # CRITICAL FIX: Check that all factor variables have at least 2 levels
+    for (var in all_vars) {
+        if (var %in% names(filtered_data) && is.factor(filtered_data[[var]])) {
+            unique_levels <- unique(filtered_data[[var]])
+            if (length(unique_levels) < 2) {
+                interaction_diagnostics$failure_reason <- sprintf("Variable %s has only %d level(s) after filtering: %s", 
+                                                                var, length(unique_levels), paste(unique_levels, collapse = ", "))
+                return(list(
+                    model = NULL,
+                    interaction_p = NA,
+                    formula_used = NA,
+                    interaction_diagnostics = interaction_diagnostics,
+                    filtered_data = filtered_data
+                ))
+            }
+        }
+    }
+    for (var in all_vars) {
+        if (var %in% names(filtered_data) && is.factor(filtered_data[[var]])) {
+            var_levels <- unique(filtered_data[[var]][!is.na(filtered_data[[var]])])
+            if (length(var_levels) < 2) {
+                interaction_diagnostics$failure_reason <- sprintf("Variable '%s' has only %d level(s), need >=2", var, length(var_levels))
+                return(list(
+                    model = NULL,
+                    interaction_p = NA,
+                    formula_used = NA,
+                    interaction_diagnostics = interaction_diagnostics,
+                    filtered_data = filtered_data
+                ))
+            }
+        }
+    }
+    
+    # Additional check: validate the final model formula variables
+    model_vars <- c("treatment_group", subgroup_var_to_use)
+    if (!is.null(confounders_to_use) && length(confounders_to_use) > 0) {
+        model_vars <- c(model_vars, confounders_to_use)
+    }
+    
+    for (var in model_vars) {
+        if (var %in% names(filtered_data)) {
+            if (is.factor(filtered_data[[var]])) {
+                var_levels <- unique(filtered_data[[var]][!is.na(filtered_data[[var]])])
+                if (length(var_levels) < 2) {
+                    interaction_diagnostics$failure_reason <- sprintf("Model variable '%s' has only %d level(s) after filtering, need >=2", var, length(var_levels))
+                    return(list(
+                        model = NULL,
+                        interaction_p = NA,
+                        formula_used = NA,
+                        interaction_diagnostics = interaction_diagnostics,
+                        filtered_data = filtered_data
+                    ))
+                }
+            }
+        }
+    }
+    
+    # CRITICAL FIX: Final check before model fitting - ensure all variables in the model have sufficient levels
+    model_vars <- c("treatment_group", subgroup_var_to_use)
+    if (!is.null(confounders_to_use) && length(confounders_to_use) > 0) {
+        model_vars <- c(model_vars, confounders_to_use)
+    }
+    
+    # Check each variable that will be in the model
+    for (var in model_vars) {
+        if (var %in% names(filtered_data)) {
+            if (is.factor(filtered_data[[var]])) {
+                var_levels <- unique(filtered_data[[var]][!is.na(filtered_data[[var]])])
+                if (length(var_levels) < 2) {
+                    interaction_diagnostics$failure_reason <- sprintf("Model variable '%s' has only %d level(s): %s", 
+                                                                    var, length(var_levels), paste(var_levels, collapse = ", "))
+                    return(list(
+                        model = NULL,
+                        interaction_p = NA,
+                        formula_used = NA,
+                        interaction_diagnostics = interaction_diagnostics,
+                        filtered_data = filtered_data
+                    ))
+                }
+            }
+        }
+    }
+    
     # Build formula based on outcome type - using filtered_data
     if (outcome_config$type == "survival") {
         formula_str <- paste0("Surv(", outcome_config$time_var, ", ", outcome_config$event_var, ") ~ ", 
                              interaction_term, confounders_str)
-        model <- coxph(as.formula(formula_str), data = filtered_data)
+        model <- tryCatch({
+            coxph(as.formula(formula_str), data = filtered_data)
+        }, error = function(e) {
+            interaction_diagnostics$model_error <- e$message
+            NULL
+        })
         no_interaction_formula <- paste0("Surv(", outcome_config$time_var, ", ", outcome_config$event_var, ") ~ ", 
                                         "treatment_group + ", subgroup_var_to_use, confounders_str)
         no_interaction_model <- coxph(as.formula(no_interaction_formula), data = filtered_data)
         
     } else if (outcome_config$type == "binary") {
         formula_str <- paste0(outcome_config$outcome_var, " ~ ", interaction_term, confounders_str)
-        model <- glm(as.formula(formula_str), data = filtered_data, family = binomial())
+        model <- tryCatch({
+            glm(as.formula(formula_str), data = filtered_data, family = binomial())
+        }, error = function(e) {
+            interaction_diagnostics$model_error <- e$message
+            NULL
+        })
         no_interaction_formula <- paste0(outcome_config$outcome_var, " ~ ", 
                                         "treatment_group + ", subgroup_var_to_use, confounders_str)
-        no_interaction_model <- glm(as.formula(no_interaction_formula), data = filtered_data, family = binomial())
+        no_interaction_model <- tryCatch({
+            glm(as.formula(no_interaction_formula), data = filtered_data, family = binomial())
+        }, error = function(e) {
+            NULL
+        })
         
     } else if (outcome_config$type == "continuous") {
         formula_str <- paste0(outcome_config$outcome_var, " ~ ", interaction_term, confounders_str)
-        model <- lm(as.formula(formula_str), data = filtered_data)
+        model <- tryCatch({
+            lm(as.formula(formula_str), data = filtered_data)
+        }, error = function(e) {
+            interaction_diagnostics$model_error <- e$message
+            NULL
+        })
         no_interaction_formula <- paste0(outcome_config$outcome_var, " ~ ", 
                                         "treatment_group + ", subgroup_var_to_use, confounders_str)
-        no_interaction_model <- lm(as.formula(no_interaction_formula), data = filtered_data)
+        no_interaction_model <- tryCatch({
+            lm(as.formula(no_interaction_formula), data = filtered_data)
+        }, error = function(e) {
+            NULL
+        })
     }
     
     # Calculate interaction p-value with detailed diagnostics
@@ -1280,19 +1401,26 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
                 )
             # Add 'Other' info to source note if present
             other_caption <- ""
-            has_other_categories <- any(grepl('Other', final_table$`Subgroup Level`))
+            has_other_categories_in_table <- any(grepl('Other', final_table$`Subgroup Level`))
+            has_other_categories_in_map <- !is.null(other_map) && length(other_map) > 0 && any(sapply(other_map, function(x) !is.null(x) && length(x) > 0))
             
-            if (!is.null(other_map) && length(other_map) > 0 && has_other_categories) {
+            if (has_other_categories_in_map) {
                 for (var_name in names(subgroup_results)) {
                     if (var_name %in% names(other_map) && !is.null(other_map[[var_name]]) && length(other_map[[var_name]]) > 0) {
+                        if (has_other_categories_in_table) {
+                            # Other category is visible in table
                         other_caption <- paste0(other_caption, sprintf("\n\n'Other' in %s includes: %s", var_name, paste(other_map[[var_name]], collapse = ", ")))
+                        } else {
+                            # Other category was created but excluded due to extreme estimates
+                            other_caption <- paste0(other_caption, sprintf("\n\n'Other' in %s (excluded due to extreme estimates) included: %s", var_name, paste(other_map[[var_name]], collapse = ", ")))
+                        }
                     }
                 }
             }
             
-            if (other_caption == "" && has_other_categories) {
+            if (other_caption == "" && has_other_categories_in_table) {
                 other_caption <- "\n\n'Other' category exists but no specific categories were documented as collapsed."
-            } else if (other_caption == "" && !has_other_categories) {
+            } else if (other_caption == "" && !has_other_categories_in_map) {
                 other_caption <- "\n\nNo rare categories were collapsed into 'Other'."
             }
             
