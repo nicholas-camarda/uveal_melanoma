@@ -321,4 +321,157 @@ validate_factor_level_consistency <- function(cohort_list, phase = "data_process
     }
     
     return(validation_passed)
+}
+
+#' Generate Validation Report for Data Processing
+#'
+#' Runs comprehensive validation checks and generates a detailed report
+#' for the data processing phase.
+#'
+#' @param data Data frame or list of data frames to validate
+#' @return NULL (writes report to logs directory)
+generate_validation_report <- function(data) {
+    log_enhanced("Generating comprehensive validation report", level = "INFO")
+    
+    # If data is a list (multiple cohorts), use the full cohort for validation
+    if (is.list(data) && !is.data.frame(data)) {
+        validation_data <- data$uveal_melanoma_full_cohort
+        if (is.null(validation_data)) {
+            validation_data <- data[[1]]  # Use first cohort if full cohort not found
+        }
+    } else {
+        validation_data <- data
+    }
+    
+    # Run validation checks
+    validation_results <- list()
+    
+    # 1. Basic data integrity checks
+    validation_results$basic_integrity <- list(
+        n_rows = nrow(validation_data),
+        n_cols = ncol(validation_data),
+        missing_values = colSums(is.na(validation_data)),
+        duplicate_rows = sum(duplicated(validation_data))
+    )
+    
+    # 2. GEP variable validation (if applicable)
+    if ("biopsy1_gep" %in% names(validation_data)) {
+        gep_validation <- validate_gep_variables_with_report(validation_data)
+        validation_results$gep_validation <- gep_validation
+    }
+    
+    # 3. Factor level validation
+    factor_vars <- names(validation_data)[sapply(validation_data, is.factor)]
+    validation_results$factor_levels <- list(
+        factor_variables = factor_vars,
+        factor_summaries = lapply(validation_data[factor_vars], function(x) {
+            list(
+                levels = levels(x),
+                n_levels = length(levels(x)),
+                counts = table(x)
+            )
+        })
+    )
+    
+    # 4. Key variable validation
+    key_vars <- c("treatment_group", "sex", "age_at_diagnosis", "initial_tumor_height", "initial_tumor_diameter")
+    existing_key_vars <- intersect(key_vars, names(validation_data))
+    validation_results$key_variables <- list(
+        existing_variables = existing_key_vars,
+        missing_variables = setdiff(key_vars, names(validation_data)),
+        summaries = lapply(validation_data[existing_key_vars], function(x) {
+            if (is.numeric(x)) {
+                list(
+                    type = "numeric",
+                    mean = mean(x, na.rm = TRUE),
+                    sd = sd(x, na.rm = TRUE),
+                    min = min(x, na.rm = TRUE),
+                    max = max(x, na.rm = TRUE),
+                    missing = sum(is.na(x))
+                )
+            } else if (is.factor(x)) {
+                list(
+                    type = "factor",
+                    levels = levels(x),
+                    counts = table(x),
+                    missing = sum(is.na(x))
+                )
+            } else {
+                list(
+                    type = class(x)[1],
+                    unique_values = length(unique(x)),
+                    missing = sum(is.na(x))
+                )
+            }
+        })
+    )
+    
+    # Write validation report to logs directory
+    report_file <- file.path("logs", paste0("validation_report_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".txt"))
+    
+    report_content <- c(
+        "DATA PROCESSING VALIDATION REPORT",
+        "=================================",
+        "",
+        paste("Generated:", format(Sys.time(), "%Y-%m-%d %H:%M:%S")),
+        "",
+        "BASIC DATA INTEGRITY:",
+        "-------------------",
+        paste("Total rows:", validation_results$basic_integrity$n_rows),
+        paste("Total columns:", validation_results$basic_integrity$n_cols),
+        paste("Duplicate rows:", validation_results$basic_integrity$duplicate_rows),
+        "",
+        "MISSING VALUES BY VARIABLE:",
+        "-------------------------"
+    )
+    
+    # Add missing values summary
+    missing_summary <- validation_results$basic_integrity$missing_values
+    missing_summary <- missing_summary[missing_summary > 0]  # Only show variables with missing values
+    if (length(missing_summary) > 0) {
+        for (var_name in names(missing_summary)) {
+            report_content <- c(report_content, paste("  ", var_name, ":", missing_summary[var_name]))
+        }
+    } else {
+        report_content <- c(report_content, "  No missing values found")
+    }
+    
+    # Add factor level summary
+    report_content <- c(report_content,
+        "",
+        "FACTOR VARIABLES:",
+        "----------------"
+    )
+    
+    for (var_name in names(validation_results$factor_levels$factor_summaries)) {
+        summary <- validation_results$factor_levels$factor_summaries[[var_name]]
+        report_content <- c(report_content,
+            paste("  ", var_name, ":"),
+            paste("    Levels:", paste(summary$levels, collapse = ", ")),
+            paste("    Counts:", paste(names(summary$counts), summary$counts, collapse = ", ", sep = "="))
+        )
+    }
+    
+    # Add GEP validation results if available
+    if ("gep_validation" %in% names(validation_results)) {
+        report_content <- c(report_content,
+            "",
+            "GEP VALIDATION:",
+            "---------------",
+            paste("  Validation passed:", validation_results$gep_validation$validation_passed)
+        )
+        
+        if (!validation_results$gep_validation$validation_passed) {
+            report_content <- c(report_content,
+                "  Issues found:",
+                paste("    ", validation_results$gep_validation$detailed_results$issues)
+            )
+        }
+    }
+    
+    # Write the report
+    writeLines(report_content, report_file)
+    log_enhanced(sprintf("Validation report written to: %s", report_file), level = "INFO")
+    
+    return(invisible(NULL))
 } 

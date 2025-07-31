@@ -696,20 +696,26 @@ run_objective_4 <- function(data, dataset_name, output_dirs, prefix, other_map =
     display_name <- tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name)))
     log_section_start("STEP 4: GEP PREDICTIVE ACCURACY VALIDATION", display_name)
 
-    # Comprehensive GEP validation
-    log_function("comprehensive_gep_validation", "Comprehensive GEP validation analysis")
-    comprehensive_gep_results <- comprehensive_gep_validation(data, dataset_name)
-    log_enhanced("Comprehensive GEP validation completed", level = "INFO", indent = 1)
+    # MFS GEP validation
+    log_function("analyze_gep_mfs_validation", "MFS GEP validation analysis")
+    mfs_gep_results <- analyze_gep_mfs_validation(data, dataset_name)
+    log_enhanced("MFS GEP validation completed", level = "INFO", indent = 1)
+
+    # MSS GEP validation
+    log_function("analyze_gep_mss_validation", "MSS GEP validation analysis")
+    mss_gep_results <- analyze_gep_mss_validation(data, dataset_name)
+    log_enhanced("MSS GEP validation completed", level = "INFO", indent = 1)
 
     # Simple GEP validation
     log_function("simple_gep_validation", "Simple GEP validation - Actual vs Expected rates")
-    simple_gep_results <- simple_gep_validation(data, dataset_name)
+    simple_gep_results <- simple_gep_validation(data, output_dirs$obj4_simple, prefix)
     log_enhanced("Simple GEP validation completed", level = "INFO", indent = 1)
 
     log_section_complete("STEP 4: GEP PREDICTIVE ACCURACY VALIDATION", step4_start_time)
     
     return(list(
-        comprehensive_gep_results = comprehensive_gep_results,
+        mfs_gep_results = mfs_gep_results,
+        mss_gep_results = mss_gep_results,
         simple_gep_results = simple_gep_results
     ))
 }
@@ -867,11 +873,11 @@ run_specific_objective <- function(dataset_name, objective_number) {
 # Uncomment the appropriate line below to run:
 
 # Run full analysis (all objectives, all datasets)
-# main_execution()
+main_execution()
 
 # Run specific objective for specific dataset and objective number, 
 # e.g. 1 for primary outcomes, 2 for safety/toxicity, 3 for repeat radiation efficacy, 4 for GEP validation
-run_specific_objective("uveal_melanoma_full_cohort", 1)
+# run_specific_objective("uveal_melanoma_full_cohort", 1)
 
 # Close logging if enabled
 if (USE_LOGS) {
