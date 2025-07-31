@@ -60,4 +60,105 @@ enforce_unordered_factors <- function(data, verbose = FALSE) {
 #' @return Named character vector of variable labels
 get_variable_labels <- function() {
     return(STANDARD_TABLE_LABELS)
+}
+
+#' Get Treatment Coefficient Name
+#'
+#' Finds the coefficient name for the treatment group variable in a regression model.
+#' This function searches through the model coefficients to find the treatment group coefficient.
+#'
+#' @param model Fitted regression model (lm, glm, coxph, etc.)
+#' @param treatment_var Character string of the treatment variable name
+#' @param data Data frame used to fit the model
+#' @return Character string of the coefficient name, or NULL if not found
+get_treatment_coefficient_name <- function(model, treatment_var, data) {
+    if (is.null(model) || inherits(model, "try-error")) {
+        return(NULL)
+    }
+    
+    # Get coefficient names from the model
+    coef_names <- names(coef(model))
+    if (is.null(coef_names)) {
+        return(NULL)
+    }
+    
+    # Look for treatment coefficient
+    # Pattern: treatment_var + level (e.g., "treatment_groupGKSRS")
+    treatment_pattern <- paste0("^", treatment_var, "[A-Z]")
+    treatment_coef <- coef_names[grepl(treatment_pattern, coef_names)]
+    
+    if (length(treatment_coef) > 0) {
+        return(treatment_coef[1])  # Return first match
+    }
+    
+    # If not found with pattern, try exact match
+    if (treatment_var %in% coef_names) {
+        return(treatment_var)
+    }
+    
+    return(NULL)
+}
+
+#' Get Interaction Coefficient Name
+#'
+#' Finds the coefficient name for an interaction term between treatment and subgroup variable.
+#' This function searches through the model coefficients to find the interaction coefficient.
+#'
+#' @param model Fitted regression model (lm, glm, coxph, etc.)
+#' @param treatment_var Character string of the treatment variable name
+#' @param subgroup_var Character string of the subgroup variable name
+#' @param subgroup_level Character string of the subgroup level
+#' @param data Data frame used to fit the model
+#' @return Character string of the coefficient name, or NULL if not found
+get_interaction_coefficient_name <- function(model, treatment_var, subgroup_var, subgroup_level, data) {
+    if (is.null(model) || inherits(model, "try-error")) {
+        return(NULL)
+    }
+    
+    # Get coefficient names from the model
+    coef_names <- names(coef(model))
+    if (is.null(coef_names)) {
+        return(NULL)
+    }
+    
+    # Look for interaction coefficient
+    # Pattern: treatment_var + level:subgroup_var + level (e.g., "treatment_groupGKSRS:age_at_diagnosis")
+    # or treatment_var + level:subgroup_var + level (e.g., "treatment_groupGKSRS:age_at_diagnosis_binned≥65")
+    
+    # First, try to find the treatment level
+    treatment_pattern <- paste0("^", treatment_var, "[A-Z]")
+    treatment_coef <- coef_names[grepl(treatment_pattern, coef_names)]
+    
+    if (length(treatment_coef) == 0) {
+        return(NULL)
+    }
+    
+    treatment_level <- treatment_coef[1]
+    
+    # Look for interaction with the subgroup variable
+    interaction_pattern <- paste0(treatment_level, ":", subgroup_var)
+    interaction_coef <- coef_names[grepl(interaction_pattern, coef_names)]
+    
+    if (length(interaction_coef) > 0) {
+        return(interaction_coef[1])  # Return first match
+    }
+    
+    # If not found, try with subgroup level included
+    if (!is.null(subgroup_level)) {
+        # Try different patterns for the interaction
+        patterns <- c(
+            paste0(treatment_level, ":", subgroup_var, subgroup_level),
+            paste0(treatment_level, ":", subgroup_var, ".*", subgroup_level),
+            paste0(treatment_level, ":", subgroup_var, ".*", gsub("[^a-zA-Z0-9]", "", subgroup_level))
+        )
+        
+        for (pattern in patterns) {
+            interaction_coef <- coef_names[grepl(pattern, coef_names)]
+            if (length(interaction_coef) > 0) {
+                return(interaction_coef[1])
+            }
+        }
+    }
+    
+    return(NULL)
 } 

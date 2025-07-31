@@ -86,7 +86,6 @@ analyze_visual_acuity_changes <- function(data, other_map = list()) {
         output_dir = output_dirs$obj2_vision,
         prefix = prefix,
         # handle_rare = FALSE, # REMOVED
-        exclude_before_treatment = FALSE,
         other_map = other_map
     )
     
@@ -260,7 +259,6 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
             output_dir = output_dir,
             prefix = prefix,
             # handle_rare = FALSE, # REMOVED
-            exclude_before_treatment = FALSE,  # Safety analysis doesn't exclude before treatment
             other_map = other_map
         )
         
