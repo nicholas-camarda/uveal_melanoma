@@ -235,6 +235,13 @@ BASELINE_VARIABLES_TO_SUMMARIZE <- c(
 )
 
 # =============================================================================
+# SUBGROUP ANALYSIS CONSTANTS
+# =============================================================================
+# Variable order for consistent display across all plots and tables
+# Uses the global FOREST_PLOT_VARIABLE_ORDER for consistency
+SUBGROUP_VARIABLE_ORDER <- FOREST_PLOT_VARIABLE_ORDER
+
+# =============================================================================
 # TABLE LABELS AND NAMING CONVENTIONS
 # =============================================================================
 # Centralized table labels to ensure consistency across all gtsummary tables
