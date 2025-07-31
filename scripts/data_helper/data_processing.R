@@ -4,7 +4,8 @@
 # Description: Script to process raw data into analytic dataset for uveal melanoma analysis
 
 # Source centralized configuration (must be first)
-source("scripts/utils/analysis_config.R")
+# Source centralized configuration (must be first)
+# Note: all_helper_functions.R will be sourced by the calling script
 
 
 

@@ -4,7 +4,7 @@
 library(tidyverse)
 
 # Source configuration
-source("scripts/utils/analysis_config.R")
+# No need to source all_helper_functions.R - it will be sourced by the calling script
 
 cat("=== CONFOUNDER ANALYSIS AND UPDATE ===\n\n")
 

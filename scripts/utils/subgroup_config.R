@@ -2,7 +2,8 @@
 # Single source of truth for cutoffs and variable ordering
 
 # Source the main analysis config for consistent variable ordering
-source("scripts/utils/analysis_config.R")
+# Source the main analysis config for consistent variable ordering
+# Note: all_helper_functions.R will be sourced by the calling script
 
 # Variable order for consistent display across all plots and tables
 # Uses the global FOREST_PLOT_VARIABLE_ORDER for consistency

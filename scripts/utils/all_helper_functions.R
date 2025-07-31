@@ -93,8 +93,12 @@ use("mice") # Multiple imputation by chained equations
 ############### SOURCE ALL NECESSARY SCRIPTS #########################
 ######################################################################
 
-# Source the analysis configuration first (contains all global variables)
-source("scripts/utils/analysis_config.R")
+# Source the split configuration and utility files
+source("scripts/utils/config_constants.R")
+source("scripts/utils/logging_utilities.R")
+source("scripts/utils/validation_utilities.R")
+source("scripts/utils/gep_validation_utilities.R")
+source("scripts/utils/model_utilities.R")
 
 # Source the extreme estimate handling utilities
 source("scripts/utils/extreme_estimate_handling.R")
