@@ -15,11 +15,15 @@
 ### Core Files (High Priority)
 - `scripts/main.R` (884 lines) - Main execution script
 - `scripts/utils/all_helper_functions.R` (288 lines) - Core utilities and library loading
-- `scripts/utils/analysis_config.R` (1542 lines) - Configuration and validation functions
+- `scripts/utils/config_constants.R` - Global configuration constants
+- `scripts/utils/logging_utilities.R` - Logging functions
+- `scripts/utils/validation_utilities.R` - Data validation functions
+- `scripts/utils/gep_validation_utilities.R` - GEP validation functions
+- `scripts/utils/model_utilities.R` - Model utility functions
 
 ### Analysis Files
 - `scripts/analysis/statistical_analysis.R` (1097 lines) - Core statistical analysis
-- `scripts/analysis/subgroup_analysis.R` (1440 lines) - Subgroup analysis functions
+- `scripts/analysis/subgroup_analysis.R` (1529 lines) - Subgroup analysis functions (includes config functions)
 - `scripts/analysis/gep_validation_analysis.R` (3031 lines) - GEP validation (largest file)
 - `scripts/analysis/gep_validation_helpers.R` (297 lines) - GEP helper functions
 - `scripts/analysis/tumor_height_analysis.R` (118 lines) - Tumor height analysis
@@ -34,7 +38,7 @@
 - `scripts/utils/table_generation.R` (1502 lines) - Table generation utilities
 - `scripts/utils/output_utilities.R` (404 lines) - Output utilities
 - `scripts/utils/extreme_estimate_handling.R` (265 lines) - Extreme estimate handling
-- `scripts/utils/subgroup_config.R` (88 lines) - Subgroup configuration
+- `scripts/utils/subgroup_config.R` (ELIMINATED) - Functions moved to config_constants.R and subgroup_analysis.R
 
 ### Visualization Files
 - `scripts/visualization/forest_plot.R` (972 lines) - Forest plot generation
@@ -90,11 +94,9 @@
 
 #### File Size Issues:
 - `gep_validation_analysis.R` (3031 lines) - Too large, should be split
-- `analysis_config.R` (1542 lines) - Very large configuration file
 - `table_generation.R` (1502 lines) - Large utility file
 
 #### Logical Grouping Issues:
-- `subgroup_config.R` (88 lines) - Very small, could be merged into `subgroup_analysis.R`
 - `gep_validation_helpers.R` (297 lines) - Could be merged into main GEP file
 
 ## 🔗 Dependency Analysis
@@ -210,7 +212,7 @@ run_my_analysis() [main.R]
 - [x] **Step 1.3:** Move `confounder_analysis.R` to appropriate location ✅ COMPLETE
 
 #### **PHASE 2: File Consolidation (Medium Impact, Medium Risk)**
-- [ ] **Step 2.1:** Merge `subgroup_config.R` into `subgroup_analysis.R`
+- [x] **Step 2.1:** Merge `subgroup_config.R` into `config_constants.R` and `subgroup_analysis.R` ✅ COMPLETE
 - [ ] **Step 2.2:** Split `gep_validation_analysis.R` into smaller files
 
 #### **PHASE 3: Conservative Optimization (Low Impact, Low Risk)**

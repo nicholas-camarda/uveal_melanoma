@@ -103,6 +103,9 @@ source("scripts/utils/model_utilities.R")
 # Source the extreme estimate handling utilities
 source("scripts/utils/extreme_estimate_handling.R")
 
+# Source the GEP validation core functions
+source("scripts/analysis/gep_validation_core.R")
+
 # Source the table generation utilities
 source("scripts/utils/table_generation.R")
 

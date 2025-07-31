@@ -39,8 +39,11 @@
 
 **Status:** ✅ Well organized, core statistical functions
 
-#### `scripts/analysis/subgroup_analysis.R` (1440 lines)
+#### `scripts/analysis/subgroup_analysis.R` (1529 lines)
 **Functions:**
+- `get_cutoff_value()` - Cutoff value retrieval (moved from subgroup_config.R)
+- `create_clinical_bins()` - Clinical bin creation (moved from subgroup_config.R)
+- `get_subgroup_levels()` - Subgroup level retrieval (moved from subgroup_config.R)
 - `analyze_treatment_effect_subgroups_survival()` - Survival subgroup analysis
 - `analyze_treatment_effect_subgroups_binary()` - Binary subgroup analysis
 - `analyze_treatment_effect_subgroups_height()` - Height subgroup analysis
@@ -51,7 +54,7 @@
 - `format_subgroup_analysis_tables()` - Table formatting
 - `format_subgroup_analysis_results()` - Results formatting
 
-**Status:** ✅ Comprehensive subgroup analysis
+**Status:** ✅ Comprehensive subgroup analysis with configuration functions
 
 #### `scripts/analysis/gep_validation_analysis.R` (3031 lines) ⚠️ TOO LARGE
 **Functions:** (Partial list - file is very large)
@@ -186,13 +189,14 @@
 
 **Status:** ✅ Focused, well-organized
 
-#### `scripts/utils/subgroup_config.R` (88 lines)
-**Functions:**
-- `get_cutoff_value()` - Cutoff value retrieval
-- `create_clinical_bins()` - Clinical bin creation
-- `get_subgroup_levels()` - Subgroup level retrieval
+#### `scripts/utils/subgroup_config.R` (ELIMINATED)
+**Functions:** (Moved to other files)
+- `get_cutoff_value()` - Cutoff value retrieval → `subgroup_analysis.R`
+- `create_clinical_bins()` - Clinical bin creation → `subgroup_analysis.R`
+- `get_subgroup_levels()` - Subgroup level retrieval → `subgroup_analysis.R`
+- `SUBGROUP_VARIABLE_ORDER` - Variable ordering → `config_constants.R`
 
-**Status:** ⚠️ Very small file, could be merged into `subgroup_analysis.R`
+**Status:** ✅ ELIMINATED - Functions moved to appropriate locations
 
 ### 🎨 Visualization Files
 
@@ -238,9 +242,9 @@
 
 ### File Sizes:
 - **Largest:** `gep_validation_analysis.R` (3031 lines) ⚠️
-- **Second Largest:** `analysis_config.R` (1542 lines) ⚠️
+- **Second Largest:** `subgroup_analysis.R` (1529 lines) ✅
 - **Third Largest:** `table_generation.R` (1502 lines) ⚠️
-- **Smallest:** `subgroup_config.R` (88 lines) ⚠️
+- **Fourth Largest:** `statistical_analysis.R` (1097 lines) ✅
 
 ### Function Counts by Category:
 - **Analysis Functions:** ~25 functions
@@ -251,7 +255,7 @@
 
 ### Issues by Priority:
 - **High Priority:** 7 duplicate functions, 1 deprecated file
-- **Medium Priority:** 3 oversized files, 1 misplaced file
-- **Low Priority:** 1 undersized file, function organization
+- **Medium Priority:** 2 oversized files, 1 misplaced file
+- **Low Priority:** Function organization
 
 This inventory provides a complete picture of your function landscape and identifies specific areas for cleanup and optimization. 
