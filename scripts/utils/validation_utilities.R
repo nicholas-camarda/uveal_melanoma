@@ -323,155 +323,269 @@ validate_factor_level_consistency <- function(cohort_list, phase = "data_process
     return(validation_passed)
 }
 
-#' Generate Validation Report for Data Processing
+#' Comprehensive Data Processing Validation
 #'
-#' Runs comprehensive validation checks and generates a detailed report
-#' for the data processing phase.
+#' Performs systematic validation of the entire data processing pipeline
+#' to ensure all steps completed successfully and data integrity is maintained.
+#' Based on the data processing pipeline: load → derive → factor → cohort → collapse → save.
 #'
-#' @param data Data frame or list of data frames to validate
-#' @return NULL (writes report to logs directory)
+#' @param data Data frame or list of data frames (cohorts) to validate
+#' @return Logical indicating if all validations passed
 generate_validation_report <- function(data) {
-    log_enhanced("Generating comprehensive validation report", level = "INFO")
+    log_enhanced("=== COMPREHENSIVE DATA PROCESSING VALIDATION ===", level = "SECTION")
     
-    # If data is a list (multiple cohorts), use the full cohort for validation
+    # If data is a list (multiple cohorts), validate all cohorts systematically
     if (is.list(data) && !is.data.frame(data)) {
-        validation_data <- data$uveal_melanoma_full_cohort
-        if (is.null(validation_data)) {
-            validation_data <- data[[1]]  # Use first cohort if full cohort not found
-        }
-    } else {
-        validation_data <- data
-    }
-    
-    # Run validation checks
-    validation_results <- list()
-    
-    # 1. Basic data integrity checks
-    validation_results$basic_integrity <- list(
-        n_rows = nrow(validation_data),
-        n_cols = ncol(validation_data),
-        missing_values = colSums(is.na(validation_data)),
-        duplicate_rows = sum(duplicated(validation_data))
-    )
-    
-    # 2. GEP variable validation (if applicable)
-    if ("biopsy1_gep" %in% names(validation_data)) {
-        gep_validation <- validate_gep_variables_with_report(validation_data)
-        validation_results$gep_validation <- gep_validation
-    }
-    
-    # 3. Factor level validation
-    factor_vars <- names(validation_data)[sapply(validation_data, is.factor)]
-    validation_results$factor_levels <- list(
-        factor_variables = factor_vars,
-        factor_summaries = lapply(validation_data[factor_vars], function(x) {
-            list(
-                levels = levels(x),
-                n_levels = length(levels(x)),
-                counts = table(x)
-            )
-        })
-    )
-    
-    # 4. Key variable validation
-    key_vars <- c("treatment_group", "sex", "age_at_diagnosis", "initial_tumor_height", "initial_tumor_diameter")
-    existing_key_vars <- intersect(key_vars, names(validation_data))
-    validation_results$key_variables <- list(
-        existing_variables = existing_key_vars,
-        missing_variables = setdiff(key_vars, names(validation_data)),
-        summaries = lapply(validation_data[existing_key_vars], function(x) {
-            if (is.numeric(x)) {
-                list(
-                    type = "numeric",
-                    mean = mean(x, na.rm = TRUE),
-                    sd = sd(x, na.rm = TRUE),
-                    min = min(x, na.rm = TRUE),
-                    max = max(x, na.rm = TRUE),
-                    missing = sum(is.na(x))
-                )
-            } else if (is.factor(x)) {
-                list(
-                    type = "factor",
-                    levels = levels(x),
-                    counts = table(x),
-                    missing = sum(is.na(x))
-                )
-            } else {
-                list(
-                    type = class(x)[1],
-                    unique_values = length(unique(x)),
-                    missing = sum(is.na(x))
-                )
-            }
-        })
-    )
-    
-    # Write validation report to logs directory
-    report_file <- file.path("logs", paste0("validation_report_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".txt"))
-    
-    report_content <- c(
-        "DATA PROCESSING VALIDATION REPORT",
-        "=================================",
-        "",
-        paste("Generated:", format(Sys.time(), "%Y-%m-%d %H:%M:%S")),
-        "",
-        "BASIC DATA INTEGRITY:",
-        "-------------------",
-        paste("Total rows:", validation_results$basic_integrity$n_rows),
-        paste("Total columns:", validation_results$basic_integrity$n_cols),
-        paste("Duplicate rows:", validation_results$basic_integrity$duplicate_rows),
-        "",
-        "MISSING VALUES BY VARIABLE:",
-        "-------------------------"
-    )
-    
-    # Add missing values summary
-    missing_summary <- validation_results$basic_integrity$missing_values
-    missing_summary <- missing_summary[missing_summary > 0]  # Only show variables with missing values
-    if (length(missing_summary) > 0) {
-        for (var_name in names(missing_summary)) {
-            report_content <- c(report_content, paste("  ", var_name, ":", missing_summary[var_name]))
-        }
-    } else {
-        report_content <- c(report_content, "  No missing values found")
-    }
-    
-    # Add factor level summary
-    report_content <- c(report_content,
-        "",
-        "FACTOR VARIABLES:",
-        "----------------"
-    )
-    
-    for (var_name in names(validation_results$factor_levels$factor_summaries)) {
-        summary <- validation_results$factor_levels$factor_summaries[[var_name]]
-        report_content <- c(report_content,
-            paste("  ", var_name, ":"),
-            paste("    Levels:", paste(summary$levels, collapse = ", ")),
-            paste("    Counts:", paste(names(summary$counts), summary$counts, collapse = ", ", sep = "="))
-        )
-    }
-    
-    # Add GEP validation results if available
-    if ("gep_validation" %in% names(validation_results)) {
-        report_content <- c(report_content,
-            "",
-            "GEP VALIDATION:",
-            "---------------",
-            paste("  Validation passed:", validation_results$gep_validation$validation_passed)
-        )
+        validation_passed <- TRUE
         
-        if (!validation_results$gep_validation$validation_passed) {
-            report_content <- c(report_content,
-                "  Issues found:",
-                paste("    ", validation_results$gep_validation$detailed_results$issues)
-            )
+        # Phase 1: Individual cohort validation
+        log_enhanced("Phase 1: Individual Cohort Validation", level = "INFO")
+        for (cohort_name in names(data)) {
+            log_enhanced(sprintf("Validating cohort: %s", cohort_name), level = "INFO", indent = 1)
+            cohort_validation <- validate_single_cohort_comprehensive(data[[cohort_name]], cohort_name)
+            if (!cohort_validation) {
+                validation_passed <- FALSE
+            }
+        }
+        
+        # Phase 2: Cross-cohort validation
+        log_enhanced("Phase 2: Cross-Cohort Validation", level = "INFO")
+        cross_cohort_validation <- validate_cross_cohort_consistency(data)
+        if (!cross_cohort_validation) {
+            validation_passed <- FALSE
+        }
+        
+        # Phase 3: File system validation
+        log_enhanced("Phase 3: File System Validation", level = "INFO")
+        file_validation <- validate_processed_files_exist(data)
+        if (!file_validation) {
+            validation_passed <- FALSE
+        }
+        
+        # Final validation summary
+        if (validation_passed) {
+            log_enhanced("=== ALL DATA PROCESSING VALIDATIONS PASSED ===", level = "SUCCESS")
+        } else {
+            log_enhanced("=== DATA PROCESSING VALIDATION FAILED - SEE ERRORS ABOVE ===", level = "ERROR")
+        }
+        
+        return(validation_passed)
+    } else {
+        # Single dataset validation
+        return(validate_single_cohort_comprehensive(data, "single_dataset"))
+    }
+}
+
+#' Comprehensive Single Cohort Validation
+#'
+#' Validates all aspects of a single cohort based on the data processing pipeline
+#'
+#' @param data Data frame to validate
+#' @param cohort_name Name of the cohort for logging
+#' @return Logical indicating if validation passed
+validate_single_cohort_comprehensive <- function(data, cohort_name) {
+    validation_passed <- TRUE
+    
+    log_enhanced(sprintf("Comprehensive validation for %s (%d rows, %d columns)", 
+                        cohort_name, nrow(data), ncol(data)), level = "INFO", indent = 1)
+    
+    # 1. DATA STRUCTURE VALIDATION
+    log_enhanced("1. Data Structure Validation", level = "INFO", indent = 2)
+    
+    # Basic structure checks
+    if (nrow(data) == 0) {
+        log_enhanced("VALIDATION FAILED: Empty dataset", level = "ERROR", indent = 3)
+        validation_passed <- FALSE
+    }
+    
+    if (ncol(data) < MINIMUM_COLUMNS_AFTER_PROCESSING) {  # Should have many variables after processing
+        log_enhanced(sprintf("VALIDATION WARNING: Few variables (%d columns) - expected more after processing", ncol(data)), level = "WARN", indent = 3)
+    }
+    
+    # Duplicate check
+    if (sum(duplicated(data)) > 0) {
+        log_enhanced(sprintf("VALIDATION WARNING: %d duplicate rows found", sum(duplicated(data))), level = "WARN", indent = 3)
+    }
+    
+    # 2. CRITICAL VARIABLE VALIDATION
+    log_enhanced("2. Critical Variable Validation", level = "INFO", indent = 2)
+    
+    # Essential variables that must exist
+    missing_critical <- setdiff(CRITICAL_VARIABLES, names(data))
+    if (length(missing_critical) > 0) {
+        log_enhanced(sprintf("VALIDATION FAILED: Missing critical variables: %s", 
+                            paste(missing_critical, collapse = ", ")), level = "ERROR", indent = 3)
+        validation_passed <- FALSE
+    }
+    
+    # 3. DERIVED VARIABLE VALIDATION
+    log_enhanced("3. Derived Variable Validation", level = "INFO", indent = 2)
+    
+    # Check that key derived variables were created
+    missing_derived <- setdiff(DERIVED_VARIABLES, names(data))
+    if (length(missing_derived) > 0) {
+        log_enhanced(sprintf("VALIDATION FAILED: Missing derived variables: %s", 
+                            paste(missing_derived, collapse = ", ")), level = "ERROR", indent = 3)
+        validation_passed <- FALSE
+    }
+    
+    # Validate derived variable types and ranges
+    if ("age_at_diagnosis" %in% names(data)) {
+        if (!is.numeric(data$age_at_diagnosis)) {
+            log_enhanced("VALIDATION FAILED: age_at_diagnosis is not numeric", level = "ERROR", indent = 3)
+            validation_passed <- FALSE
+        }
+        if (any(data$age_at_diagnosis < 0, na.rm = TRUE)) {
+            log_enhanced("VALIDATION FAILED: Negative ages found", level = "ERROR", indent = 3)
+            validation_passed <- FALSE
         }
     }
     
-    # Write the report
-    writeLines(report_content, report_file)
-    log_enhanced(sprintf("Validation report written to: %s", report_file), level = "INFO")
+    # 4. FACTOR LEVEL VALIDATION
+    log_enhanced("4. Factor Level Validation", level = "INFO", indent = 2)
     
-    return(invisible(NULL))
+    # Critical factors that should be factors
+    for (factor_name in CRITICAL_FACTORS) {
+        if (factor_name %in% names(data)) {
+            if (!is.factor(data[[factor_name]])) {
+                log_enhanced(sprintf("VALIDATION FAILED: %s is not a factor", factor_name), level = "ERROR", indent = 3)
+                validation_passed <- FALSE
+            } else if (length(levels(data[[factor_name]])) == 0) {
+                log_enhanced(sprintf("VALIDATION FAILED: %s has no levels", factor_name), level = "ERROR", indent = 3)
+                validation_passed <- FALSE
+            }
+        }
+    }
+    
+    # Treatment group specific validation
+    if ("treatment_group" %in% names(data)) {
+        treatment_dist <- table(data$treatment_group, useNA = "ifany")
+        if (length(treatment_dist) < 2) {
+            log_enhanced("VALIDATION FAILED: Insufficient treatment groups", level = "ERROR", indent = 3)
+            validation_passed <- FALSE
+        }
+        
+        # Check for expected treatment levels
+        actual_levels <- levels(data$treatment_group)
+        if (!all(EXPECTED_TREATMENT_LEVELS %in% actual_levels)) {
+            log_enhanced(sprintf("VALIDATION FAILED: Unexpected treatment levels. Expected: %s, Got: %s", 
+                                paste(EXPECTED_TREATMENT_LEVELS, collapse = ", "), 
+                                paste(actual_levels, collapse = ", ")), level = "ERROR", indent = 3)
+            validation_passed <- FALSE
+        }
+    }
+    
+    # 5. GEP VARIABLE VALIDATION
+    log_enhanced("5. GEP Variable Validation", level = "INFO", indent = 2)
+    
+    if ("biopsy1_gep" %in% names(data)) {
+        gep_validation <- validate_gep_variables_with_report(data)
+        if (!gep_validation$validation_passed) {
+            log_enhanced("VALIDATION FAILED: GEP variables failed validation", level = "ERROR", indent = 3)
+            validation_passed <- FALSE
+        }
+        
+        # Check for derived GEP variables
+        missing_gep_derived <- setdiff(GEP_DERIVED_VARIABLES, names(data))
+        if (length(missing_gep_derived) > 0) {
+            log_enhanced(sprintf("VALIDATION FAILED: Missing derived GEP variables: %s", 
+                                paste(missing_gep_derived, collapse = ", ")), level = "ERROR", indent = 3)
+            validation_passed <- FALSE
+        }
+    }
+    
+    # 6. DATA QUALITY VALIDATION
+    log_enhanced("6. Data Quality Validation", level = "INFO", indent = 2)
+    
+    # Check for excessive missing data in critical variables
+    for (var_name in MISSING_DATA_CHECK_VARIABLES) {
+        if (var_name %in% names(data)) {
+            missing_pct <- mean(is.na(data[[var_name]])) * 100
+            if (missing_pct > MAXIMUM_MISSING_DATA_PERCENTAGE) {
+                log_enhanced(sprintf("VALIDATION WARNING: High missing data in %s (%.1f%%)", var_name, missing_pct), level = "WARN", indent = 3)
+            }
+        }
+    }
+    
+    # Check for logical inconsistencies
+    if (all(c("recurrence1", "tt_recurrence_months") %in% names(data))) {
+        # Patients with recurrence should have positive time to recurrence
+        inconsistent_recurrence <- data$recurrence1 == "Y" & data$tt_recurrence_months <= 0
+        if (any(inconsistent_recurrence, na.rm = TRUE)) {
+            log_enhanced(sprintf("VALIDATION WARNING: %d patients with recurrence have non-positive time to recurrence", 
+                                sum(inconsistent_recurrence, na.rm = TRUE)), level = "WARN", indent = 3)
+        }
+    }
+    
+    # 7. COHORT-SPECIFIC VALIDATION
+    log_enhanced("7. Cohort-Specific Validation", level = "INFO", indent = 2)
+    
+    # Validate cohort size expectations
+    if (cohort_name %in% names(EXPECTED_COHORT_SIZES)) {
+        expected_size <- EXPECTED_COHORT_SIZES[[cohort_name]]
+        if (nrow(data) < expected_size) {
+            log_enhanced(sprintf("VALIDATION WARNING: %s smaller than expected (%d < %d)", cohort_name, nrow(data), expected_size), level = "WARN", indent = 3)
+        }
+    }
+    
+    # Final validation result
+    if (validation_passed) {
+        log_enhanced(sprintf("✓ All validations passed for %s", cohort_name), level = "INFO", indent = 1)
+    } else {
+        log_enhanced(sprintf("✗ Validation failed for %s", cohort_name), level = "ERROR", indent = 1)
+    }
+    
+    return(validation_passed)
+}
+
+#' Validate Cross-Cohort Consistency
+#'
+#' @param cohort_list List of cohorts to validate
+#' @return Logical indicating if validation passed
+validate_cross_cohort_consistency <- function(cohort_list) {
+    log_enhanced("Validating cross-cohort consistency", level = "INFO", indent = 1)
+    
+    # Use existing validation functions
+    cohort_integrity <- validate_cohort_integrity(cohort_list)
+    factor_consistency <- validate_factor_level_consistency(cohort_list, phase = "data_processing")
+    
+    return(cohort_integrity && factor_consistency)
+}
+
+#' Validate Processed Files Exist
+#'
+#' @param cohort_list List of cohorts to validate
+#' @return Logical indicating if validation passed
+validate_processed_files_exist <- function(cohort_list) {
+    log_enhanced("Validating processed files exist", level = "INFO", indent = 1)
+    
+    validation_passed <- TRUE
+    
+    # Check that RDS files exist for each cohort
+    for (cohort_name in names(cohort_list)) {
+        rds_file <- file.path(PROCESSED_DATA_DIR, paste0(cohort_name, ".rds"))
+        if (!file.exists(rds_file)) {
+            log_enhanced(sprintf("VALIDATION FAILED: RDS file missing for %s: %s", cohort_name, rds_file), level = "ERROR", indent = 2)
+            validation_passed <- FALSE
+        }
+        
+        excel_file <- file.path(PROCESSED_DATA_DIR, paste0(cohort_name, ".xlsx"))
+        if (!file.exists(excel_file)) {
+            log_enhanced(sprintf("VALIDATION FAILED: Excel file missing for %s: %s", cohort_name, excel_file), level = "ERROR", indent = 2)
+            validation_passed <- FALSE
+        }
+    }
+    
+    # Check that other_map.rds exists
+    other_map_file <- file.path(PROCESSED_DATA_DIR, "other_map.rds")
+    if (!file.exists(other_map_file)) {
+        log_enhanced("VALIDATION FAILED: other_map.rds file missing", level = "ERROR", indent = 2)
+        validation_passed <- FALSE
+    }
+    
+    if (validation_passed) {
+        log_enhanced("✓ All processed files exist", level = "INFO", indent = 2)
+    }
+    
+    return(validation_passed)
 } 

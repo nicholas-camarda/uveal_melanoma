@@ -72,7 +72,7 @@ analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var,
     }
     
     # Ensure consistent factor contrasts for modeling
-    fix_event_data <- ensure_consistent_contrasts(fix_event_data)
+    fix_event_data <- enforce_unordered_factors(fix_event_data)
 
     # Pre-filter confounders to remove variables with zero variance in the analysis subset
     confounders_to_use <- confounders[sapply(confounders, function(c) {
@@ -201,7 +201,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     }
     
     # Ensure consistent factor contrasts for modeling
-    fix_event_data <- ensure_consistent_contrasts(fix_event_data)
+    fix_event_data <- enforce_unordered_factors(fix_event_data)
 
     # Use confounders as-is (no processing in analysis)
     confounders_to_use <- confounders

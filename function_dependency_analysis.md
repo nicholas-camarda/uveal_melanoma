@@ -32,7 +32,10 @@
 ### Data Processing Files
 - `scripts/data_helper/data_processing.R` (1246 lines) - Main data processing
 - `scripts/data_helper/data_utilities.R` (525 lines) - Data utilities
-- `scripts/data_helper/confounder_analysis.R` (177 lines) - Confounder analysis
+
+### Standalone Tool Scripts (NOT part of main pipeline)
+- `scripts/tools/confounder_analysis.R` (177 lines) - Standalone confounder analysis tool
+- `scripts/tools/derived_variables_documentation.R` (661 lines) - Standalone documentation generation tool
 
 ### Utility Files
 - `scripts/utils/table_generation.R` (1502 lines) - Table generation utilities
@@ -86,9 +89,9 @@
 - All functions in this file are likely unused (deprecated)
 - **Action:** Verify and remove if confirmed unused
 
-#### In `scripts/data_helper/confounder_analysis.R`:
-- This appears to be a standalone analysis script, not a function library
-- **Action:** Move to `scripts/analysis/` or `scripts/old/` if not needed
+#### In `scripts/tools/confounder_analysis.R`:
+- This is a standalone analysis tool, not part of the main pipeline
+- **Action:** ✅ COMPLETED - Moved to `scripts/tools/` directory
 
 ### 4. **ORGANIZATIONAL ISSUES** (Medium Priority)
 

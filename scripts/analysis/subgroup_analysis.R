@@ -495,7 +495,7 @@ process_subgroup_data <- function(data, subgroup_var, confounders, include_basel
     }
 
     # Ensure consistent contrasts
-    processed_data <- ensure_consistent_contrasts(processed_data)
+    processed_data <- enforce_unordered_factors(processed_data)
     
     return(list(
         data = processed_data,

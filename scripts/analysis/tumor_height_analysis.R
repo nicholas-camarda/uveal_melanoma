@@ -14,7 +14,7 @@
 #' analyze_tumor_height_changes(data)
 analyze_tumor_height_changes <- function(data, other_map = list()) {
     # Use height_change variable that was already calculated in data_processing.R
-    data_with_height_change <- ensure_consistent_contrasts(data)
+    data_with_height_change <- enforce_unordered_factors(data)
 
     # Summary statistics (grouped)
     height_changes <- data_with_height_change %>%

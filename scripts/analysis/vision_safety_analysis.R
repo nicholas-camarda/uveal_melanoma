@@ -26,7 +26,7 @@ analyze_visual_acuity_changes <- function(data, other_map = list()) {
         )
     
     # Ensure consistent factor contrasts for modeling
-    data_with_vision_change <- ensure_consistent_contrasts(data_with_vision_change)
+    data_with_vision_change <- enforce_unordered_factors(data_with_vision_change)
 
     # Summary statistics (grouped)
     vision_changes <- data_with_vision_change %>%
@@ -147,7 +147,7 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
     }
     
     # Ensure consistent factor contrasts for modeling
-    data <- ensure_consistent_contrasts(data)
+    data <- enforce_unordered_factors(data)
     
     # Check if outcome variable exists
     outcome_var <- sequela_type

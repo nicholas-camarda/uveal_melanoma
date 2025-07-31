@@ -101,6 +101,43 @@ STANDARDIZED_CUTOFFS <- list(
 )
 
 # =============================================================================
+# DATA VALIDATION CONSTANTS
+# =============================================================================
+
+# Critical variables that must exist in all datasets
+CRITICAL_VARIABLES <- c("id", "treatment_group", "sex", "age_at_diagnosis")
+
+# Derived variables that should be created during data processing
+DERIVED_VARIABLES <- c(
+    "age_at_diagnosis", "follow_up_years", "follow_up_months",
+    "tt_recurrence_months", "tt_mets_months", "tt_death_months",
+    "recurrence_event", "mets_event", "death_event", "pfs_event"
+)
+
+# Critical factors that should be factors with proper levels
+CRITICAL_FACTORS <- c("treatment_group", "sex", "recurrence1", "mets_progression")
+
+# Expected treatment group levels
+EXPECTED_TREATMENT_LEVELS <- c("Plaque", "GKSRS")
+
+# GEP-derived variables that should be created
+GEP_DERIVED_VARIABLES <- c("gep_class_simple", "prame_status", "expected_mfs_5yr", "expected_mss_5yr")
+
+# Variables to check for missing data patterns
+MISSING_DATA_CHECK_VARIABLES <- c("treatment_group", "sex", "age_at_diagnosis")
+
+# Validation thresholds
+MINIMUM_COLUMNS_AFTER_PROCESSING <- 20
+MAXIMUM_MISSING_DATA_PERCENTAGE <- 10.0
+
+# Expected cohort sizes (minimum thresholds)
+EXPECTED_COHORT_SIZES <- list(
+    uveal_melanoma_full_cohort = 250,
+    uveal_melanoma_restricted_cohort = 150,
+    uveal_melanoma_gksrs_only_cohort = 80
+)
+
+# =============================================================================
 # TREATMENT AND FACTOR LEVEL CONFIGURATION
 # =============================================================================
 # CRITICAL: These variables define factor levels and reference groups used throughout
