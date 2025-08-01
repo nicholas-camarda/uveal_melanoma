@@ -3,6 +3,8 @@
 # Description: Comprehensive documentation of all derived variables created during data processing
 # This script generates documentation for all derived variables and exports to Excel
 
+source("scripts/utils/all_helper_functions.R")
+
 # =============================================================================
 # DERIVED VARIABLE DOCUMENTATION
 # =============================================================================
@@ -658,4 +660,28 @@ validate_derived_variables_documentation <- function(processed_data) {
     }
     
     return(validation_results)
-} 
+}
+
+# =============================================================================
+# MAIN EXECUTION
+# =============================================================================
+
+cat("=== DERIVED VARIABLES DOCUMENTATION GENERATION ===\n\n")
+
+# Generate and export documentation
+cat("Generating derived variables documentation...\n")
+output_file <- generate_derived_variables_documentation(include_timestamp = TRUE)
+cat(sprintf("Documentation exported to: %s\n\n", output_file))
+
+# Load data for validation if available
+cat("Validating documentation against actual data...\n")
+data <- readRDS("final_data/Analytic Dataset/uveal_melanoma_full_cohort.rds")
+validation_results <- validate_derived_variables_documentation(list(full_cohort = data))
+
+if (validation_results$documentation_complete && validation_results$documentation_accurate) {
+    cat("✓ Documentation validation passed - all variables documented correctly\n")
+} else {
+    cat("⚠ Documentation validation issues found - review missing/extra variables\n")
+}
+
+cat("\n=== DOCUMENTATION GENERATION COMPLETE ===\n")
