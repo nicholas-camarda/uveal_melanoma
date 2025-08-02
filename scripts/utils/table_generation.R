@@ -2,6 +2,29 @@
 # Author: Nicholas Camarda
 # Description: Simple, clean table generation focusing on diagnostic files first
 
+#' Get cohort-specific other_map for consistent other_map handling
+#'
+#' @param dataset_name Character string for dataset name (e.g., "uveal_melanoma_full_cohort")
+#' @param processed_data_dir Character string for processed data directory
+#' @return List containing other_map for the specific cohort
+get_cohort_specific_other_map <- function(dataset_name, processed_data_dir = "final_data/Analytic Dataset") {
+    # Extract cohort name from dataset name
+    cohort_name <- gsub("uveal_melanoma_", "", dataset_name)
+    cohort_name <- gsub("_cohort", "", cohort_name)
+    
+    # Create cohort-specific other_map filename
+    other_map_file <- file.path(processed_data_dir, paste0(cohort_name, "_other_map.rds"))
+    
+    if (file.exists(other_map_file)) {
+        other_map <- readRDS(other_map_file)
+        log_enhanced(sprintf("Loaded cohort-specific other_map for %s from %s", cohort_name, other_map_file), level = "INFO")
+        return(other_map)
+    } else {
+        log_enhanced(sprintf("No cohort-specific other_map found for %s at %s, using empty list", cohort_name, other_map_file), level = "INFO")
+        return(list())
+    }
+}
+
 #' Build model formula for regression
 #'
 #' @param outcome_var Character string name of outcome variable
@@ -1110,14 +1133,18 @@ add_other_level_details <- function(table, data, other_map = list()) {
     
     for (var_name in table_factor_vars) {
         if ("Other" %in% levels(data[[var_name]])) {
-            # Check if we have specific information about what was collapsed into "Other"
-            if (var_name %in% names(other_map) && length(other_map[[var_name]]) > 0) {
-                # Use the actual collapsed categories
-                collapsed_cats <- other_map[[var_name]]
-                other_details <- c(other_details, sprintf("%s: 'Other' category contains %s", var_name, paste(collapsed_cats, collapse = ", ")))
-            } else {
-                # Fallback to generic message if we don't have specific information
-                other_details <- c(other_details, sprintf("%s: 'Other' category present (specific levels not mapped)", var_name))
+            # CRITICAL FIX: Check if "Other" actually appears in the final table content
+            table_var_data <- table$table_body[table$table_body$variable == var_name, ]
+            if (any(grepl("Other", table_var_data$label, ignore.case = TRUE))) {
+                # Only add caption if "Other" is actually present in the final table
+                if (var_name %in% names(other_map) && length(other_map[[var_name]]) > 0) {
+                    # Use the actual collapsed categories
+                    collapsed_cats <- other_map[[var_name]]
+                    other_details <- c(other_details, sprintf("%s: 'Other' category contains %s", var_name, paste(collapsed_cats, collapse = ", ")))
+                } else {
+                    # Fallback to generic message if we don't have specific information
+                    other_details <- c(other_details, sprintf("%s: 'Other' category present (specific levels not mapped)", var_name))
+                }
             }
         }
     }
