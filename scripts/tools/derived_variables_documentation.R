@@ -670,7 +670,7 @@ cat("=== DERIVED VARIABLES DOCUMENTATION GENERATION ===\n\n")
 
 # Generate and export documentation
 cat("Generating derived variables documentation...\n")
-output_file <- generate_derived_variables_documentation(include_timestamp = TRUE)
+output_file <- generate_derived_variables_documentation(include_timestamp = FALSE)
 cat(sprintf("Documentation exported to: %s\n\n", output_file))
 
 # Load data for validation if available

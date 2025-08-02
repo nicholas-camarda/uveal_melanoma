@@ -611,10 +611,10 @@ plot_rmst_pvalue_progression <- function(rmst_results, outcome_label) {
     
     # Create the plot
     p <- ggplot(plot_data, aes(x = Time_Point_Years, y = RMST_P_Value)) +
-        geom_line(size = 1.2, color = "steelblue", alpha = 0.8) +
+        geom_line(linewidth = 1.2, color = "steelblue", alpha = 0.8) +
         geom_point(aes(color = Significant, size = Significant), alpha = 0.9) +
-        geom_hline(yintercept = 0.05, linetype = "dashed", color = "red", size = 0.8) +
-        geom_hline(yintercept = 0.01, linetype = "dotted", color = "darkred", size = 0.6) +
+        geom_hline(yintercept = 0.05, linetype = "dashed", color = "red", linewidth = 0.8) +
+        geom_hline(yintercept = 0.01, linetype = "dotted", color = "darkred", linewidth = 0.6) +
         annotate("text", x = max(plot_data$Time_Point_Years), y = 0.05, label = "p = 0.05", 
                  hjust = -0.1, vjust = -0.2, color = "red", size = 3.5) +
         annotate("text", x = max(plot_data$Time_Point_Years), y = 0.01, label = "p = 0.01", 
