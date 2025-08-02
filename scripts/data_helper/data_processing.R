@@ -1214,9 +1214,17 @@ create_analytic_dataset <- function() {
         )
     }
 
-    # Save the other_map information for use in analysis
+    # Save cohort-specific other_map files for use in analysis
+    for (cohort_name in names(other_map)) {
+        cohort_other_map <- other_map[[cohort_name]]
+        cohort_filename <- paste0(cohort_name, "_other_map.rds")
+        saveRDS(cohort_other_map, file.path(PROCESSED_DATA_DIR, cohort_filename))
+        log_enhanced(sprintf("Saved cohort-specific other_map for %s with %d variables", cohort_name, length(cohort_other_map)), level = "INFO")
+    }
+    
+    # Also save the combined other_map for backward compatibility
     saveRDS(other_map, file.path(PROCESSED_DATA_DIR, "other_map.rds"))
-    log_enhanced("Saved other_map information for tracking collapsed categories", level = "INFO")
+    log_enhanced("Saved combined other_map information for backward compatibility", level = "INFO")
 
     # Optional: generate a detailed log file for review
     generate_validation_report(factored_filtered_data)

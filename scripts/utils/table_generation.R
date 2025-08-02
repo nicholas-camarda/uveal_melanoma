@@ -992,6 +992,34 @@ create_gtsummary_table <- function(model_fit, effect_measure, analysis_name, oth
     return(table)
 }
 
+#' Load cohort-specific other_map.rds file
+#'
+#' Unified function to load cohort-specific other_map files for consistent handling
+#' across all analysis functions.
+#'
+#' @param dataset_name Character string for dataset name (e.g., "uveal_melanoma_full_cohort")
+#' @param processed_data_dir Character string for processed data directory
+#' @return List containing other_map information for the specific cohort
+#' @examples
+#' other_map <- get_cohort_specific_other_map("uveal_melanoma_full_cohort")
+get_cohort_specific_other_map <- function(dataset_name, processed_data_dir = "final_data/Analytic Dataset") {
+    # Extract cohort name from dataset name
+    cohort_name <- gsub("uveal_melanoma_", "", dataset_name)
+    cohort_name <- gsub("_cohort", "", cohort_name)
+    
+    # Create cohort-specific other_map filename
+    other_map_file <- file.path(processed_data_dir, paste0(cohort_name, "_other_map.rds"))
+    
+    if (file.exists(other_map_file)) {
+        other_map <- readRDS(other_map_file)
+        log_enhanced(sprintf("Loaded cohort-specific other_map for %s with %d variables", cohort_name, length(other_map)), level = "INFO")
+        return(other_map)
+    } else {
+        log_enhanced(sprintf("No cohort-specific other_map found for %s, using empty list", cohort_name), level = "INFO")
+        return(list())
+    }
+}
+
 #' Add factor label p-values to gtsummary table
 #'
 #' This function calculates overall variable significance p-values using likelihood ratio tests

@@ -751,27 +751,8 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(1, 2, 3, 4)) {
     data <- readRDS(file.path(PROCESSED_DATA_DIR, paste0(dataset_name, ".rds")))
     log_enhanced(sprintf("Successfully loaded %d patients for analysis", nrow(data)), level = "INFO", indent = 1)
 
-    # Load other_map information for tracking collapsed categories
-    other_map_file <- file.path(PROCESSED_DATA_DIR, "other_map.rds")
-    if (file.exists(other_map_file)) {
-        log_function("readRDS", "Loading other_map information for collapsed categories")
-        all_other_maps <- readRDS(other_map_file)
-        other_map <- all_other_maps[[dataset_name]]
-        if (is.null(other_map)) {
-            other_map <- list()
-            log_enhanced("No other_map found for this dataset, using empty list", level = "INFO", indent = 1)
-        } else {
-            log_enhanced(sprintf("Loaded other_map with %d variables having collapsed categories", length(other_map)), level = "INFO", indent = 1)
-            # Log what categories were collapsed
-            for (var_name in names(other_map)) {
-                collapsed_cats <- other_map[[var_name]]
-                log_enhanced(sprintf("  %s: %s collapsed into 'Other'", var_name, paste(collapsed_cats, collapse = ", ")), level = "INFO", indent = 2)
-            }
-        }
-    } else {
-        other_map <- list()
-        log_enhanced("No other_map.rds file found, using empty list", level = "INFO", indent = 1)
-    }
+    # Load cohort-specific other_map information using unified function
+    other_map <- get_cohort_specific_other_map(dataset_name, PROCESSED_DATA_DIR)
 
     # Run selected objectives
     results <- list()
