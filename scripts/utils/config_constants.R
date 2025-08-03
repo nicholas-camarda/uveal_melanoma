@@ -1,64 +1,123 @@
-# Configuration Constants
+# Configuration Constants - Central Repository for ALL Analysis Settings
 # Author: Nicholas Camarda
-# Description: All configuration constants and settings for the analysis
+# Description: This file contains ALL constants, thresholds, and configuration settings
+#             used throughout the entire analysis pipeline. This is the SINGLE source
+#             of truth for all analysis parameters. DO NOT add constants elsewhere.
+#             
+# CONTENTS:
+# - File paths and directory structures
+# - Data processing thresholds and settings  
+# - Statistical analysis parameters (confounders, subgroups)
+# - Treatment group factor levels and labels
+# - Plot dimensions and visualization settings
+# - GEP validation configuration (Objective 4)
+# - Variable ordering and labeling conventions
+# - Subgroup analysis cutoffs and settings
+# - Data validation thresholds and requirements
 
-# Note: All required libraries are loaded in main.R
-
-# Set consistent contrast options for all modeling functions
-# This ensures factor variables use consistent naming across all models
+# CRITICAL: Set consistent contrast options for ALL modeling functions
+# This ensures factor variables use consistent naming across all models:
+# - "contr.treatment" = treatment contrasts (first level is reference)
+# - "contr.poly" = polynomial contrasts for ordered factors
+# This prevents inconsistent coefficient names between models
 options(contrasts = c("contr.treatment", "contr.poly"))
 
 # =============================================================================
 # CORE DATA PATHS AND DIRECTORIES
 # =============================================================================
+# CRITICAL: These paths define the entire data structure for the analysis
+# - DATA_DIR: Root directory containing all data files
+# - RAW_DATA_DIR: Original Excel files from clinical database
+# - PROCESSED_DATA_DIR: Cleaned and processed analytic datasets
+# - OUTPUT_DIR: All analysis results, tables, plots, and diagnostics
 DATA_DIR <- "final_data"
 RAW_DATA_DIR <- file.path(DATA_DIR, "Original Files")
 PROCESSED_DATA_DIR <- file.path(DATA_DIR, "Analytic Dataset")
 OUTPUT_DIR <- file.path(DATA_DIR, "Analysis")
-ANALYSIS_DIR <- OUTPUT_DIR  # Alias for consistency with legacy code
+
+# =============================================================================
+# TOOL PATHS AND CONFIGURATION
+# =============================================================================
+TOOLS_OUTPUT_DIR <- file.path(PROCESSED_DATA_DIR, "tools_output")
+DATA_DICTIONARY_PATH <- file.path(RAW_DATA_DIR, "Data Dictionary.xlsx")
+
+# =============================================================================
+# LOGGING AND OUTPUT PATHS
+# =============================================================================
+LOGS_DIR <- "logs"
+MERGED_TABLES_DIR <- file.path(OUTPUT_DIR, "merged_tables")
+TEST_OUTPUT_DIR <- "test_output"
 
 # =============================================================================
 # DATA PROCESSING CONSTANTS
 # =============================================================================
-# Minimum number of observations required to keep a category
-THRESHOLD_RARITY <- 5
-
-# Verbose logging flag
-VERBOSE <- TRUE
-
-# Threshold for extreme regression estimates (odds ratios, hazard ratios, etc.)
-# Estimates above this threshold will be excluded from tables and documented in diagnostics
-EXTREME_ESTIMATE_THRESHOLD <- 100
-
-# Threshold for CI width filtering - any CI wider than this will be filtered out
-# This prevents infinite CIs and extremely wide intervals from appearing in tables
-CI_WIDTH_THRESHOLD <- 10
-
-# Threshold for near-perfect separation detection
-# CI upper bound very close to 0 indicates near-perfect separation
-NEAR_PERFECT_SEPARATION_THRESHOLD <- 0.001
-
-# Threshold for extremely wide CI detection
-# CI upper/lower ratio above this indicates unreliable estimates
-EXTREMELY_WIDE_CI_THRESHOLD <- 1000
+# CRITICAL: These thresholds control data quality and analysis decisions
+# - THRESHOLD_RARITY: Minimum observations to keep a category (prevents sparse data)
+# - EXTREME_ESTIMATE_THRESHOLD: Maximum allowed odds/hazard ratios (filters unreliable estimates)
+# - CI_WIDTH_THRESHOLD: Maximum confidence interval width (filters infinite CIs)
+# - TUMOR_SIZE_THRESHOLDS: Clinical criteria for treatment eligibility
 
 # Input file and exclusion settings
 INPUT_FILENAME <- "Ocular Melanoma Master Spreadsheet REVISED FOR STATS (5-10-25, TJM).xlsx"
 SPECIFIC_PATIENTS_TO_EXCLUDE <- c(271) # Patient 271: all supporting documentation was lost
 
+# Data quality thresholds
+THRESHOLD_RARITY <- 5                    # Minimum observations to keep a category
+EXTREME_ESTIMATE_THRESHOLD <- 100        # Maximum allowed odds/hazard ratios
+CI_WIDTH_THRESHOLD <- 10                 # Maximum confidence interval width
+NEAR_PERFECT_SEPARATION_THRESHOLD <- 0.001  # Threshold for near-perfect separation detection
+EXTREMELY_WIDE_CI_THRESHOLD <- 1000      # Threshold for extremely wide CI detection
+
 # Tumor size thresholds for cohort eligibility
-TUMOR_HEIGHT_THRESHOLD <- 10           # mm
-TUMOR_DIAMETER_THRESHOLD <- 20         # mm
+TUMOR_HEIGHT_THRESHOLD <- 10             # mm
+TUMOR_DIAMETER_THRESHOLD <- 20           # mm
 
 # Time conversion constants
 DAYS_IN_YEAR <- 365.25
 DAYS_IN_MONTH <- 30.44
-FOLLOW_UP_YEARS <- 5                   # For 5-year outcomes
-UNITS_OF_TIME <- "months"              # "days" or "months" or "years"
+FOLLOW_UP_YEARS <- 5                     # For 5-year outcomes
+UNITS_OF_TIME <- "months"                # "days" or "months" or "years"
+
+# =============================================================================
+# TREATMENT AND FACTOR LEVEL CONFIGURATION
+# =============================================================================
+# CRITICAL: These settings control ALL statistical models and factor levels
+# - TREATMENT_FACTOR_LEVELS: Order determines reference group (Plaque = reference, GKSRS = comparison)
+# - TREATMENT_LABELS: Display labels for plots and tables
+# - SEX_FACTOR_LEVELS: Female = reference, Male = comparison
+# - YN_RAW_LEVELS: Binary variables (N = reference, Y = comparison)
+# WARNING: Changing these affects ALL regression models, tables, and plots
+
+# Treatment group configuration
+TREATMENT_FACTOR_LEVELS <- c("Plaque", "GKSRS")  # Plaque is reference group
+TREATMENT_REFERENCE_LEVEL <- TREATMENT_FACTOR_LEVELS[1]  # Explicitly define reference
+TREATMENT_COMPARISON_LEVEL <- TREATMENT_FACTOR_LEVELS[2]  # Explicitly define comparison
+TREATMENT_LABELS <- c("Plaque", "GKSRS")                    # For display/plotting (matches factor levels order)
+FAVOURS_LABELS <- c("Favours Plaque", "Favours GKSRS")      # For forest plot labels (matches factor levels order)
+
+# Validation: Ensure consistency with TREATMENT_LABELS
+if (!all(TREATMENT_LABELS %in% TREATMENT_FACTOR_LEVELS)) {
+    stop(sprintf("CRITICAL ERROR: TREATMENT_LABELS (%s) must match TREATMENT_FACTOR_LEVELS (%s)", 
+                 paste(TREATMENT_LABELS, collapse = ", "), 
+                 paste(TREATMENT_FACTOR_LEVELS, collapse = ", ")))
+}
+
+# Binary factor configurations (used for ALL Y/N binary variables)
+# N is ALWAYS the reference level (first), Y is comparison (second)
+YN_RAW_LEVELS <- c("N", "Y")
+YN_DISPLAY_LABELS <- c("No", "Yes")
+
+# Other critical factor levels
+SEX_FACTOR_LEVELS <- c("Female", "Male")
 
 # =============================================================================
 # ANALYSIS VARIABLES AND CONFOUNDERS
 # =============================================================================
+# CRITICAL: These variables define the statistical models for ALL analyses
+# - confounders: Variables adjusted for in ALL regression models (age, sex, location)
+# - subgroup_vars: Variables used for subgroup analyses (age, sex, location, tumor features)
+# - continuous_subgroup_vars: Variables that need binning for categorical analysis
+# NOTE: Adding variables to confounders can cause perfect separation issues
 
 # Define confounders for adjustment in all models
 confounders <- c(
@@ -87,91 +146,167 @@ subgroup_vars <- c(
 continuous_subgroup_vars <- c("age_at_diagnosis", "initial_tumor_height", "initial_tumor_diameter")
 
 # =============================================================================
-# SUBGROUP ANALYSIS CONFIGURATION
+# STAGE AND COHORT CONFIGURATION
 # =============================================================================
-
-# Standardized cutoffs (when USE_STANDARDIZED_CUTOFFS = TRUE)
-# Updated to use T-stage clinical cutoffs from AJCC staging system
-STANDARDIZED_CUTOFFS <- list(
-    age_at_diagnosis = 65.0,  # Keep age cutoff as is
-    # T-stage clinical cutoffs for tumor height (mm)
-    initial_tumor_height = c(3.0, 6.0, 9.0, 12.0, 15.0),  # Creates bins: ≤3.0, 3.1-6.0, 6.1-9.0, 9.1-12.0, 12.1-15.0, >15.0
-    # T-stage clinical cutoffs for tumor diameter (mm) 
-    initial_tumor_diameter = c(3.0, 6.0, 9.0, 12.0, 15.0, 18.0)  # Creates bins: ≤3.0, 3.1-6.0, 6.1-9.0, 9.1-12.0, 12.1-15.0, 15.1-18.0, >18.0
-)
+# CRITICAL: These settings control cohort eligibility and staging
+# - STAGES_TO_EXCLUDE_FROM_MODIFIED: Stages with insufficient sample sizes (3B, 3C, 4)
+# - TUMOR_SIZE_THRESHOLDS: Clinical criteria for treatment eligibility
+# - SPECIFIC_PATIENTS_TO_EXCLUDE: Patients with missing documentation
+# NOTE: Stage exclusions prevent perfect separation issues in statistical models
+# Data-driven analysis showed Stage 3B (n=6, 2.3%), Stage 3C (n=1, 0.4%), and Stage 4 (n=3, 1.1%) 
+# have insufficient patient numbers for reliable statistical analysis. Chi-square test confirmed 
+# significant difference in stage distribution between treatment groups (p=0.0008), indicating stage 
+# should be included as a confounder. Modified variable excludes problematic stages while 
+# preserving the confounding adjustment for stages with adequate sample sizes.
+STAGES_TO_EXCLUDE_FROM_MODIFIED <- c("3B", "3C", "4")
 
 # =============================================================================
-# DATA VALIDATION CONSTANTS
+# DATA VALIDATION THRESHOLDS AND REQUIREMENTS
 # =============================================================================
+# CRITICAL: These settings control data validation and quality checks
+# - MINIMUM_COLUMNS_AFTER_PROCESSING: Minimum expected columns after data processing
+# - CRITICAL_VARIABLES: Essential variables that must exist in the dataset
+# - DERIVED_VARIABLES: Variables created during data processing
+# - CRITICAL_FACTORS: Factor variables that must have proper levels
+# - EXPECTED_COHORT_SIZES: Expected ranges for each cohort
+# - MAXIMUM_MISSING_DATA_PERCENTAGE: Maximum allowed missing data for critical variables
 
-# Critical variables that must exist in all datasets
-CRITICAL_VARIABLES <- c("id", "treatment_group", "sex", "age_at_diagnosis")
+# Data validation thresholds
+MINIMUM_COLUMNS_AFTER_PROCESSING <- 150  # Minimum expected columns after data processing
+MAXIMUM_MISSING_DATA_PERCENTAGE <- 50    # Maximum allowed missing data percentage for critical variables
 
-# Derived variables that should be created during data processing
-DERIVED_VARIABLES <- c(
-    "age_at_diagnosis", "follow_up_years", "follow_up_months",
-    "tt_recurrence_months", "tt_mets_months", "tt_death_months",
-    "recurrence_event", "mets_event", "death_event", "pfs_event"
-)
+# Critical variables that must exist in the dataset
+CRITICAL_VARIABLES <- c("id", "treatment_group", "age_at_diagnosis", "sex", "location", 
+                        "initial_tumor_height", "initial_tumor_diameter", "initial_t_stage",
+                        "recurrence1", "mets_progression", "last_known_alive_date")
 
-# Critical factors that should be factors with proper levels
-CRITICAL_FACTORS <- c("treatment_group", "sex", "recurrence1", "mets_progression")
+# Variables created during data processing
+DERIVED_VARIABLES <- c("age_at_diagnosis_binned", "initial_tumor_height_binned", 
+                       "initial_tumor_diameter_binned", "initial_stage_binary",
+                       "gep_class_simple", "prame_status", "recurrence1_treatment_clean")
 
-# Expected treatment group levels
-EXPECTED_TREATMENT_LEVELS <- c("Plaque", "GKSRS")
+# Factor variables that must have proper levels
+CRITICAL_FACTORS <- c("treatment_group", "sex", "location", "initial_t_stage", 
+                      "biopsy1_gep", "gep_class_simple", "prame_status")
 
-# GEP-derived variables that should be created
-GEP_DERIVED_VARIABLES <- c("gep_class_simple", "prame_status", "expected_mfs_5yr", "expected_mss_5yr")
+# Variables to check for missing data
+MISSING_DATA_CHECK_VARIABLES <- c("age_at_diagnosis", "sex", "location", "initial_tumor_height", 
+                                  "initial_tumor_diameter", "treatment_group", "recurrence1", 
+                                  "mets_progression", "last_known_alive_date")
 
-# Variables to check for missing data patterns
-MISSING_DATA_CHECK_VARIABLES <- c("treatment_group", "sex", "age_at_diagnosis")
-
-# Validation thresholds
-MINIMUM_COLUMNS_AFTER_PROCESSING <- 20
-MAXIMUM_MISSING_DATA_PERCENTAGE <- 10.0
-
-# Expected cohort sizes (minimum thresholds)
+# Expected cohort sizes (ranges)
 EXPECTED_COHORT_SIZES <- list(
-    uveal_melanoma_full_cohort = 250,
-    uveal_melanoma_restricted_cohort = 150,
-    uveal_melanoma_gksrs_only_cohort = 80
+    uveal_melanoma_full_cohort = c(250, 300),      # Expected range for full cohort
+    uveal_melanoma_restricted_cohort = c(150, 200), # Expected range for restricted cohort  
+    uveal_melanoma_gksrs_only_cohort = c(80, 120)  # Expected range for GKSRS-only cohort
 )
 
 # =============================================================================
-# TREATMENT AND FACTOR LEVEL CONFIGURATION
+# VARIABLE LABELING AND TABLE CONFIGURATION
 # =============================================================================
-# CRITICAL: These variables define factor levels and reference groups used throughout
-# the entire analysis pipeline. Changing these affects all models, tables, and plots.
+# CRITICAL: These settings control how variables are labeled in tables and plots
+# - STANDARD_TABLE_LABELS: Human-readable labels for all variables
+# - BASELINE_VARIABLES_TO_SUMMARIZE: Variables to include in baseline characteristics tables
 
-# Treatment group configuration
-TREATMENT_LABELS <- c("GKSRS", "Plaque")                    # For display/plotting
-FAVOURS_LABELS <- c("Favours GKSRS", "Favours Plaque")      # For forest plot labels
+# Human-readable labels for all variables
+STANDARD_TABLE_LABELS <- list(
+    # Demographics
+    age_at_diagnosis = "Age at Diagnosis",
+    sex = "Sex", 
+    race = "Race",
+    ethnicity = "Ethnicity",
+    
+    # Eye and tumor characteristics
+    eye = "Eye",
+    location = "Tumor Location",
+    initial_tumor_height = "Initial Tumor Height (mm)",
+    initial_tumor_diameter = "Initial Tumor Diameter (mm)", 
+    initial_t_stage = "Initial T-Stage",
+    initial_overall_stage_modified = "Initial Overall Stage (Modified)",
+    
+    # Treatment
+    treatment_group = "Treatment Group",
+    treatment_date = "Treatment Date",
+    
+    # Clinical features
+    initial_vision = "Initial Visual Acuity (logMAR)",
+    srf = "Subretinal Fluid (SRF)",
+    op = "Orange Pigment",
+    symptoms = "Any Symptoms",
+    vision_loss_blurred_vision = "Vision Loss/Blurred Vision",
+    visual_field_defect = "Visual Field Defect",
+    flashes_photopsia = "Flashes/Photopsia",
+    floaters = "Floaters",
+    pain = "Pain",
+    
+    # Tumor features
+    internal_reflectivity = "Internal Reflectivity",
+    optic_nerve = "Optic Nerve Involvement",
+    
+    # Staging
+    n_stage = "N Stage",
+    m_stage = "M Stage",
+    initial_metastases = "Initial Metastases",
+    
+    # Outcomes
+    recurrence1 = "Local Recurrence",
+    mets_progression = "Metastatic Progression",
+    last_known_alive_date = "Last Known Alive Date",
+    
+    # Derived variables
+    age_at_diagnosis_binned = "Age at Diagnosis (Binned)",
+    initial_tumor_height_binned = "Initial Tumor Height (Binned)",
+    initial_tumor_diameter_binned = "Initial Tumor Diameter (Binned)",
+    initial_stage_binary = "Initial Stage (Binary)",
+    
+    # GEP variables
+    biopsy1_gep = "Gene Expression Profile",
+    gep_class_simple = "GEP Class (Simple)",
+    prame_status = "PRAME Status",
+    
+    # Follow-up
+    total_followup_days = "Total Follow-up (Days)",
+    total_years = "Total Follow-up (Years)",
+    
+    # Treatment outcomes
+    recurrence1_treatment_clean = "Local Recurrence (Treatment Clean)"
+)
 
-# Treatment factor levels (CRITICAL: Order determines reference group)
-# Reference group = FIRST level (used in regression models)
-# All models will compare TREATMENT_FACTOR_LEVELS[2] vs TREATMENT_FACTOR_LEVELS[1]
-TREATMENT_FACTOR_LEVELS <- c("Plaque", "GKSRS")  # Plaque is reference group
-TREATMENT_REFERENCE_LEVEL <- TREATMENT_FACTOR_LEVELS[1]  # Explicitly define reference
-TREATMENT_COMPARISON_LEVEL <- TREATMENT_FACTOR_LEVELS[2]  # Explicitly define comparison
-
-# Validation: Ensure consistency with TREATMENT_LABELS
-if (!all(TREATMENT_LABELS %in% TREATMENT_FACTOR_LEVELS)) {
-    stop(sprintf("CRITICAL ERROR: TREATMENT_LABELS (%s) must match TREATMENT_FACTOR_LEVELS (%s)", 
-                 paste(TREATMENT_LABELS, collapse = ", "), 
-                 paste(TREATMENT_FACTOR_LEVELS, collapse = ", ")))
-}
-
-# Binary factor configurations (used for ALL Y/N binary variables)
-# N is ALWAYS the reference level (first), Y is comparison (second)
-YN_RAW_LEVELS <- c("N", "Y")
-YN_DISPLAY_LABELS <- c("No", "Yes")
-
-# Other critical factor levels
-SEX_FACTOR_LEVELS <- c("Female", "Male")
+# Variables to include in baseline characteristics tables
+BASELINE_VARIABLES_TO_SUMMARIZE <- c(
+    # Demographics
+    "age_at_diagnosis", "sex", "race", "ethnicity",
+    
+    # Eye and tumor characteristics
+    "eye", "location", "initial_tumor_height", "initial_tumor_diameter", 
+    "initial_t_stage", "initial_overall_stage_modified",
+    
+    # Clinical features
+    "initial_vision", "srf", "op", "symptoms", "vision_loss_blurred_vision", 
+    "visual_field_defect", "flashes_photopsia", "floaters", "pain",
+    
+    # Tumor features
+    "internal_reflectivity", "optic_nerve",
+    
+    # Staging
+    "n_stage", "m_stage", "initial_metastases",
+    
+    # GEP
+    "biopsy1_gep",
+    
+    # Treatment
+    "treatment_group"
+)
 
 # =============================================================================
 # PLOT AND VISUALIZATION SETTINGS
 # =============================================================================
+# CRITICAL: These dimensions control ALL output figures and plots
+# - FOREST_PLOT_WIDTH/HEIGHT: Dimensions for forest plots (inches)
+# - SURVIVAL_PLOT_WIDTH/HEIGHT: Dimensions for survival curves
+# - RMST_PLOT_WIDTH/HEIGHT: Dimensions for RMST plots
+# - PLOT_DPI: Resolution for all saved figures (300 DPI for publication quality)
+
 # Plot dimensions and settings for all output figures
 FOREST_PLOT_WIDTH <- 10    # inches (reasonable width)
 FOREST_PLOT_HEIGHT <- 12   # inches (increased height for all subgroup levels)
@@ -183,28 +318,18 @@ PLOT_DPI <- 300           # resolution
 PLOT_UNITS <- "in"        # units
 
 # =============================================================================
-# STAGE AND COHORT CONFIGURATION
-# =============================================================================
-# Stage exclusion configuration for modified overall stage variable
-# Data-driven analysis showed Stage 3B (n=6, 2.3%), Stage 3C (n=1, 0.4%), and Stage 4 (n=3, 1.1%) 
-# have insufficient patient numbers for reliable statistical analysis. Chi-square test confirmed 
-# significant difference in stage distribution between treatment groups (p=0.0008), indicating stage 
-# should be included as a confounder. Modified variable excludes problematic stages while 
-# preserving the confounding adjustment for stages with adequate sample sizes.
-STAGES_TO_EXCLUDE_FROM_MODIFIED <- c("3B", "3C", "4")
-
-# =============================================================================
 # GEP VALIDATION CONFIGURATION (OBJECTIVE 4)
 # =============================================================================
+# CRITICAL: These settings control the GEP validation analysis (Objective 4)
+# - GEP_VALIDATION_TIMEPOINTS: Years for validation (5, 7, 10 years)
+# - GEP_BOOTSTRAP_ITERATIONS: Number of bootstrap samples for optimism correction
+# - GEP_PRAME_ADJUSTMENT_FACTOR: Risk adjustment for PRAME-positive patients (30% increase)
+# - GEP_RISK_CUTOFFS: Risk stratification categories for NRI analysis
+# - GEP_DCA_THRESHOLD_*: Decision curve analysis thresholds
+
 # Core GEP validation settings
 GEP_VALIDATION_TIMEPOINTS <- c(5, 7, 10)  # years for validation analysis
 GEP_BOOTSTRAP_ITERATIONS <- 200           # bootstrap samples for optimism correction
-
-# =============================================================================
-# GEP VALIDATION CONFIGURATION (OBJECTIVE 4) - DETAILED SETTINGS
-# =============================================================================
-# These constants control various aspects of the GEP validation analysis
-# Modify here to change validation behavior across all functions
 
 # PRAME augmentation constants
 GEP_PRAME_ADJUSTMENT_FACTOR <- 1.3    # 30% increase in risk for PRAME positive patients
@@ -237,116 +362,20 @@ GEP_MIN_SAMPLE_SIZE <- 20              # Minimum sample size for any analysis
 GEP_MIN_EVENTS_COMPETING_RISK <- 5     # Minimum events for competing risk analysis
 GEP_MIN_BOOTSTRAP_SAMPLE <- 30         # Minimum sample size for bootstrap analysis
 GEP_MAX_BOOTSTRAP_ITERATIONS <- 100    # Maximum bootstrap iterations for speed
-
-# Missing data analysis constants
 GEP_MISSING_DATA_THRESHOLD <- 10       # Minimum patients needed for missing data analysis
-
-# Validation metrics thresholds (for warnings/interpretation)
 GEP_RECOMMENDED_VALIDATION_SAMPLE <- 100  # Recommended minimum for robust validation
 GEP_RECOMMENDED_TESTING_SAMPLE <- 30      # Recommended minimum for testing set
 
-# =============================================================================
-# TABLE AND OUTPUT CONFIGURATION
-# =============================================================================
-# Define consistent variable order for forest plots and subgroup analysis
-# This ensures all plots and tables show variables in the same order across cohorts
-# Used by main.R, forest plot functions, and subgroup analysis to maintain consistency
-# To change the order of variables in all outputs, modify this single variable
-FOREST_PLOT_VARIABLE_ORDER <- c(
-    "age_at_diagnosis", "sex", "location", "initial_t_stage",
-    "initial_tumor_height", "initial_tumor_diameter", "biopsy1_gep", "optic_nerve"
-)
-
-# Define variables for baseline characteristics summary tables
-# Used by create_summary_tables() and merge_cohort_tables() to ensure consistency
-BASELINE_VARIABLES_TO_SUMMARIZE <- c(
-    "age_at_diagnosis", "race", "sex", "eye",
-    "initial_vision", "location", "optic_nerve",
-    "initial_tumor_height", "initial_tumor_diameter",
-    "internal_reflectivity", "srf", "op", "symptoms",
-    "vision_loss_blurred_vision", "visual_field_defect",
-    "flashes_photopsia", "floaters", "pain",
-    "initial_overall_stage", "initial_t_stage",
-    "initial_n_stage", "initial_m_stage",
-    "initial_mets", "biopsy1_gep"
-)
+# GEP-specific derived variables
+GEP_DERIVED_VARIABLES <- c("gep_class_simple", "prame_status", "mfs_5yr", "mfs_7yr", 
+                           "mfs_10yr", "mss_5yr", "mss_7yr", "mss_10yr")
 
 # =============================================================================
-# SUBGROUP ANALYSIS CONSTANTS
+# SUMMARY: This file contains ALL configuration constants for the analysis pipeline
 # =============================================================================
-# Variable order for consistent display across all plots and tables
-# Uses the global FOREST_PLOT_VARIABLE_ORDER for consistency
-SUBGROUP_VARIABLE_ORDER <- FOREST_PLOT_VARIABLE_ORDER
-
+# CRITICAL: This is the SINGLE source of truth for all analysis parameters
+# - DO NOT add constants to other files
+# - DO NOT duplicate constants across files  
+# - ALL analysis scripts source this file through all_helper_functions.R
+# - Changes here affect the ENTIRE analysis pipeline
 # =============================================================================
-# TABLE LABELS AND NAMING CONVENTIONS
-# =============================================================================
-# Centralized table labels to ensure consistency across all gtsummary tables
-# These should match the labels used in data_processing.R baseline tables
-STANDARD_TABLE_LABELS <- list(
-    # Demographics
-    age_at_diagnosis = "Age at Diagnosis (years)",
-    race = "Race",
-    sex = "Sex", 
-    eye = "Eye",
-    
-    # Vision and measurements
-    initial_vision = "Initial Visual Acuity (logMAR)",
-    
-    # Tumor characteristics
-    location = "Tumor Location",
-    optic_nerve = "Optic Nerve Involvement",
-    initial_tumor_height = "Initial Tumor Height (mm)",
-    initial_tumor_diameter = "Initial Tumor Diameter (mm)",
-    internal_reflectivity = "Internal Reflectivity",
-    srf = "Subretinal Fluid (SRF)",
-    op = "Orange Pigment",
-    
-    # Symptoms
-    symptoms = "Any Symptoms",
-    vision_loss_blurred_vision = "Vision Loss/Blurred Vision",
-    visual_field_defect = "Visual Field Defect",
-    flashes_photopsia = "Flashes/Photopsia",
-    floaters = "Floaters",
-    pain = "Pain",
-    
-    # Staging
-    initial_overall_stage = "Overall Stage",
-    initial_overall_stage_modified = "Overall Stage (Modified)",
-    initial_t_stage = "T Stage",
-    initial_n_stage = "N Stage", 
-    initial_m_stage = "M Stage",
-    initial_mets = "Initial Metastases",
-    biopsy1_gep = "Gene Expression Profile",
-    gep_class_simple = "GEP Class",
-    prame_status = "PRAME Status",
-    expected_mfs_5yr = "Expected 5-Year MFS", # MFS = Metastasis-Free Survival
-    expected_mfs_7yr = "Expected 7-Year MFS",
-    expected_mfs_10yr = "Expected 10-Year MFS",
-    expected_mss_5yr = "Expected 5-Year MSS", # MSS = Melanoma-Specific Survival
-    expected_mss_7yr = "Expected 7-Year MSS",
-    expected_mss_10yr = "Expected 10-Year MSS",
-    
-    # Treatment
-    treatment_group = "Treatment Group",
-    recurrence1_treatment_clean = "Recurrence Treatment",
-    
-    # Outcomes
-    recurrence1 = "Local Recurrence",
-    recurrence2 = "Second Recurrence",
-    mets_progression = "Metastatic Progression",
-    enucleation = "Enucleation",
-    retinopathy = "Radiation Retinopathy",
-    nvg = "Neovascular Glaucoma",
-    srd = "Serous Retinal Detachment",
-    
-    # Changes/follow-up
-    height_change = "Tumor Height Change (mm)",
-    vision_change = "Visual Acuity Change (logMAR)",
-    follow_up_years = "Follow-up Time (years)",
-    follow_up_months = "Follow-up Time (months)",
-    
-    # PFS-2 specific
-    tt_pfs2_months = "PFS-2 Time (months)", 
-    pfs2_event = "Second Recurrence Events"
-) 

@@ -580,11 +580,11 @@ export_derived_variables_to_excel <- function(output_file = NULL, include_timest
 #' @param include_timestamp Whether to include timestamp in filename (default: TRUE)
 #' @return Path to created Excel file
 #' @examples
-#' generate_derived_variables_documentation()  # Creates timestamped file in Analytic Dataset folder
-generate_derived_variables_documentation <- function(include_timestamp = TRUE) {
+#' generate_derived_variables_documentation()  # Creates file in tools_output folder
+generate_derived_variables_documentation <- function(include_timestamp = FALSE) {
     
     # Create output directory if it doesn't exist
-    output_dir <- PROCESSED_DATA_DIR
+    output_dir <- file.path(PROCESSED_DATA_DIR, "tools_output")
     if (!dir.exists(output_dir)) {
         dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
     }

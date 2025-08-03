@@ -97,6 +97,7 @@ merge_cohort_tables <- function(full_cohort_data, restricted_cohort_data, output
     
     # Set default output path if not provided
     if (is.null(output_path)) {
+        # MERGED_TABLES_DIR
         output_path <- file.path("final_data", "Analysis", "merged_tables")
     }
     
@@ -243,7 +244,7 @@ create_all_combined_forest_plots <- function(base_dir, cohort_names = c("full", 
             restricted_results <- NULL
             
             # Attempt to load results from the most recent test output
-            test_dirs <- list.dirs("test_output", recursive = FALSE)
+            test_dirs <- list.dirs(TEST_OUTPUT_DIR, recursive = FALSE)
             if (length(test_dirs) > 0) {
                 latest_test_dir <- test_dirs[length(test_dirs)]
                 

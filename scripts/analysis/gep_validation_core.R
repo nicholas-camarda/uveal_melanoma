@@ -7,7 +7,7 @@
 #'
 #' Performs comprehensive validation of GEP predictions for metastasis-free survival
 #' using multiple timepoints and advanced survival validation metrics.
-#' Uses centralized constants from analysis_config.R for timepoints and bootstrap iterations.
+#' Uses centralized constants from config_constants.R for timepoints and bootstrap iterations.
 #'
 #' @param data Data frame with GEP and survival data
 #' @param dataset_name Character string identifying the cohort
@@ -146,7 +146,7 @@ analyze_gep_mfs_validation <- function(data, dataset_name = NULL, timepoints = G
 #'
 #' Performs comprehensive validation including competing risk analysis
 #' for melanoma-specific survival predictions.
-#' Uses centralized constants from analysis_config.R for timepoints and bootstrap iterations.
+#' Uses centralized constants from config_constants.R for timepoints and bootstrap iterations.
 #'
 #' @param data Data frame with GEP and survival data (pre-processed, no modifications allowed)
 #' @param dataset_name Character string identifying the cohort

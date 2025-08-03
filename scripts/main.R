@@ -14,13 +14,13 @@ source("scripts/utils/all_helper_functions.R")
 # Set up logging if enabled
 if (USE_LOGS) {
     # Create logs directory if it doesn't exist
-    if (!dir.exists("logs")) {
-        dir.create("logs", showWarnings = FALSE)
+    if (!dir.exists(LOGS_DIR)) {
+        dir.create(LOGS_DIR, showWarnings = FALSE)
     }
 
     # Create timestamp for log file
     timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
-    log_file <- file.path("logs", paste0("run_log_", timestamp, ".txt"))
+    log_file <- file.path(LOGS_DIR, paste0("run_log_", timestamp, ".txt"))
     log_con <- file(log_file, open = "wt")
     sink(log_con)
     sink(log_con, type = "message")
@@ -33,53 +33,30 @@ if (RECREATE_ANALYTIC_DATASETS) {
     
     log_enhanced("RECREATE_ANALYTIC_DATASETS = TRUE: Creating new analytic datasets", level = "INFO")
     
-    # Load and clean raw data
-    log_function("load_and_clean_data", paste("Input file:", INPUT_FILENAME))
-    cleaned_data <- load_and_clean_data(filename = INPUT_FILENAME)
-
-    # Create derived variables BEFORE splitting into cohorts
-    log_function("create_derived_variables", "Creating PFS-2 variables and other derived measures")
-    derived_data <- create_derived_variables(cleaned_data)
-
-    # Prepare factor levels
-    log_function("prepare_factor_levels", "Setting up factor levels for analysis")
-    factored_result <- prepare_factor_levels(derived_data)
-    factored_data <- factored_result$data
-    other_map <- factored_result$other_map
-
-    # Apply inclusion/exclusion criteria (split into cohorts)
-    log_function("apply_criteria", "Applying inclusion/exclusion criteria and creating cohorts")
-    final_analytic_datasets_lst <- apply_criteria(factored_data)
-
-    # Save each cohort separately
-    log_function("save_cohorts", "Saving processed cohorts to RDS files")
-    save_cohorts(final_analytic_datasets_lst)
+    # Create analytic datasets using the comprehensive function
+    log_function("create_analytic_dataset", "Creating analytic datasets with full processing pipeline")
+    analytic_result <- create_analytic_dataset()
     
-    # Save the other_map information for use in analysis
-    log_function("saveRDS", "Saving other_map information for tracking collapsed categories")
-    saveRDS(other_map, file.path(PROCESSED_DATA_DIR, "other_map.rds"))
-
-    # Create summary tables with organized output structure
-    log_function("create_summary_tables", "Creating baseline characteristics tables")
+    # Extract the results
+    final_analytic_datasets <- analytic_result$analytic_data
+    other_map <- analytic_result$other_map
+    summary_tables <- analytic_result$summary_tables
     
     # Create cohort-specific output structures for baseline characteristics
     temp_output_dirs_by_cohort <- list()
-    for (cohort_name in names(final_analytic_datasets_lst)) {
+    for (cohort_name in names(final_analytic_datasets)) {
         # Determine cohort directory name
         cohort_dir_name <- case_when(
-            grepl("full", cohort_name) ~ "uveal_full",
-            grepl("restricted", cohort_name) ~ "uveal_restricted", 
-            grepl("gksrs", cohort_name) ~ "gksrs",
+            grepl("full", cohort_name) ~ "uveal_full",      # Full cohort: all patients regardless of eligibility
+            grepl("restricted", cohort_name) ~ "uveal_restricted",  # Restricted cohort: eligible for both treatments
+            grepl("gksrs", cohort_name) ~ "gksrs",          # GKSRS-only cohort: ineligible for plaque treatment
             TRUE ~ cohort_name
         )
         
-        # Create cohort-specific directory structure
-        cohort_base_dir <- file.path("final_data/Analysis", cohort_dir_name)
+        # Create the complete directory structure with subdirectories for each analysis type
+        cohort_base_dir <- file.path(OUTPUT_DIR, cohort_dir_name)
         temp_output_dirs_by_cohort[[cohort_name]] <- create_output_structure(cohort_base_dir)
     }
-    
-    # Create summary tables
-    summary_tables <- create_summary_tables(final_analytic_datasets_lst, temp_output_dirs_by_cohort)
 
     log_section_complete("DATA PREPROCESSING PHASE", data_start_time)
     
@@ -96,18 +73,30 @@ if (RECREATE_ANALYTIC_DATASETS) {
 
 #' Run Objective 1: Primary Outcomes Analysis
 #' 
-#' @param data Data frame with analytic dataset
-#' @param dataset_name Character string for dataset name
-#' @param output_dirs List of output directories
-#' @param prefix Character string for file prefix
-#' @return List of analysis results
+#' Performs comprehensive analysis of primary outcomes for uveal melanoma patients:
+#' - 1a: Local recurrence rates (binary outcome, post-treatment only)
+#' - 1b: Metastatic progression rates (binary outcome, post-treatment only) 
+#' - 1c: Overall survival analysis (time-to-event, Kaplan-Meier + Cox regression)
+#' - 1d: Progression-free survival (time-to-event, Kaplan-Meier + Cox regression)
+#' - 1e: Tumor height changes (continuous outcome, linear regression)
+#' - 1f: Subgroup analyses by age (≤65 vs >65) and sex (Female vs Male)
+#' 
+#' All analyses adjust for confounders: age_at_diagnosis, sex, location, initial_t_stage, 
+#' initial_tumor_height, initial_tumor_diameter, biopsy1_gep, optic_nerve
+#' 
+#' @param data Data frame containing the analytic dataset for one cohort (full_cohort, restricted_cohort, or gksrs_only_cohort)
+#' @param dataset_name Character string identifying the cohort for file naming and logging
+#' @param output_dirs List of output directories organized by analysis type (recurrence, mets, os, pfs, height, subgroups)
+#' @param prefix Character string prefix for output files (e.g., "1a_", "1b_", etc.)
+#' @param other_map List containing treatment group mappings and categorical variable level mappings for consistent analysis
+#' @return List containing all analysis results, model objects, and output file paths for each analysis type
 run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map = list()) {
     step1_start_time <- Sys.time()
     display_name <- tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name)))
     log_section_start("STEP 1: PRIMARY OUTCOMES ANALYSIS", display_name)
 
-    # Show confounders being used
-    log_enhanced(sprintf("Using %d confounders for adjustment: %s", 
+    # Display the confounders that will be used for statistical adjustment
+    log_enhanced(sprintf("Using %d confounders for statistical adjustment: %s", 
                         length(confounders), paste(confounders, collapse = ", ")), 
                 level = "INFO", indent = 1)
 
@@ -817,9 +806,9 @@ main_execution <- function() {
     log_enhanced("=== STARTING TABLE MERGING: Full and Restricted Cohorts ===", level = "INFO")
     
     # Create merged tables directory
-    merged_dir <- file.path(OUTPUT_DIR, "merged_tables")
-    if (!dir.exists(merged_dir)) {
-        dir.create(merged_dir, recursive = TRUE, showWarnings = FALSE)
+    merged_dir <- MERGED_TABLES_DIR
+    if (!dir.exists(MERGED_TABLES_DIR)) {
+        dir.create(MERGED_TABLES_DIR, recursive = TRUE, showWarnings = FALSE)
     }
     
     log_enhanced(sprintf("Merging tables will be saved to: %s", merged_dir), level = "INFO")
@@ -854,11 +843,12 @@ run_specific_objective <- function(dataset_name, objective_number) {
 # Uncomment the appropriate line below to run:
 
 # Run full analysis (all objectives, all datasets)
-main_execution()
+# main_execution()
 
 # Run specific objective for specific dataset and objective number, 
 # e.g. 1 for primary outcomes, 2 for safety/toxicity, 3 for repeat radiation efficacy, 4 for GEP validation
-# run_specific_objective("uveal_melanoma_full_cohort", 1)
+# For testing, only run Objective 1 (primary outcomes)
+run_specific_objective("uveal_melanoma_full_cohort", 1)
 
 # Close logging if enabled
 if (USE_LOGS) {

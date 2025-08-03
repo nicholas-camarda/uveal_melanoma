@@ -537,13 +537,19 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         output_dirs$obj1_ph_diagnostics
     }
     
-    ph_diagnostics <- test_proportional_hazards_assumption(
-        cox_model = cox_model,
-        outcome_name = ylab,
-        output_dir = ph_output_dir,
-        file_prefix = paste0(prefix, ylab_safe, "_"),
-        dataset_name = dataset_name
-    )
+    # Only test proportional hazards if we have a valid Cox model
+    if (!is.null(cox_model) && inherits(cox_model, "coxph")) {
+        ph_diagnostics <- test_proportional_hazards_assumption(
+            cox_model = cox_model,
+            outcome_name = ylab,
+            output_dir = ph_output_dir,
+            file_prefix = paste0(prefix, ylab_safe, "_"),
+            dataset_name = dataset_name
+        )
+    } else {
+        log_enhanced("Skipping proportional hazards testing - no valid Cox model available", level = "WARN", indent = 1)
+        ph_diagnostics <- NULL
+    }
     
     combined <- plot_grid(
         surv_plot$plot,

@@ -111,11 +111,103 @@ fit_regression_model <- function(data, formula, model_type, time_var = NULL, eve
             if (is.null(time_var) || is.null(event_var)) {
                 stop("Cox models require time_var and event_var")
             }
-            # Create survival object
-            surv_obj <- Surv(data[[time_var]], data[[event_var]])
+            
+            # Check for perfect separation in Cox models (moved earlier in pipeline)
+            formula_vars <- all.vars(formula)
+            predictor_vars <- formula_vars[-1]  # Remove outcome variable
+            
+            # Check each predictor for perfect separation
+            perfect_separation_vars <- c()
+            for (var in predictor_vars) {
+                if (var %in% names(data)) {
+                    # Check if this variable perfectly predicts the outcome
+                    if (is.factor(data[[var]]) || is.character(data[[var]])) {
+                        # For categorical variables, check each level
+                        for (level in unique(data[[var]])) {
+                            level_data <- data[data[[var]] == level, ]
+                            if (nrow(level_data) > 0) {
+                                event_counts <- table(level_data[[event_var]])
+                                if (length(event_counts) == 1 || any(event_counts == 0)) {
+                                    # Perfect separation detected
+                                    perfect_separation_vars <- c(perfect_separation_vars, var)
+                                    break
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            if (length(perfect_separation_vars) > 0) {
+                log_enhanced(sprintf("Perfect separation detected in Cox model variables: %s. Fitting model with warnings.", 
+                                   paste(perfect_separation_vars, collapse = ", ")), level = "WARN")
+            }
+            
+            # Validate time and event variables before creating survival object
+            if (is.null(time_var) || is.null(event_var)) {
+                log_enhanced("ERROR: time_var or event_var is NULL for Cox model", level = "ERROR")
+                return(NULL)
+            }
+            
+            if (!time_var %in% names(data)) {
+                log_enhanced(sprintf("ERROR: time_var '%s' not found in data", time_var), level = "ERROR")
+                return(NULL)
+            }
+            
+            if (!event_var %in% names(data)) {
+                log_enhanced(sprintf("ERROR: event_var '%s' not found in data", event_var), level = "ERROR")
+                return(NULL)
+            }
+            
+            # Check for valid data in time and event variables
+            if (all(is.na(data[[time_var]])) || length(data[[time_var]]) == 0) {
+                log_enhanced(sprintf("ERROR: time_var '%s' contains no valid data", time_var), level = "ERROR")
+                return(NULL)
+            }
+            
+            if (all(is.na(data[[event_var]])) || length(data[[event_var]]) == 0) {
+                log_enhanced(sprintf("ERROR: event_var '%s' contains no valid data", event_var), level = "ERROR")
+                return(NULL)
+            }
+            
+            # Create survival object with error handling
+            surv_obj <- tryCatch({
+                Surv(data[[time_var]], data[[event_var]])
+            }, error = function(e) {
+                log_enhanced(sprintf("ERROR: Failed to create survival object: %s", e$message), level = "ERROR")
+                return(NULL)
+            })
+            
+            if (is.null(surv_obj)) {
+                return(NULL)
+            }
+            
             # Update formula to use survival object
+            log_enhanced(sprintf("Creating survival formula with surv_obj of class: %s", class(surv_obj)[1]), level = "INFO")
             surv_formula <- update(formula, surv_obj ~ .)
-            coxph(surv_formula, data = data)
+            log_enhanced(sprintf("Survival formula created: %s", deparse(surv_formula)), level = "INFO")
+            
+            # Fit Cox model with error handling
+            cox_model <- tryCatch({
+                log_enhanced("Attempting to fit Cox model...", level = "INFO")
+                # Add surv_obj to the data frame so coxph can find it
+                data_with_surv <- data
+                data_with_surv$surv_obj <- surv_obj
+                result <- coxph(surv_formula, data = data_with_surv)
+                log_enhanced("Cox model fitted successfully", level = "INFO")
+                result
+            }, error = function(e) {
+                log_enhanced(sprintf("Cox model fitting error: %s", e$message), level = "ERROR")
+                log_enhanced(sprintf("Error occurred at: %s", e$call), level = "ERROR")
+                return(NULL)
+            })
+            
+            # Add perfect separation info to model if it exists
+            if (!is.null(cox_model)) {
+                cox_model$perfect_separation_vars <- perfect_separation_vars
+            }
+            
+            return(cox_model)
         } else if (model_type == "linear") {
             lm(formula, data = data)
         } else {
@@ -746,12 +838,33 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
     # Build model formula
     formula <- build_model_formula(outcome_var, predictor_vars, confounders, model_type)
     
+    # Validate confounders before model fitting (moved from model fitting to data processing stage)
+    if (!is.null(confounders) && length(confounders) > 0) {
+        log_enhanced("Validating confounders before model fitting", level = "INFO")
+        valid_confounders <- generate_valid_confounders(data, confounders)
+        
+        if (length(valid_confounders) != length(confounders)) {
+            log_enhanced(sprintf("Removed %d invalid confounders: %s", 
+                               length(confounders) - length(valid_confounders),
+                               paste(setdiff(confounders, valid_confounders), collapse = ", ")), level = "WARN")
+            confounders <- valid_confounders
+        }
+        
+        # Rebuild formula with validated confounders
+        formula <- build_model_formula(outcome_var, predictor_vars, confounders, model_type)
+    }
+    
     # Fit regression model
     model_fit <- fit_regression_model(data, formula, model_type, time_var, event_var)
     
     if (is.null(model_fit)) {
-        log_enhanced("Model fitting failed", level = "ERROR")
-        return(NULL)
+        log_enhanced("Model fitting failed - returning NULL result", level = "ERROR")
+        return(list(
+            table = NULL,
+            diagnostics = NULL,
+            model = NULL,
+            output_files = NULL
+        ))
     }
     
     # Check for perfect separation and handle gracefully
@@ -760,12 +873,17 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
                            paste(model_fit$perfect_separation_vars, collapse = ", ")), level = "WARN")
     }
     
-    # Create gtsummary table
-    table_result <- create_gtsummary_table(model_fit, effect_measure, analysis_name, other_map, 
-                                          data, outcome_var, confounders, "binary")
-    
-    # Get list of variables that were completely removed from the table
-    filtered_variables <- get_filtered_variables_from_table(table_result, model_fit)
+    # Create gtsummary table only if model fitting succeeded
+    if (!is.null(model_fit)) {
+        table_result <- create_gtsummary_table(model_fit, effect_measure, analysis_name, other_map, 
+                                              data, outcome_var, confounders, "binary")
+        
+        # Get list of variables that were completely removed from the table
+        filtered_variables <- get_filtered_variables_from_table(table_result, model_fit)
+    } else {
+        table_result <- NULL
+        filtered_variables <- NULL
+    }
     
     # DEBUG: Log what variables are missing
     if (!is.null(filtered_variables) && length(filtered_variables) > 0) {
@@ -786,27 +904,69 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
         }
     }
     
-    # Apply extreme estimate filtering to get detailed diagnostics
-    extreme_filtering_result <- apply_extreme_estimate_filtering(table_result, model_fit, effect_measure, 
-                                                               variables_to_check = unique(c(predictor_vars, confounders)), 
-                                                               analysis_name)
-    
-    # Use the filtered table instead of the original
-    filtered_table_result <- extreme_filtering_result$tbl_filtered
-    
-    # Create comprehensive diagnostics with all required tabs
-    diagnostics <- create_comprehensive_diagnostics(model_fit, data, outcome_var, 
-                                                   predictor_vars, confounders, analysis_name, 
-                                                   dataset_name, filtered_variables, other_map, 
-                                                   extreme_filtering_result$diagnostics)
-    
-    # Create raw_output from diagnostics for save_table_outputs
-    raw_output <- diagnostics$raw_model_output
-    
-    # Save outputs using the filtered table
-    output_files <- save_table_outputs(filtered_table_result, raw_output, model_fit, 
-                                      analysis_name, dataset_name, output_dir, prefix, 
-                                      diagnostics, data, outcome_var, confounders)
+    # Apply extreme estimate filtering and create diagnostics only if model fitting succeeded
+    if (!is.null(model_fit) && !is.null(table_result)) {
+        # Apply extreme estimate filtering to get detailed diagnostics
+        extreme_filtering_result <- apply_extreme_estimate_filtering(table_result, model_fit, effect_measure, 
+                                                                   variables_to_check = unique(c(predictor_vars, confounders)), 
+                                                                   analysis_name)
+        
+        # Use the filtered table instead of the original
+        filtered_table_result <- extreme_filtering_result$tbl_filtered
+        
+        # Create comprehensive diagnostics with all required tabs
+        diagnostics <- create_comprehensive_diagnostics(model_fit, data, outcome_var, 
+                                                       predictor_vars, confounders, analysis_name, 
+                                                       dataset_name, filtered_variables, other_map, 
+                                                       extreme_filtering_result$diagnostics)
+        
+        # Create raw_output from diagnostics for save_table_outputs
+        raw_output <- diagnostics$raw_model_output
+        
+        # Save outputs using the filtered table
+        output_files <- save_table_outputs(filtered_table_result, raw_output, model_fit, 
+                                          analysis_name, dataset_name, output_dir, prefix, 
+                                          diagnostics, data, outcome_var, confounders)
+    } else {
+        # Handle case where model fitting failed - still create diagnostics file
+        filtered_table_result <- NULL
+        
+        # Create minimal diagnostics documenting the failure
+        diagnostics <- list(
+            raw_model_output = "Model fitting failed - no diagnostics available",
+            extreme_estimates = data.frame(
+                variable = "Model Failure",
+                estimate = NA,
+                conf.low = NA,
+                conf.high = NA,
+                p.value = NA,
+                status = "Model fitting failed",
+                stringsAsFactors = FALSE
+            ),
+            perfect_separation = data.frame(
+                variable = "Model Failure",
+                status = "Model fitting failed",
+                details = "Unable to fit model due to data or parameter issues",
+                stringsAsFactors = FALSE
+            ),
+            other_details = data.frame(
+                issue = "Model Fitting Failure",
+                details = "The regression model could not be fitted. Check data quality and model parameters.",
+                timestamp = Sys.time(),
+                stringsAsFactors = FALSE
+            )
+        )
+        
+        # Still save diagnostics file even when model fails
+        output_files <- tryCatch({
+            save_table_outputs(NULL, diagnostics$raw_model_output, NULL, 
+                              analysis_name, dataset_name, output_dir, prefix, 
+                              diagnostics, data, outcome_var, confounders)
+        }, error = function(e) {
+            log_enhanced(sprintf("Failed to save diagnostics file: %s", e$message), level = "ERROR")
+            NULL
+        })
+    }
     
     log_enhanced(sprintf("Regression table generation completed for %s", analysis_name), level = "INFO")
     
@@ -1003,19 +1163,23 @@ create_gtsummary_table <- function(model_fit, effect_measure, analysis_name, oth
 #' @examples
 #' other_map <- get_cohort_specific_other_map("uveal_melanoma_full_cohort")
 get_cohort_specific_other_map <- function(dataset_name, processed_data_dir = "final_data/Analytic Dataset") {
-    # Extract cohort name from dataset name
-    cohort_name <- gsub("uveal_melanoma_", "", dataset_name)
-    cohort_name <- gsub("_cohort", "", cohort_name)
-    
-    # Create cohort-specific other_map filename
-    other_map_file <- file.path(processed_data_dir, paste0(cohort_name, "_other_map.rds"))
+    # Load the combined other_map.rds file
+    other_map_file <- file.path(processed_data_dir, "other_map.rds")
     
     if (file.exists(other_map_file)) {
-        other_map <- readRDS(other_map_file)
-        log_enhanced(sprintf("Loaded cohort-specific other_map for %s with %d variables", cohort_name, length(other_map)), level = "INFO")
-        return(other_map)
+        combined_other_map <- readRDS(other_map_file)
+        
+        # Extract the cohort-specific other_map
+        if (dataset_name %in% names(combined_other_map)) {
+            cohort_other_map <- combined_other_map[[dataset_name]]
+            log_enhanced(sprintf("Loaded cohort-specific other_map for %s with %d variables", dataset_name, length(cohort_other_map)), level = "INFO")
+            return(cohort_other_map)
+        } else {
+            log_enhanced(sprintf("Dataset %s not found in combined other_map, using empty list", dataset_name), level = "INFO")
+            return(list())
+        }
     } else {
-        log_enhanced(sprintf("No cohort-specific other_map found for %s, using empty list", cohort_name), level = "INFO")
+        log_enhanced(sprintf("No combined other_map.rds found at %s, using empty list", other_map_file), level = "INFO")
         return(list())
     }
 }
@@ -1231,66 +1395,95 @@ save_table_outputs <- function(table_result, raw_output, model_fit, analysis_nam
     html_filename <- paste0(base_filename, "_", tolower(class(model_fit)[1]), ".html")
     diagnostics_filename <- paste0(base_filename, "_diagnostics.xlsx")
     
-    # Save HTML table
+    # Save HTML table (only if table_result is not NULL)
     html_path <- file.path(output_dir, html_filename)
-    tryCatch({
-        # Convert to gt format first
-        gt_table <- table_result %>% as_gt()
-        
-        # Modify p-values in the gt table directly
-        gt_table <- modify_gt_table_pvalues(gt_table, table_result, data, outcome_var, confounders, model_fit)
-        
-        # Save the modified gt table
-        gt_table %>% gtsave(html_path)
-        log_enhanced(sprintf("HTML table saved to %s", html_path), level = "INFO")
-    }, error = function(e) {
-        log_enhanced(sprintf("Failed to save HTML table: %s", e$message), level = "ERROR")
-    })
+    if (!is.null(table_result)) {
+        tryCatch({
+            # Convert to gt format first
+            gt_table <- table_result %>% as_gt()
+            
+            # Modify p-values in the gt table directly
+            gt_table <- modify_gt_table_pvalues(gt_table, table_result, data, outcome_var, confounders, model_fit)
+            
+            # Save the modified gt table
+            gt_table %>% gtsave(html_path)
+            log_enhanced(sprintf("HTML table saved to %s", html_path), level = "INFO")
+        }, error = function(e) {
+            log_enhanced(sprintf("Failed to save HTML table: %s", e$message), level = "ERROR")
+        })
+    } else {
+        log_enhanced("No HTML table to save - model fitting failed", level = "INFO")
+    }
     
     # Save comprehensive diagnostics with all required tabs
     diagnostics_path <- file.path(output_dir, diagnostics_filename)
     if (!is.null(diagnostics)) {
-    tryCatch({
-        # Create workbook
-        wb <- createWorkbook()
-        
-        # Add all required tabs
-        addWorksheet(wb, "Model_summary")
-        writeData(wb, "Model_summary", diagnostics$model_summary)
-        
-        addWorksheet(wb, "Model_diagnostics")
-        writeData(wb, "Model_diagnostics", diagnostics$model_diagnostics)
-        
-        addWorksheet(wb, "Data_characteristics")
-        writeData(wb, "Data_characteristics", diagnostics$data_characteristics)
+        tryCatch({
+            # Create workbook
+            wb <- createWorkbook()
             
-            addWorksheet(wb, "Other_level_details")
-            writeData(wb, "Other_level_details", diagnostics$other_level_details)
-        
-        addWorksheet(wb, "Excluded_Rows")
-        writeData(wb, "Excluded_Rows", diagnostics$excluded_rows)
-        
-        addWorksheet(wb, "Raw_model_output")
-        # Ensure p-values are properly formatted before writing to Excel
-        raw_output_formatted <- diagnostics$raw_model_output
-        # Convert p-values to character to preserve all digits
-        raw_output_formatted$p_value <- as.character(raw_output_formatted$p_value)
-        # Replace "NA" with empty string for better Excel display
-        raw_output_formatted$p_value[raw_output_formatted$p_value == "NA"] <- ""
-        writeData(wb, "Raw_model_output", raw_output_formatted)
-        
-        # Factor_label_pvalues worksheet removed - now combined into Raw_model_output
-        
-        addWorksheet(wb, "Filtering_summary")
-        writeData(wb, "Filtering_summary", diagnostics$filtering_summary)
-        
-        # Save workbook
-        saveWorkbook(wb, diagnostics_path, overwrite = TRUE)
-        log_enhanced(sprintf("Comprehensive diagnostics saved to %s", diagnostics_path), level = "INFO")
-        
-    }, error = function(e) {
-        log_enhanced(sprintf("Failed to save diagnostics: %s", e$message), level = "ERROR")
-    })
+            # Add all required tabs with error handling for each
+            if (!is.null(diagnostics$model_summary)) {
+                addWorksheet(wb, "Model_summary")
+                writeData(wb, "Model_summary", diagnostics$model_summary)
+            }
+            
+            if (!is.null(diagnostics$model_diagnostics)) {
+                addWorksheet(wb, "Model_diagnostics")
+                writeData(wb, "Model_diagnostics", diagnostics$model_diagnostics)
+            }
+            
+            if (!is.null(diagnostics$data_characteristics)) {
+                addWorksheet(wb, "Data_characteristics")
+                writeData(wb, "Data_characteristics", diagnostics$data_characteristics)
+            }
+            
+            if (!is.null(diagnostics$other_level_details)) {
+                addWorksheet(wb, "Other_level_details")
+                writeData(wb, "Other_level_details", diagnostics$other_level_details)
+            }
+            
+            if (!is.null(diagnostics$excluded_rows)) {
+                addWorksheet(wb, "Excluded_Rows")
+                writeData(wb, "Excluded_Rows", diagnostics$excluded_rows)
+            }
+            
+            if (!is.null(diagnostics$raw_model_output)) {
+                addWorksheet(wb, "Raw_model_output")
+                # Handle both data.frame and character inputs
+                if (is.data.frame(diagnostics$raw_model_output)) {
+                    # Ensure p-values are properly formatted before writing to Excel
+                    raw_output_formatted <- diagnostics$raw_model_output
+                    # Convert p-values to character to preserve all digits
+                    if ("p_value" %in% names(raw_output_formatted)) {
+                        raw_output_formatted$p_value <- as.character(raw_output_formatted$p_value)
+                        # Replace "NA" with empty string for better Excel display
+                        raw_output_formatted$p_value[raw_output_formatted$p_value == "NA"] <- ""
+                    }
+                    writeData(wb, "Raw_model_output", raw_output_formatted)
+                } else {
+                    # Handle character input (e.g., "Model fitting failed")
+                    writeData(wb, "Raw_model_output", data.frame(
+                        message = diagnostics$raw_model_output,
+                        stringsAsFactors = FALSE
+                    ))
+                }
+            }
+            
+            if (!is.null(diagnostics$filtering_summary)) {
+                addWorksheet(wb, "Filtering_summary")
+                writeData(wb, "Filtering_summary", diagnostics$filtering_summary)
+            }
+            
+            # Save workbook
+            saveWorkbook(wb, diagnostics_path, overwrite = TRUE)
+            log_enhanced(sprintf("Comprehensive diagnostics saved to %s", diagnostics_path), level = "INFO")
+            
+        }, error = function(e) {
+            log_enhanced(sprintf("Failed to save diagnostics: %s", e$message), level = "ERROR")
+        })
+    } else {
+        log_enhanced("No diagnostics to save", level = "WARN")
     }
     
     return(list(

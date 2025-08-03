@@ -690,26 +690,13 @@ prepare_factor_levels <- function(data) {
     log_enhanced("Creating all subgroup variables for analysis", level = "INFO")
     data <- create_all_subgroup_variables(data)
     
-    # CRITICAL: Apply rare category handling to ALL variables that need it (confounders + subgroup variables)
-    log_enhanced("Applying rare category handling to all variables", level = "INFO")
-    subgroup_vars_to_process <- paste0(continuous_subgroup_vars, "_binned")
-    all_vars_to_process <- c(confounders, subgroup_vars_to_process)
-    
-    rare_result <- handle_rare_categories(data, vars = all_vars_to_process, threshold = THRESHOLD_RARITY)
-    data <- rare_result$data
-    
-    # Log rare category changes for all variables
-    if (length(rare_result$other_map) > 0) {
-        log_enhanced("Rare categories were collapsed into 'Other':", level = "INFO")
-        for (var in names(rare_result$other_map)) {
-            log_enhanced(sprintf("  %s: %s", var, paste(rare_result$other_map[[var]], collapse = ", ")), level = "INFO")
-        }
-    }
+    # NOTE: Rare category collapse is now handled AFTER splitting into cohorts in create_analytic_dataset()
+    # This ensures cohort-specific rare category handling
     
     # CRITICAL: Ensure all factors are unordered for modeling (use treatment contrasts, not polynomial)
     data <- enforce_unordered_factors(data, verbose = VERBOSE)
 
-    return(list(data = data, other_map = rare_result$other_map))
+    return(list(data = data, other_map = list()))
 }
 
 #' Create all subgroup variables for analysis
@@ -1148,7 +1135,8 @@ create_analytic_dataset <- function() {
     derived_data <- create_derived_variables(raw_data)
 
     log_enhanced("Preparing factor levels", level = "INFO")
-    factored_data <- prepare_factor_levels(derived_data)
+    factored_result <- prepare_factor_levels(derived_data)
+    factored_data <- factored_result$data
 
     # Apply inclusion/exclusion criteria (split into cohorts)
     log_enhanced("Applying inclusion/exclusion criteria", level = "INFO")
@@ -1165,16 +1153,17 @@ create_analytic_dataset <- function() {
         log_enhanced(sprintf("Processing rare categories for cohort: %s", cohort_name), level = "INFO")
         
         # Get the list of variables that might need category collapsing
-        # Focus on categorical variables that are commonly used in analysis
-        potential_vars <- c("location", "initial_t_stage", "biopsy1_gep", "srd_cause")
+        # Use the same variables as the old system: confounders + continuous_subgroup_vars (binned)
+        subgroup_vars_to_process <- paste0(continuous_subgroup_vars, "_binned")
+        all_vars_to_process <- c(confounders, subgroup_vars_to_process)
         
         # Filter to variables that exist in the data and are factors
-        factor_vars <- intersect(potential_vars, names(factored_filtered_data[[cohort_name]]))
+        factor_vars <- intersect(all_vars_to_process, names(factored_filtered_data[[cohort_name]]))
         factor_vars <- factor_vars[sapply(factored_filtered_data[[cohort_name]][factor_vars], is.factor)]
         
         if (length(factor_vars) > 0) {
             # Collapse rare categories for this cohort
-            collapse_result <- collapse_rare_categories(factored_filtered_data[[cohort_name]], factor_vars)
+            collapse_result <- handle_rare_categories(factored_filtered_data[[cohort_name]], factor_vars)
             factored_filtered_data[[cohort_name]] <- collapse_result$data
             other_map[[cohort_name]] <- collapse_result$other_map
             
@@ -1214,17 +1203,9 @@ create_analytic_dataset <- function() {
         )
     }
 
-    # Save cohort-specific other_map files for use in analysis
-    for (cohort_name in names(other_map)) {
-        cohort_other_map <- other_map[[cohort_name]]
-        cohort_filename <- paste0(cohort_name, "_other_map.rds")
-        saveRDS(cohort_other_map, file.path(PROCESSED_DATA_DIR, cohort_filename))
-        log_enhanced(sprintf("Saved cohort-specific other_map for %s with %d variables", cohort_name, length(cohort_other_map)), level = "INFO")
-    }
-    
-    # Also save the combined other_map for backward compatibility
+    # Save the combined other_map for all cohorts
     saveRDS(other_map, file.path(PROCESSED_DATA_DIR, "other_map.rds"))
-    log_enhanced("Saved combined other_map information for backward compatibility", level = "INFO")
+    log_enhanced("Saved combined other_map information for all cohorts", level = "INFO")
 
     # Optional: generate a detailed log file for review
     generate_validation_report(factored_filtered_data)

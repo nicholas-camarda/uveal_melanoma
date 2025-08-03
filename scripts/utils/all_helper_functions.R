@@ -136,9 +136,6 @@ dir.create(PROCESSED_DATA_DIR, showWarnings = FALSE, recursive = TRUE)
 dir.create(OUTPUT_DIR, showWarnings = FALSE, recursive = TRUE)
 
 
-
-
-
 ######################################################################
 ############### CENTRALIZED OUTPUT DIRECTORY MANAGEMENT ###############
 ######################################################################
@@ -266,28 +263,7 @@ make_filename_safe <- function(label) {
     return(safe_name)
 }
 
-# Set up global variables needed for analysis functions
-# These are normally set in main.R but needed for individual testing
 
-# Create default output directories structure
-if (!exists("output_dirs")) {
-    output_dirs <- list(
-        baseline_characteristics = "test_output/baseline",
-        obj1_recurrence = "test_output/recurrence", 
-        obj1_mets = "test_output/mets",
-        obj1_os = "test_output/os",
-        obj1_ph_diagnostics = "test_output/ph_diagnostics",
-        obj3_pfs2 = "test_output/pfs2",
-        obj3_ph_diagnostics = "test_output/pfs2_ph_diagnostics"
-    )
-    
-    # Create directories if they don't exist
-    for (dir_path in output_dirs) {
-        if (!dir.exists(dir_path)) {
-            dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
-        }
-    }
-}
 
 # Set default prefix if not exists
 if (!exists("prefix")) {

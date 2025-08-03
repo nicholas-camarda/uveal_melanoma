@@ -322,9 +322,9 @@ if (length(significant_vars) > 0) {
         cat(sprintf("  %d. %s\n", i, updated_confounders[i]))
     }
     
-    # Generate R code for updating analysis_config.R
-    cat("\n=== R CODE TO UPDATE analysis_config.R ===\n")
-    cat("# Replace the confounders line in analysis_config.R with:\n")
+    # Generate R code for updating config_constants.R
+cat("\n=== R CODE TO UPDATE config_constants.R ===\n")
+cat("# Replace the confounders line in config_constants.R with:\n")
     cat("confounders <- c(\n")
     for (i in seq_along(updated_confounders)) {
         comma <- if (i < length(updated_confounders)) "," else ""
@@ -333,7 +333,7 @@ if (length(significant_vars) > 0) {
     cat(")\n\n")
     
     # Save detailed results to Excel file
-    output_file <- file.path(PROCESSED_DATA_DIR, "confounder_analysis_results.xlsx")
+    output_file <- file.path(PROCESSED_DATA_DIR, "tools_output", "confounder_analysis_results.xlsx")
     
     # Create workbook
     wb <- openxlsx::createWorkbook()

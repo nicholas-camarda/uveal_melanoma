@@ -522,9 +522,9 @@ validate_single_cohort_comprehensive <- function(data, cohort_name) {
     
     # Validate cohort size expectations
     if (cohort_name %in% names(EXPECTED_COHORT_SIZES)) {
-        expected_size <- EXPECTED_COHORT_SIZES[[cohort_name]]
-        if (nrow(data) < expected_size) {
-            log_enhanced(sprintf("VALIDATION WARNING: %s smaller than expected (%d < %d)", cohort_name, nrow(data), expected_size), level = "WARN", indent = 3)
+        expected_range <- EXPECTED_COHORT_SIZES[[cohort_name]]
+        if (nrow(data) < expected_range[1] || nrow(data) > expected_range[2]) {
+            log_enhanced(sprintf("VALIDATION WARNING: %s size outside expected range (%d not in [%d, %d])", cohort_name, nrow(data), expected_range[1], expected_range[2]), level = "WARN", indent = 3)
         }
     }
     

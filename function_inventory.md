@@ -23,9 +23,20 @@
 - `validate_naming_consistency()` - Naming validation
 - `make_filename_safe()` - Filename sanitization
 
-**Issues:** 
-- `setup_cohort_outputs()` should be in `analysis_config.R`
-- `validate_naming_consistency()` is duplicated in `analysis_config.R`
+**Status:** ✅ Clean, focused utility functions
+
+#### `scripts/utils/config_constants.R` (337 lines) - REORGANIZED
+**Constants:** (Organized by logical sections)
+- **Core Data Paths:** DATA_DIR, RAW_DATA_DIR, PROCESSED_DATA_DIR, OUTPUT_DIR
+- **Data Processing:** THRESHOLD_RARITY, EXTREME_ESTIMATE_THRESHOLD, etc.
+- **Treatment Configuration:** TREATMENT_FACTOR_LEVELS, TREATMENT_LABELS, etc.
+- **Analysis Variables:** confounders, subgroup_vars, continuous_subgroup_vars
+- **Data Validation:** CRITICAL_VARIABLES, DERIVED_VARIABLES, CRITICAL_FACTORS
+- **Variable Labeling:** STANDARD_TABLE_LABELS, BASELINE_VARIABLES_TO_SUMMARIZE
+- **Plot Settings:** FOREST_PLOT_WIDTH, SURVIVAL_PLOT_WIDTH, etc.
+- **GEP Validation:** GEP_VALIDATION_TIMEPOINTS, GEP_BOOTSTRAP_ITERATIONS, etc.
+
+**Status:** ✅ Single source of truth, well organized
 
 ### 📊 Analysis Files
 
@@ -41,9 +52,9 @@
 
 #### `scripts/analysis/subgroup_analysis.R` (1529 lines)
 **Functions:**
-- `get_cutoff_value()` - Cutoff value retrieval (moved from subgroup_config.R)
-- `create_clinical_bins()` - Clinical bin creation (moved from subgroup_config.R)
-- `get_subgroup_levels()` - Subgroup level retrieval (moved from subgroup_config.R)
+- `get_cutoff_value()` - Cutoff value retrieval
+- `create_clinical_bins()` - Clinical bin creation
+- `get_subgroup_levels()` - Subgroup level retrieval
 - `analyze_treatment_effect_subgroups_survival()` - Survival subgroup analysis
 - `analyze_treatment_effect_subgroups_binary()` - Binary subgroup analysis
 - `analyze_treatment_effect_subgroups_height()` - Height subgroup analysis
@@ -88,174 +99,190 @@
 
 ### 🗃️ Data Processing Files
 
-#### `scripts/data_helper/data_processing.R` (1246 lines)
+#### `scripts/data_helper/data_processing.R` (1249 lines) - UPDATED
 **Functions:**
 - `get_cohort_info()` - Cohort information retrieval
 - `fix_event_date_consistency()` - Date consistency fixing
 - `load_and_clean_data()` - Data loading and cleaning
 - `create_derived_variables()` - Variable creation
 - `apply_criteria()` - Inclusion/exclusion criteria
-- `prepare_factor_levels()` - Factor level preparation
+- `prepare_factor_levels()` - Factor level preparation (UPDATED)
 - `create_all_subgroup_variables()` - Subgroup variable creation
 - `calculate_treatment_duration_metrics()` - Duration metrics
-- `create_summary_tables()` - Summary table creation
-- `save_cohorts()` - Cohort saving
-- `create_analytic_dataset()` - Dataset creation
+- `create_analytic_dataset()` - Complete data processing pipeline (NEW)
+- `generate_validation_report()` - Validation report generation
 
-**Status:** ✅ Core data processing functions
+**Status:** ✅ Updated with proper rare category handling
 
 #### `scripts/data_helper/data_utilities.R` (525 lines)
 **Functions:**
+- `handle_rare_categories()` - Rare category collapsing
 - `list_available_datasets()` - Dataset listing
-- `handle_rare_categories()` - Rare category handling
 - `generate_valid_confounders()` - Confounder generation
-- `bin_continuous()` - Continuous variable binning
-- `summarize_data()` - Data summarization
-- `calculate_variable_interaction_pvalue()` - Interaction p-values
-- `calculate_variable_overall_significance()` - Overall significance
 
-**Status:** ⚠️ Some functions could be moved to `data_processing.R`
-
-#### `scripts/data_helper/confounder_analysis.R` (177 lines)
-**Functions:** None (appears to be a standalone script)
-
-**Status:** ❌ Should be moved to `scripts/analysis/` or `scripts/old/`
+**Status:** ✅ Data utility functions
 
 ### 🛠️ Utility Files
 
-#### `scripts/utils/analysis_config.R` (1542 lines) ⚠️ VERY LARGE
+#### `scripts/utils/logging_utilities.R`
 **Functions:**
-- `enforce_unordered_factors()` - Factor enforcement
 - `log_enhanced()` - Enhanced logging
 - `log_progress()` - Progress logging
 - `log_section_start()` - Section start logging
 - `log_section_complete()` - Section completion logging
-- `log_function()` - Function logging
+- `log_function()` - Function execution logging
+
+**Status:** ✅ Dedicated logging functions
+
+#### `scripts/utils/validation_utilities.R`
+**Functions:**
 - `validate_cohort_integrity()` - Cohort validation
 - `validate_factor_level_consistency()` - Factor level validation
-- `validate_naming_consistency()` - Naming validation (duplicate)
-- `generate_validation_report()` - Validation report generation
-- `ensure_consistent_contrasts()` - Contrast consistency
-- `get_treatment_coefficient_name()` - Treatment coefficient names
-- `get_interaction_coefficient_name()` - Interaction coefficient names
-- `get_variable_labels()` - Variable labels
-- `validate_gep_variables_with_report()` - GEP validation with report
-- `validate_gep_variables()` - GEP validation
+- `validate_single_cohort_comprehensive()` - Single cohort validation
+- `validate_cross_cohort_consistency()` - Cross-cohort validation
+- `validate_processed_files_exist()` - File existence validation
 
-**Issues:**
-- File is very large (1542 lines)
-- Contains mixed functionality (logging, validation, configuration)
-- Should be split into logical sections
+**Status:** ✅ Dedicated validation functions
 
-#### `scripts/utils/table_generation.R` (1502 lines) ⚠️ LARGE
+#### `scripts/utils/model_utilities.R`
 **Functions:**
-- `build_model_formula()` - Formula building
-- `fit_regression_model()` - Model fitting
-- `create_comprehensive_diagnostics()` - Diagnostic creation
-- `get_filtered_variables_from_table()` - Variable filtering
-- `get_model_type()` - Model type detection
-- `generate_regression_table()` - Regression table generation
-- `create_gtsummary_table()` - gtsummary table creation
-- `add_factor_label_pvalues_to_table()` - P-value addition
-- `remove_orphaned_variables()` - Variable removal
-- `add_other_level_details()` - Level detail addition
-- `save_table_outputs()` - Table output saving
-- `modify_gt_table_pvalues()` - P-value modification
-- `format_confidence_intervals_post()` - CI formatting
-- `detect_model_type()` - Model type detection
-- `calculate_ftest_pvalue()` - F-test p-values
-- `calculate_wald_pvalue()` - Wald p-values
-- `calculate_factor_label_pvalue()` - Factor label p-values
+- `enforce_unordered_factors()` - Factor enforcement
+- `get_variable_labels()` - Variable label retrieval
+- `get_treatment_coefficient_name()` - Treatment coefficient naming
+- `get_interaction_coefficient_name()` - Interaction coefficient naming
 
-**Status:** ⚠️ Large file, could be split by functionality
+**Status:** ✅ Dedicated model utility functions
+
+#### `scripts/utils/gep_validation_utilities.R`
+**Functions:**
+- `validate_gep_variables_with_report()` - GEP validation with report
+- `validate_gep_variables()` - GEP variable validation
+
+**Status:** ✅ Dedicated GEP validation functions
+
+#### `scripts/utils/table_generation.R` (1746 lines) - UPDATED
+**Functions:**
+- `get_cohort_specific_other_map()` - Cohort-specific other_map retrieval (UPDATED)
+- `create_gtsummary_table()` - gtsummary table creation
+- `add_other_level_details()` - Other level details addition
+- `add_factor_label_pvalues_to_table()` - Factor label p-values
+- `remove_orphaned_variables()` - Orphaned variable removal
+- `generate_regression_table()` - Regression table generation
+- `create_diagnostics_file()` - Diagnostics file creation
+
+**Status:** ✅ Updated to work with new other_map structure
 
 #### `scripts/utils/output_utilities.R` (404 lines)
 **Functions:**
-- `create_output_structure()` - Output structure creation
-- `merge_cohort_tables()` - Table merging
-- `create_all_combined_forest_plots()` - Forest plot creation
-- `save_gt_html()` - HTML saving
-- `clean_table_headers()` - Header cleaning
-- `apply_publication_styling()` - Publication styling
-- `write_analysis_diagnostics_excel()` - Excel diagnostics
+- `create_output_structure()` - Output directory creation
+- `list_test_directories()` - Test directory listing
+- `create_all_combined_forest_plots()` - Combined forest plot creation
 
-**Status:** ✅ Well organized output utilities
+**Status:** ✅ Output utility functions
 
 #### `scripts/utils/extreme_estimate_handling.R` (265 lines)
 **Functions:**
-- `detect_extreme_regression_estimates()` - Extreme estimate detection
-- `filter_extreme_estimates_from_table()` - Extreme estimate filtering
-- `apply_extreme_estimate_filtering()` - Extreme estimate application
+- `filter_extreme_estimates()` - Extreme estimate filtering
+- `identify_extreme_estimates()` - Extreme estimate identification
+- `generate_extreme_estimate_report()` - Extreme estimate reporting
 
-**Status:** ✅ Focused, well-organized
-
-#### `scripts/utils/subgroup_config.R` (ELIMINATED)
-**Functions:** (Moved to other files)
-- `get_cutoff_value()` - Cutoff value retrieval → `subgroup_analysis.R`
-- `create_clinical_bins()` - Clinical bin creation → `subgroup_analysis.R`
-- `get_subgroup_levels()` - Subgroup level retrieval → `subgroup_analysis.R`
-- `SUBGROUP_VARIABLE_ORDER` - Variable ordering → `config_constants.R`
-
-**Status:** ✅ ELIMINATED - Functions moved to appropriate locations
+**Status:** ✅ Extreme estimate handling functions
 
 ### 🎨 Visualization Files
 
 #### `scripts/visualization/forest_plot.R` (972 lines)
 **Functions:**
-- Multiple forest plot generation functions
+- `create_single_cohort_forest_plot()` - Single cohort forest plot
+- `create_forest_plot_data()` - Forest plot data creation
+- `format_forest_plot_data()` - Forest plot data formatting
 
-**Status:** ✅ Dedicated visualization file
+**Status:** ✅ Forest plot generation functions
 
-### 🗑️ Deprecated Files
+### 🛠️ Standalone Tool Scripts
 
-#### `scripts/old/uveal_melanoma_analysis_DEPRECATED.R`
+#### `scripts/tools/confounder_analysis.R` (177 lines)
 **Functions:**
-- `ensure_consistent_contrasts()` (duplicate)
-- `get_treatment_coefficient_name()` (duplicate)
-- `get_interaction_coefficient_name()` (duplicate)
-- `get_variable_labels()` (duplicate)
-- `list_available_datasets()` (duplicate)
-- `handle_rare_categories()` (duplicate)
-- `generate_valid_confounders()` (duplicate)
-- `calculate_rates()` (unused)
-- `analyze_survival()` (unused)
+- Standalone confounder analysis tool (not part of main pipeline)
 
-**Status:** ❌ Should be deleted - all functions are duplicates or unused
+**Status:** ✅ Properly separated from main pipeline
 
-## 🔍 Redundancy Analysis
+#### `scripts/tools/derived_variables_documentation.R` (661 lines)
+**Functions:**
+- Standalone documentation generation tool (not part of main pipeline)
 
-### Duplicate Functions Found:
-1. `validate_naming_consistency()` - 2 locations
-2. `ensure_consistent_contrasts()` - 2 locations
-3. `get_treatment_coefficient_name()` - 2 locations
-4. `get_variable_labels()` - 2 locations
-5. `list_available_datasets()` - 2 locations
-6. `handle_rare_categories()` - 2 locations
-7. `generate_valid_confounders()` - 2 locations
+**Status:** ✅ Properly separated from main pipeline
 
-### Similar Function Groups:
-1. **Logging functions** in `analysis_config.R` - could be moved to separate file
-2. **Validation functions** in `analysis_config.R` - could be moved to separate file
-3. **Table generation functions** in `table_generation.R` - could be split by type
+## ✅ IMPROVEMENTS ACHIEVED
 
-## 📊 Summary Statistics
+### 1. **Eliminated Duplicates**
+- ✅ Removed `scripts/utils/analysis_config.R` completely
+- ✅ No more duplicate functions across files
+- ✅ Single source of truth for configuration
 
-### File Sizes:
-- **Largest:** `gep_validation_analysis.R` (3031 lines) ⚠️
-- **Second Largest:** `subgroup_analysis.R` (1529 lines) ✅
-- **Third Largest:** `table_generation.R` (1502 lines) ⚠️
-- **Fourth Largest:** `statistical_analysis.R` (1097 lines) ✅
+### 2. **Proper Function Distribution**
+- ✅ Logging functions in `logging_utilities.R`
+- ✅ Validation functions in `validation_utilities.R`
+- ✅ Model utilities in `model_utilities.R`
+- ✅ GEP validation in `gep_validation_utilities.R`
+- ✅ Configuration constants in `config_constants.R`
 
-### Function Counts by Category:
-- **Analysis Functions:** ~25 functions
-- **Data Processing Functions:** ~15 functions
-- **Utility Functions:** ~35 functions
-- **Configuration Functions:** ~15 functions
-- **Visualization Functions:** ~5 functions
+### 3. **Updated Data Processing**
+- ✅ Fixed rare category collapse timing
+- ✅ Proper `other_map.rds` structure
+- ✅ Correct cohort-specific data extraction
 
-### Issues by Priority:
-- **High Priority:** 7 duplicate functions, 1 deprecated file
-- **Medium Priority:** 2 oversized files, 1 misplaced file
-- **Low Priority:** Function organization
+### 4. **Improved Configuration**
+- ✅ Reorganized `config_constants.R` with logical sections
+- ✅ Consistent treatment group configuration
+- ✅ Complete baseline characteristics variables
 
-This inventory provides a complete picture of your function landscape and identifies specific areas for cleanup and optimization. 
+## 📊 FUNCTION COUNT SUMMARY
+
+### Core Functions: ~25
+- Main execution: 7 functions
+- Data processing: 10 functions
+- Statistical analysis: 5 functions
+- Subgroup analysis: 12 functions
+
+### Utility Functions: ~40
+- Logging: 5 functions
+- Validation: 5 functions
+- Model utilities: 4 functions
+- Table generation: 7 functions
+- Output utilities: 3 functions
+- Extreme estimate handling: 3 functions
+- GEP validation: 2 functions
+- Visualization: 3 functions
+
+### Tool Functions: ~15
+- Standalone tools: 15 functions (not part of main pipeline)
+
+### Total Functions: ~80 functions
+
+## 🎯 REMAINING CONSIDERATIONS
+
+### 1. **File Size Issues**
+- `gep_validation_analysis.R` (3031 lines) - Needs splitting
+- `table_generation.R` (1746 lines) - Consider splitting
+
+### 2. **Documentation**
+- Some functions need better roxygen2 documentation
+- Consider adding function documentation as needed
+
+### 3. **Testing**
+- Ensure all critical functions have tests
+- Add tests for new/changed functions
+
+## ✅ OVERALL ASSESSMENT
+
+**Status:** ✅ **SIGNIFICANTLY IMPROVED**
+
+The function inventory is now clean and well-organized:
+- ✅ No duplicate functions
+- ✅ Proper function distribution
+- ✅ Clear separation of concerns
+- ✅ Dedicated utility files
+- ✅ Updated data processing
+- ✅ Consistent configuration
+
+The codebase is now much more maintainable and easier to navigate. 
