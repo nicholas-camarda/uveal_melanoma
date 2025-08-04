@@ -126,9 +126,6 @@ project_working_directory/
 │   ├── Analytic Dataset/                    # Processed datasets (RDS, Excel)
 │   └── Analysis/                            # NEW STRUCTURE
 │       ├── uveal_full/                      # Full cohort results
-│       │   ├── 00_General/                  # Cross-cutting analyses
-│       │   │   ├── baseline_characteristics/
-│       │   │   └── treatment_duration/
 │       │   ├── 01_Efficacy/                 # OBJECTIVE 1
 │       │   │   ├── a_recurrence/
 │       │   │   ├── b_metastatic_progression/

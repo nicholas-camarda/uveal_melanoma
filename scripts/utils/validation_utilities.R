@@ -467,9 +467,9 @@ validate_single_cohort_comprehensive <- function(data, cohort_name) {
         
         # Check for expected treatment levels
         actual_levels <- levels(data$treatment_group)
-        if (!all(EXPECTED_TREATMENT_LEVELS %in% actual_levels)) {
+        if (!all(TREATMENT_FACTOR_LEVELS %in% actual_levels)) {
             log_enhanced(sprintf("VALIDATION FAILED: Unexpected treatment levels. Expected: %s, Got: %s", 
-                                paste(EXPECTED_TREATMENT_LEVELS, collapse = ", "), 
+                                paste(TREATMENT_FACTOR_LEVELS, collapse = ", "), 
                                 paste(actual_levels, collapse = ", ")), level = "ERROR", indent = 3)
             validation_passed <- FALSE
         }
@@ -478,20 +478,28 @@ validate_single_cohort_comprehensive <- function(data, cohort_name) {
     # 5. GEP VARIABLE VALIDATION
     log_enhanced("5. GEP Variable Validation", level = "INFO", indent = 2)
     
-    if ("biopsy1_gep" %in% names(data)) {
+    # Only validate GEP variables if we're running Objective 4 (GEP validation)
+    # Check if we're in GEP validation mode by looking for GEP-specific variables
+    is_gep_validation_mode <- exists("GEP_VALIDATION_TIMEPOINTS") && 
+                              exists("GEP_BOOTSTRAP_ITERATIONS") &&
+                              length(GEP_VALIDATION_TIMEPOINTS) > 0
+    
+    if (is_gep_validation_mode && "biopsy1_gep" %in% names(data)) {
         gep_validation <- validate_gep_variables_with_report(data)
         if (!gep_validation$validation_passed) {
             log_enhanced("VALIDATION FAILED: GEP variables failed validation", level = "ERROR", indent = 3)
             validation_passed <- FALSE
         }
         
-        # Check for derived GEP variables
+        # Check for derived GEP variables only in GEP validation mode
         missing_gep_derived <- setdiff(GEP_DERIVED_VARIABLES, names(data))
         if (length(missing_gep_derived) > 0) {
             log_enhanced(sprintf("VALIDATION FAILED: Missing derived GEP variables: %s", 
                                 paste(missing_gep_derived, collapse = ", ")), level = "ERROR", indent = 3)
             validation_passed <- FALSE
         }
+    } else {
+        log_enhanced("Skipping GEP validation (not in GEP validation mode)", level = "INFO", indent = 3)
     }
     
     # 6. DATA QUALITY VALIDATION

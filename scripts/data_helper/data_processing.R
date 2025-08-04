@@ -688,7 +688,7 @@ prepare_factor_levels <- function(data) {
 
     # CRITICAL: Create ALL subgroup variables (both static and dynamic) in data processing
     log_enhanced("Creating all subgroup variables for analysis", level = "INFO")
-    data <- create_all_subgroup_variables(data)
+    data <- create_binned_continuous_variables(data)
     
     # NOTE: Rare category collapse is now handled AFTER splitting into cohorts in create_analytic_dataset()
     # This ensures cohort-specific rare category handling
@@ -699,15 +699,15 @@ prepare_factor_levels <- function(data) {
     return(list(data = data, other_map = list()))
 }
 
-#' Create all subgroup variables for analysis
+#' Create binned continuous variables for subgroup analysis
 #'
-#' Creates both static and dynamic subgroup variables for all cohorts.
-#' This includes binned versions of continuous variables and any other
-#' subgroup variables needed for analysis.
+#' Creates binned versions of continuous variables for subgroup analysis.
+#' This includes age, tumor height, and tumor diameter variables binned
+#' using either T-stage evidence-based cutoffs or legacy median-based cutoffs.
 #'
 #' @param data Data frame
-#' @return Data frame with all subgroup variables added
-create_all_subgroup_variables <- function(data) {
+#' @return Data frame with binned continuous variables added
+create_binned_continuous_variables <- function(data) {
     log_enhanced("Creating subgroup variables for analysis", level = "INFO")
     
     # Create binned versions of continuous variables
@@ -724,36 +724,77 @@ create_all_subgroup_variables <- function(data) {
                 )
             ),
             
-            # Tumor height - T-stage clinical bins
-            initial_tumor_height_binned = factor(
-                case_when(
-                    initial_tumor_height <= 3.0 ~ "≤ 3.0 mm",
-                    initial_tumor_height <= 6.0 ~ "3.1-6.0 mm", 
-                    initial_tumor_height <= 9.0 ~ "6.1-9.0 mm",
-                    initial_tumor_height <= 12.0 ~ "9.1-12.0 mm",
-                    initial_tumor_height <= 15.0 ~ "12.1-15.0 mm",
-                    initial_tumor_height > 15.0 ~ "> 15.0 mm",
-                    TRUE ~ NA_character_
-                ),
-                levels = c("≤ 3.0 mm", "3.1-6.0 mm", "6.1-9.0 mm", 
-                          "9.1-12.0 mm", "12.1-15.0 mm", "> 15.0 mm")
-            ),
+            # Tumor height - T-stage clinical bins or legacy median-based
+            initial_tumor_height_binned = if (USE_T_STAGE_CUTOFFS) {
+                # T-stage evidence-based binning
+                factor(
+                    case_when(
+                        initial_tumor_height <= T_STAGE_HEIGHT_CUTOFFS[1] ~ paste0("≤ ", T_STAGE_HEIGHT_CUTOFFS[1], " mm"),
+                        initial_tumor_height <= T_STAGE_HEIGHT_CUTOFFS[2] ~ paste0(T_STAGE_HEIGHT_CUTOFFS[1] + 0.1, "-", T_STAGE_HEIGHT_CUTOFFS[2], " mm"),
+                        initial_tumor_height <= T_STAGE_HEIGHT_CUTOFFS[3] ~ paste0(T_STAGE_HEIGHT_CUTOFFS[2] + 0.1, "-", T_STAGE_HEIGHT_CUTOFFS[3], " mm"),
+                        initial_tumor_height <= T_STAGE_HEIGHT_CUTOFFS[4] ~ paste0(T_STAGE_HEIGHT_CUTOFFS[3] + 0.1, "-", T_STAGE_HEIGHT_CUTOFFS[4], " mm"),
+                        initial_tumor_height <= T_STAGE_HEIGHT_CUTOFFS[5] ~ paste0(T_STAGE_HEIGHT_CUTOFFS[4] + 0.1, "-", T_STAGE_HEIGHT_CUTOFFS[5], " mm"),
+                        initial_tumor_height > T_STAGE_HEIGHT_CUTOFFS[5] ~ paste0("> ", T_STAGE_HEIGHT_CUTOFFS[5], " mm"),
+                        TRUE ~ NA_character_
+                    ),
+                    levels = c(
+                        paste0("≤ ", T_STAGE_HEIGHT_CUTOFFS[1], " mm"),
+                        paste0(T_STAGE_HEIGHT_CUTOFFS[1] + 0.1, "-", T_STAGE_HEIGHT_CUTOFFS[2], " mm"),
+                        paste0(T_STAGE_HEIGHT_CUTOFFS[2] + 0.1, "-", T_STAGE_HEIGHT_CUTOFFS[3], " mm"),
+                        paste0(T_STAGE_HEIGHT_CUTOFFS[3] + 0.1, "-", T_STAGE_HEIGHT_CUTOFFS[4], " mm"),
+                        paste0(T_STAGE_HEIGHT_CUTOFFS[4] + 0.1, "-", T_STAGE_HEIGHT_CUTOFFS[5], " mm"),
+                        paste0("> ", T_STAGE_HEIGHT_CUTOFFS[5], " mm")
+                    )
+                )
+            } else {
+                # Legacy median-based binning (default)
+                factor(
+                    ifelse(initial_tumor_height < LEGACY_CUTOFFS$initial_tumor_height,
+                           paste0("< ", LEGACY_CUTOFFS$initial_tumor_height, " mm"),
+                           paste0("≥ ", LEGACY_CUTOFFS$initial_tumor_height, " mm")),
+                    levels = c(
+                        paste0("< ", LEGACY_CUTOFFS$initial_tumor_height, " mm"),
+                        paste0("≥ ", LEGACY_CUTOFFS$initial_tumor_height, " mm")
+                    )
+                )
+            },
             
-            # Tumor diameter - T-stage clinical bins  
-            initial_tumor_diameter_binned = factor(
-                case_when(
-                    initial_tumor_diameter <= 3.0 ~ "≤ 3.0 mm",
-                    initial_tumor_diameter <= 6.0 ~ "3.1-6.0 mm",
-                    initial_tumor_diameter <= 9.0 ~ "6.1-9.0 mm", 
-                    initial_tumor_diameter <= 12.0 ~ "9.1-12.0 mm",
-                    initial_tumor_diameter <= 15.0 ~ "12.1-15.0 mm",
-                    initial_tumor_diameter <= 18.0 ~ "15.1-18.0 mm",
-                    initial_tumor_diameter > 18.0 ~ "> 18.0 mm",
-                    TRUE ~ NA_character_
-                ),
-                levels = c("≤ 3.0 mm", "3.1-6.0 mm", "6.1-9.0 mm",
-                          "9.1-12.0 mm", "12.1-15.0 mm", "15.1-18.0 mm", "> 18.0 mm")
-            )
+            # Tumor diameter - T-stage clinical bins or legacy median-based
+            initial_tumor_diameter_binned = if (USE_T_STAGE_CUTOFFS) {
+                # T-stage evidence-based binning
+                factor(
+                    case_when(
+                        initial_tumor_diameter <= T_STAGE_DIAMETER_CUTOFFS[1] ~ paste0("≤ ", T_STAGE_DIAMETER_CUTOFFS[1], " mm"),
+                        initial_tumor_diameter <= T_STAGE_DIAMETER_CUTOFFS[2] ~ paste0(T_STAGE_DIAMETER_CUTOFFS[1] + 0.1, "-", T_STAGE_DIAMETER_CUTOFFS[2], " mm"),
+                        initial_tumor_diameter <= T_STAGE_DIAMETER_CUTOFFS[3] ~ paste0(T_STAGE_DIAMETER_CUTOFFS[2] + 0.1, "-", T_STAGE_DIAMETER_CUTOFFS[3], " mm"),
+                        initial_tumor_diameter <= T_STAGE_DIAMETER_CUTOFFS[4] ~ paste0(T_STAGE_DIAMETER_CUTOFFS[3] + 0.1, "-", T_STAGE_DIAMETER_CUTOFFS[4], " mm"),
+                        initial_tumor_diameter <= T_STAGE_DIAMETER_CUTOFFS[5] ~ paste0(T_STAGE_DIAMETER_CUTOFFS[4] + 0.1, "-", T_STAGE_DIAMETER_CUTOFFS[5], " mm"),
+                        initial_tumor_diameter <= T_STAGE_DIAMETER_CUTOFFS[6] ~ paste0(T_STAGE_DIAMETER_CUTOFFS[5] + 0.1, "-", T_STAGE_DIAMETER_CUTOFFS[6], " mm"),
+                        initial_tumor_diameter > T_STAGE_DIAMETER_CUTOFFS[6] ~ paste0("> ", T_STAGE_DIAMETER_CUTOFFS[6], " mm"),
+                        TRUE ~ NA_character_
+                    ),
+                    levels = c(
+                        paste0("≤ ", T_STAGE_DIAMETER_CUTOFFS[1], " mm"),
+                        paste0(T_STAGE_DIAMETER_CUTOFFS[1] + 0.1, "-", T_STAGE_DIAMETER_CUTOFFS[2], " mm"),
+                        paste0(T_STAGE_DIAMETER_CUTOFFS[2] + 0.1, "-", T_STAGE_DIAMETER_CUTOFFS[3], " mm"),
+                        paste0(T_STAGE_DIAMETER_CUTOFFS[3] + 0.1, "-", T_STAGE_DIAMETER_CUTOFFS[4], " mm"),
+                        paste0(T_STAGE_DIAMETER_CUTOFFS[4] + 0.1, "-", T_STAGE_DIAMETER_CUTOFFS[5], " mm"),
+                        paste0(T_STAGE_DIAMETER_CUTOFFS[5] + 0.1, "-", T_STAGE_DIAMETER_CUTOFFS[6], " mm"),
+                        paste0("> ", T_STAGE_DIAMETER_CUTOFFS[6], " mm")
+                    )
+                )
+            } else {
+                # Legacy median-based binning (default)
+                factor(
+                    ifelse(initial_tumor_diameter < LEGACY_CUTOFFS$initial_tumor_diameter,
+                           paste0("< ", LEGACY_CUTOFFS$initial_tumor_diameter, " mm"),
+                           paste0("≥ ", LEGACY_CUTOFFS$initial_tumor_diameter, " mm")),
+                    levels = c(
+                        paste0("< ", LEGACY_CUTOFFS$initial_tumor_diameter, " mm"),
+                        paste0("≥ ", LEGACY_CUTOFFS$initial_tumor_diameter, " mm")
+                    )
+                )
+            }
         )
     
     return(data)
@@ -863,6 +904,10 @@ calculate_treatment_duration_metrics <- function(data) {
 #' create_summary_tables(list(full_cohort = df1, ...), level = "INFO")
 create_summary_tables <- function(data_list, output_dirs = NULL) {
     log_enhanced("Creating summary tables", level = "INFO")
+    log_enhanced(sprintf("output_dirs parameter: %s", ifelse(is.null(output_dirs), "NULL", "not NULL")), level = "INFO")
+    if (!is.null(output_dirs)) {
+        log_enhanced(sprintf("output_dirs names: %s", paste(names(output_dirs), collapse = ", ")), level = "INFO")
+    }
 
     # Use globally defined variables for baseline characteristics summary
     vars_to_summarize <- BASELINE_VARIABLES_TO_SUMMARIZE
@@ -882,14 +927,26 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
             TRUE ~ paste0(cohort_name, "_")
         )
         
+        # Map full cohort names to simplified directory names
+        cohort_dir_key <- case_when(
+            grepl("uveal_melanoma_full_cohort", cohort_name) ~ "full_cohort",
+            grepl("uveal_melanoma_restricted_cohort", cohort_name) ~ "restricted_cohort", 
+            grepl("uveal_melanoma_gksrs_only_cohort", cohort_name) ~ "gksrs_only_cohort",
+            TRUE ~ cohort_name
+        )
+        
         # Use objective-based directory structure
-        if (!is.null(output_dirs) && !is.null(output_dirs[[cohort_name]])) {
-            treatment_duration_dir <- output_dirs[[cohort_name]]$treatment_duration
-            baseline_output_dir <- output_dirs[[cohort_name]]$baseline_characteristics
+        if (!is.null(output_dirs) && !is.null(output_dirs[[cohort_dir_key]])) {
+            treatment_duration_dir <- output_dirs[[cohort_dir_key]]$treatment_duration
+            baseline_output_dir <- output_dirs[[cohort_dir_key]]$baseline_characteristics
+            log_enhanced(sprintf("Using cohort-specific directories for %s (mapped to %s): treatment_duration=%s, baseline=%s", 
+                               cohort_name, cohort_dir_key, treatment_duration_dir, baseline_output_dir), level = "INFO")
         } else {
             # Fallback to main Analysis directory
-            treatment_duration_dir <- file.path("final_data/Analysis", "00_General", "treatment_duration")
-            baseline_output_dir <- file.path("final_data/Analysis", "00_General", "baseline_characteristics")
+            treatment_duration_dir <- file.path("final_data/Analysis", "General", "treatment_duration")
+            baseline_output_dir <- file.path("final_data/Analysis", "General", "baseline_characteristics")
+            log_enhanced(sprintf("Using fallback directories for %s (mapped to %s): treatment_duration=%s, baseline=%s", 
+                               cohort_name, cohort_dir_key, treatment_duration_dir, baseline_output_dir), level = "WARN")
         }
         
         # Ensure directories exist
@@ -1115,6 +1172,7 @@ save_cohorts <- function(cohort_data) {
 #'
 #' Orchestrates the full data processing pipeline: loads, cleans, applies criteria, creates derived variables, summary tables, and saves outputs.
 #'
+#' @param output_dirs Optional list of output directories for each cohort. If provided, summary tables will be saved to cohort-specific directories.
 #' @return A list with:
 #'   - analytic_data: Named list of processed cohort data frames.
 #'   - summary_tables: Named list of summary tables for each cohort.
@@ -1122,7 +1180,8 @@ save_cohorts <- function(cohort_data) {
 #'
 #' @examples
 #' create_analytic_dataset()
-create_analytic_dataset <- function() {
+#' create_analytic_dataset(output_dirs = list(full_cohort = list(baseline_characteristics = "path/to/dir")))
+create_analytic_dataset <- function(output_dirs = NULL) {
     log_enhanced("Starting data processing pipeline", level = "INFO")
 
     # Load and clean raw data
@@ -1185,7 +1244,7 @@ create_analytic_dataset <- function() {
 
     # Create summary tables
     log_enhanced("Creating summary tables", level = "INFO")
-    summary_tables <- create_summary_tables(factored_filtered_data)
+    summary_tables <- create_summary_tables(factored_filtered_data, output_dirs)
 
     # Save each cohort separately
     log_enhanced("Saving processed data", level = "INFO")

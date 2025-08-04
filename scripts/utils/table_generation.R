@@ -193,7 +193,7 @@ fit_regression_model <- function(data, formula, model_type, time_var = NULL, eve
                 # Add surv_obj to the data frame so coxph can find it
                 data_with_surv <- data
                 data_with_surv$surv_obj <- surv_obj
-                result <- coxph(surv_formula, data = data_with_surv)
+                result <- coxph(surv_formula, data = data_with_surv, model = TRUE)
                 log_enhanced("Cox model fitted successfully", level = "INFO")
                 result
             }, error = function(e) {
@@ -827,8 +827,10 @@ get_model_type <- function(model_fit) {
 #' @param time_var Character string for time variable (Cox models)
 #' @param event_var Character string for event variable (Cox models)
 #' @param other_map List containing mapping of what categories were collapsed into "Other"
+#' @param full_data The full analytic dataset to use for p-value calculation (default = data)
 #' @return List containing table result and diagnostics
-generate_regression_table <- function(data, outcome_var, predictor_vars, confounders, model_type, effect_measure, analysis_name, dataset_name, output_dir, prefix, time_var = NULL, event_var = NULL, other_map = NULL) {
+generate_regression_table <- function(data, outcome_var, predictor_vars, confounders, model_type, effect_measure, analysis_name, dataset_name, output_dir, prefix, time_var = NULL, event_var = NULL, other_map = NULL, full_data = NULL) {
+    if (is.null(full_data)) full_data <- data
     
     log_enhanced(sprintf("Generating regression table for %s", analysis_name), level = "INFO")
     
@@ -1397,21 +1399,36 @@ save_table_outputs <- function(table_result, raw_output, model_fit, analysis_nam
     
     # Save HTML table (only if table_result is not NULL)
     html_path <- file.path(output_dir, html_filename)
+    cat("DEBUG: generate_regression_table - HTML table generation\n")
+    cat("  Table result is NULL:", is.null(table_result), "\n")
+    cat("  HTML path:", html_path, "\n")
+    
     if (!is.null(table_result)) {
+        cat("DEBUG: Table result is not NULL, proceeding with modification\n")
         tryCatch({
-            # Convert to gt format first
-            gt_table <- table_result %>% as_gt()
+            # Modify p-values in the gtsummary table first
+            cat("DEBUG: About to call modify_gt_table_pvalues\n")
+            cat("  Table class:", class(table_result), "\n")
+            cat("  Outcome var:", outcome_var, "\n")
+            cat("  Confounders:", paste(confounders, collapse = ", "), "\n")
             
-            # Modify p-values in the gt table directly
-            gt_table <- modify_gt_table_pvalues(gt_table, table_result, data, outcome_var, confounders, model_fit)
+            modified_table <- modify_gt_table_pvalues(table_result %>% as_gt(), table_result, data, outcome_var, confounders, model_fit)
+            
+            cat("DEBUG: After modify_gt_table_pvalues\n")
+            cat("  Modified table class:", class(modified_table), "\n")
+            
+            # Convert the modified gtsummary table to gt format
+            gt_table <- modified_table %>% as_gt()
             
             # Save the modified gt table
             gt_table %>% gtsave(html_path)
             log_enhanced(sprintf("HTML table saved to %s", html_path), level = "INFO")
         }, error = function(e) {
+            cat("DEBUG: Error in HTML table generation:", e$message, "\n")
             log_enhanced(sprintf("Failed to save HTML table: %s", e$message), level = "ERROR")
         })
     } else {
+        cat("DEBUG: Table result is NULL, skipping HTML generation\n")
         log_enhanced("No HTML table to save - model fitting failed", level = "INFO")
     }
     
@@ -1548,31 +1565,42 @@ modify_gt_table_pvalues <- function(gt_table, table_result, data, outcome_var, c
     modified_table <- table_result
     
     # For each variable, modify p-values in the gtsummary table
+    # ALL models (Cox, logistic, linear) should show only factor label p-values in HTML
     for (var_name in all_variables) {
         # Get the overall significance p-value for this variable
         pval <- factor_label_pvalues[[var_name]]
         
+        cat("DEBUG: Processing variable", var_name, "\n")
+        cat("  Factor label p-value:", pval, "\n")
+        
         # Find rows for this variable
         var_rows <- which(table_data$variable == var_name)
+        cat("  Number of rows:", length(var_rows), "\n")
+        cat("  Row indices:", paste(var_rows, collapse = ", "), "\n")
         
         if (length(var_rows) > 0) {
+            # For ALL models, use factor label p-values (consistent behavior)
             # Clear all p-values for this variable first
             modified_table$table_body$p.value[var_rows] <- NA
+            cat("  Cleared p-values for rows:", paste(var_rows, collapse = ", "), "\n")
             
             # Find the factor label row (first row for this variable)
             label_row <- var_rows[1]
+            cat("  Label row:", label_row, "\n")
             
             # Place overall significance p-value at the factor label level
             if (!is.na(pval)) {
                 modified_table$table_body$p.value[label_row] <- pval
+                cat("  Applied p-value", pval, "to row", label_row, "\n")
+                cat("  Verification - p-value at row", label_row, ":", modified_table$table_body$p.value[label_row], "\n")
+            } else {
+                cat("  WARNING: No p-value available for", var_name, "\n")
             }
         }
     }
     
-    # Convert the modified gtsummary table to gt format
-    modified_gt_table <- modified_table %>% as_gt()
-    
-    return(modified_gt_table)
+    # Return the modified gtsummary table (not converted to gt yet)
+    return(modified_table)
 } 
 
 #' Format confidence intervals to (X,X) format for post-processing
@@ -1732,11 +1760,36 @@ calculate_factor_label_pvalue <- function(model_fit, variable_name, data, outcom
                                                   outcome_type = "binary")
         },
         "cox" = {
-            # For Cox models, use likelihood ratio test
-            calculate_variable_overall_significance(data, variable_name, outcome_var,
-                                                  treatment_var = "treatment_group",
-                                                  confounders = var_confounders,
-                                                  outcome_type = "survival")
+            # Determine time and event variables programmatically
+            base <- gsub("_event$", "", outcome_var)
+            time_months <- paste0("tt_", base, "_months")
+            time_years <- paste0("tt_", base, "_years")
+            if (time_months %in% names(data)) {
+                time_var <- time_months
+            } else if (time_years %in% names(data)) {
+                time_var <- time_years
+            } else {
+                stop(sprintf("No time variable found for outcome '%s'. Checked: %s, %s", outcome_var, time_months, time_years))
+            }
+            
+            event_var <- outcome_var
+            
+            # Calculate p-value with error handling
+            result <- tryCatch({
+                calculate_variable_overall_significance(
+                    data, variable_name, outcome_var,
+                    treatment_var = "treatment_group",
+                    confounders = var_confounders,
+                    outcome_type = "survival",
+                    time_var = time_var,
+                    event_var = event_var
+                )
+            }, error = function(e) {
+                warning(sprintf("Cox p-value calculation failed: %s", e$message))
+                return(NA)
+            })
+            
+            return(result)
         },
         "other_glm" = {
             # For other GLMs, use Wald test as fallback

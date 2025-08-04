@@ -248,7 +248,7 @@ perform_calibration_mfs <- function(data, timepoint, bootstrap_iterations) {
     if (bootstrap_iterations > 0 && nrow(cal_data) >= GEP_MIN_BOOTSTRAP_SAMPLE) {
         tryCatch({
             # Fit Cox model to get calibration slope
-            cox_fit <- coxph(surv_obj ~ predicted_risk, data = cal_data)
+            cox_fit <- coxph(surv_obj ~ predicted_risk, data = cal_data, model = TRUE)
             original_slope <- coef(cox_fit)[1]
             
             # Bootstrap validation
@@ -260,7 +260,7 @@ perform_calibration_mfs <- function(data, timepoint, bootstrap_iterations) {
                 # Fit model on bootstrap sample
                 boot_surv <- Surv(boot_data$observed_time, boot_data$observed_event)
                 tryCatch({
-                    boot_cox <- coxph(boot_surv ~ predicted_risk, data = boot_data)
+                    boot_cox <- coxph(boot_surv ~ predicted_risk, data = boot_data, model = TRUE)
                     coef(boot_cox)[1]
                 }, error = function(e) NA)
             })
@@ -372,7 +372,7 @@ perform_discrimination_mfs <- function(data, timepoint) {
         } else {
             # Fallback using survival package with time-specific data
             time_specific_surv <- Surv(time_specific_time, time_specific_event)
-            cox_fit <- coxph(time_specific_surv ~ predicted_risk, data = disc_data)
+            cox_fit <- coxph(time_specific_surv ~ predicted_risk, data = disc_data, model = TRUE)
             harrell_c <- summary(cox_fit)$concordance[1]
             harrell_ci_lower <- NA
             harrell_ci_upper <- NA
@@ -421,7 +421,7 @@ perform_discrimination_mfs <- function(data, timepoint) {
             time_specific_surv <- Surv(time_specific_time, time_specific_event)
             
             # Create a simple model for ROC analysis with time-specific data
-            cox_model <- coxph(time_specific_surv ~ predicted_risk, data = disc_data)
+            cox_model <- coxph(time_specific_surv ~ predicted_risk, data = disc_data, model = TRUE)
             
             # Calculate AUC at specific timepoint
             roc_result <- riskRegression::Score(

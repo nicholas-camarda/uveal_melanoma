@@ -213,7 +213,17 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     
     # Select only the variables needed for the formula
     new_data <- fix_event_data %>%
-        dplyr::select(all_of(c(time_var, event_var, group_var, confounders_to_use))) 
+        dplyr::select(all_of(c(time_var, event_var, group_var, confounders_to_use)))
+    
+    # Ensure treatment_group is available for p-value calculation functions
+    if (!"treatment_group" %in% names(new_data) && group_var == "treatment_group") {
+        new_data$treatment_group <- new_data[[group_var]]
+    }
+    
+    # Debug: Check what variables are in new_data
+    cat("DEBUG: new_data variables:", paste(names(new_data), collapse = ", "), "\n")
+    cat("DEBUG: time_var:", time_var, "\n")
+    cat("DEBUG: time_var in new_data:", time_var %in% names(new_data), "\n") 
 
     # Use formula with column names as strings, not symbols or objects
     surv_fit <- survival::survfit(surv_formula, data = new_data)
@@ -505,7 +515,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     # Use the unified table generation system for Cox regression
     cox_result <- generate_regression_table(
         data = new_data,
-        outcome_var = time_var,  # For Cox models, we pass the time variable
+        outcome_var = event_var,  # For Cox models, we pass the event variable
         predictor_vars = group_var,
         confounders = confounders_to_use,
         model_type = "cox",
@@ -517,7 +527,8 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         # handle_rare = handle_rare, # REMOVED
         time_var = time_var,
         event_var = event_var,
-        other_map = other_map  # Pass the other_map parameter
+        other_map = other_map,  # Pass the other_map parameter
+        full_data = fix_event_data
     )
     
     # Extract the Cox model and table from the result

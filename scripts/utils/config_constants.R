@@ -186,7 +186,7 @@ DERIVED_VARIABLES <- c("age_at_diagnosis_binned", "initial_tumor_height_binned",
                        "gep_class_simple", "prame_status", "recurrence1_treatment_clean")
 
 # Factor variables that must have proper levels
-CRITICAL_FACTORS <- c("treatment_group", "sex", "location", "initial_t_stage", 
+CRITICAL_FACTORS <- c("treatment_group", "sex", "location", 
                       "biopsy1_gep", "gep_class_simple", "prame_status")
 
 # Variables to check for missing data
@@ -221,8 +221,12 @@ STANDARD_TABLE_LABELS <- list(
     location = "Tumor Location",
     initial_tumor_height = "Initial Tumor Height (mm)",
     initial_tumor_diameter = "Initial Tumor Diameter (mm)", 
-    initial_t_stage = "Initial T-Stage",
+    initial_overall_stage = "Overall Stage",
     initial_overall_stage_modified = "Initial Overall Stage (Modified)",
+    initial_t_stage = "Initial T-Stage",
+    initial_n_stage = "N Stage",
+    initial_m_stage = "M Stage",
+    unstaged = "Unstaged",
     
     # Treatment
     treatment_group = "Treatment Group",
@@ -247,6 +251,7 @@ STANDARD_TABLE_LABELS <- list(
     n_stage = "N Stage",
     m_stage = "M Stage",
     initial_metastases = "Initial Metastases",
+    initial_mets = "Initial Metastases",
     
     # Outcomes
     recurrence1 = "Local Recurrence",
@@ -272,6 +277,17 @@ STANDARD_TABLE_LABELS <- list(
     recurrence1_treatment_clean = "Local Recurrence (Treatment Clean)"
 )
 
+# Evidence-based T-stage cutoffs for continuous variable binning
+T_STAGE_HEIGHT_CUTOFFS <- c(3.0, 6.0, 9.0, 12.0, 15.0)  # Creates ranges: ≤3.0, 3.1-6.0, 6.1-9.0, 9.1-12.0, 12.1-15.0, >15.0
+T_STAGE_DIAMETER_CUTOFFS <- c(3.0, 6.0, 9.0, 12.0, 15.0, 18.0)  # Creates ranges: ≤3.0, 3.1-6.0, 6.1-9.0, 9.1-12.0, 12.1-15.0, 15.1-18.0, >18.0
+
+# Legacy median-based cutoffs (for backward compatibility)
+LEGACY_CUTOFFS <- list(
+    age_at_diagnosis = 65,  # Age cutoff for elderly vs young
+    initial_tumor_height = 6.0,  # Height cutoff for small vs large tumors (median-based)
+    initial_tumor_diameter = 11.0  # Diameter cutoff for small vs large tumors (median-based)
+)
+
 # Variables to include in baseline characteristics tables
 BASELINE_VARIABLES_TO_SUMMARIZE <- c(
     # Demographics
@@ -279,7 +295,7 @@ BASELINE_VARIABLES_TO_SUMMARIZE <- c(
     
     # Eye and tumor characteristics
     "eye", "location", "initial_tumor_height", "initial_tumor_diameter", 
-    "initial_t_stage", "initial_overall_stage_modified",
+    "initial_overall_stage", "initial_overall_stage_modified", "initial_t_stage", "initial_n_stage", "initial_m_stage", "unstaged",
     
     # Clinical features
     "initial_vision", "srf", "op", "symptoms", "vision_loss_blurred_vision", 
@@ -289,7 +305,7 @@ BASELINE_VARIABLES_TO_SUMMARIZE <- c(
     "internal_reflectivity", "optic_nerve",
     
     # Staging
-    "n_stage", "m_stage", "initial_metastases",
+    "initial_mets",
     
     # GEP
     "biopsy1_gep",
@@ -306,6 +322,12 @@ BASELINE_VARIABLES_TO_SUMMARIZE <- c(
 # - SURVIVAL_PLOT_WIDTH/HEIGHT: Dimensions for survival curves
 # - RMST_PLOT_WIDTH/HEIGHT: Dimensions for RMST plots
 # - PLOT_DPI: Resolution for all saved figures (300 DPI for publication quality)
+
+# Variable order for forest plots and subgroup analyses
+FOREST_PLOT_VARIABLE_ORDER <- c(
+    "age_at_diagnosis", "sex", "location", "initial_t_stage",
+    "initial_tumor_height", "initial_tumor_diameter", "biopsy1_gep", "optic_nerve"
+)
 
 # Plot dimensions and settings for all output figures
 FOREST_PLOT_WIDTH <- 10    # inches (reasonable width)

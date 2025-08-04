@@ -12,15 +12,8 @@ RECREATE_ANALYTIC_DATASETS <- TRUE
 # Set to FALSE to suppress detailed logging in analysis functions
 VERBOSE <- TRUE
 
-# Set to TRUE to show all individual p-values in regression tables
-# Set to FALSE to show only grouped p-values (one per variable group)
-SHOW_ALL_PVALUES <- TRUE
-
-# TOGGLE: Switch between standardized vs median cutoffs
-USE_STANDARDIZED_CUTOFFS <- TRUE
-
-# Toggle to control whether to create subgroup tables
-CREATE_SUBGROUP_TABLES <- TRUE
+# Toggle between evidence-based T-stage cutoffs and legacy median-based cutoffs
+USE_T_STAGE_CUTOFFS <- FALSE  # DEFAULT: Use legacy median-based cutoffs (safer, more conservative)
 
 ######################################################################
 ############### LOAD / INSTALL REQUIRED LIBRARIES ####################

@@ -107,7 +107,7 @@
 - `create_derived_variables()` - Variable creation
 - `apply_criteria()` - Inclusion/exclusion criteria
 - `prepare_factor_levels()` - Factor level preparation (UPDATED)
-- `create_all_subgroup_variables()` - Subgroup variable creation
+- `create_binned_continuous_variables()` - Binned continuous variable creation for subgroup analysis
 - `calculate_treatment_duration_metrics()` - Duration metrics
 - `create_analytic_dataset()` - Complete data processing pipeline (NEW)
 - `generate_validation_report()` - Validation report generation

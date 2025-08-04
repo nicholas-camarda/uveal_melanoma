@@ -33,18 +33,14 @@ if (RECREATE_ANALYTIC_DATASETS) {
     
     log_enhanced("RECREATE_ANALYTIC_DATASETS = TRUE: Creating new analytic datasets", level = "INFO")
     
-    # Create analytic datasets using the comprehensive function
-    log_function("create_analytic_dataset", "Creating analytic datasets with full processing pipeline")
-    analytic_result <- create_analytic_dataset()
-    
-    # Extract the results
-    final_analytic_datasets <- analytic_result$analytic_data
-    other_map <- analytic_result$other_map
-    summary_tables <- analytic_result$summary_tables
-    
-    # Create cohort-specific output structures for baseline characteristics
+    # Create cohort-specific output structures BEFORE creating analytic datasets
+    # This ensures summary tables are saved to the correct cohort-specific directories
     temp_output_dirs_by_cohort <- list()
-    for (cohort_name in names(final_analytic_datasets)) {
+    
+    # Create the output directory structures for each expected cohort
+    # We need to create these before calling create_analytic_dataset() so the directories are available
+    expected_cohorts <- c("uveal_melanoma_full_cohort", "uveal_melanoma_restricted_cohort", "uveal_melanoma_gksrs_only_cohort")
+    for (cohort_name in expected_cohorts) {
         # Determine cohort directory name
         cohort_dir_name <- case_when(
             grepl("full", cohort_name) ~ "uveal_full",      # Full cohort: all patients regardless of eligibility
@@ -55,8 +51,26 @@ if (RECREATE_ANALYTIC_DATASETS) {
         
         # Create the complete directory structure with subdirectories for each analysis type
         cohort_base_dir <- file.path(OUTPUT_DIR, cohort_dir_name)
-        temp_output_dirs_by_cohort[[cohort_name]] <- create_output_structure(cohort_base_dir)
+        
+        # Use simplified names as keys in temp_output_dirs_by_cohort
+        simplified_cohort_name <- case_when(
+            grepl("full", cohort_name) ~ "full_cohort",
+            grepl("restricted", cohort_name) ~ "restricted_cohort", 
+            grepl("gksrs", cohort_name) ~ "gksrs_only_cohort",
+            TRUE ~ cohort_name
+        )
+        
+        temp_output_dirs_by_cohort[[simplified_cohort_name]] <- create_output_structure(cohort_base_dir)
     }
+    
+    # Create analytic datasets using the comprehensive function
+    log_function("create_analytic_dataset", "Creating analytic datasets with full processing pipeline")
+    analytic_result <- create_analytic_dataset(output_dirs = temp_output_dirs_by_cohort)
+    
+    # Extract the results
+    final_analytic_datasets <- analytic_result$analytic_data
+    other_map <- analytic_result$other_map
+    summary_tables <- analytic_result$summary_tables
 
     log_section_complete("DATA PREPROCESSING PHASE", data_start_time)
     
@@ -413,7 +427,6 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         outcome_name = "Local Recurrence",
         effect_measure = "OR",
         output_path = file.path(primary_outcomes_subgroup_dir, paste0(prefix, "local_recurrence_subgroup_analysis.xlsx")),
-        create_tables = TRUE,
         other_map = recurrence_other_map
     )
     
@@ -454,7 +467,6 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         outcome_name = "Metastatic Progression",
         effect_measure = "OR",
         output_path = file.path(primary_outcomes_subgroup_dir, paste0(prefix, "metastatic_progression_subgroup_analysis.xlsx")),
-        create_tables = TRUE,
         other_map = mets_other_map
     )
     
@@ -496,7 +508,6 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         outcome_name = "Overall Survival",
         effect_measure = "HR",
         output_path = file.path(primary_outcomes_subgroup_dir, paste0(prefix, "overall_survival_subgroup_analysis.xlsx")),
-        create_tables = TRUE,
         other_map = os_other_map
     )
     
@@ -538,7 +549,6 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         outcome_name = "Progression-Free Survival",
         effect_measure = "HR",
         output_path = file.path(primary_outcomes_subgroup_dir, paste0(prefix, "progression_free_survival_subgroup_analysis.xlsx")),
-        create_tables = TRUE,
         other_map = pfs_other_map
     )
     

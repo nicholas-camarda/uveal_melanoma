@@ -324,12 +324,12 @@ calculate_variable_interaction_pvalue <- function(data, variable_name, outcome_v
         } else if (outcome_type == "survival") {
             # Model with interaction
             formula_str <- paste0("Surv(", time_var, ", ", event_var, ") ~ ", interaction_term, confounders_str)
-            model <- coxph(as.formula(formula_str), data = data_clean)
+            model <- coxph(as.formula(formula_str), data = data_clean, model = TRUE)
             
             # Model without interaction
             no_interaction_formula <- paste0("Surv(", time_var, ", ", event_var, ") ~ ", 
                                            treatment_var, " + ", variable_name, confounders_str)
-            no_interaction_model <- coxph(as.formula(no_interaction_formula), data = data_clean)
+            no_interaction_model <- coxph(as.formula(no_interaction_formula), data = data_clean, model = TRUE)
             
             # Calculate interaction p-value
             interaction_test <- anova(no_interaction_model, model)
@@ -507,11 +507,37 @@ calculate_variable_overall_significance <- function(data, variable_name, outcome
                 formula_with_var <- paste0("Surv(", time_var, ", ", event_var, ") ~ ", treatment_var, " + ", variable_name, confounders_str)
                 formula_without_var <- paste0("Surv(", time_var, ", ", event_var, ") ~ ", treatment_var, confounders_str)
             }
-            model_with_var <- coxph(as.formula(formula_with_var), data = data_clean)
-            model_without_var <- coxph(as.formula(formula_without_var), data = data_clean)
-            lrt_test <- anova(model_without_var, model_with_var, test = "Chisq")
-            if (nrow(lrt_test) >= 2 && "Pr(>Chi)" %in% names(lrt_test)) {
-                return(lrt_test$`Pr(>Chi)`[2])
+            
+            # Fit models with error handling
+            model_with_var <- tryCatch({
+                coxph(as.formula(formula_with_var), data = data_clean, model = TRUE)
+            }, error = function(e) {
+                return(NULL)
+            })
+            
+            model_without_var <- tryCatch({
+                coxph(as.formula(formula_without_var), data = data_clean, model = TRUE)
+            }, error = function(e) {
+                return(NULL)
+            })
+            
+            if (is.null(model_with_var) || is.null(model_without_var)) {
+                return(NA)
+            }
+            
+            # Calculate likelihood ratio test
+            lrt_test <- tryCatch({
+                anova(model_without_var, model_with_var, test = "Chisq")
+            }, error = function(e) {
+                return(NULL)
+            })
+            
+            if (is.null(lrt_test)) {
+                return(NA)
+            }
+            
+            if (nrow(lrt_test) >= 2 && "Pr(>|Chi|)" %in% names(lrt_test)) {
+                return(lrt_test$`Pr(>|Chi|)`[2])
             } else {
                 return(NA)
             }

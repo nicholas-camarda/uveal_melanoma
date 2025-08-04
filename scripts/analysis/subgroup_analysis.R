@@ -7,15 +7,24 @@
 # SUBGROUP CONFIGURATION FUNCTIONS
 # =============================================================================
 
-#' Get cutoff value for a variable
+#' Get cutoff value for a variable (simplified for T-stage cutoffs)
 #' @param var_name Variable name
 #' @param data Data frame (for median calculation)
 #' @param percentile_cut Percentile to use if not standardized (default 0.5)
 #' @return Cutoff value or vector of cutoffs
 get_cutoff_value <- function(var_name, data, percentile_cut = 0.5) {
-  if (USE_STANDARDIZED_CUTOFFS && var_name %in% names(STANDARDIZED_CUTOFFS)) {
-    return(STANDARDIZED_CUTOFFS[[var_name]])
+  if (USE_T_STAGE_CUTOFFS && var_name %in% c("initial_tumor_height", "initial_tumor_diameter")) {
+    # T-stage evidence-based cutoffs
+    if (var_name == "initial_tumor_height") {
+      return(T_STAGE_HEIGHT_CUTOFFS)
+    } else if (var_name == "initial_tumor_diameter") {
+      return(T_STAGE_DIAMETER_CUTOFFS)
+    }
+  } else if (var_name %in% names(LEGACY_CUTOFFS)) {
+    # Legacy median-based cutoffs (default)
+    return(LEGACY_CUTOFFS[[var_name]])
   } else {
+    # Fallback to data-driven cutoffs
     return(quantile(data[[var_name]], probs = percentile_cut, na.rm = TRUE))
   }
 }
@@ -55,32 +64,36 @@ create_clinical_bins <- function(values, cutoffs, var_name) {
   return(factor(bins, levels = bin_labels))
 }
 
-#' Get fixed, formatted subgroup levels for a variable (for plotting/alignment)
+#' Get fixed, formatted subgroup levels for a variable (simplified for T-stage cutoffs)
 #' @param var_name Variable name
 #' @return Character vector of levels, or NULL if not a continuous variable
 get_subgroup_levels <- function(var_name) {
-  if (!var_name %in% names(STANDARDIZED_CUTOFFS)) {
-    return(NULL)
-  }
-  
-  cutoffs <- STANDARDIZED_CUTOFFS[[var_name]]
-  
-  if (var_name == "age_at_diagnosis") {
-    # Age uses simple binary split
-    return(c(paste0("< ", cutoffs), paste0("\u2265 ", cutoffs)))
-  } else if (var_name %in% c("initial_tumor_height", "initial_tumor_diameter")) {
-    # Height and diameter use T-stage clinical bins
-    if (length(cutoffs) == 1) {
-      return(c(paste0("< ", cutoffs), paste0("\u2265 ", cutoffs)))
-    } else {
-      bin_labels <- character(length(cutoffs) + 1)
-      bin_labels[1] <- paste0("\u2264 ", cutoffs[1])
-      for (i in 2:length(cutoffs)) {
-        bin_labels[i] <- paste0(cutoffs[i-1] + 0.1, "-", cutoffs[i])
-      }
-      bin_labels[length(cutoffs) + 1] <- paste0("> ", cutoffs[length(cutoffs)])
-      return(bin_labels)
+  if (USE_T_STAGE_CUTOFFS && var_name %in% c("initial_tumor_height", "initial_tumor_diameter")) {
+    # T-stage evidence-based levels
+    if (var_name == "initial_tumor_height") {
+      return(c(
+        paste0("≤ ", T_STAGE_HEIGHT_CUTOFFS[1], " mm"),
+        paste0(T_STAGE_HEIGHT_CUTOFFS[1] + 0.1, "-", T_STAGE_HEIGHT_CUTOFFS[2], " mm"),
+        paste0(T_STAGE_HEIGHT_CUTOFFS[2] + 0.1, "-", T_STAGE_HEIGHT_CUTOFFS[3], " mm"),
+        paste0(T_STAGE_HEIGHT_CUTOFFS[3] + 0.1, "-", T_STAGE_HEIGHT_CUTOFFS[4], " mm"),
+        paste0(T_STAGE_HEIGHT_CUTOFFS[4] + 0.1, "-", T_STAGE_HEIGHT_CUTOFFS[5], " mm"),
+        paste0("> ", T_STAGE_HEIGHT_CUTOFFS[5], " mm")
+      ))
+    } else if (var_name == "initial_tumor_diameter") {
+      return(c(
+        paste0("≤ ", T_STAGE_DIAMETER_CUTOFFS[1], " mm"),
+        paste0(T_STAGE_DIAMETER_CUTOFFS[1] + 0.1, "-", T_STAGE_DIAMETER_CUTOFFS[2], " mm"),
+        paste0(T_STAGE_DIAMETER_CUTOFFS[2] + 0.1, "-", T_STAGE_DIAMETER_CUTOFFS[3], " mm"),
+        paste0(T_STAGE_DIAMETER_CUTOFFS[3] + 0.1, "-", T_STAGE_DIAMETER_CUTOFFS[4], " mm"),
+        paste0(T_STAGE_DIAMETER_CUTOFFS[4] + 0.1, "-", T_STAGE_DIAMETER_CUTOFFS[5], " mm"),
+        paste0(T_STAGE_DIAMETER_CUTOFFS[5] + 0.1, "-", T_STAGE_DIAMETER_CUTOFFS[6], " mm"),
+        paste0("> ", T_STAGE_DIAMETER_CUTOFFS[6], " mm")
+      ))
     }
+  } else if (var_name == "age_at_diagnosis") {
+    # Age uses simple binary split (legacy)
+    return(c(paste0("< ", LEGACY_CUTOFFS$age_at_diagnosis), 
+             paste0("≥ ", LEGACY_CUTOFFS$age_at_diagnosis)))
   } else {
     return(NULL)
   }
@@ -299,7 +312,6 @@ analyze_treatment_effect_subgroups_binary <- function(data, outcome_var, subgrou
 #' @param percentile_cut Percentile for binning continuous variables (default: 0.5 for median split)
 #' @param confounders Character vector of confounders to adjust for (subgroup variable will be automatically excluded)
 #' @param include_baseline_height Logical, whether to include initial_tumor_height as a confounder (default: FALSE for primary analysis)
-#' @param create_tables Logical, whether to create formatted HTML tables (default: FALSE for individual calls)
 #'
 #' @return List containing:
 #'   - interaction_p: P-value for the interaction term
@@ -311,7 +323,7 @@ analyze_treatment_effect_subgroups_binary <- function(data, outcome_var, subgrou
 #'
 #' @examples
 #' analyze_treatment_effect_subgroups_height(data, "age_at_diagnosis", confounders = c("sex", "location"))
-analyze_treatment_effect_subgroups_height <- function(data, subgroup_var, percentile_cut = 0.5, confounders = NULL, include_baseline_height = FALSE, create_tables = CREATE_SUBGROUP_TABLES) {
+analyze_treatment_effect_subgroups_height <- function(data, subgroup_var, percentile_cut = 0.5, confounders = NULL, include_baseline_height = FALSE) {
     # height_change variable should already be calculated in data_processing.R
     
     # Check if subgroup variable exists and has variation
@@ -431,11 +443,11 @@ process_subgroup_data <- function(data, subgroup_var, confounders, include_basel
     if (was_continuous) {
         # Use centralized cutoff configuration
         cutoff_val <- get_cutoff_value(subgroup_var, data, 0.5)
-        cutoff_type <- if (USE_STANDARDIZED_CUTOFFS && subgroup_var %in% names(STANDARDIZED_CUTOFFS)) "standardized" else "median"
+        cutoff_type <- if (USE_T_STAGE_CUTOFFS && subgroup_var %in% c("initial_tumor_height", "initial_tumor_diameter")) "standardized" else "legacy"
         
         # Check if this variable uses T-stage clinical bins
         if (subgroup_var %in% c("initial_tumor_height", "initial_tumor_diameter") && 
-            USE_STANDARDIZED_CUTOFFS && length(cutoff_val) > 1) {
+            USE_T_STAGE_CUTOFFS && length(cutoff_val) > 1) {
             # Use T-stage clinical bins
             log_enhanced(sprintf("Using T-stage clinical bins for %s: %s", subgroup_var, paste(cutoff_val, collapse=", ")), level = "INFO")
             
@@ -758,14 +770,14 @@ fit_subgroup_model <- function(data, outcome_config, subgroup_var_to_use, confou
         formula_str <- paste0("Surv(", outcome_config$time_var, ", ", outcome_config$event_var, ") ~ ", 
                              interaction_term, confounders_str)
         model <- tryCatch({
-            coxph(as.formula(formula_str), data = filtered_data)
+            coxph(as.formula(formula_str), data = filtered_data, model = TRUE)
         }, error = function(e) {
             interaction_diagnostics$model_error <- e$message
             NULL
         })
         no_interaction_formula <- paste0("Surv(", outcome_config$time_var, ", ", outcome_config$event_var, ") ~ ", 
                                         "treatment_group + ", subgroup_var_to_use, confounders_str)
-        no_interaction_model <- coxph(as.formula(no_interaction_formula), data = filtered_data)
+        no_interaction_model <- coxph(as.formula(no_interaction_formula), data = filtered_data, model = TRUE)
         
     } else if (outcome_config$type == "binary") {
         formula_str <- paste0(outcome_config$outcome_var, " ~ ", interaction_term, confounders_str)
@@ -1139,9 +1151,8 @@ format_p_value <- function(p_value) {
 #' @param dataset_name Character string for the dataset name
 #' @param subgroup_dir Character string for the output directory
 #' @param prefix Character string for file prefix
-#' @param create_tables Logical, whether to create formatted HTML tables (default: FALSE for individual calls)
 #' @return None (saves tables as side effect)
-format_subgroup_analysis_tables <- function(subgroup_results, dataset_name, subgroup_dir, prefix, create_tables = CREATE_SUBGROUP_TABLES) {
+format_subgroup_analysis_tables <- function(subgroup_results, dataset_name, subgroup_dir, prefix) {
     
     if (is.null(subgroup_results) || length(subgroup_results) == 0) {
         warning("No subgroup results provided for formatting")
@@ -1190,7 +1201,6 @@ format_subgroup_analysis_tables <- function(subgroup_results, dataset_name, subg
                 outcome_name = paste("Tumor Height Change -", dataset_name),
                 effect_measure = "MD",  # Mean Difference for height change
                 output_path = file.path(subgroup_dir, paste0(prefix, var_name, "_subgroup_analysis.xlsx")),
-                create_tables = create_tables,
                 other_map = var_other_map
             )
             
@@ -1212,10 +1222,9 @@ format_subgroup_analysis_tables <- function(subgroup_results, dataset_name, subg
 #' @param outcome_name Name of the outcome being analyzed
 #' @param effect_measure Type of effect measure ("HR" for hazard ratio, "OR" for odds ratio, "MD" for mean difference)
 #' @param output_path Full path for saving the Excel table (HTML will be saved with .html extension)
-#' @param create_tables Logical, whether to create formatted HTML tables (default: FALSE for individual calls)
 #' @param other_map A list mapping subgroup variable names to their "Other" categories
 #' @return Formatted data frame
-format_subgroup_analysis_results <- function(subgroup_results, outcome_name, effect_measure = "HR", output_path = NULL, create_tables = CREATE_SUBGROUP_TABLES, other_map = NULL) {
+format_subgroup_analysis_results <- function(subgroup_results, outcome_name, effect_measure = "HR", output_path = NULL, other_map = NULL) {
     
     if (is.null(subgroup_results) || length(subgroup_results) == 0) {
         warning("No subgroup results provided for formatting")
@@ -1432,18 +1441,7 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
     excel_table <- final_table %>%
         select(-is_header, -variable_name)
 
-    # Save Excel table if path provided
-    # (DISABLED: Do not write Excel diagnostics file here)
-    # if (!is.null(output_path)) {
-    #     if (create_tables) {
-    #         consolidated_data <- list(
-    #             "Results" = excel_table,
-    #             "Diagnostics" = diagnostics_df
-    #         )
-    #         write_diagnostics_excel(consolidated_data, output_path)
-    #         log_enhanced(sprintf("Subgroup analysis saved to: %s with %d tabs", output_path, length(consolidated_data)), level = "INFO")
-    #     }
-    # }
+
 
     # Create styled HTML version
     if (!is.null(output_path)) {
