@@ -123,6 +123,16 @@ source("scripts/visualization/forest_plot.R")
 # Source the forest plot diagnostics script
 source("scripts/utils/forest_plot_diagnostics.R")
 
+# Workflow scripts
+source("scripts/workflow/analysis_orchestration.R")
+
+# Objective scripts
+source("scripts/workflow/objective_0_data_processing.R")
+source("scripts/workflow/objective_1_primary_outcomes.R")
+source("scripts/workflow/objective_2_safety_toxicity.R")
+source("scripts/workflow/objective_3_repeat_radiation.R")
+source("scripts/workflow/objective_4_gep_analysis.R")
+
 ######################################################################
 ############### CREATE NECESSARY DIRECTORIES ##########################
 ######################################################################

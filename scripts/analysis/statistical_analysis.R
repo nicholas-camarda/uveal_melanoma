@@ -26,11 +26,13 @@
 #' @param analysis_type Character string (default: "post_treatment_only"). Either "post_treatment_only" (removes patients with pre-treatment events) or "all_patients" (includes all patients).
 #' @param dataset_name Name of the dataset (character).
 #' @param other_map List containing mapping of what categories were collapsed into "Other".
+#' @param output_dirs List of output directories organized by analysis type (recurrence, mets, os, pfs, height, subgroups, etc.).
+#' @param prefix Character string used as a file prefix for output files (e.g., "full_cohort_"). Used to identify cohort or analysis context in filenames.
 #'
 #' @return List with elements: rates (data frame), table (gtsummary object), model (glm object), diagnostics (list).
 #' @examples
 #' analyze_binary_outcome_rates(data, "recurrence1", "tt_recurrence_months", "recurrence_event", confounders = c("age", "sex"))
-analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var, group_var = "treatment_group", confounders = NULL, analysis_type = "post_treatment_only", dataset_name = NULL, other_map = NULL) {
+analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var, group_var = "treatment_group", confounders = NULL, analysis_type = "post_treatment_only", dataset_name = NULL, other_map = NULL, output_dirs = NULL, prefix = NULL) {
     # DEBUGGING:
     # outcome_var = "recurrence1"
     # time_var = "tt_recurrence_months"
@@ -154,11 +156,13 @@ analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var,
 #' @param analysis_type Character string (default: "post_treatment_only"). Either "post_treatment_only" (removes patients with pre-treatment events) or "all_patients" (includes all patients).
 #' @param dataset_name Name of the dataset (character).
 #' @param legend_labels Character vector of labels for the legend (default: NULL, uses factor levels of group_var).
+#' @param output_dirs List of output directories organized by analysis type (recurrence, mets, os, pfs, height, subgroups, etc.).
+#' @param prefix Character string used as a file prefix for output files (e.g., "full_cohort_"). Used to identify cohort or analysis context in filenames.
 #'
 #' @return List with elements: fit (survfit object), plot (ggplot object), survival_rates (data frame), survival_rates_wide (data frame), rmst_analysis (data frame), rmst_plot (ggplot object), cox_model (coxph object), cox_table (gtsummary object).
 #' @examples
 #' analyze_time_to_event_outcomes(data, "tt_os_months", "os_event", confounders = c("age", "sex"))
-analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var = "treatment_group", confounders = NULL, ylab = "Survival Probability", analysis_type = "post_treatment_only", dataset_name = NULL, legend_labels = NULL, other_map = list()) {
+analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var = "treatment_group", confounders = NULL, ylab = "Survival Probability", analysis_type = "post_treatment_only", dataset_name = NULL, legend_labels = NULL, other_map = list(), output_dirs = NULL, prefix = NULL) {
     # DEBUGGING:
     # time_var = "tt_death_months"
     # event_var = "death_event"
@@ -577,7 +581,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     )
     
     # Create RMST p-value progression plot
-    rmst_plot <- plot_rmst_pvalue_progression(rmst_results, ylab)
+    rmst_plot <- plot_rmst_pvalue_progression(rmst_results, ylab, output_dirs, prefix)
     
     # Note: Diagnostics are now handled by the unified table generation system
 
@@ -602,9 +606,11 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
 #'
 #' @param rmst_results Data frame with RMST analysis results
 #' @param outcome_label Character string for the outcome being analyzed
+#' @param output_dirs List of output directories organized by analysis type
+#' @param prefix Character string used as a file prefix for output files
 #'
 #' @return ggplot object
-plot_rmst_pvalue_progression <- function(rmst_results, outcome_label) {
+plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dirs, prefix) {
     # Filter out failed analyses
     plot_data <- rmst_results %>%
         filter(!is.na(RMST_P_Value)) %>%
@@ -706,11 +712,14 @@ plot_rmst_pvalue_progression <- function(rmst_results, outcome_label) {
 #' @param data Data frame.
 #' @param confounders Character vector of confounder variable names (default: NULL).
 #' @param dataset_name Name of the dataset (character).
+#' @param other_map List. Additional mapping or arguments to pass to the analysis. Default is empty list.
+#' @param output_dirs List of output directories organized by analysis type (recurrence, mets, os, pfs, height, subgroups, etc.).
+#' @param prefix Character string used as a file prefix for output files (e.g., "full_cohort_"). Used to identify cohort or analysis context in filenames.
 #'
 #' @return List with elements: pfs2_data (data frame), survival_analysis (list), summary_table (gtsummary object).
 #' @examples
 #' analyze_pfs2(data, confounders = c("age", "sex"))
-analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, other_map = list()) {
+analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, other_map = list(), output_dirs = NULL, prefix = NULL) {
     log_enhanced("Starting PFS-2 analysis for recurrent patients")
     
     # Filter to patients with valid PFS-2 data (variables now created in data processing)
@@ -757,8 +766,38 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, other_ma
     
     total_events <- sum(pfs2_data$pfs2_event)
     groups_with_events <- sum(events_per_group$events > 0)
+    groups_with_zero_events <- sum(events_per_group$events == 0)
     
-    if (total_events < 5 || groups_with_events < 2) {
+    # Check for perfect separation (groups with 0 events)
+    if (groups_with_zero_events > 0) {
+        zero_event_groups <- events_per_group$recurrence1_treatment_clean[events_per_group$events == 0]
+        log_enhanced("WARNING: Perfect separation detected in PFS-2 survival analysis")
+        log_enhanced(sprintf("Groups with 0 events: %s", paste(zero_event_groups, collapse = ", ")))
+        log_enhanced("This will cause infinite coefficients and extremely wide confidence intervals")
+        log_enhanced("Events per group:")
+        print(events_per_group)
+        log_enhanced("Proceeding with survival analysis - extreme estimates will be filtered out")
+        
+        # Still attempt the analysis but with warnings - let the table generation system handle extreme estimates
+        pfs2_survival <- analyze_time_to_event_outcomes(
+            data = pfs2_data,
+            time_var = "tt_pfs2_months",
+            event_var = "pfs2_event", 
+            group_var = "recurrence1_treatment_clean",
+            confounders = confounders,
+            ylab = "PFS-2 Probability (Freedom from 2nd Recurrence)",
+            analysis_type = "all_patients",  # PFS-2 analysis includes all recurrent patients
+            dataset_name = paste0(dataset_name, "_pfs2_recurrent"),
+            legend_labels = levels(pfs2_data$recurrence1_treatment_clean),
+            other_map = other_map,
+            output_dirs = output_dirs,
+            prefix = prefix
+        )
+        
+        # Add sparse data warning to the result
+        pfs2_survival$sparse_data_warning <- TRUE
+        pfs2_survival$zero_event_groups <- zero_event_groups
+    } else if (total_events < 5 || groups_with_events < 2) {
         log_enhanced("ERROR: Insufficient events for PFS-2 survival analysis")
         log_enhanced(sprintf("Total events: %d (minimum 5 required)", total_events))
         log_enhanced(sprintf("Groups with events: %d (minimum 2 required)", groups_with_events))
@@ -787,7 +826,9 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, other_ma
             # handle_rare = FALSE, # REMOVED
             dataset_name = paste0(dataset_name, "_pfs2_recurrent"),
             legend_labels = levels(pfs2_data$recurrence1_treatment_clean),
-            other_map = other_map
+            other_map = other_map,
+            output_dirs = output_dirs,
+            prefix = prefix
         )
     }
     

@@ -2,17 +2,25 @@
 # Author: Nicholas Camarda
 # Description: Functions for vision change and radiation sequelae analysis
 
-#' Analyze visual acuity changes
+#' Analyze visual acuity changes by treatment group
 #'
-#' Calculates and summarizes changes in visual acuity by treatment group, returning summary statistics and a table.
-#' Simple analysis as required by objective 2a - no subgroup interactions needed.
+#' Calculates and summarizes changes in visual acuity by treatment group. 
+#' This function is used for objective 2a and does not include subgroup interactions.
 #'
-#' @param data Data frame with vision variables.
+#' @param data A data frame containing vision-related variables.
+#' @param output_dirs A named list of output directories organized by analysis type (e.g., recurrence, mets, os, pfs, height, subgroups).
+#' @param prefix A character string used as a file prefix for output files (e.g., "full_cohort_") to identify cohort or analysis context in filenames.
+#' @param other_map Optional list for additional mapping or configuration (default is an empty list).
 #'
-#' @return List with elements: changes (summary data frame), table (gtsummary object), regression_model (lm object), regression_table (gtsummary object).
+#' @return A list with the following elements:
+#'   - changes: summary data frame of vision changes by treatment group
+#'   - table: gtsummary object with formatted summary statistics
+#'   - regression_model: linear model (lm) object for vision change by treatment group
+#'   - regression_table: gtsummary object summarizing the regression results
+#'
 #' @examples
-#' analyze_visual_acuity_changes(data)
-analyze_visual_acuity_changes <- function(data, other_map = list()) {
+#' analyze_visual_acuity_changes(data, output_dirs, prefix)
+analyze_visual_acuity_changes <- function(data, output_dirs, prefix, other_map = list()) {
     # Calculate vision changes (row-level)
     data_with_vision_change <- data %>%
         mutate(
@@ -104,18 +112,21 @@ analyze_visual_acuity_changes <- function(data, other_map = list()) {
 
 #' Analyze radiation complications
 #'
-#' Analyzes rates of radiation complications (retinopathy, nvg, srg) by treatment group.
-#' Reuses the existing analyze_binary_outcome_rates function for consistency.
+#' Analyze rates of radiation complications (retinopathy, nvg, srd) by treatment group.
+#' This function reuses the existing analyze_binary_outcome_rates function for consistency.
 #'
-#' @param data Data frame with radiation sequelae variables
-#' @param sequela_type Type of sequela to analyze ("retinopathy", "nvg", or "srd")
-#' @param confounders Character vector of confounders for adjustment
-#' @param dataset_name Name of the dataset for output files
+#' @param data A data frame containing radiation sequelae variables.
+#' @param sequela_type Character. The type of sequela to analyze. Must be one of "retinopathy", "nvg", or "srd".
+#' @param confounders Character vector of confounders to adjust for in the analysis. Default is NULL.
+#' @param dataset_name Character. Name of the dataset for output files. Default is NULL.
+#' @param other_map List. Additional mapping or arguments to pass to the analysis. Default is empty list.
+#' @param output_dirs List of output directories organized by analysis type (recurrence, mets, os, pfs, height, subgroups, etc.).
+#' @param prefix Character string used as a file prefix for output files (e.g., "full_cohort_"). Used to identify cohort or analysis context in filenames.
 #'
-#' @return Results from analyze_binary_outcome_rates function
+#' @return A list of results from analyze_binary_outcome_rates, including model output and summary tables.
 #' @examples
-#' analyze_radiation_complications(data, "retinopathy", confounders, "uveal_full")
-analyze_radiation_complications <- function(data, sequela_type, confounders = NULL, dataset_name = NULL, other_map = list()) {
+#' analyze_radiation_complications(data, "retinopathy", confounders, "uveal_full", other_map, output_dirs, prefix)
+analyze_radiation_complications <- function(data, sequela_type, confounders = NULL, dataset_name = NULL, other_map = list(), output_dirs = NULL, prefix = NULL) {
     
     # Validate sequela type
     valid_sequelae <- c("retinopathy", "nvg", "srd")

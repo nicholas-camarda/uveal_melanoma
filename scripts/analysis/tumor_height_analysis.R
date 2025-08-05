@@ -7,12 +7,30 @@
 #' Calculates and summarizes changes in tumor height by treatment group, returning summary statistics and a table.
 #' Now includes both primary analysis (without baseline height adjustment) and sensitivity analysis (with baseline height adjustment).
 #'
-#' @param data Data frame with tumor height variables.
 #'
-#' @return List with elements: changes (summary data frame), table (gtsummary object), primary_regression_model (lm object), primary_regression_table (gtsummary object), sensitivity_regression_model (lm object), sensitivity_regression_table (gtsummary object).
+#' @param data Data frame containing tumor height variables, including `height_change` and `treatment_group`.
+#' @param output_dirs Named list of output directories for saving analysis results (e.g., recurrence, mets, os, pfs, height, subgroups).
+#' @param prefix Character string used as a prefix for output files (e.g., "full_cohort_") to identify cohort or analysis context.
+#' @param confounders Character vector of confounder variable names to include in regression models.
+#' @param other_map Optional named list for additional mapping or customization (default: empty list).
+#'
+#' @return A list with the following elements:
+#'   - `changes`: Summary data frame of tumor height changes by treatment group.
+#'   - `table`: gtsummary object summarizing tumor height changes.
+#'   - `primary_regression_model`: Linear model (lm) object for primary analysis (unadjusted).
+#'   - `primary_regression_table`: gtsummary object for the primary regression model.
+#'   - `sensitivity_regression_model`: Linear model (lm) object for sensitivity analysis (adjusted for baseline height).
+#'   - `sensitivity_regression_table`: gtsummary object for the sensitivity regression model.
+#'
 #' @examples
-#' analyze_tumor_height_changes(data)
-analyze_tumor_height_changes <- function(data, other_map = list()) {
+#' analyze_tumor_height_changes(
+#'   data = analytic_data,
+#'   output_dirs = list(obj1_height_primary = "output/height"),
+#'   prefix = "full_cohort_",
+#'   confounders = c("age_at_diagnosis", "sex"),
+#'   other_map = list()
+#' )
+analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders, other_map = list()) {
     # Use height_change variable that was already calculated in data_processing.R
     data_with_height_change <- enforce_unordered_factors(data)
 

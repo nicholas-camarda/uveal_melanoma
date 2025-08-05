@@ -343,7 +343,6 @@ analyze_treatment_effect_subgroups_binary <- function(data, outcome_var, subgrou
 #'
 #' @param data Data frame containing the analysis variables
 #' @param subgroup_var Name of the subgroup variable (character)
-#' @param percentile_cut Percentile for binning continuous variables (default: 0.5 for median split)
 #' @param confounders Character vector of confounders to adjust for (subgroup variable will be automatically excluded)
 #' @param include_baseline_height Logical, whether to include initial_tumor_height as a confounder (default: FALSE for primary analysis)
 #'
@@ -357,7 +356,7 @@ analyze_treatment_effect_subgroups_binary <- function(data, outcome_var, subgrou
 #'
 #' @examples
 #' analyze_treatment_effect_subgroups_height(data, "age_at_diagnosis", confounders = c("sex", "location"))
-analyze_treatment_effect_subgroups_height <- function(data, subgroup_var, percentile_cut = 0.5, confounders = NULL, include_baseline_height = FALSE, dataset_name = NULL) {
+analyze_treatment_effect_subgroups_height <- function(data, subgroup_var, confounders = NULL, include_baseline_height = FALSE, dataset_name = NULL) {
     # height_change variable should already be calculated in data_processing.R
     
     # Check if subgroup variable exists and has variation
@@ -488,7 +487,7 @@ process_subgroup_data <- function(data, subgroup_var, confounders, include_basel
 
     if (was_continuous) {
         # Use centralized cutoff configuration
-        cutoff_val <- get_cutoff_value(subgroup_var, data, 0.5)
+        cutoff_val <- get_cutoff_value(subgroup_var, data, percentile_cut = 0.5)
         cutoff_type <- if (USE_CLINICAL_BINNING_CONTINUOUS && subgroup_var %in% c("initial_tumor_height", "initial_tumor_diameter")) "clinical" else "legacy"
         
         # Check if this variable uses T-stage clinical bins

@@ -29,7 +29,7 @@ create_output_structure <- function(cohort_dir) {
         obj1_height_sensitivity = file.path(cohort_dir, "01_Efficacy", "f_tumor_height_sensitivity"),
         obj1_subgroup_primary = file.path(cohort_dir, "01_Efficacy", "g_subgroup_analysis", "tumor_height_primary"),
         obj1_subgroup_sensitivity = file.path(cohort_dir, "01_Efficacy", "g_subgroup_analysis", "tumor_height_sensitivity"),
-        obj1_subgroup_clinical = file.path(cohort_dir, "01_Efficacy", "g_subgroup_analysis", "clinical_outcomes"),
+        # obj1_subgroup_clinical = file.path(cohort_dir, "01_Efficacy", "g_subgroup_analysis", "clinical_outcomes"),
         obj1_forest_plots = file.path(cohort_dir, "01_Efficacy", "g_subgroup_analysis", "forest_plots"),
         
         # OBJECTIVE 2: Safety/Toxicity of Plaque vs GKSRS
@@ -48,21 +48,21 @@ create_output_structure <- function(cohort_dir) {
         
         # Cross-cutting analyses (baseline characteristics go here for each cohort)
         baseline_characteristics = file.path(cohort_dir, "00_General", "baseline_characteristics"),
-        treatment_duration = file.path(cohort_dir, "00_General", "treatment_duration"),
+        treatment_duration = file.path(cohort_dir, "00_General", "treatment_duration")
         
-        # Maintain backwards compatibility with old names for existing code
-        recurrence = file.path(cohort_dir, "01_Efficacy", "a_recurrence"),
-        mets = file.path(cohort_dir, "01_Efficacy", "b_metastatic_progression"),
-        os = file.path(cohort_dir, "01_Efficacy", "c_overall_survival"),
-        pfs = file.path(cohort_dir, "01_Efficacy", "d_progression_free_survival"),
-        height_primary = file.path(cohort_dir, "01_Efficacy", "e_tumor_height_primary"),
-        height_sensitivity = file.path(cohort_dir, "01_Efficacy", "f_tumor_height_sensitivity"),
-        subgroup_primary = file.path(cohort_dir, "01_Efficacy", "g_subgroup_analysis", "tumor_height_primary"),
-        subgroup_sensitivity = file.path(cohort_dir, "01_Efficacy", "g_subgroup_analysis", "tumor_height_sensitivity"),
-        vision = file.path(cohort_dir, "02_Safety", "a_vision_changes"),
-        retinopathy = file.path(cohort_dir, "02_Safety", "b_retinopathy"),
-        nvg = file.path(cohort_dir, "02_Safety", "c_neovascular_glaucoma"),
-        srg = file.path(cohort_dir, "02_Safety", "d_serous_retinal_detachment")
+        # # Maintain backwards compatibility with old names for existing code
+        # recurrence = file.path(cohort_dir, "01_Efficacy", "a_recurrence"),
+        # mets = file.path(cohort_dir, "01_Efficacy", "b_metastatic_progression"),
+        # os = file.path(cohort_dir, "01_Efficacy", "c_overall_survival"),
+        # pfs = file.path(cohort_dir, "01_Efficacy", "d_progression_free_survival"),
+        # height_primary = file.path(cohort_dir, "01_Efficacy", "e_tumor_height_primary"),
+        # height_sensitivity = file.path(cohort_dir, "01_Efficacy", "f_tumor_height_sensitivity"),
+        # subgroup_primary = file.path(cohort_dir, "01_Efficacy", "g_subgroup_analysis", "tumor_height_primary"),
+        # subgroup_sensitivity = file.path(cohort_dir, "01_Efficacy", "g_subgroup_analysis", "tumor_height_sensitivity"),
+        # vision = file.path(cohort_dir, "02_Safety", "a_vision_changes"),
+        # retinopathy = file.path(cohort_dir, "02_Safety", "b_retinopathy"),
+        # nvg = file.path(cohort_dir, "02_Safety", "c_neovascular_glaucoma"),
+        # srg = file.path(cohort_dir, "02_Safety", "d_serous_retinal_detachment")
     )
     
     # Create all directories

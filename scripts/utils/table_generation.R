@@ -1225,10 +1225,20 @@ add_factor_label_pvalues_to_table <- function(table, data, outcome_var, confound
         var_confounders <- filtered_confounders[filtered_confounders != var_name]
         
         # Calculate overall significance using likelihood ratio test
-        pval <- calculate_variable_overall_significance(data, var_name, outcome_var, 
-                                                       treatment_var = "treatment_group",
-                                                       confounders = var_confounders, 
-                                                       outcome_type = outcome_type)
+        # Use the actual treatment variable from the data, not hardcoded "treatment_group"
+        treatment_var_name <- if ("treatment_group" %in% names(data)) "treatment_group" else 
+                             if ("recurrence1_treatment_clean" %in% names(data)) "recurrence1_treatment_clean" else
+                             names(data)[grep("treatment", names(data), ignore.case = TRUE)][1]
+        
+        if (is.null(treatment_var_name) || is.na(treatment_var_name)) {
+            warning("No treatment variable found in data for overall significance calculation")
+            pval <- NA
+        } else {
+            pval <- calculate_variable_overall_significance(data, var_name, outcome_var, 
+                                                           treatment_var = treatment_var_name,
+                                                           confounders = var_confounders, 
+                                                           outcome_type = outcome_type)
+        }
         factor_label_pvalues[[var_name]] <- pval
     }
     
@@ -1405,28 +1415,59 @@ save_table_outputs <- function(table_result, raw_output, model_fit, analysis_nam
     
     if (!is.null(table_result)) {
         cat("DEBUG: Table result is not NULL, proceeding with modification\n")
-        tryCatch({
-            # Modify p-values in the gtsummary table first
-            cat("DEBUG: About to call modify_gt_table_pvalues\n")
-            cat("  Table class:", class(table_result), "\n")
-            cat("  Outcome var:", outcome_var, "\n")
-            cat("  Confounders:", paste(confounders, collapse = ", "), "\n")
-            
-            modified_table <- modify_gt_table_pvalues(table_result %>% as_gt(), table_result, data, outcome_var, confounders, model_fit)
-            
-            cat("DEBUG: After modify_gt_table_pvalues\n")
-            cat("  Modified table class:", class(modified_table), "\n")
-            
-            # Convert the modified gtsummary table to gt format
-            gt_table <- modified_table %>% as_gt()
-            
-            # Save the modified gt table
-            gt_table %>% gtsave(html_path)
-            log_enhanced(sprintf("HTML table saved to %s", html_path), level = "INFO")
-        }, error = function(e) {
-            cat("DEBUG: Error in HTML table generation:", e$message, "\n")
-            log_enhanced(sprintf("Failed to save HTML table: %s", e$message), level = "ERROR")
-        })
+        
+        # Check if the table has meaningful content before proceeding
+        table_has_content <- FALSE
+        if (!is.null(diagnostics) && !is.null(diagnostics$filtering_summary)) {
+            table_has_content <- diagnostics$filtering_summary$table_has_meaningful_content
+        } else {
+            # Fallback check: see if table has any non-NA estimates
+            table_data <- table_result$table_body
+            if (!is.null(table_data) && nrow(table_data) > 0) {
+                table_has_content <- any(!is.na(suppressWarnings(as.numeric(table_data$estimate))))
+            }
+        }
+        
+        if (!table_has_content) {
+            log_enhanced("Skipping HTML table generation - no meaningful content due to extreme estimates or model issues", level = "WARN")
+            # Create a diagnostic file instead
+            diagnostic_html_path <- file.path(output_dir, paste0(base_filename, "_NO_CONTENT_DIAGNOSTIC.html"))
+            diagnostic_content <- paste0(
+                "<html><body>",
+                "<h2>Table Generation Skipped</h2>",
+                "<p><strong>Analysis:</strong> ", analysis_name, "</p>",
+                "<p><strong>Dataset:</strong> ", dataset_name, "</p>",
+                "<p><strong>Reason:</strong> No meaningful content available due to extreme estimates or model convergence issues</p>",
+                "<p><strong>Recommendation:</strong> Check the diagnostics Excel file for detailed information about why coefficients were filtered out.</p>",
+                "</body></html>"
+            )
+            writeLines(diagnostic_content, diagnostic_html_path)
+            log_enhanced(sprintf("Diagnostic HTML file saved to %s", diagnostic_html_path), level = "INFO")
+        } else {
+            tryCatch({
+                # Modify p-values in the gtsummary table first
+                cat("DEBUG: About to call modify_gt_table_pvalues\n")
+                cat("  Table class:", class(table_result), "\n")
+                cat("  Outcome var:", outcome_var, "\n")
+                cat("  Confounders:", paste(confounders, collapse = ", "), "\n")
+                
+                modified_table <- modify_gt_table_pvalues(table_result %>% as_gt(), table_result, data, outcome_var, confounders, model_fit)
+                
+                cat("DEBUG: After modify_gt_table_pvalues\n")
+                cat("  Modified table class:", class(modified_table), "\n")
+                
+                # Convert the modified gtsummary table to gt format
+                gt_table <- modified_table %>% as_gt()
+                
+                # Save the modified gt table
+                gt_table %>% gtsave(html_path)
+                log_enhanced(sprintf("HTML table saved to %s", html_path), level = "INFO")
+            }, error = function(e) {
+                error_msg <- if (is.list(e) && !is.null(e$message)) e$message else as.character(e)
+                cat("DEBUG: Error in HTML table generation:", error_msg, "\n")
+                log_enhanced(sprintf("Failed to save HTML table: %s", error_msg), level = "ERROR")
+            })
+        }
     } else {
         cat("DEBUG: Table result is NULL, skipping HTML generation\n")
         log_enhanced("No HTML table to save - model fitting failed", level = "INFO")
