@@ -135,7 +135,16 @@ get_interaction_coefficient_name <- function(model, treatment_var, subgroup_var,
     
     treatment_level <- treatment_coef[1]
     
-    # Look for interaction with the subgroup variable
+    # CRITICAL FIX: Look for the specific interaction coefficient for this subgroup level
+    # The pattern should be: treatment_level:subgroup_var + subgroup_level
+    specific_interaction_pattern <- paste0(treatment_level, ":", subgroup_var, subgroup_level)
+    specific_interaction_coef <- coef_names[coef_names == specific_interaction_pattern]
+    
+    if (length(specific_interaction_coef) > 0) {
+        return(specific_interaction_coef[1])
+    }
+    
+    # Fallback: Look for any interaction with the subgroup variable
     interaction_pattern <- paste0(treatment_level, ":", subgroup_var)
     interaction_coef <- coef_names[grepl(interaction_pattern, coef_names)]
     

@@ -13,8 +13,8 @@
 #' @param percentile_cut Percentile to use if not standardized (default 0.5)
 #' @return Cutoff value or vector of cutoffs
 get_cutoff_value <- function(var_name, data, percentile_cut = 0.5) {
-  if (USE_T_STAGE_CUTOFFS && var_name %in% c("initial_tumor_height", "initial_tumor_diameter")) {
-    # T-stage evidence-based cutoffs
+  if (USE_CLINICAL_BINNING_CONTINUOUS && var_name %in% c("initial_tumor_height", "initial_tumor_diameter")) {
+    # T-stage clinical cutoffs (multiple bins)
     if (var_name == "initial_tumor_height") {
       return(T_STAGE_HEIGHT_CUTOFFS)
     } else if (var_name == "initial_tumor_diameter") {
@@ -68,7 +68,7 @@ create_clinical_bins <- function(values, cutoffs, var_name) {
 #' @param var_name Variable name
 #' @return Character vector of levels, or NULL if not a continuous variable
 get_subgroup_levels <- function(var_name) {
-  if (USE_T_STAGE_CUTOFFS && var_name %in% c("initial_tumor_height", "initial_tumor_diameter")) {
+  if (USE_CLINICAL_BINNING_CONTINUOUS && var_name %in% c("initial_tumor_height", "initial_tumor_diameter")) {
     # T-stage evidence-based levels
     if (var_name == "initial_tumor_height") {
       return(c(
@@ -117,10 +117,21 @@ get_subgroup_levels <- function(var_name) {
 #' @param confounders Character vector of confounders
 #' @param outcome_name Name of the outcome for labeling
 #' @return List of subgroup analysis results
-analyze_treatment_effect_subgroups_survival <- function(data, time_var, event_var, subgroup_vars, confounders = NULL, outcome_name = "Survival") {
+analyze_treatment_effect_subgroups_survival <- function(data, time_var, event_var, subgroup_vars, confounders = NULL, outcome_name = "Survival", dataset_name = NULL) {
     log_enhanced(sprintf("Performing subgroup analysis for %s", outcome_name), level = "INFO")
     
     subgroup_results <- list()
+
+    # Load cohort-specific other_map if dataset_name is provided
+    cohort_other_map <- list()
+    if (!is.null(dataset_name)) {
+        tryCatch({
+            cohort_other_map <- get_cohort_specific_other_map(dataset_name)
+            log_enhanced(sprintf("Loaded cohort-specific other_map for %s with %d variables", dataset_name, length(cohort_other_map)), level = "DEBUG")
+        }, error = function(e) {
+            log_enhanced(sprintf("Failed to load other_map for %s: %s", dataset_name, e$message), level = "WARN")
+        })
+    }
 
     for (subgroup_var in subgroup_vars) {
         log_enhanced(sprintf("Testing interaction for: %s", subgroup_var), level = "INFO")
@@ -191,12 +202,18 @@ analyze_treatment_effect_subgroups_survival <- function(data, time_var, event_va
         })
     }
 
-    # Collect other_map from all variables
-    other_map <- list()
-    for (var_name in names(subgroup_results)) {
-        if (!is.null(subgroup_results[[var_name]]) && !is.null(subgroup_results[[var_name]]$other_map)) {
-            other_map[[var_name]] <- subgroup_results[[var_name]]$other_map
+    # Use cohort-specific other_map if available, otherwise collect from individual variables
+    other_map <- if (length(cohort_other_map) > 0) {
+        cohort_other_map
+    } else {
+        # Fallback: collect other_map from all variables
+        var_other_map <- list()
+        for (var_name in names(subgroup_results)) {
+            if (!is.null(subgroup_results[[var_name]]) && !is.null(subgroup_results[[var_name]]$other_map)) {
+                var_other_map[[var_name]] <- subgroup_results[[var_name]]$other_map
+            }
         }
+        var_other_map
     }
 
     return(list(
@@ -216,10 +233,21 @@ analyze_treatment_effect_subgroups_survival <- function(data, time_var, event_va
 #' @param confounders Character vector of confounders
 #' @param outcome_name Name of the outcome for labeling
 #' @return List of subgroup analysis results
-analyze_treatment_effect_subgroups_binary <- function(data, outcome_var, subgroup_vars, confounders = NULL, outcome_name = "Binary Outcome") {
+analyze_treatment_effect_subgroups_binary <- function(data, outcome_var, subgroup_vars, confounders = NULL, outcome_name = "Binary Outcome", dataset_name = NULL) {
     log_enhanced(sprintf("Performing subgroup analysis for %s", outcome_name), level = "INFO")
     
     subgroup_results <- list()
+
+    # Load cohort-specific other_map if dataset_name is provided
+    cohort_other_map <- list()
+    if (!is.null(dataset_name)) {
+        tryCatch({
+            cohort_other_map <- get_cohort_specific_other_map(dataset_name)
+            log_enhanced(sprintf("Loaded cohort-specific other_map for %s with %d variables", dataset_name, length(cohort_other_map)), level = "DEBUG")
+        }, error = function(e) {
+            log_enhanced(sprintf("Failed to load other_map for %s: %s", dataset_name, e$message), level = "WARN")
+        })
+    }
 
     for (subgroup_var in subgroup_vars) {
         log_enhanced(sprintf("Testing interaction for: %s", subgroup_var), level = "INFO")
@@ -288,12 +316,18 @@ analyze_treatment_effect_subgroups_binary <- function(data, outcome_var, subgrou
         })
     }
 
-    # Collect other_map from all variables
-    other_map <- list()
-    for (var_name in names(subgroup_results)) {
-        if (!is.null(subgroup_results[[var_name]]) && !is.null(subgroup_results[[var_name]]$other_map)) {
-            other_map[[var_name]] <- subgroup_results[[var_name]]$other_map
+    # Use cohort-specific other_map if available, otherwise collect from individual variables
+    other_map <- if (length(cohort_other_map) > 0) {
+        cohort_other_map
+    } else {
+        # Fallback: collect other_map from all variables
+        var_other_map <- list()
+        for (var_name in names(subgroup_results)) {
+            if (!is.null(subgroup_results[[var_name]]) && !is.null(subgroup_results[[var_name]]$other_map)) {
+                var_other_map[[var_name]] <- subgroup_results[[var_name]]$other_map
+            }
         }
+        var_other_map
     }
 
     return(list(
@@ -323,7 +357,7 @@ analyze_treatment_effect_subgroups_binary <- function(data, outcome_var, subgrou
 #'
 #' @examples
 #' analyze_treatment_effect_subgroups_height(data, "age_at_diagnosis", confounders = c("sex", "location"))
-analyze_treatment_effect_subgroups_height <- function(data, subgroup_var, percentile_cut = 0.5, confounders = NULL, include_baseline_height = FALSE) {
+analyze_treatment_effect_subgroups_height <- function(data, subgroup_var, percentile_cut = 0.5, confounders = NULL, include_baseline_height = FALSE, dataset_name = NULL) {
     # height_change variable should already be calculated in data_processing.R
     
     # Check if subgroup variable exists and has variation
@@ -340,6 +374,17 @@ analyze_treatment_effect_subgroups_height <- function(data, subgroup_var, percen
         warning(sprintf("No data remaining after removing missing values for '%s'", subgroup_var))
         return(list(interaction_p = NA, subgroup_effects = data.frame(), 
                    model = NULL, subgroup_var_used = NA, formula_used = NA, confounders_used = NA))
+    }
+    
+    # Load cohort-specific other_map if dataset_name is provided
+    cohort_other_map <- list()
+    if (!is.null(dataset_name)) {
+        tryCatch({
+            cohort_other_map <- get_cohort_specific_other_map(dataset_name)
+            log_enhanced(sprintf("Loaded cohort-specific other_map for %s with %d variables", dataset_name, length(cohort_other_map)), level = "DEBUG")
+        }, error = function(e) {
+            log_enhanced(sprintf("Failed to load other_map for %s: %s", dataset_name, e$message), level = "WARN")
+        })
     }
     
     # Process subgroup data
@@ -392,7 +437,7 @@ analyze_treatment_effect_subgroups_height <- function(data, subgroup_var, percen
         formula_used = model_results$formula_used,
         confounders_used = processed_results$confounders_to_use,
         interaction_diagnostics = model_results$interaction_diagnostics,
-        other_map = if (!is.null(processed_results$other_map)) processed_results$other_map else list()
+        other_map = cohort_other_map  # Use the loaded cohort-specific other_map
     ))
 }
 
@@ -435,19 +480,20 @@ process_subgroup_data <- function(data, subgroup_var, confounders, include_basel
         confounders_to_use <- generate_valid_confounders(data, confounders_to_use, threshold = THRESHOLD_RARITY)
     }
 
-    # Process subgroup variable (bin if continuous)
+    # Process subgroup variable (bin if continuous, treat factors as categorical)
     processed_data <- data
     was_continuous <- is.numeric(data[[subgroup_var]]) || is.integer(data[[subgroup_var]])
+    is_categorical_factor <- is.factor(data[[subgroup_var]])
     cutoff_value <- NULL
 
     if (was_continuous) {
         # Use centralized cutoff configuration
         cutoff_val <- get_cutoff_value(subgroup_var, data, 0.5)
-        cutoff_type <- if (USE_T_STAGE_CUTOFFS && subgroup_var %in% c("initial_tumor_height", "initial_tumor_diameter")) "standardized" else "legacy"
+        cutoff_type <- if (USE_CLINICAL_BINNING_CONTINUOUS && subgroup_var %in% c("initial_tumor_height", "initial_tumor_diameter")) "clinical" else "legacy"
         
         # Check if this variable uses T-stage clinical bins
         if (subgroup_var %in% c("initial_tumor_height", "initial_tumor_diameter") && 
-            USE_T_STAGE_CUTOFFS && length(cutoff_val) > 1) {
+            USE_CLINICAL_BINNING_CONTINUOUS && length(cutoff_val) > 1) {
             # Use T-stage clinical bins
             log_enhanced(sprintf("Using T-stage clinical bins for %s: %s", subgroup_var, paste(cutoff_val, collapse=", ")), level = "INFO")
             
@@ -477,7 +523,14 @@ process_subgroup_data <- function(data, subgroup_var, confounders, include_basel
             subgroup_var_to_use <- subgroup_var_binned
             cutoff_value <- cutoff_val
         }
+    } else if (is_categorical_factor) {
+        # Handle categorical factors - no binning needed
+        log_enhanced(sprintf("Treating %s as categorical factor with levels: %s", subgroup_var, paste(levels(data[[subgroup_var]]), collapse=", ")), level = "INFO")
+        # Rare category handling already done in data processing
+        other_map <- list()
+        subgroup_var_to_use <- subgroup_var
     } else {
+        # Handle other types (character, etc.) - convert to factor
         if (!is.factor(processed_data[[subgroup_var]])) {
             processed_data[[subgroup_var]] <- as.factor(processed_data[[subgroup_var]])
         }
@@ -1195,6 +1248,7 @@ format_subgroup_analysis_tables <- function(subgroup_results, dataset_name, subg
         }
         
         # Create formatted table using the existing function
+        log_enhanced(sprintf("Processing variable: %s", var_name), level = "INFO")
         tryCatch({
             formatted_table <- format_subgroup_analysis_results(
                 subgroup_results = setNames(list(var_results), var_name),
@@ -1203,8 +1257,10 @@ format_subgroup_analysis_tables <- function(subgroup_results, dataset_name, subg
                 output_path = file.path(subgroup_dir, paste0(prefix, var_name, "_subgroup_analysis.xlsx")),
                 other_map = var_other_map
             )
+            log_enhanced(sprintf("Successfully processed variable: %s", var_name), level = "INFO")
             
         }, error = function(e) {
+            log_enhanced(sprintf("ERROR processing variable %s: %s", var_name, e$message), level = "ERROR")
             warning(sprintf("Failed to format table for %s: %s", var_name, e$message))
         })
     }
@@ -1260,7 +1316,8 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
         header_row <- data.frame(
             subgroup_level = variable_display_name,
             sample_size = "",
-            treatment_effect_ci = "",
+            md = "",
+            ci = "",
             p_value = "",
             interaction_p = interaction_p_text,
             is_header = TRUE,
@@ -1289,13 +1346,11 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
                 
                 # Create subgroup row
                 subgroup_row <- data.frame(
-                    subgroup_level = paste0("  ", level_name),  # Indent subgroup levels
-                    sample_size = sprintf("%d (%d Plaque + %d GKSRS)", 
+                    subgroup_level = level_name,  # No manual spaces - use CSS indentation
+                    sample_size = sprintf("%d (%d/%d)", 
                                         row_data$n_total, row_data$n_plaque, row_data$n_gksrs),
-                    treatment_effect_ci = sprintf("%.2f (%.2f, %.2f)", 
-                                                 row_data$treatment_effect, 
-                                                 row_data$ci_lower, 
-                                                 row_data$ci_upper),
+                    md = sprintf("%.2f", row_data$treatment_effect),
+                    ci = sprintf("(%.2f, %.2f)", row_data$ci_lower, row_data$ci_upper),
                     p_value = format_p_value(row_data$p_value),
                     interaction_p = "",  # Only show in header row
                     is_header = FALSE,
@@ -1430,7 +1485,8 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
     colnames(final_table) <- c(
         "Subgroup Level",
         "Sample Size", 
-        sprintf("%s (95%% CI)", effect_measure),
+        "MD",
+        "95% CI",
         "P-value",
         "Interaction P",
         "is_header",
@@ -1441,39 +1497,52 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
     excel_table <- final_table %>%
         select(-is_header, -variable_name)
 
-
-
     # Create styled HTML version
     if (!is.null(output_path)) {
+        log_enhanced(sprintf("Creating HTML table for: %s", outcome_name), level = "INFO")
         tryCatch({
-            # Create HTML table with gtsummary-style formatting
-            html_table <- final_table %>%
-                select(-variable_name) %>%
+            # Create HTML table with gtsummary for consistency with regular regression tables
+            # Prepare data for gtsummary (remove formatting columns)
+            gtsummary_data <- final_table %>%
+                # Remove formatting columns - no manual spaces, use gtsummary indentation
+                select(-is_header, -variable_name)
+            
+            log_enhanced(sprintf("Data prepared for HTML table, rows: %d", nrow(gtsummary_data)), level = "INFO")
+            
+            # Create gt table with proper styling (like regular regression tables)
+            # Add manual indentation to factor levels since cell_padding is not available in gt 1.0.0
+            gtsummary_data_with_indent <- gtsummary_data %>%
+                mutate(
+                    `Subgroup Level` = if_else(
+                        !grepl("^[A-Z]", `Subgroup Level`),  # Factor levels (not header rows)
+                        paste0("    ", `Subgroup Level`),    # Add 4 spaces for indentation
+                        `Subgroup Level`                     # Keep headers as-is
+                    )
+                )
+            
+            html_table <- gtsummary_data_with_indent %>%
                 gt() %>%
-                # Title and subtitle
+                # Title using gtsummary-style formatting
                 tab_header(
-                    title = md(sprintf("**Subgroup Analysis: %s**", outcome_name)),
-                    # subtitle = md(sprintf("**Treatment Effect on %s**", 
-                    #                     gsub("Subgroup Analysis: ", "", outcome_name)))
+                    title = md(sprintf("**Subgroup Analysis: %s**", outcome_name))
                 ) %>%
-                # Style header rows (factor names) as bold
+                # Style header rows (factor names) as bold - like bold_labels()
                 tab_style(
                     style = cell_text(weight = "bold"),
                     locations = cells_body(
                         columns = everything(),
-                        rows = is_header == TRUE
+                        rows = grepl("^[A-Z]", `Subgroup Level`)  # Header rows start with capital letters
                     )
                 ) %>%
-                # Style subgroup levels as italic and indented
+                # Style factor levels as italicized - like italicize_levels()
+                # Apply to the "Subgroup Level" column for factor level rows (not header rows)
                 tab_style(
-                    style = list(cell_text(style = "italic"), cell_text(align = "left"), cell_text(indent = "1em")),
+                    style = cell_text(style = "italic"),
                     locations = cells_body(
-                        columns = `Subgroup Level`,
-                        rows = is_header == FALSE
+                        columns = "Subgroup Level",  # Only italicize the factor level names, not the data
+                        rows = grepl("^    ", `Subgroup Level`)  # Factor levels (indented with 4 spaces)
                     )
                 ) %>%
-                # Hide the is_header column
-                cols_hide(columns = is_header) %>%
                 # Replace missing with blank
                 sub_missing(columns = everything(), missing_text = "") %>%
                 # Bold column headers
@@ -1481,8 +1550,9 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
                     style = cell_text(weight = "bold"),
                     locations = cells_column_labels()
                 )
-            # Add 'Other' info to source note if present
-            other_caption <- ""
+            # Add sample size format explanation and 'Other' info to source note
+            source_notes <- "Sample Size format: Total (Plaque/GKSRS)"
+            
             has_other_categories_in_table <- any(grepl('Other', final_table$`Subgroup Level`))
             has_other_categories_in_map <- !is.null(other_map) && length(other_map) > 0 && any(sapply(other_map, function(x) !is.null(x) && length(x) > 0))
             
@@ -1491,29 +1561,31 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
                     if (var_name %in% names(other_map) && !is.null(other_map[[var_name]]) && length(other_map[[var_name]]) > 0) {
                         if (has_other_categories_in_table) {
                             # Other category is visible in table
-                        other_caption <- paste0(other_caption, sprintf("\n\n'Other' in %s includes: %s", var_name, paste(other_map[[var_name]], collapse = ", ")))
+                            source_notes <- paste0(source_notes, sprintf("\n\n'Other' in %s includes: %s", var_name, paste(other_map[[var_name]], collapse = ", ")))
                         } else {
                             # Other category was created but excluded due to extreme estimates
-                            other_caption <- paste0(other_caption, sprintf("\n\n'Other' in %s (excluded due to extreme estimates) included: %s", var_name, paste(other_map[[var_name]], collapse = ", ")))
+                            source_notes <- paste0(source_notes, sprintf("\n\n'Other' in %s (excluded due to extreme estimates) included: %s", var_name, paste(other_map[[var_name]], collapse = ", ")))
                         }
                     }
                 }
             }
             
-            if (other_caption == "" && has_other_categories_in_table) {
-                other_caption <- "\n\n'Other' category exists but no specific categories were documented as collapsed."
-            } else if (other_caption == "" && !has_other_categories_in_map) {
-                other_caption <- "\n\nNo rare categories were collapsed into 'Other'."
+            if (source_notes == "Sample Size format: Total (Plaque/GKSRS)" && has_other_categories_in_table) {
+                source_notes <- paste0(source_notes, "\n\n'Other' category exists but no specific categories were documented as collapsed.")
+            } else if (source_notes == "Sample Size format: Total (Plaque/GKSRS)" && !has_other_categories_in_map) {
+                source_notes <- paste0(source_notes, "\n\nNo rare categories were collapsed into 'Other'.")
             }
             
             html_table <- html_table %>%
                 tab_source_note(
-                    source_note = md(other_caption)
+                    source_note = md(source_notes)
                 )
             html_path <- gsub("\\.xlsx$", ".html", output_path)
+            log_enhanced(sprintf("Saving HTML file to: %s", html_path), level = "INFO")
             save_gt_html(html_table, filename = html_path)
             log_enhanced(sprintf("Styled HTML subgroup analysis table saved to: %s", html_path), level = "INFO")
         }, error = function(e) {
+            log_enhanced(sprintf("ERROR saving HTML table for %s: %s", outcome_name, e$message), level = "ERROR")
             warning(sprintf("Failed to save HTML table for %s: %s", outcome_name, e$message))
         })
     }

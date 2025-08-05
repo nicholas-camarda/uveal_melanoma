@@ -725,7 +725,7 @@ create_binned_continuous_variables <- function(data) {
             ),
             
             # Tumor height - T-stage clinical bins or legacy median-based
-            initial_tumor_height_binned = if (USE_T_STAGE_CUTOFFS) {
+            initial_tumor_height_binned = if (USE_CLINICAL_BINNING_CONTINUOUS) {
                 # T-stage evidence-based binning
                 factor(
                     case_when(
@@ -760,7 +760,7 @@ create_binned_continuous_variables <- function(data) {
             },
             
             # Tumor diameter - T-stage clinical bins or legacy median-based
-            initial_tumor_diameter_binned = if (USE_T_STAGE_CUTOFFS) {
+            initial_tumor_diameter_binned = if (USE_CLINICAL_BINNING_CONTINUOUS) {
                 # T-stage evidence-based binning
                 factor(
                     case_when(

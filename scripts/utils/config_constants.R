@@ -145,6 +145,14 @@ subgroup_vars <- c(
 # Define which subgroup variables are continuous and need binning
 continuous_subgroup_vars <- c("age_at_diagnosis", "initial_tumor_height", "initial_tumor_diameter")
 
+# Define variables that are constant within specific cohorts and should be excluded from subgroup analysis
+# These variables have no variation within the specified cohort and cannot be used for subgroup analysis
+COHORT_CONSTANT_VARIABLES <- list(
+    uveal_melanoma_restricted_cohort = c("optic_nerve"),  # All restricted patients have optic_nerve == "N"
+    uveal_melanoma_gksrs_only_cohort = c(),  # No constant variables in GKSRS-only cohort
+    uveal_melanoma_full_cohort = c()  # No constant variables in full cohort
+)
+
 # =============================================================================
 # STAGE AND COHORT CONFIGURATION
 # =============================================================================

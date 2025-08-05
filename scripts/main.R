@@ -199,7 +199,8 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
             subgroup_var = subgroup_var,
             percentile_cut = 0.5,  # Use median split
             confounders = confounders,  # Pass confounders (will auto-exclude subgroup var)
-            include_baseline_height = FALSE  # PRIMARY: no baseline height adjustment
+            include_baseline_height = FALSE,  # PRIMARY: no baseline height adjustment
+            dataset_name = dataset_name  # Pass dataset name for other_map loading
         )
         
         # Store results
@@ -242,7 +243,8 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
             subgroup_var = subgroup_var,
             percentile_cut = 0.5,  # Use median split
             confounders = confounders,  # Pass confounders (will auto-exclude subgroup var)
-            include_baseline_height = TRUE  # SENSITIVITY: include baseline height adjustment
+            include_baseline_height = TRUE,  # SENSITIVITY: include baseline height adjustment
+            dataset_name = dataset_name  # Pass dataset name for other_map loading
         )
         
         # Store results
@@ -311,8 +313,12 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         other_map = primary_other_maps # Pass the collected other_maps for diagnostics
     )
     
-    # Collect diagnostics
-    diagnostics_list[["tumor_height_primary"]] <- get_forest_plot_diagnostics(primary_height_forest_plot)
+    # Collect diagnostics using dedicated function with raw data
+    diagnostics_list[["tumor_height_primary"]] <- create_forest_plot_diagnostics(
+        subgroup_results = primary_subgroup_results,
+        other_map = primary_other_maps,
+        effect_measure = "MD"
+    )
     
     # Save the PRIMARY forest plot
     png(file.path(output_dirs$obj1_forest_plots, paste0(prefix, "tumor_height_primary_subgroup_forest_plot.png")), 
@@ -334,8 +340,12 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         other_map = sensitivity_other_maps # Pass the collected other_maps for diagnostics
     )
     
-    # Collect diagnostics
-    diagnostics_list[["tumor_height_sensitivity"]] <- get_forest_plot_diagnostics(sensitivity_height_forest_plot)
+    # Collect diagnostics using dedicated function with raw data
+    diagnostics_list[["tumor_height_sensitivity"]] <- create_forest_plot_diagnostics(
+        subgroup_results = sensitivity_subgroup_results,
+        other_map = sensitivity_other_maps,
+        effect_measure = "MD"
+    )
     
     # Save the SENSITIVITY forest plot
     png(file.path(output_dirs$obj1_forest_plots, paste0(prefix, "tumor_height_sensitivity_subgroup_forest_plot.png")), 
@@ -369,6 +379,8 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
             tab_name <- substr(tab_name, 1, 31)
             primary_diagnostics_list[[tab_name]] <- result$subgroup_effects
         }
+        
+
     }
     consolidated_primary_path <- file.path(output_dirs$obj1_subgroup_primary, paste0(prefix, "primary_tumor_height_diagnostics.xlsx"))
     writexl::write_xlsx(primary_diagnostics_list, consolidated_primary_path)
@@ -392,6 +404,8 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
             tab_name <- substr(tab_name, 1, 31)
             sensitivity_diagnostics_list[[tab_name]] <- result$subgroup_effects
         }
+        
+
     }
     consolidated_sensitivity_path <- file.path(output_dirs$obj1_subgroup_sensitivity, paste0(prefix, "sensitivity_tumor_height_diagnostics.xlsx"))
     writexl::write_xlsx(sensitivity_diagnostics_list, consolidated_sensitivity_path)
@@ -417,7 +431,8 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         outcome_var = "recurrence1",
         subgroup_vars = subgroup_vars,
         confounders = confounders,
-        outcome_name = "Local Recurrence"
+        outcome_name = "Local Recurrence",
+        dataset_name = dataset_name
     )
     recurrence_subgroup_results <- recurrence_subgroup_analysis$subgroup_results
     recurrence_other_map <- recurrence_subgroup_analysis$other_map
@@ -457,7 +472,8 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         outcome_var = "mets_progression",
         subgroup_vars = subgroup_vars,
         confounders = confounders,
-        outcome_name = "Metastatic Progression"
+        outcome_name = "Metastatic Progression",
+        dataset_name = dataset_name
     )
     mets_subgroup_results <- mets_subgroup_analysis$subgroup_results
     mets_other_map <- mets_subgroup_analysis$other_map
@@ -498,7 +514,8 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         event_var = "death_event",
         subgroup_vars = subgroup_vars,
         confounders = confounders,
-        outcome_name = "Overall Survival"
+        outcome_name = "Overall Survival",
+        dataset_name = dataset_name
     )
     os_subgroup_results <- os_subgroup_analysis$subgroup_results
     os_other_map <- os_subgroup_analysis$other_map
@@ -539,7 +556,8 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         event_var = "pfs_event",
         subgroup_vars = subgroup_vars,
         confounders = confounders,
-        outcome_name = "Progression-Free Survival"
+        outcome_name = "Progression-Free Survival",
+        dataset_name = dataset_name
     )
     pfs_subgroup_results <- pfs_subgroup_analysis$subgroup_results
     pfs_other_map <- pfs_subgroup_analysis$other_map
@@ -571,6 +589,37 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     plot(pfs_forest_plot)
     dev.off()
     log_enhanced("Progression-free survival subgroup analysis completed", level = "INFO", indent = 1)
+    
+    # FOREST PLOT DIAGNOSTICS COLLECTION
+    # Initialize forest plot diagnostics collector
+    diagnostics_list <- list()
+    
+    # Collect diagnostics using dedicated function with raw data
+    diagnostics_list[["local_recurrence"]] <- create_forest_plot_diagnostics(
+        subgroup_results = recurrence_subgroup_results,
+        other_map = recurrence_other_map,
+        effect_measure = "OR"
+    )
+    diagnostics_list[["metastatic_progression"]] <- create_forest_plot_diagnostics(
+        subgroup_results = mets_subgroup_results,
+        other_map = mets_other_map,
+        effect_measure = "OR"
+    )
+    diagnostics_list[["overall_survival"]] <- create_forest_plot_diagnostics(
+        subgroup_results = os_subgroup_results,
+        other_map = os_other_map,
+        effect_measure = "HR"
+    )
+    diagnostics_list[["progression_free_survival"]] <- create_forest_plot_diagnostics(
+        subgroup_results = pfs_subgroup_results,
+        other_map = pfs_other_map,
+        effect_measure = "HR"
+    )
+    
+    # Save forest plot diagnostics (following tumor height pattern)
+    consolidated_forest_path <- file.path(output_dirs$obj1_forest_plots, paste0(prefix, "forest_plot_diagnostics.xlsx"))
+    writexl::write_xlsx(diagnostics_list, consolidated_forest_path)
+    log_enhanced(sprintf("Forest plot diagnostics written to %s with %d tabs", consolidated_forest_path, length(diagnostics_list)), level = "INFO", indent = 1)
     
     # Save primary outcomes subgroup results
     primary_outcomes_subgroup_results <- list(
@@ -855,10 +904,14 @@ run_specific_objective <- function(dataset_name, objective_number) {
 # Run full analysis (all objectives, all datasets)
 # main_execution()
 
-# Run specific objective for specific dataset and objective number, 
+# Run specific objective for specific dataset and objective number,
 # e.g. 1 for primary outcomes, 2 for safety/toxicity, 3 for repeat radiation efficacy, 4 for GEP validation
-# For testing, only run Objective 1 (primary outcomes)
+# Run full analysis for all cohorts to ensure tumor height HTML unification works across all cohorts
+
+# DEBUG: We are running specific objectives for all cohorts to debug each objective in isolation
 run_specific_objective("uveal_melanoma_full_cohort", 1)
+run_specific_objective("uveal_melanoma_restricted_cohort", 1)
+run_specific_objective("uveal_melanoma_gksrs_only_cohort", 1)
 
 # Close logging if enabled
 if (USE_LOGS) {

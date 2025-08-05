@@ -12,8 +12,8 @@ RECREATE_ANALYTIC_DATASETS <- TRUE
 # Set to FALSE to suppress detailed logging in analysis functions
 VERBOSE <- TRUE
 
-# Toggle between evidence-based T-stage cutoffs and legacy median-based cutoffs
-USE_T_STAGE_CUTOFFS <- FALSE  # DEFAULT: Use legacy median-based cutoffs (safer, more conservative)
+# Toggle between clinical binning for continuous variables and legacy median-based cutoffs
+USE_CLINICAL_BINNING_CONTINUOUS <- TRUE  # DEFAULT: Use clinical thresholds for tumor height (10mm) and diameter (20mm)
 
 ######################################################################
 ############### LOAD / INSTALL REQUIRED LIBRARIES ####################
@@ -119,6 +119,9 @@ source("scripts/analysis/gep_validation_analysis.R")
 
 # Source the forest plot script
 source("scripts/visualization/forest_plot.R")
+
+# Source the forest plot diagnostics script
+source("scripts/utils/forest_plot_diagnostics.R")
 
 ######################################################################
 ############### CREATE NECESSARY DIRECTORIES ##########################
