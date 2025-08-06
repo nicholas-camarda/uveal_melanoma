@@ -2,7 +2,18 @@
 ############### MAIN EXECUTION FUNCTIONS ###############
 ########################################################
 
-# Run analysis for each dataset
+#' Run analysis for a single dataset and selected objectives
+#'
+#' This function orchestrates the statistical analysis for a given dataset.
+#' It checks for required dependencies, sets up output directories, loads the analytic dataset,
+#' and runs the specified analysis objectives (0: Data Processing, 1: Primary Outcomes,
+#' 2: Safety/Toxicity, 3: Repeat Radiation Efficacy, 4: GEP Validation).
+#'
+#' @param dataset_name Character. The name of the dataset to analyze (e.g., "uveal_melanoma_full_cohort").
+#' @param objectives_to_run Integer vector. Objectives to run (default: c(0, 1, 2, 3, 4)).
+#'
+#' @return A named list containing the results of each objective that was run.
+#' @export
 run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) {
     analysis_start_time <- Sys.time()
 
@@ -87,69 +98,6 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
     return(results)
 }
 
-#' Main execution
-#' This function orchestrates the analysis for all datasets.
-#' It runs the analysis for each dataset and merges the baseline tables from all cohorts.
-#'
-#' @return None
-#' @export
-main_execution <- function() {
-    main_start_time <- Sys.time()
-    log_section_start("MAIN EXECUTION PHASE")
-
-    # Define datasets to analyze
-    # this should be generated from the list_available_datasets function and named appropriately so that run_my_analysis can be called with the correct dataset name
-    datasets_to_analyze_temp <- tools::file_path_sans_ext(list_available_datasets())
-    datasets_to_analyze <- datasets_to_analyze_temp[!str_detect(datasets_to_analyze_temp, "other_map")]
-
-    # Run analysis for each dataset
-    for (i in seq_along(datasets_to_analyze)) {
-        dataset_name <- datasets_to_analyze[i]
-        log_enhanced(sprintf(">>> Dataset %d/%d: %s", i, length(datasets_to_analyze), dataset_name), level = "PROGRESS")
-
-        tryCatch(
-            {
-                results <- run_my_analysis(dataset_name)
-                log_enhanced(sprintf(">>> Dataset %d/%d completed: %s", i, length(datasets_to_analyze), dataset_name), level = "PROGRESS")
-            },
-            error = function(e) {
-                log_enhanced(sprintf("ERROR in dataset %s: %s", dataset_name, e$message), level = "ERROR")
-            }
-        )
-    }
-
-    # Merge baseline tables from all cohorts
-    log_enhanced("Merging baseline tables from all cohorts", level = "INFO")
-    log_enhanced("=== STARTING TABLE MERGING: Full and Restricted Cohorts ===", level = "INFO")
-
-    # Create merged tables directory
-    merged_dir <- MERGED_TABLES_DIR
-    if (!dir.exists(MERGED_TABLES_DIR)) {
-        dir.create(MERGED_TABLES_DIR, recursive = TRUE, showWarnings = FALSE)
-    }
-
-    log_enhanced(sprintf("Merging tables will be saved to: %s", merged_dir), level = "INFO")
-
-    # Load both datasets for merging
-    full_data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
-    restricted_data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_restricted_cohort.rds"))
-
-    # Create merged baseline characteristics table using the correct function
-    merge_cohort_tables(full_data, restricted_data, merged_dir)
-    log_enhanced("=== COMPLETED TABLE MERGING ===", level = "INFO")
-    log_enhanced(sprintf("Merged baseline characteristics table saved to: %s", merged_dir), level = "INFO")
-    log_enhanced("Files created: merged_baseline_characteristics.xlsx and merged_baseline_characteristics.html", level = "INFO")
-
-    log_enhanced("===  ===", level = "INFO")
-    log_enhanced(">>> ALL ANALYSES COMPLETED SUCCESSFULLY!", level = "SUCCESS")
-    log_enhanced(sprintf(">>> Total execution time: %.1f minutes", as.numeric(difftime(Sys.time(), main_start_time, units = "mins"))), level = "SUCCESS")
-    log_enhanced(sprintf(">>> Datasets analyzed: %d", length(datasets_to_analyze)), level = "SUCCESS")
-    log_enhanced("Check the logs above for detailed progress and any warnings.", level = "INFO")
-    log_enhanced("Each cohort has its own complete set of analyses for easy comparison!", level = "INFO")
-
-    log_section_complete("MAIN EXECUTION PHASE", main_start_time)
-}
-
 #' Run a Specific Objective for a Given Dataset
 #'
 #' This function executes a single specified objective for a given dataset.
@@ -181,3 +129,76 @@ run_specific_objective <- function(dataset_name, objective_number) {
     results <- run_my_analysis(dataset_name, objectives_to_run = objective_number)
     return(results)
 }
+
+#' Merge baseline tables from all cohorts
+#' This function merges the baseline tables from all cohorts.
+#'
+#' @return None
+#' @export
+merge_baseline_tables <- function() {
+    # Merge baseline tables from all cohorts
+    log_enhanced("Merging baseline tables from all cohorts", level = "INFO")
+    log_enhanced("=== STARTING TABLE MERGING: Full and Restricted Cohorts ===", level = "INFO")
+
+    # Create merged tables directory
+    if (!dir.exists(MERGED_TABLES_DIR)) {
+        dir.create(MERGED_TABLES_DIR, recursive = TRUE, showWarnings = FALSE)
+    }
+
+    log_enhanced(sprintf("Merging tables will be saved to: %s", MERGED_TABLES_DIR), level = "INFO")
+
+    # Load both datasets for merging
+    full_data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
+    restricted_data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_restricted_cohort.rds"))
+
+    # Create merged baseline characteristics table using the correct function
+    merge_cohort_tables(full_data, restricted_data, MERGED_TABLES_DIR)
+    log_enhanced("=== COMPLETED TABLE MERGING ===", level = "INFO")
+    log_enhanced(sprintf("Merged baseline characteristics table saved to: %s", MERGED_TABLES_DIR), level = "INFO")
+    log_enhanced("Files created: merged_baseline_characteristics.xlsx and merged_baseline_characteristics.html", level = "INFO")
+}
+
+#' Main execution and merging of baseline tables
+#' This function orchestrates the analysis for all datasets and all objectives
+#' It runs the analysis for each dataset and merges the baseline tables from all cohorts.
+#'
+#' @return None
+#' @export
+main_execution <- function() {
+    main_start_time <- Sys.time()
+    log_section_start("MAIN EXECUTION PHASE")
+
+    # Define datasets to analyze
+    # this should be generated from the list_available_datasets function and named appropriately so that run_my_analysis can be called with the correct dataset name
+    datasets_to_analyze_temp <- tools::file_path_sans_ext(list_available_datasets())
+    datasets_to_analyze <- datasets_to_analyze_temp[!str_detect(datasets_to_analyze_temp, "other_map")]
+
+    # Run analysis for each dataset
+    for (i in seq_along(datasets_to_analyze)) {
+        dataset_name <- datasets_to_analyze[i]
+        log_enhanced(sprintf(">>> Dataset %d/%d: %s", i, length(datasets_to_analyze), dataset_name), level = "PROGRESS")
+
+        tryCatch(
+            {
+                results <- run_my_analysis(dataset_name)
+                log_enhanced(sprintf(">>> Dataset %d/%d completed: %s", i, length(datasets_to_analyze), dataset_name), level = "PROGRESS")
+            },
+            error = function(e) {
+                log_enhanced(sprintf("ERROR in dataset %s: %s", dataset_name, e$message), level = "ERROR")
+            }
+        )
+    }
+
+    # Merge baseline tables from all cohorts
+    merge_baseline_tables()
+
+    log_enhanced("===  ===", level = "INFO")
+    log_enhanced(">>> ALL ANALYSES COMPLETED SUCCESSFULLY!", level = "SUCCESS")
+    log_enhanced(sprintf(">>> Total execution time: %.1f minutes", as.numeric(difftime(Sys.time(), main_start_time, units = "mins"))), level = "SUCCESS")
+    log_enhanced(sprintf(">>> Datasets analyzed: %d", length(datasets_to_analyze)), level = "SUCCESS")
+    log_enhanced("Check the logs above for detailed progress and any warnings.", level = "INFO")
+    log_enhanced("Each cohort has its own complete set of analyses for easy comparison!", level = "INFO")
+
+    log_section_complete("MAIN EXECUTION PHASE", main_start_time)
+}
+

@@ -10,12 +10,25 @@ This project provides a complete pipeline for processing, cleaning, and analyzin
 
 ## Quick Start
 
-1. Clone the repository and install the required R packages (see `scripts/utils/analysis_config.R` for package list). We recommend `renv` or `pak` for reproducible environments.
-2. Open an R session in the project root and run:
+1. Clone the repository and install the required R packages (see `scripts/utils/all_helper_functions.R` for package list).
+2. Review `all_helper_functions.R` to set important constants at runtime.
+3. (Optional) Review `scripts/utils/config_constants.R` for more detailed constants used throughout the analysis.
+4. Open an R session in the project root and run:
 
 ```r
-source("scripts/main.R")          # full end-to-end pipeline
-# or, for a single cohort/time-saving run
+# Load all helper functions
+source("scripts/utils/all_helper_functions.R")    
+
+# Run analysis for all cohorts and all objectives
+main_execution()
+
+# Or run specific objectives for targeted analysis
+run_specific_objective("uveal_melanoma_full_cohort", 1)  # Primary outcomes only
+run_specific_objective("uveal_melanoma_full_cohort", 2)  # Safety/toxicity only
+run_specific_objective("uveal_melanoma_full_cohort", 3)  # Repeat radiation only
+run_specific_objective("uveal_melanoma_full_cohort", 4)  # GEP validation only
+
+# Or run a single cohort analysis
 run_my_analysis("uveal_melanoma_full_cohort")
 ```
 
@@ -77,21 +90,44 @@ flowchart TD
     J --> L
     K --> L
     
-    L --> M["run_my_analysis() for each cohort"]
+    L --> M["Workflow Orchestration<br/>run_my_analysis() or run_specific_objective()"]
     M --> N["Load RDS data"]
     N --> O["Create output directories<br/>by cohort and objective"]
-    O --> P["Statistical Analysis Functions"]
+    O --> P["Objective-Specific Analysis Functions"]
     
-    P --> Q["Objective 1: Efficacy"]
-    P --> R["Objective 2: Safety"]
-    P --> S["Objective 3: Repeat Radiation"]
-    P --> T["Objective 4: GEP Validation"]
+    P --> Q["Objective 1: Efficacy<br/>scripts/workflow/objective_1_primary_outcomes.R"]
+    P --> R["Objective 2: Safety<br/>scripts/workflow/objective_2_safety_toxicity.R"]
+    P --> S["Objective 3: Repeat Radiation<br/>scripts/workflow/objective_3_repeat_radiation.R"]
+    P --> T["Objective 4: GEP Validation<br/>scripts/workflow/objective_4_gep_analysis.R"]
     
     Q --> U["Forest Plots & Tables"]
     R --> U
     S --> U
     T --> U
 ```
+
+## Workflow Orchestration System
+
+The analysis now uses a modular workflow system that allows for targeted execution:
+
+### **Main Functions**
+- **`main_execution()`**: Runs complete analysis for all cohorts and objectives
+- **`run_my_analysis(dataset_name)`**: Runs all objectives for a specific cohort
+- **`run_specific_objective(dataset_name, objective_number)`**: Runs a single objective for a specific cohort
+
+### **Objective-Specific Scripts**
+Each objective has its own dedicated workflow script:
+- **`objective_0_data_processing.R`**: Data cleaning and validation
+- **`objective_1_primary_outcomes.R`**: Efficacy analysis (survival, tumor height, subgroup analysis)
+- **`objective_2_safety_toxicity.R`**: Safety and toxicity endpoints
+- **`objective_3_repeat_radiation.R`**: PFS-2 analysis
+- **`objective_4_gep_analysis.R`**: GEP validation analysis
+
+### **Benefits of New Workflow**
+- **Incremental Analysis**: Run specific objectives without re-running entire pipeline
+- **Error Isolation**: Issues in one objective don't affect others
+- **Development Efficiency**: Test individual objectives during development
+- **Resource Management**: Run memory-intensive analyses separately
 
 ---
 
@@ -126,6 +162,7 @@ project_working_directory/
 │   ├── Analytic Dataset/                    # Processed datasets (RDS, Excel)
 │   └── Analysis/                            # NEW STRUCTURE
 │       ├── uveal_full/                      # Full cohort results
+│       │   ├── 00_General/                  # General analysis outputs
 │       │   ├── 01_Efficacy/                 # OBJECTIVE 1
 │       │   │   ├── a_recurrence/
 │       │   │   ├── b_metastatic_progression/
@@ -136,7 +173,6 @@ project_working_directory/
 │       │   │   ├── g_subgroup_analysis/     # CONSOLIDATED
 │       │   │   │   ├── tumor_height_primary/
 │       │   │   │   ├── tumor_height_sensitivity/
-│       │   │   │   ├── clinical_outcomes/   # Subgroup analysis for all primary outcomes
 │       │   │   │   └── forest_plots/        # FOREST PLOTS
 │       │   │   └── h_proportional_hazards_diagnostics/  # PH ASSUMPTION TESTING
 │       │   ├── 02_Safety/                   # OBJECTIVE 2  
@@ -154,19 +190,37 @@ project_working_directory/
 │       └── gksrs/                          # Same structure for GKSRS-only cohort
 ├── logs/                                   # Analysis logs
 ├── scripts/
-│   ├── main.R                              # UPDATED: Main analysis pipeline
+│   ├── main.R                              # UPDATED: Main analysis pipeline with objective-specific execution
 │   ├── data_helper/
 │   │   └── data_processing.R               # Data cleaning and cohort creation
 │   ├── analysis/
 │   │   ├── statistical_analysis.R         # Core statistical functions
 │   │   ├── tumor_height_analysis.R        # Tumor dimension analysis
 │   │   ├── vision_safety_analysis.R       # Safety endpoint analysis
-│   │   └── subgroup_analysis.R             # CONSOLIDATED: All subgroup analyses
+│   │   ├── subgroup_analysis.R             # CONSOLIDATED: All subgroup analyses
+│   │   ├── gep_validation_analysis.R       # GEP validation analysis
+│   │   ├── gep_validation_core.R           # GEP validation core functions
+│   │   └── gep_validation_helpers.R        # GEP validation helper functions
 │   ├── visualization/
-│   │   └── forest_plot.R                   # NEW: Forest plot generation
+│   │   └── forest_plot.R                   # Forest plot generation
 │   ├── utils/
-│   │   ├── output_utilities.R              # UPDATED: New directory structure
-│   │   └── analysis_config.R               # Analysis settings and configurations
+│   │   ├── all_helper_functions.R          # CENTRALIZED: All libraries and helper functions
+│   │   ├── config_constants.R              # CENTRALIZED: All analysis configuration constants
+│   │   ├── output_utilities.R              # Output directory and file management
+│   │   ├── table_generation.R              # Table generation utilities
+│   │   ├── validation_utilities.R          # Data validation functions
+│   │   ├── model_utilities.R               # Model utility functions
+│   │   ├── extreme_estimate_handling.R     # Extreme estimate handling
+│   │   ├── forest_plot_diagnostics.R       # Forest plot diagnostics
+│   │   ├── gep_validation_utilities.R      # GEP validation utilities
+│   │   └── logging_utilities.R             # Logging system
+│   ├── workflow/                           # NEW: Objective-specific workflow scripts
+│   │   ├── analysis_orchestration.R        # Main orchestration functions
+│   │   ├── objective_0_data_processing.R   # Data processing workflow
+│   │   ├── objective_1_primary_outcomes.R  # Primary outcomes workflow
+│   │   ├── objective_2_safety_toxicity.R   # Safety/toxicity workflow
+│   │   ├── objective_3_repeat_radiation.R  # Repeat radiation workflow
+│   │   └── objective_4_gep_analysis.R      # GEP validation workflow
 │   └── tests/                              # Unit tests and validation
 └── README.md                               # This file
 ```
@@ -177,41 +231,41 @@ project_working_directory/
 
 ### **OBJECTIVE 1: Efficacy Analysis (COMPLETE)**
 
-All primary efficacy analyses have been implemented with comprehensive outputs:
+All primary efficacy analyses have been implemented with comprehensive outputs through the new workflow system:
 
 #### **1a. Local Recurrence**
 - **Method:** Time-to-event analysis with Cox regression
-- **Implementation:** `analyze_binary_outcome_rates()` function
+- **Implementation:** `analyze_binary_outcome_rates()` function in `scripts/workflow/objective_1_primary_outcomes.R`
 - **Outputs:** Event rates (.xlsx), Cox models (.html), survival curves (.png)
 - **Location:** `{cohort}/01_Efficacy/a_recurrence/`
 
 #### **1b. Metastatic Progression** 
 - **Method:** Time-to-event analysis with Cox regression
-- **Implementation:** `analyze_binary_outcome_rates()` function  
+- **Implementation:** `analyze_binary_outcome_rates()` function in `scripts/workflow/objective_1_primary_outcomes.R`
 - **Outputs:** Event rates (.xlsx), Cox models (.html), survival curves (.png)
 - **Location:** `{cohort}/01_Efficacy/b_metastatic_progression/`
 
 #### **1c. Overall Survival**
 - **Method:** Kaplan-Meier + Cox regression + RMST analysis
-- **Implementation:** `analyze_time_to_event_outcomes()` function
+- **Implementation:** `analyze_time_to_event_outcomes()` function in `scripts/workflow/objective_1_primary_outcomes.R`
 - **Outputs:** Survival tables (.xlsx), Cox models (.html), survival curves (.png), RMST progression plots (.png)
 - **Location:** `{cohort}/01_Efficacy/c_overall_survival/`
 
 #### **1d. Progression-Free Survival**
 - **Method:** Composite endpoint (progression OR death) with full survival analysis
-- **Implementation:** `analyze_time_to_event_outcomes()` function
+- **Implementation:** `analyze_time_to_event_outcomes()` function in `scripts/workflow/objective_1_primary_outcomes.R`
 - **Outputs:** Survival tables (.xlsx), Cox models (.html), survival curves (.png), RMST progression plots (.png)
 - **Location:** `{cohort}/01_Efficacy/d_progression_free_survival/`
 
 #### **1e. Tumor Height Changes (Primary)**
 - **Method:** Linear regression without baseline height adjustment (avoids overadjustment bias)
-- **Implementation:** `analyze_tumor_height_changes()` function
+- **Implementation:** `analyze_tumor_height_changes()` function in `scripts/workflow/objective_1_primary_outcomes.R`
 - **Outputs:** Change summaries (.html), regression models (.html)
 - **Location:** `{cohort}/01_Efficacy/e_tumor_height_primary/`
 
 #### **1f. Tumor Height Changes (Sensitivity)**
 - **Method:** Linear regression with baseline height adjustment (robustness check)
-- **Implementation:** `analyze_tumor_height_changes()` function  
+- **Implementation:** `analyze_tumor_height_changes()` function in `scripts/workflow/objective_1_primary_outcomes.R`
 - **Outputs:** Change summaries (.html), regression models (.html)
 - **Location:** `{cohort}/01_Efficacy/f_tumor_height_sensitivity/`
 
@@ -226,34 +280,33 @@ All primary efficacy analyses have been implemented with comprehensive outputs:
 - **Outputs:** 
   - **Primary tumor height subgroups:** `{cohort}/01_Efficacy/g_subgroup_analysis/tumor_height_primary/`
   - **Sensitivity tumor height subgroups:** `{cohort}/01_Efficacy/g_subgroup_analysis/tumor_height_sensitivity/`
-  - **Clinical outcomes subgroups:** `{cohort}/01_Efficacy/g_subgroup_analysis/clinical_outcomes/`
   - **Forest plots:** `{cohort}/01_Efficacy/g_subgroup_analysis/forest_plots/`
 
 ### **OBJECTIVE 2: Safety/Toxicity Analysis (COMPLETE)**
 
-All safety endpoint analyses have been implemented:
+All safety endpoint analyses have been implemented through the new workflow system:
 
 #### **2a. Vision Changes**
 - **Method:** Linear regression analysis of visual acuity changes
-- **Implementation:** `analyze_visual_acuity_changes()` function
+- **Implementation:** `analyze_visual_acuity_changes()` function in `scripts/workflow/objective_2_safety_toxicity.R`
 - **Outputs:** Vision change summaries (.html), regression models (.html)  
 - **Location:** `{cohort}/02_Safety/a_vision_changes/`
 
 #### **2b. Radiation Retinopathy**
 - **Method:** Binary outcome analysis with logistic regression
-- **Implementation:** `analyze_radiation_complications()` function
+- **Implementation:** `analyze_radiation_complications()` function in `scripts/workflow/objective_2_safety_toxicity.R`
 - **Outputs:** Complication rates (.xlsx), logistic regression models (.html)
 - **Location:** `{cohort}/02_Safety/b_retinopathy/`
 
 #### **2c. Neovascular Glaucoma**
 - **Method:** Binary outcome analysis with logistic regression  
-- **Implementation:** `analyze_radiation_complications()` function
+- **Implementation:** `analyze_radiation_complications()` function in `scripts/workflow/objective_2_safety_toxicity.R`
 - **Outputs:** Complication rates (.xlsx), logistic regression models (.html)
 - **Location:** `{cohort}/02_Safety/c_neovascular_glaucoma/`
 
 #### **2d. Serous Retinal Detachment**
 - **Method:** Binary outcome analysis (radiation-induced only) with logistic regression
-- **Implementation:** `analyze_radiation_complications()` function
+- **Implementation:** `analyze_radiation_complications()` function in `scripts/workflow/objective_2_safety_toxicity.R`
 - **Outputs:** Complication rates (.xlsx), logistic regression models (.html)
 - **Location:** `{cohort}/02_Safety/d_serous_retinal_detachment/`
 
@@ -261,7 +314,7 @@ All safety endpoint analyses have been implemented:
 
 #### **3a. Progression-Free Survival-2 (PFS-2)**
 - **Method:** Survival analysis for patients with local recurrence receiving second-line treatment
-- **Implementation:** `analyze_pfs2()` function
+- **Implementation:** `analyze_pfs2()` function in `scripts/workflow/objective_3_repeat_radiation.R`
 - **Outputs:** PFS-2 characteristics tables (.xlsx), survival curves (.png), Cox models (.html)
 - **Location:** `{cohort}/03_Repeat_Radiation/a_pfs2/`
 - **Note:** Analysis automatically skips survival modeling when insufficient events are present (minimum: 5 total events across 2+ treatment groups)
@@ -273,14 +326,14 @@ Gene expression profile validation analyses using survival model validation meth
 #### **4a. Metastasis-Free Survival Validation**
 - **Status:** Fully implemented (full validation suite)
 - **Method:** Multi-timepoint validation (5, 7, 10 years) with Nam-D'Agostino χ² calibration tests, Uno's C-index, cumulative ROC curves, decision curve analysis, and bootstrap validation
-- **Implementation:** `analyze_gep_mfs_validation()` function
+- **Implementation:** `analyze_gep_mfs_validation()` function in `scripts/workflow/objective_4_gep_analysis.R`
 - **Outputs:** Comprehensive validation reports (.xlsx), calibration plots (.png), discrimination metrics (.xlsx), decision curves (.png)
 - **Location:** `{cohort}/04_GEP_Validation/a_metastasis_free_survival/`
 
 #### **4b. Melanoma-Specific Survival Validation**  
 - **Status:** Fully implemented with dual competing-risk models
 - **Method:** Standard survival analysis plus Fine-Gray competing risk models with cumulative incidence functions
-- **Implementation:** `analyze_gep_mss_validation()` function  
+- **Implementation:** `analyze_gep_mss_validation()` function in `scripts/workflow/objective_4_gep_analysis.R`
 - **Outputs:** Standard and competing risk validation reports (.xlsx), cumulative incidence curves (.png), validation metrics (.xlsx)
 - **Location:** `{cohort}/04_GEP_Validation/b_melanoma_specific_survival/`
 
@@ -378,9 +431,30 @@ Unified subgroup analysis framework:
 ### **📊 Analysis Configuration**
 Set analysis settings globally to improve reproducibility:
 
-- **File:** `scripts/utils/analysis_config.R`
-- **Features:** Centralized configuration, consistent variable definitions, confounder specifications
+- **File:** `scripts/utils/config_constants.R`
+- **Features:** Centralized configuration, consistent variable definitions, confounder specifications, treatment factor levels, plot dimensions, GEP validation settings
 - **Benefits:** Easy modification of analysis parameters, consistent methodology across objectives
+
+### **🔧 Centralized Helper Functions**
+All libraries and utilities loaded through a single source:
+
+- **File:** `scripts/utils/all_helper_functions.R`
+- **Features:** Automatic library loading, centralized script sourcing, directory creation, validation functions
+- **Benefits:** Consistent environment setup, reduced redundancy, centralized error handling
+
+### **🔄 Workflow Orchestration**
+New objective-specific workflow system for targeted analysis:
+
+- **Main Orchestration:** `scripts/workflow/analysis_orchestration.R` with `run_my_analysis()` and `run_specific_objective()` functions
+- **Objective Scripts:** Individual workflow scripts for each objective (0-4) in `scripts/workflow/`
+- **Benefits:** Run specific objectives independently, better error handling, incremental analysis capability
+
+### **📋 Enhanced Logging System**
+Comprehensive logging and monitoring:
+
+- **File:** `scripts/utils/logging_utilities.R`
+- **Features:** Timestamped logs, progress tracking, error reporting, log file management
+- **Benefits:** Better debugging, progress monitoring, audit trail for analysis runs
 
 ---
 
@@ -531,24 +605,35 @@ The cause-specific HR is typically larger because it conditions on survival, whi
 ### **Required R Packages**
 ```r
 # Core data manipulation and analysis
-tidyverse, readxl, writexl, lubridate, janitor
+tidyverse, readxl, writexl, lubridate, janitor, openxlsx
 
 # Statistical analysis and tables  
-gtsummary, survival, survminer, survRM2, gt
+gtsummary, survival, survminer, survRM2, gt, broom.helpers, parameters, cardx
 
 # Visualization and plots
 forestploter, grid, cowplot, ggplot2
 
+# Advanced GEP validation (Objective 4)
+rms, pec, survcomp, riskRegression, cmprsk, pROC, rmda, VIM, mice
+
 # Testing and documentation
-testthat
+testthat, usethis
 ```
 
 ### **Installation**
+Running `scripts/utils/all_helper_functions.R` in an R session should install the required packages automatically, but if you want to install them yourself first, run: 
 ```r
 install.packages(c(
-  "tidyverse", "readxl", "writexl", "lubridate", "gtsummary", "janitor",
-  "gt", "survival", "survminer", "survRM2", "forestploter", "grid", "cowplot", "testthat"
+  "tidyverse", "readxl", "writexl", "lubridate", "gtsummary", "janitor", "openxlsx",
+  "gt", "survival", "survminer", "survRM2", "forestploter", "grid", "cowplot", 
+  "broom.helpers", "parameters", "cardx", "testthat", "usethis"
 ))
+
+# Install Bioconductor packages for GEP validation
+if (!requireNamespace("BiocManager", quietly = TRUE)) {
+  install.packages("BiocManager")
+}
+BiocManager::install(c("survcomp", "VIM"))
 ```
 
 ---
@@ -556,13 +641,13 @@ install.packages(c(
 ## Usage
 
 ### **1. 📁 Prepare Data**
-Place your raw Excel data file in the `data/` directory.
+Place your raw Excel data file in the `final_data/Original Files/` directory.
 
 ### **2. ⚙️ Configure Analysis**
-Edit `scripts/main.R` to set:
+Edit `scripts/utils/config_constants.R` to set:
 ```r
 # Input filename
-fn <- "Ocular Melanoma Master Spreadsheet REVISED FOR STATS (5-10-25, TJM).xlsx"
+INPUT_FILENAME <- "Ocular Melanoma Master Spreadsheet REVISED FOR STATS (5-10-25, TJM).xlsx"
 
 # Analysis settings
 RECREATE_ANALYTIC_DATASETS <- TRUE  # Set to TRUE for fresh analysis
@@ -570,25 +655,58 @@ USE_LOGS <- TRUE                    # Enable detailed logging
 VERBOSE <- TRUE                     # Show detailed progress
 ```
 
-### **3. 🚀 Run Complete Analysis**
+### **3. 🚀 Run Analysis**
+
+#### **Option A: Full Analysis (All Objectives, All Cohorts)**
 ```r
-# Run the full pipeline
+# Run the complete pipeline for all cohorts
+# Uncomment the main_execution() line in scripts/main.R, then run:
 source("scripts/main.R")
 ```
 
-This executes the complete analysis pipeline:
-- Data cleaning and validation
-- Cohort creation (full, restricted, GKSRS-only)  
-- All 4 study objectives with comprehensive outputs
-- Forest plots and subgroup analyses
-- Tables and visualizations
+#### **Option B: Single Cohort Analysis**
+```r
+# Run all objectives for a specific cohort
+run_my_analysis("uveal_melanoma_full_cohort")
+run_my_analysis("uveal_melanoma_restricted_cohort")
+run_my_analysis("uveal_melanoma_gksrs_only_cohort")
+```
 
-### **4. 🧪 Validation (Optional)**
+#### **Option C: Specific Objective Analysis**
+```r
+# Run individual objectives for targeted analysis
+run_specific_objective("uveal_melanoma_full_cohort", 0)  # Data processing only
+run_specific_objective("uveal_melanoma_full_cohort", 1)  # Primary outcomes only
+run_specific_objective("uveal_melanoma_full_cohort", 2)  # Safety/toxicity only
+run_specific_objective("uveal_melanoma_full_cohort", 3)  # Repeat radiation only
+run_specific_objective("uveal_melanoma_full_cohort", 4)  # GEP validation only
+```
+
+### **4. 📊 Analysis Execution**
+The pipeline executes:
+- **Objective 0:** Data cleaning and validation
+- **Objective 1:** Primary outcomes (efficacy analysis)
+- **Objective 2:** Safety and toxicity endpoints
+- **Objective 3:** Repeat radiation efficacy (PFS-2)
+- **Objective 4:** GEP predictive accuracy validation
+
+### **5. 🧪 Validation (Optional)**
 ```r
 # Run unit tests to validate pipeline
 library(testthat)
 source("scripts/tests/run_all_tests.R")
 ```
+
+### **6. 📋 Logging and Monitoring**
+- **Log Files:** Detailed logs saved to `logs/` directory with timestamps
+- **Progress Tracking:** Real-time progress updates during analysis
+- **Error Handling:** Comprehensive error reporting and recovery
+
+### **7. 🔧 Current Configuration**
+The current `scripts/main.R` is configured to run specific objectives for debugging:
+- **Currently Active:** Objectives 3 and 4 for the full cohort
+- **To Run Full Analysis:** Uncomment the `main_execution()` line
+- **To Run Specific Objectives:** Uncomment the desired `run_specific_objective()` lines
 
 
 
