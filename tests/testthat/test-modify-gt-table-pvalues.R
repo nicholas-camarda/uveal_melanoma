@@ -18,8 +18,8 @@ test_that("modify_gt_table_pvalues works for Cox models", {
   cat("  Table class:", class(table), "\n")
   cat("  Table structure:", str(table), "\n")
   
-  # Call with correct parameters: (gt_table, table_result, data, outcome_var, confounders, model_fit)
-  modified_table <- modify_gt_table_pvalues(table %>% as_gt(), table, data, 'death_event', c('age_at_diagnosis', 'sex'), cox_model)
+  # Call with correct parameters: (gt_table, table_result, data, outcome_var, confounders, model_fit, treatment_var)
+  modified_table <- modify_gt_table_pvalues(table %>% as_gt(), table, data, 'death_event', c('age_at_diagnosis', 'sex'), cox_model, treatment_var = "treatment_group")
   
   cat("DEBUG: After modify_gt_table_pvalues\n")
   cat("  Modified table class:", class(modified_table), "\n")

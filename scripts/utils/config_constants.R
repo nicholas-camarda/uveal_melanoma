@@ -54,7 +54,7 @@ TEST_OUTPUT_DIR <- "test_output"
 # CRITICAL: These thresholds control data quality and analysis decisions
 # - THRESHOLD_RARITY: Minimum observations to keep a category (prevents sparse data)
 # - EXTREME_ESTIMATE_THRESHOLD: Maximum allowed odds/hazard ratios (filters unreliable estimates)
-# - CI_WIDTH_THRESHOLD: Maximum confidence interval width (filters infinite CIs)
+# - CI_WIDTH_THRESHOLD: Maximum confidence interval width (filters extremely wide CIs)
 # - TUMOR_SIZE_THRESHOLDS: Clinical criteria for treatment eligibility
 
 # Input file and exclusion settings
@@ -64,9 +64,10 @@ SPECIFIC_PATIENTS_TO_EXCLUDE <- c(271) # Patient 271: all supporting documentati
 # Data quality thresholds
 THRESHOLD_RARITY <- 5                    # Minimum observations to keep a category
 EXTREME_ESTIMATE_THRESHOLD <- 100        # Maximum allowed odds/hazard ratios
-CI_WIDTH_THRESHOLD <- 10                 # Maximum confidence interval width
+CI_WIDTH_THRESHOLD <- 1000               # Maximum confidence interval width (raw difference) - DEPRECATED
+EXPONENTIATED_CI_THRESHOLD <- 100        # Maximum CI width for exponentiated values (ORs, HRs)
+LOG_SCALE_CI_THRESHOLD <- 10             # Maximum CI width for log scale values (log-odds, log-hazards)
 NEAR_PERFECT_SEPARATION_THRESHOLD <- 0.001  # Threshold for near-perfect separation detection
-EXTREMELY_WIDE_CI_THRESHOLD <- 1000      # Threshold for extremely wide CI detection
 
 # Tumor size thresholds for cohort eligibility
 TUMOR_HEIGHT_THRESHOLD <- 10             # mm

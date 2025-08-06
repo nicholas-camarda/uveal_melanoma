@@ -234,8 +234,9 @@ fit_regression_model <- function(data, formula, model_type, time_var = NULL, eve
 #' @param analysis_name Character string for analysis name
 #' @param dataset_name Character string for dataset name
 #' @param filtered_variables Character vector of variables that were filtered from the table
+#' @param treatment_var Character string for treatment variable (default: "treatment_group")
 #' @return List containing all diagnostic data frames
-create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predictor_vars, confounders, analysis_name, dataset_name, filtered_variables = NULL, other_map = list(), extreme_diagnostics = NULL) {
+create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predictor_vars, confounders, analysis_name, dataset_name, filtered_variables = NULL, other_map = list(), extreme_diagnostics = NULL, treatment_var = "treatment_group") {
     
     # Get model coefficients and summary
     coefs <- coef(model_fit)
@@ -308,6 +309,33 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
     )
     
     # 2. Model Diagnostics Tab
+    # Collect model warnings
+    model_warnings <- c()
+    
+    # Check for perfect separation warnings
+    if (!is.null(model_fit) && "glm" %in% class(model_fit)) {
+        if (!model_fit$converged) {
+            model_warnings <- c(model_warnings, "Model did not converge")
+        }
+    }
+    
+    # Check for extreme estimates
+    if (!is.null(extreme_diagnostics) && length(extreme_diagnostics) > 0) {
+        model_warnings <- c(model_warnings, "Extreme estimates detected")
+    }
+    
+    # Check for filtered variables
+    if (!is.null(filtered_variables) && length(filtered_variables) > 0) {
+        model_warnings <- c(model_warnings, "Variables were filtered due to extreme estimates")
+    }
+    
+    # Combine warnings into a single string
+    model_warnings_text <- if (length(model_warnings) > 0) {
+        paste(model_warnings, collapse = "; ")
+    } else {
+        "None"
+    }
+    
     model_diagnostics_tab <- data.frame(
         dataset_name = dataset_name,  # Add dataset name for clarity
         model_type = class(model_fit)[1],
@@ -317,6 +345,7 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
         log_likelihood = ifelse("glm" %in% class(model_fit), logLik(model_fit), NA),
         aic = AIC(model_fit),
         bic = BIC(model_fit),
+        model_warnings = model_warnings_text,  # NEW: Add model warnings
         stringsAsFactors = FALSE
     )
     
@@ -394,9 +423,9 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
         stringsAsFactors = FALSE
     )
     
-    # Get unique variables from the model (including treatment_group)
+    # Get unique variables from the model (including treatment variable)
     model_terms <- attr(terms(model_fit), "term.labels")
-    variables_to_test <- unique(c("treatment_group", model_terms))
+    variables_to_test <- unique(c(treatment_var, model_terms))
     
     # Calculate factor label p-values for each variable
     for (var_name in variables_to_test) {
@@ -404,7 +433,7 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
         var_confounders <- confounders[confounders != var_name]
         
         # Calculate overall significance using appropriate test for model type
-        pval <- calculate_factor_label_pvalue(model_fit, var_name, data, outcome_var, var_confounders)
+        pval <- calculate_factor_label_pvalue(model_fit, var_name, data, outcome_var, var_confounders, treatment_var = treatment_var)
         
         factor_label_pvalues_tab <- rbind(factor_label_pvalues_tab, data.frame(
             variable = var_name,
@@ -450,12 +479,25 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
         # Fill in p-values for coefficients that exist in the model summary
         available_coefs <- intersect(names(coefs), rownames(model_summary$coefficients))
         if (length(available_coefs) > 0) {
-            p_values_vector[available_coefs] <- as.numeric(model_summary$coefficients[available_coefs, 4])
+            # Extract p-values from the correct column (Pr(>|z|) for Cox models, Pr(>|t|) for others)
+            # Check which column contains p-values
+            col_names <- colnames(model_summary$coefficients)
+            p_value_col <- which(col_names %in% c("Pr(>|z|)", "Pr(>|t|)", "Pr(>F)"))
+            if (length(p_value_col) == 0) {
+                # Fallback: use the last column if p-value column not found
+                p_value_col <- ncol(model_summary$coefficients)
+                log_enhanced(sprintf("Warning: Could not find p-value column, using last column (%d)", p_value_col), level = "WARN")
+            } else {
+                p_value_col <- p_value_col[1]  # Use the first matching column
+            }
+            
+            p_values_vector[available_coefs] <- as.numeric(model_summary$coefficients[available_coefs, p_value_col])
         }
         
         # Return the p-values vector in the same order as the coefficients
         p_values_vector
     }, error = function(e) {
+        log_enhanced(sprintf("Error extracting p-values: %s", e$message), level = "WARN")
         rep(NA, n_coefs)
     })
     
@@ -498,12 +540,22 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
     })
     
     # Create the raw model output with factor level rows
+    # Add both log-scale coefficients and exponentiated hazard ratios/odds ratios for clarity
+    is_survival_model <- "coxph" %in% class(model_fit)
+    effect_measure <- ifelse(is_survival_model, "HR", "OR")
+    
     raw_model_output_tab <- data.frame(
         variable = names(coefs),  # Use full coefficient names instead of truncating
         variable_base = variable_names,  # Base variable name (without level)
-        estimate = as.numeric(coefs),
-        ci_lower = as.numeric(conf_int_padded[, 1]),
-        ci_upper = as.numeric(conf_int_padded[, 2]),
+        log_coefficient = as.numeric(coefs),  # Log-scale coefficient (log HR or log OR)
+        log_ci_lower = as.numeric(conf_int_padded[, 1]),  # Log-scale CI lower
+        log_ci_upper = as.numeric(conf_int_padded[, 2]),  # Log-scale CI upper
+        hazard_ratio = if(is_survival_model) exp(as.numeric(coefs)) else NA,  # Exponentiated HR
+        hr_ci_lower = if(is_survival_model) exp(as.numeric(conf_int_padded[, 1])) else NA,  # HR CI lower
+        hr_ci_upper = if(is_survival_model) exp(as.numeric(conf_int_padded[, 2])) else NA,  # HR CI upper
+        odds_ratio = if(!is_survival_model) exp(as.numeric(coefs)) else NA,  # Exponentiated OR
+        or_ci_lower = if(!is_survival_model) exp(as.numeric(conf_int_padded[, 1])) else NA,  # OR CI lower
+        or_ci_upper = if(!is_survival_model) exp(as.numeric(conf_int_padded[, 2])) else NA,  # OR CI upper
         p_value = p_values,
         row_type = "Coefficient",  # All coefficient rows are "Coefficient" type
         inclusion_status = "Included",
@@ -534,9 +586,15 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
     factor_label_rows <- data.frame(
         variable = factor_label_pvalues_tab$variable[factor_label_pvalues_tab$variable %in% categorical_variables],
         variable_base = factor_label_pvalues_tab$variable[factor_label_pvalues_tab$variable %in% categorical_variables],
-        estimate = NA,  # No estimate for factor labels
-        ci_lower = NA,  # No CI for factor labels
-        ci_upper = NA,  # No CI for factor labels
+        log_coefficient = NA,  # No estimate for factor labels
+        log_ci_lower = NA,  # No CI for factor labels
+        log_ci_upper = NA,  # No CI for factor labels
+        hazard_ratio = NA,  # No HR for factor labels
+        hr_ci_lower = NA,  # No HR CI for factor labels
+        hr_ci_upper = NA,  # No HR CI for factor labels
+        odds_ratio = NA,  # No OR for factor labels
+        or_ci_lower = NA,  # No OR CI for factor labels
+        or_ci_upper = NA,  # No OR CI for factor labels
         p_value = factor_label_pvalues_tab$factor_label_pvalue[factor_label_pvalues_tab$variable %in% categorical_variables],
         row_type = "Factor Label",  # Factor label rows are "Factor Label" type
         inclusion_status = "Included",  # Factor labels are always included
@@ -563,18 +621,31 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
             # Get the row type for this variable
             row_type <- raw_model_output_tab$row_type[raw_model_output_tab$variable == var_name]
             
-            # Create a grouping system:
-            # - treatment_group gets priority 2
-            # - Other variables get priority based on base name (alphabetical)
-            # - Within each variable group, factor labels come before coefficients
-            if (base_name == "treatment_group") {
-                base_priority <- 2
-            } else {
-                # Get alphabetical position of base variable
-                unique_bases <- unique(raw_model_output_tab$variable_base[raw_model_output_tab$variable_base != "(Intercept)"])
-                unique_bases <- sort(unique_bases)
-                base_priority <- 1000 + which(unique_bases == base_name)
+            # Create a better grouping system that keeps factor labels with their coefficients
+            # First, identify all unique base variables and their positions
+            unique_bases <- unique(raw_model_output_tab$variable_base[raw_model_output_tab$variable_base != "(Intercept)"])
+            
+            # Create a mapping of base variables to their group numbers
+            # Treatment variable gets priority, then others in order of appearance
+            base_to_group <- list()
+            group_counter <- 2  # Start after (Intercept) which is group 1
+            
+            # Treatment variable gets priority
+            if (treatment_var %in% unique_bases) {
+                base_to_group[[treatment_var]] <- group_counter
+                group_counter <- group_counter + 1
             }
+            
+            # Add other variables in order of appearance (not alphabetical)
+            for (base_var in unique_bases) {
+                if (base_var != treatment_var && !(base_var %in% names(base_to_group))) {
+                    base_to_group[[base_var]] <- group_counter
+                    group_counter <- group_counter + 1
+                }
+            }
+            
+            # Get the group number for this variable
+            base_priority <- base_to_group[[base_name]]
             
             # Factor labels come before coefficients within each variable group
             if (row_type == "Factor Label") {
@@ -620,9 +691,9 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
     coeff_rows <- raw_model_output_tab$row_type == "Coefficient"
     if (any(coeff_rows)) {
         diagnostic_extreme_result <- detect_extreme_regression_estimates(
-            estimate = raw_model_output_tab$estimate[coeff_rows],
-            ci_lower = raw_model_output_tab$ci_lower[coeff_rows],
-            ci_upper = raw_model_output_tab$ci_upper[coeff_rows],
+            estimate = raw_model_output_tab$log_coefficient[coeff_rows],
+            ci_lower = raw_model_output_tab$log_ci_lower[coeff_rows],
+            ci_upper = raw_model_output_tab$log_ci_upper[coeff_rows],
             effect_measure = ifelse("coxph" %in% class(model_fit), "HR", "OR"),
             is_exponentiated = FALSE  # Raw diagnostics are on log scale
         )
@@ -649,12 +720,12 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
     }
     
     # Check for infinite CIs (additional check)
-    infinite_ci_mask <- is.infinite(raw_model_output_tab$ci_upper) | is.infinite(raw_model_output_tab$ci_lower)
+    infinite_ci_mask <- is.infinite(raw_model_output_tab$log_ci_upper) | is.infinite(raw_model_output_tab$log_ci_lower)
     raw_model_output_tab$inclusion_status[infinite_ci_mask] <- "Filtered"
     raw_model_output_tab$filtering_reason[infinite_ci_mask] <- "Infinite CI"
     
     # Check for NA estimates (convergence issues) - but NOT for factor label rows
-    na_estimate_mask <- is.na(raw_model_output_tab$estimate) & raw_model_output_tab$row_type != "Factor Label"
+    na_estimate_mask <- is.na(raw_model_output_tab$log_coefficient) & raw_model_output_tab$row_type != "Factor Label"
     raw_model_output_tab$inclusion_status[na_estimate_mask] <- "Filtered"
     raw_model_output_tab$filtering_reason[na_estimate_mask] <- "NA estimate (convergence issue)"
     
@@ -675,7 +746,7 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
                 
                 # Check each row individually for specific filtering reasons
                 for (row_idx in var_rows) {
-                    row_term <- raw_model_output_tab$term[row_idx]
+                    row_variable <- raw_model_output_tab$variable[row_idx]
                     row_reason <- "Filtered from table (specific reason not available)"
                     
                     # First check if this specific row already has a reason from diagnostic filtering
@@ -687,17 +758,29 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
                     } else {
                         # Check if we have detailed exclusion reasons from table-level extreme estimate detection
                         if (!is.null(extreme_diagnostics) && !is.null(extreme_diagnostics$exclusion_reasons)) {
-                            # Find the specific reason for this term
-                            extreme_term_index <- which(extreme_diagnostics$extreme_terms == row_term)
+                            # Find the specific reason for this variable
+                            extreme_term_index <- which(extreme_diagnostics$extreme_terms == row_variable)
                             
                             if (length(extreme_term_index) > 0) {
                                 row_reason <- extreme_diagnostics$exclusion_reasons[extreme_term_index[1]]
-                                log_enhanced(sprintf("DEBUG: Found table-level reason for %s: %s", row_term, row_reason), level = "DEBUG")
+                                log_enhanced(sprintf("DEBUG: Found table-level reason for %s: %s", row_variable, row_reason), level = "DEBUG")
                             } else {
-                                log_enhanced(sprintf("DEBUG: No specific reason found for %s, using generic", row_term), level = "DEBUG")
+                                # Try to find a more specific reason based on the variable name
+                                if (grepl("^", filtered_var, row_variable)) {
+                                    row_reason <- sprintf("Variable '%s' filtered due to extreme estimates or convergence issues", filtered_var)
+                                } else {
+                                    row_reason <- sprintf("Variable '%s' filtered - all coefficients had extreme estimates or convergence issues", filtered_var)
+                                }
+                                log_enhanced(sprintf("DEBUG: Generated specific reason for %s: %s", row_variable, row_reason), level = "DEBUG")
                             }
                         } else {
-                            log_enhanced(sprintf("DEBUG: No extreme_diagnostics available for %s", row_term), level = "DEBUG")
+                            # Generate a specific reason based on the variable name
+                            if (grepl("^", filtered_var, row_variable)) {
+                                row_reason <- sprintf("Variable '%s' filtered due to extreme estimates or convergence issues", filtered_var)
+                            } else {
+                                row_reason <- sprintf("Variable '%s' filtered - all coefficients had extreme estimates or convergence issues", filtered_var)
+                            }
+                            log_enhanced(sprintf("DEBUG: Generated specific reason for %s: %s", row_variable, row_reason), level = "DEBUG")
                         }
                     }
                     
@@ -714,9 +797,15 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
         excluded_rows_tab <- data.frame(
             variable = raw_model_output_tab$variable[excluded_mask],  # Variable name
             variable_base = raw_model_output_tab$variable_base[excluded_mask],  # Base variable name
-            estimate = raw_model_output_tab$estimate[excluded_mask],
-            conf_low = raw_model_output_tab$ci_lower[excluded_mask],
-            conf_high = raw_model_output_tab$ci_upper[excluded_mask],
+            log_coefficient = raw_model_output_tab$log_coefficient[excluded_mask],
+            log_ci_lower = raw_model_output_tab$log_ci_lower[excluded_mask],
+            log_ci_upper = raw_model_output_tab$log_ci_upper[excluded_mask],
+            hazard_ratio = raw_model_output_tab$hazard_ratio[excluded_mask],
+            hr_ci_lower = raw_model_output_tab$hr_ci_lower[excluded_mask],
+            hr_ci_upper = raw_model_output_tab$hr_ci_upper[excluded_mask],
+            odds_ratio = raw_model_output_tab$odds_ratio[excluded_mask],
+            or_ci_lower = raw_model_output_tab$or_ci_lower[excluded_mask],
+            or_ci_upper = raw_model_output_tab$or_ci_upper[excluded_mask],
             p_value = raw_model_output_tab$p_value[excluded_mask],
             row_type = raw_model_output_tab$row_type[excluded_mask],
             exclusion_reason = raw_model_output_tab$filtering_reason[excluded_mask],
@@ -738,6 +827,33 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
     # Use the larger of the two counts to ensure we don't miss any
     final_filtered_count <- max(filtered_count, excluded_count)
     
+    # Check if main predictor was filtered out
+    main_predictor_filtered <- FALSE
+    if (!is.null(predictor_vars) && length(predictor_vars) > 0) {
+        # Check if any main predictor variables were completely removed or had all coefficients filtered
+        for (pred_var in predictor_vars) {
+            # Check if variable is completely missing
+            if (!(pred_var %in% raw_model_output_tab$variable)) {
+                main_predictor_filtered <- TRUE
+                break
+            }
+            
+            # Check if variable exists but all its coefficients were filtered out
+            var_rows <- grep(paste0("^", pred_var), raw_model_output_tab$variable)
+            if (length(var_rows) > 0) {
+                # Check if all coefficient rows for this variable were filtered
+                coeff_rows <- var_rows[raw_model_output_tab$row_type[var_rows] == "Coefficient"]
+                if (length(coeff_rows) > 0) {
+                    all_filtered <- all(raw_model_output_tab$inclusion_status[coeff_rows] == "Filtered")
+                    if (all_filtered) {
+                        main_predictor_filtered <- TRUE
+                        break
+                    }
+                }
+            }
+        }
+    }
+    
     filtering_summary_tab <- data.frame(
         total_coefficients = nrow(raw_model_output_tab),
         extreme_estimates_removed = final_filtered_count,
@@ -745,12 +861,13 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
         sparse_table_warning = FALSE,
         confint_error = all(is.na(conf_int)),  # TRUE if all confidence intervals are NA
         remaining_coefficients = nrow(raw_model_output_tab) - final_filtered_count,
-        table_has_meaningful_content = (nrow(raw_model_output_tab) - final_filtered_count) > 0  # TRUE if at least one coefficient remains after filtering
+        table_has_meaningful_content = (nrow(raw_model_output_tab) - final_filtered_count) > 0,  # TRUE if at least one coefficient remains after filtering
+        main_predictor_filtered = main_predictor_filtered  # NEW: Track if main predictor was filtered
     )
     
     return(list(
         model_summary = model_summary_tab,
-        model_diagnostics = model_diagnostics_tab,
+        model_diagnostics_tab = model_diagnostics_tab,
         data_characteristics = data_characteristics_tab,
         other_level_details = other_level_details_tab,
         excluded_rows = excluded_rows_tab,
@@ -828,8 +945,9 @@ get_model_type <- function(model_fit) {
 #' @param event_var Character string for event variable (Cox models)
 #' @param other_map List containing mapping of what categories were collapsed into "Other"
 #' @param full_data The full analytic dataset to use for p-value calculation (default = data)
+#' @param treatment_var Name of the treatment variable in the model (default: "treatment_group")
 #' @return List containing table result and diagnostics
-generate_regression_table <- function(data, outcome_var, predictor_vars, confounders, model_type, effect_measure, analysis_name, dataset_name, output_dir, prefix, time_var = NULL, event_var = NULL, other_map = NULL, full_data = NULL) {
+generate_regression_table <- function(data, outcome_var, predictor_vars, confounders, model_type, effect_measure, analysis_name, dataset_name, output_dir, prefix, time_var = NULL, event_var = NULL, other_map = NULL, full_data = NULL, treatment_var = "treatment_group") {
     if (is.null(full_data)) full_data <- data
     
     log_enhanced(sprintf("Generating regression table for %s", analysis_name), level = "INFO")
@@ -920,7 +1038,7 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
         diagnostics <- create_comprehensive_diagnostics(model_fit, data, outcome_var, 
                                                        predictor_vars, confounders, analysis_name, 
                                                        dataset_name, filtered_variables, other_map, 
-                                                       extreme_filtering_result$diagnostics)
+                                                       extreme_filtering_result$diagnostics, treatment_var = treatment_var)
         
         # Create raw_output from diagnostics for save_table_outputs
         raw_output <- diagnostics$raw_model_output
@@ -928,7 +1046,7 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
         # Save outputs using the filtered table
         output_files <- save_table_outputs(filtered_table_result, raw_output, model_fit, 
                                           analysis_name, dataset_name, output_dir, prefix, 
-                                          diagnostics, data, outcome_var, confounders)
+                                          diagnostics, data, outcome_var, confounders, treatment_var = treatment_var)
     } else {
         # Handle case where model fitting failed - still create diagnostics file
         filtered_table_result <- NULL
@@ -963,7 +1081,7 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
         output_files <- tryCatch({
             save_table_outputs(NULL, diagnostics$raw_model_output, NULL, 
                               analysis_name, dataset_name, output_dir, prefix, 
-                              diagnostics, data, outcome_var, confounders)
+                              diagnostics, data, outcome_var, confounders, treatment_var = treatment_var)
         }, error = function(e) {
             log_enhanced(sprintf("Failed to save diagnostics file: %s", e$message), level = "ERROR")
             NULL
@@ -1196,8 +1314,9 @@ get_cohort_specific_other_map <- function(dataset_name, processed_data_dir = "fi
 #' @param outcome_var Name of the outcome variable
 #' @param confounders Character vector of confounders
 #' @param outcome_type Type of outcome ("binary" or "survival")
+#' @param treatment_var Name of the treatment variable in the model (default: "treatment_group")
 #' @return Modified gtsummary table object
-add_factor_label_pvalues_to_table <- function(table, data, outcome_var, confounders = NULL, outcome_type = "binary") {
+add_factor_label_pvalues_to_table <- function(table, data, outcome_var, confounders = NULL, outcome_type = "binary", treatment_var = "treatment_group") {
     
     log_enhanced("Starting add_factor_label_pvalues_to_table", level = "DEBUG")
     
@@ -1225,20 +1344,11 @@ add_factor_label_pvalues_to_table <- function(table, data, outcome_var, confound
         var_confounders <- filtered_confounders[filtered_confounders != var_name]
         
         # Calculate overall significance using likelihood ratio test
-        # Use the actual treatment variable from the data, not hardcoded "treatment_group"
-        treatment_var_name <- if ("treatment_group" %in% names(data)) "treatment_group" else 
-                             if ("recurrence1_treatment_clean" %in% names(data)) "recurrence1_treatment_clean" else
-                             names(data)[grep("treatment", names(data), ignore.case = TRUE)][1]
-        
-        if (is.null(treatment_var_name) || is.na(treatment_var_name)) {
-            warning("No treatment variable found in data for overall significance calculation")
-            pval <- NA
-        } else {
-            pval <- calculate_variable_overall_significance(data, var_name, outcome_var, 
-                                                           treatment_var = treatment_var_name,
-                                                           confounders = var_confounders, 
-                                                           outcome_type = outcome_type)
-        }
+        # Use the passed treatment variable parameter
+        pval <- calculate_variable_overall_significance(data, var_name, outcome_var, 
+                                                       treatment_var = treatment_var,
+                                                       confounders = var_confounders, 
+                                                       outcome_type = outcome_type)
         factor_label_pvalues[[var_name]] <- pval
     }
     
@@ -1393,9 +1503,10 @@ add_other_level_details <- function(table, data, other_map = list()) {
 #' @param data Data frame used for the model
 #' @param outcome_var Name of the outcome variable
 #' @param confounders Character vector of confounders
+#' @param treatment_var Name of the treatment variable in the model (default: "treatment_group")
 #' @return List of output file paths
 save_table_outputs <- function(table_result, raw_output, model_fit, analysis_name, 
-                              dataset_name, output_dir, prefix, diagnostics = NULL, data = NULL, outcome_var = NULL, confounders = NULL) {
+                              dataset_name, output_dir, prefix, diagnostics = NULL, data = NULL, outcome_var = NULL, confounders = NULL, treatment_var = "treatment_group") {
     
     # Create output directory if it doesn't exist
     if (!dir.exists(output_dir)) {
@@ -1451,7 +1562,7 @@ save_table_outputs <- function(table_result, raw_output, model_fit, analysis_nam
                 cat("  Outcome var:", outcome_var, "\n")
                 cat("  Confounders:", paste(confounders, collapse = ", "), "\n")
                 
-                modified_table <- modify_gt_table_pvalues(table_result %>% as_gt(), table_result, data, outcome_var, confounders, model_fit)
+                modified_table <- modify_gt_table_pvalues(table_result %>% as_gt(), table_result, data, outcome_var, confounders, model_fit, treatment_var = treatment_var)
                 
                 cat("DEBUG: After modify_gt_table_pvalues\n")
                 cat("  Modified table class:", class(modified_table), "\n")
@@ -1460,7 +1571,44 @@ save_table_outputs <- function(table_result, raw_output, model_fit, analysis_nam
                 gt_table <- modified_table %>% as_gt()
                 
                 # Save the modified gt table
-                gt_table %>% gtsave(html_path)
+                gt_table <- gt_table %>% gtsave(html_path)
+                
+                # Add warning to footnote if main predictor was filtered out
+                if (!is.null(diagnostics) && !is.null(diagnostics$filtering_summary)) {
+                    main_predictor_filtered <- diagnostics$filtering_summary$main_predictor_filtered
+                    if (main_predictor_filtered) {
+                        warning_text <- "⚠️ WARNING: Main predictor variable was filtered out due to perfect separation or extreme estimates"
+                        
+                        # Read the HTML file and add warning to footnote
+                        html_content <- readLines(html_path)
+                        
+                        # Find the footnote section and add warning
+                        footnote_pattern <- '<tfoot class="gt_sourcenotes">'
+                        footnote_index <- grep(footnote_pattern, html_content)
+                        
+                        if (length(footnote_index) > 0) {
+                            # Find the last </tfoot> tag
+                            tfoot_end_pattern <- '</tfoot>'
+                            tfoot_end_index <- grep(tfoot_end_pattern, html_content)
+                            tfoot_end_index <- tfoot_end_index[tfoot_end_index > footnote_index[1]]
+                            
+                            if (length(tfoot_end_index) > 0) {
+                                # Insert warning before the closing tfoot tag
+                                warning_html <- sprintf('    <tr>\n      <td class="gt_sourcenote" colspan="4"><span class=\'gt_from_md\'>%s</span></td>\n    </tr>', warning_text)
+                                
+                                # Insert the warning
+                                html_content <- c(
+                                    html_content[1:(tfoot_end_index[1]-1)],
+                                    warning_html,
+                                    html_content[tfoot_end_index[1]:length(html_content)]
+                                )
+                                
+                                # Write back to file
+                                writeLines(html_content, html_path)
+                            }
+                        }
+                    }
+                }
                 log_enhanced(sprintf("HTML table saved to %s", html_path), level = "INFO")
             }, error = function(e) {
                 error_msg <- if (is.list(e) && !is.null(e$message)) e$message else as.character(e)
@@ -1560,8 +1708,9 @@ save_table_outputs <- function(table_result, raw_output, model_fit, analysis_nam
 #' @param data Data frame used for the model
 #' @param outcome_var Name of the outcome variable
 #' @param confounders Character vector of confounders
+#' @param treatment_var Name of the treatment variable in the model (default: "treatment_group")
 #' @return Modified gt table object
-modify_gt_table_pvalues <- function(gt_table, table_result, data, outcome_var, confounders, model_fit = NULL) {
+modify_gt_table_pvalues <- function(gt_table, table_result, data, outcome_var, confounders, model_fit = NULL, treatment_var = "treatment_group") {
     
     # Get the original table data to understand the structure
     table_data <- table_result$table_body
@@ -1583,7 +1732,7 @@ modify_gt_table_pvalues <- function(gt_table, table_result, data, outcome_var, c
     if (!is.null(model_fit)) {
         # Use the new unified approach with model type detection
         for (var_name in variables) {
-            pval <- calculate_factor_label_pvalue(model_fit, var_name, data, outcome_var, filtered_confounders)
+            pval <- calculate_factor_label_pvalue(model_fit, var_name, data, outcome_var, filtered_confounders, treatment_var = treatment_var)
             factor_label_pvalues[[var_name]] <- pval
         }
     } else {
@@ -1594,7 +1743,7 @@ modify_gt_table_pvalues <- function(gt_table, table_result, data, outcome_var, c
             
             # Calculate overall significance using likelihood ratio test (old approach)
             pval <- calculate_variable_overall_significance(data, var_name, outcome_var, 
-                                                           treatment_var = "treatment_group",
+                                                           treatment_var = treatment_var,
                                                            confounders = var_confounders, 
                                                            outcome_type = "binary")
             factor_label_pvalues[[var_name]] <- pval
@@ -1780,8 +1929,9 @@ calculate_wald_pvalue <- function(model_fit, variable_name) {
 #' @param data Data frame used for the model
 #' @param outcome_var Name of the outcome variable
 #' @param confounders Character vector of confounders
+#' @param treatment_var Name of the treatment variable in the model (default: "treatment_group")
 #' @return P-value for the factor label
-calculate_factor_label_pvalue <- function(model_fit, variable_name, data, outcome_var, confounders) {
+calculate_factor_label_pvalue <- function(model_fit, variable_name, data, outcome_var, confounders, treatment_var = "treatment_group") {
     # Detect model type
     model_type <- detect_model_type(model_fit)
     
@@ -1796,7 +1946,7 @@ calculate_factor_label_pvalue <- function(model_fit, variable_name, data, outcom
         "logistic" = {
             # For logistic regression, use likelihood ratio test
             calculate_variable_overall_significance(data, variable_name, outcome_var,
-                                                  treatment_var = "treatment_group",
+                                                  treatment_var = treatment_var,
                                                   confounders = var_confounders,
                                                   outcome_type = "binary")
         },
@@ -1819,7 +1969,7 @@ calculate_factor_label_pvalue <- function(model_fit, variable_name, data, outcom
             result <- tryCatch({
                 calculate_variable_overall_significance(
                     data, variable_name, outcome_var,
-                    treatment_var = "treatment_group",
+                    treatment_var = treatment_var,
                     confounders = var_confounders,
                     outcome_type = "survival",
                     time_var = time_var,

@@ -26,7 +26,7 @@ detect_extreme_regression_estimates <- function(estimate, ci_lower, ci_upper, ef
         
 
         
-        if (toupper(effect_measure) %in% c("HR", "OR", "RR")) {
+        if (toupper(effect_measure) %in% c("HR", "OR", "RR", "MD", "BETA", "ESTIMATE", "LOG-ODDS", "LOG-HAZARD")) {
             # 1. Infinite CIs (always extreme regardless of scale)
             if (is.infinite(ci_upper[i]) || is.infinite(ci_lower[i])) {
                 reason <- sprintf("Infinite CI detected: (%.2f, %.2f)", ci_lower[i], ci_upper[i])
@@ -38,10 +38,11 @@ detect_extreme_regression_estimates <- function(estimate, ci_lower, ci_upper, ef
                 if (!is.na(ci_lower[i]) && !is.na(ci_upper[i]) && ci_lower[i] == ci_upper[i] && ci_lower[i] == 0) {
                     reason <- "Perfect separation detected: CI = (0,0)"
                 }
-                # Extremely wide CIs on ratio scale (e.g., CI spanning 1000-fold difference)
-                else if (!is.na(ci_lower[i]) && !is.na(ci_upper[i]) && ci_lower[i] > 0 && 
-                         ci_upper[i]/ci_lower[i] > EXTREMELY_WIDE_CI_THRESHOLD) {
-                    reason <- sprintf("Extremely wide CI detected: (%.2f, %.2f)", ci_lower[i], ci_upper[i])
+                # Extremely wide CIs on exponentiated scale - use appropriate threshold
+                else if (!is.na(ci_lower[i]) && !is.na(ci_upper[i]) && 
+                         (ci_upper[i] - ci_lower[i]) > EXPONENTIATED_CI_THRESHOLD) {
+                    reason <- sprintf("Extremely wide CI detected (exponentiated): (%.2f, %.2f) - width = %.2f", 
+                                    ci_lower[i], ci_upper[i], ci_upper[i] - ci_lower[i])
                 }
                 # Very small lower CI (near-perfect separation on ratio scale)
                 else if (!is.na(ci_lower[i]) && ci_lower[i] < 1e-6) {
@@ -51,10 +52,15 @@ detect_extreme_regression_estimates <- function(estimate, ci_lower, ci_upper, ef
                 # LOG SCALE (log-odds/log-hazard values, can be negative, around 0)
                 # Perfect separation: extremely large absolute values
                 if (!is.na(ci_lower[i]) && !is.na(ci_upper[i])) {
-                    # Check for extremely wide CIs on log scale (> 10 log units = e^10 ≈ 22000 fold on ratio scale)
+                    # Check for extremely wide CIs on log scale using appropriate threshold
                     ci_width <- ci_upper[i] - ci_lower[i]
-                    if (ci_width > 10) {
-                        reason <- sprintf("Extremely wide CI detected (log scale): (%.2f, %.2f)", ci_lower[i], ci_upper[i])
+                    if (ci_width > LOG_SCALE_CI_THRESHOLD) {
+                        reason <- sprintf("Extremely wide CI detected (log scale): (%.2f, %.2f) - width = %.2f", 
+                                        ci_lower[i], ci_upper[i], ci_width)
+                    }
+                    # Check for extremely large absolute values (perfect separation)
+                    else if (abs(estimate[i]) > 10) {
+                        reason <- sprintf("Perfect separation detected (log scale): estimate = %.2f", estimate[i])
                     }
                     # Check for near-perfect separation: very large absolute estimates with tight CIs
                     else if (abs(estimate[i]) > 5 && ci_width < 0.1) {
@@ -199,17 +205,11 @@ apply_extreme_estimate_filtering <- function(tbl, model_fit, effect_measure = "O
         table_estimates <- tbl_data$estimate
         
         # Detect extreme estimates from table data
-        # Determine if table is exponentiated by checking the actual values
-        # Exponentiated values (OR/HR) are always positive, log values can be negative
-        valid_estimates <- table_estimates[!is.na(table_estimates)]
-        if (length(valid_estimates) > 0) {
-            # If all estimates are positive, likely exponentiated (OR/HR scale)
-            # If any estimates are negative, likely log scale
-            is_table_exponentiated <- all(valid_estimates > 0)
-        } else {
-            # Fallback: use effect_measure as a hint, but this is less reliable
-            is_table_exponentiated <- (effect_measure %in% c("OR", "HR"))
-        }
+        # DETERMINISTIC APPROACH: Use effect_measure to determine scale instead of fragile value detection
+        # Exponentiated measures: OR, HR, MD (always positive when exponentiated)
+        # Log scale measures: beta, estimate, log-odds, log-hazard (can be negative)
+        is_table_exponentiated <- effect_measure %in% c("OR", "HR", "MD")
+        
         extreme_detection <- detect_extreme_regression_estimates(table_estimates, table_ci_lower, table_ci_upper, effect_measure, is_exponentiated = is_table_exponentiated)
         
         # Get term names from table

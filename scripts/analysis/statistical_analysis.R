@@ -131,7 +131,8 @@ analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var,
         prefix = prefix,
         time_var = analysis_time_var,  # Use the appropriate time variable
         event_var = event_var,
-        other_map = other_map  # Pass the other_map parameter
+        other_map = other_map,  # Pass the other_map parameter
+        treatment_var = group_var  # Pass the group variable as the treatment variable
     )
 
     # Return the same structure as the original function for compatibility
@@ -219,10 +220,9 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     new_data <- fix_event_data %>%
         dplyr::select(all_of(c(time_var, event_var, group_var, confounders_to_use)))
     
-    # Ensure treatment_group is available for p-value calculation functions
-    if (!"treatment_group" %in% names(new_data) && group_var == "treatment_group") {
-        new_data$treatment_group <- new_data[[group_var]]
-    }
+    # Ensure the group variable is available for p-value calculation functions
+    # The p-value calculation functions expect the treatment variable to be named consistently
+    # We'll use the group_var directly instead of creating a hardcoded treatment_group
     
     # Debug: Check what variables are in new_data
     cat("DEBUG: new_data variables:", paste(names(new_data), collapse = ", "), "\n")
@@ -532,7 +532,8 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         time_var = time_var,
         event_var = event_var,
         other_map = other_map,  # Pass the other_map parameter
-        full_data = fix_event_data
+        full_data = fix_event_data,
+        treatment_var = group_var  # Pass the group variable as the treatment variable
     )
     
     # Extract the Cox model and table from the result
@@ -547,9 +548,19 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     
     # Determine PH diagnostics output directory
     ph_output_dir <- if (grepl("PFS-2", ylab)) {
-        output_dirs$obj3_ph_diagnostics
+        if (is.null(output_dirs$obj3_ph_diagnostics)) {
+            warning("obj3_ph_diagnostics not found in output_dirs. Using fallback directory.")
+            output_dirs$obj3_pfs2  # Fallback to PFS-2 directory
+        } else {
+            output_dirs$obj3_ph_diagnostics
+        }
     } else {
-        output_dirs$obj1_ph_diagnostics
+        if (is.null(output_dirs$obj1_ph_diagnostics)) {
+            warning("obj1_ph_diagnostics not found in output_dirs. Using fallback directory.")
+            output_dirs$obj1_os  # Fallback to OS directory
+        } else {
+            output_dirs$obj1_ph_diagnostics
+        }
     }
     
     # Only test proportional hazards if we have a valid Cox model
@@ -611,9 +622,10 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
 #'
 #' @return ggplot object
 plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dirs, prefix) {
-    # Filter out failed analyses
+    # Pre-filter to exclude failed RMST analyses before creating plot data
+    # This addresses the root cause rather than filtering NA values after they're created
     plot_data <- rmst_results %>%
-        filter(!is.na(RMST_P_Value)) %>%
+        filter(!is.na(RMST_P_Value), !is.na(Time_Point_Years)) %>%
         mutate(
             Significant = RMST_P_Value < 0.05,
             Log_P_Value = -log10(RMST_P_Value),
@@ -651,11 +663,20 @@ plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dir
             values = c("TRUE" = 4, "FALSE" = 2.5),
             guide = "none"
         ) +
-        scale_x_continuous(
-            breaks = plot_data$Time_Point_Years,
-            labels = paste0(plot_data$Time_Point_Years, " yr"),
-            limits = c(min(plot_data$Time_Point_Years), max(plot_data$Time_Point_Years) + 1.25)
-        ) +
+        # Simplified time breaks logic - no NA filtering needed since data is pre-filtered
+        {
+            time_breaks <- sort(unique(plot_data$Time_Point_Years))
+            if (length(time_breaks) > 0) {
+                scale_x_continuous(
+                    breaks = time_breaks,
+                    labels = paste0(time_breaks, " yr"),
+                    limits = c(min(plot_data$Time_Point_Years), 
+                              max(plot_data$Time_Point_Years) + 1.25)
+                )
+            } else {
+                scale_x_continuous()  # Default scale if no valid breaks
+            }
+        } +
         scale_y_continuous(
             limits = c(0, max(plot_data$RMST_P_Value) * 1.1),
             breaks = c(0, seq(0.1, 1, 0.1))
@@ -687,17 +708,44 @@ plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dir
         vjust = -0.8, hjust = 0.5, size = 3, color = "black"
     )
     
-    # Save the plot
+    # Save the plot with proper error handling
+    if (is.null(output_dirs)) {
+        warning("output_dirs is NULL, cannot save RMST plot")
+        return(p)
+    }
+    
+    # Determine output directory with proper validation
     output_dir <- switch(
         outcome_label,
         "Overall Survival Probability" = output_dirs$obj1_os,
         "Progression-Free Survival Probability" = output_dirs$obj1_pfs,
         "PFS-2 Probability (Freedom from 2nd Recurrence)" = output_dirs$obj3_pfs2,
+        "PFS-2 Probability" = output_dirs$obj3_pfs2,  # Add this case for test compatibility
         output_dirs$baseline_characteristics  # fallback
     )
     
+    # Validate output_dir
+    if (is.null(output_dir)) {
+        warning("Could not determine output directory for outcome_label: ", outcome_label)
+        return(p)
+    }
+    
+    # Create output directory if it doesn't exist
+    if (!dir.exists(output_dir)) {
+        dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+    
+    # Generate filename with validation
+    filename <- paste0(prefix, gsub("[^A-Za-z0-9]", "_", outcome_label), "_rmst_pvalue_progression.png")
+    if (is.null(filename) || filename == "" || is.na(filename)) {
+        warning("Generated filename is empty or invalid")
+        return(p)
+    }
+    
+    filepath <- file.path(output_dir, filename)
+    
     ggsave(
-        file.path(output_dir, paste0(prefix, gsub("[^A-Za-z0-9]", "_", outcome_label), "_rmst_pvalue_progression.png")),
+        filepath,
         p,
         width = RMST_PLOT_WIDTH, height = RMST_PLOT_HEIGHT, dpi = PLOT_DPI, bg = "white"
     )
@@ -759,50 +807,12 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, other_ma
         ))
     }
     
-    # Check if we have enough events per group for survival analysis
-    events_per_group <- pfs2_data %>%
-        group_by(recurrence1_treatment_clean) %>%
-        summarise(events = sum(pfs2_event), .groups = "drop")
-    
+    # Check if we have enough events for survival analysis
     total_events <- sum(pfs2_data$pfs2_event)
-    groups_with_events <- sum(events_per_group$events > 0)
-    groups_with_zero_events <- sum(events_per_group$events == 0)
     
-    # Check for perfect separation (groups with 0 events)
-    if (groups_with_zero_events > 0) {
-        zero_event_groups <- events_per_group$recurrence1_treatment_clean[events_per_group$events == 0]
-        log_enhanced("WARNING: Perfect separation detected in PFS-2 survival analysis")
-        log_enhanced(sprintf("Groups with 0 events: %s", paste(zero_event_groups, collapse = ", ")))
-        log_enhanced("This will cause infinite coefficients and extremely wide confidence intervals")
-        log_enhanced("Events per group:")
-        print(events_per_group)
-        log_enhanced("Proceeding with survival analysis - extreme estimates will be filtered out")
-        
-        # Still attempt the analysis but with warnings - let the table generation system handle extreme estimates
-        pfs2_survival <- analyze_time_to_event_outcomes(
-            data = pfs2_data,
-            time_var = "tt_pfs2_months",
-            event_var = "pfs2_event", 
-            group_var = "recurrence1_treatment_clean",
-            confounders = confounders,
-            ylab = "PFS-2 Probability (Freedom from 2nd Recurrence)",
-            analysis_type = "all_patients",  # PFS-2 analysis includes all recurrent patients
-            dataset_name = paste0(dataset_name, "_pfs2_recurrent"),
-            legend_labels = levels(pfs2_data$recurrence1_treatment_clean),
-            other_map = other_map,
-            output_dirs = output_dirs,
-            prefix = prefix
-        )
-        
-        # Add sparse data warning to the result
-        pfs2_survival$sparse_data_warning <- TRUE
-        pfs2_survival$zero_event_groups <- zero_event_groups
-    } else if (total_events < 5 || groups_with_events < 2) {
+    if (total_events < 5) {
         log_enhanced("ERROR: Insufficient events for PFS-2 survival analysis")
         log_enhanced(sprintf("Total events: %d (minimum 5 required)", total_events))
-        log_enhanced(sprintf("Groups with events: %d (minimum 2 required)", groups_with_events))
-        log_enhanced("Events per group:")
-        print(events_per_group)
         log_enhanced("Skipping survival analysis due to insufficient data")
         
         pfs2_survival <- list(
@@ -814,6 +824,7 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, other_ma
         )
     } else {
         # Use existing analyze_time_to_event_outcomes function with dynamic legend labels
+        # Perfect separation handling is already implemented in fit_regression_model()
         log_enhanced("Performing PFS-2 survival analysis")
         pfs2_survival <- analyze_time_to_event_outcomes(
             data = pfs2_data,
@@ -823,7 +834,6 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, other_ma
             confounders = confounders,
             ylab = "PFS-2 Probability (Freedom from 2nd Recurrence)",
             analysis_type = "all_patients",  # PFS-2 analysis includes all recurrent patients
-            # handle_rare = FALSE, # REMOVED
             dataset_name = paste0(dataset_name, "_pfs2_recurrent"),
             legend_labels = levels(pfs2_data$recurrence1_treatment_clean),
             other_map = other_map,
@@ -919,6 +929,7 @@ test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Surv
     
     # Set default output directory if not provided
     if (is.null(output_dir)) {
+        warning("No output directory provided for proportional hazards testing. Files will be saved to current directory.")
         output_dir <- "."
     }
     

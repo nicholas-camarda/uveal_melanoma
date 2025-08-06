@@ -32,10 +32,10 @@ if (USE_LOGS) {
 # 0 for data processing
 # run_specific_objective("uveal_melanoma_full_cohort", 0)
 # then, eg. 1 for primary outcomes, 2 for safety/toxicity, 3 for repeat radiation efficacy, 4 for GEP validation
-# run_specific_objective("uveal_melanoma_full_cohort", 1)
+run_specific_objective("uveal_melanoma_full_cohort", 1)
 # run_specific_objective("uveal_melanoma_restricted_cohort", 1)
 # run_specific_objective("uveal_melanoma_gksrs_only_cohort", 1)
-# run_specific_objective("uveal_melanoma_full_cohort", 2)
+run_specific_objective("uveal_melanoma_full_cohort", 2)
 # run_specific_objective("uveal_melanoma_restricted_cohort", 2)
 # run_specific_objective("uveal_melanoma_gksrs_only_cohort", 2)
 run_specific_objective("uveal_melanoma_full_cohort", 3)

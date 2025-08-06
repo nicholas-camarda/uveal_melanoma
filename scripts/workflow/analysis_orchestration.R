@@ -85,7 +85,7 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
 
     if (3 %in% objectives_to_run) {
         log_enhanced("Running Objective 3: Repeat Radiation Efficacy", level = "INFO")
-        results$objective_3 <- run_objective_3(data, dataset_name, output_dirs, prefix, other_map)
+        results$objective_3 <- run_objective_3(data, dataset_name, output_dirs, prefix, other_map, confounders = confounders)
     }
 
     if (4 %in% objectives_to_run) {

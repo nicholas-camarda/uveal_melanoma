@@ -14,7 +14,7 @@ test_that("Complete p-value flow works for Cox models", {
   cox_model <- coxph(surv_obj ~ treatment_group + age_at_diagnosis + sex, data = data, model = TRUE)
   
   # Step 1: Calculate factor label p-value
-  pval <- calculate_factor_label_pvalue(cox_model, 'treatment_group', data, 'death_event', c('age_at_diagnosis', 'sex'))
+  pval <- calculate_factor_label_pvalue(cox_model, 'treatment_group', data, 'death_event', c('age_at_diagnosis', 'sex'), treatment_var = "treatment_group")
   expect_true(!is.na(pval))
   expect_true(pval >= 0 && pval <= 1)
   expect_type(pval, "double")
@@ -24,7 +24,7 @@ test_that("Complete p-value flow works for Cox models", {
   expect_s3_class(table, "tbl_regression")
   
   # Step 3: Modify table p-values
-  modified_table <- modify_gt_table_pvalues(table %>% as_gt(), table, data, 'death_event', c('age_at_diagnosis', 'sex'), cox_model)
+  modified_table <- modify_gt_table_pvalues(table %>% as_gt(), table, data, 'death_event', c('age_at_diagnosis', 'sex'), cox_model, treatment_var = "treatment_group")
   
   # Step 4: Verify HTML output
   table_data <- modified_table$table_body
@@ -45,7 +45,7 @@ test_that("Factor label p-values are calculated for all variables", {
   confounders <- c('age_at_diagnosis', 'sex')
   
   for (var in variables) {
-    pval <- calculate_factor_label_pvalue(cox_model, var, data, 'death_event', confounders[confounders != var])
+    pval <- calculate_factor_label_pvalue(cox_model, var, data, 'death_event', confounders[confounders != var], treatment_var = "treatment_group")
     expect_true(!is.na(pval))
     expect_true(pval >= 0 && pval <= 1)
     expect_type(pval, "double")
@@ -62,7 +62,7 @@ test_that("HTML table shows factor label p-values only", {
   table <- cox_model %>% tbl_regression(exponentiate = TRUE)
   
   # Modify table p-values
-  modified_table <- modify_gt_table_pvalues(table %>% as_gt(), table, data, 'death_event', c('age_at_diagnosis', 'sex'), cox_model)
+  modified_table <- modify_gt_table_pvalues(table %>% as_gt(), table, data, 'death_event', c('age_at_diagnosis', 'sex'), cox_model, treatment_var = "treatment_group")
   
   # Check that only factor label p-values are shown (first row of each variable)
   table_data <- modified_table$table_body
