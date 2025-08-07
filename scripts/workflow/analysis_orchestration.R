@@ -64,6 +64,24 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
     # Load cohort-specific other_map information using unified function
     other_map <- get_cohort_specific_other_map(dataset_name, PROCESSED_DATA_DIR)
 
+    # Load pre-validated confounders for this cohort
+    validated_confounders_file <- file.path(PROCESSED_DATA_DIR, "validated_confounders_by_cohort.rds")
+    if (file.exists(validated_confounders_file)) {
+        validated_confounders_by_cohort <- readRDS(validated_confounders_file)
+        cohort_confounders <- validated_confounders_by_cohort[[dataset_name]]
+        if (is.null(cohort_confounders)) {
+            log_enhanced(sprintf("No validated confounders found for cohort %s, using original confounders", dataset_name), level = "WARN")
+            cohort_confounders <- confounders
+        } else {
+            log_enhanced(sprintf("Loaded %d validated confounders for cohort %s: %s", 
+                               length(cohort_confounders), dataset_name, 
+                               paste(cohort_confounders, collapse = ", ")), level = "INFO")
+        }
+    } else {
+        log_enhanced("No validated confounders file found, using original confounders", level = "WARN")
+        cohort_confounders <- confounders
+    }
+
     # Run selected objectives
     results <- list()
 
@@ -75,22 +93,22 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
 
     if (1 %in% objectives_to_run) {
         log_enhanced("Running Objective 1: Primary Outcomes", level = "INFO")
-        results$objective_1 <- run_objective_1(data, dataset_name, output_dirs, prefix, other_map)
+        results$objective_1 <- run_objective_1(data, dataset_name, output_dirs, prefix, other_map, confounders = cohort_confounders)
     }
 
     if (2 %in% objectives_to_run) {
         log_enhanced("Running Objective 2: Safety/Toxicity", level = "INFO")
-        results$objective_2 <- run_objective_2(data, dataset_name, output_dirs, prefix, other_map)
+        results$objective_2 <- run_objective_2(data, dataset_name, output_dirs, prefix, other_map, confounders = cohort_confounders)
     }
 
     if (3 %in% objectives_to_run) {
         log_enhanced("Running Objective 3: Repeat Radiation Efficacy", level = "INFO")
-        results$objective_3 <- run_objective_3(data, dataset_name, output_dirs, prefix, other_map, confounders = confounders)
+        results$objective_3 <- run_objective_3(data, dataset_name, output_dirs, prefix, other_map, confounders = cohort_confounders)
     }
 
     if (4 %in% objectives_to_run) {
         log_enhanced("Running Objective 4: GEP Validation", level = "INFO")
-        results$objective_4 <- run_objective_4(data, dataset_name, output_dirs, prefix, other_map)
+        results$objective_4 <- run_objective_4(data, dataset_name, output_dirs, prefix, other_map, confounders = cohort_confounders)
     }
 
     log_section_complete("STATISTICAL ANALYSIS", analysis_start_time)

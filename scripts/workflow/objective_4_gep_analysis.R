@@ -4,8 +4,10 @@
 #' @param dataset_name Character string for dataset name
 #' @param output_dirs List of output directories
 #' @param prefix Character string for file prefix
+#' @param other_map List containing treatment group mappings and categorical variable level mappings for consistent analysis
+#' @param confounders Character vector of confounder variables to use for statistical adjustment (not used in GEP analysis)
 #' @return List of analysis results
-run_objective_4 <- function(data, dataset_name, output_dirs, prefix, other_map = list()) {
+run_objective_4 <- function(data, dataset_name, output_dirs, prefix, other_map = list(), confounders = NULL) {
     step4_start_time <- Sys.time()
     display_name <- tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name)))
     log_section_start("STEP 4: GEP PREDICTIVE ACCURACY VALIDATION", display_name)

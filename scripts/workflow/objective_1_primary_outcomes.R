@@ -16,12 +16,18 @@
 #' @param output_dirs List of output directories organized by analysis type (recurrence, mets, os, pfs, height, subgroups)
 #' @param prefix Character string prefix for cohort identification in output files (e.g., "full_cohort_", "restricted_cohort_", "gksrs_only_cohort_")
 #' @param other_map List containing treatment group mappings and categorical variable level mappings for consistent analysis
+#' @param confounders Character vector of confounder variables to use for statistical adjustment
 #' @return List containing all analysis results, model objects, and output file paths for each analysis type
-run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map = list()) {
+run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map = list(), confounders = NULL) {
     step1_start_time <- Sys.time()
     display_name <- tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name)))
     log_section_start("STEP 1: PRIMARY OUTCOMES ANALYSIS", display_name)
 
+    # Use provided confounders or fall back to global confounders
+    if (is.null(confounders)) {
+        confounders <- get("confounders", envir = .GlobalEnv)
+    }
+    
     # Display the confounders that will be used for statistical adjustment
     log_enhanced(
         sprintf(

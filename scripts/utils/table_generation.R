@@ -875,11 +875,13 @@ get_filtered_variables_from_table <- function(table_result, model_fit) {
     return(removed_vars)
 }
 
-#' Get model type for caption generation
+
+
+#' Get descriptive model type string
 #'
 #' @param model_fit Fitted model object
-#' @return Character string describing the model type
-get_model_type <- function(model_fit) {
+#' @return Character string with descriptive model type
+get_descriptive_model_type <- function(model_fit) {
     # Get the class of the model
     model_class <- class(model_fit)[1]
     
@@ -937,22 +939,6 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
     # Build model formula
     formula <- build_model_formula(outcome_var, predictor_vars, confounders, model_type)
     
-    # Validate confounders before model fitting (moved from model fitting to data processing stage)
-    if (!is.null(confounders) && length(confounders) > 0) {
-        log_enhanced("Validating confounders before model fitting", level = "INFO")
-        valid_confounders <- generate_valid_confounders(data, confounders)
-        
-        if (length(valid_confounders) != length(confounders)) {
-            log_enhanced(sprintf("Removed %d invalid confounders: %s", 
-                               length(confounders) - length(valid_confounders),
-                               paste(setdiff(confounders, valid_confounders), collapse = ", ")), level = "WARN")
-            confounders <- valid_confounders
-        }
-        
-        # Rebuild formula with validated confounders
-        formula <- build_model_formula(outcome_var, predictor_vars, confounders, model_type)
-    }
-    
     # Fit regression model
     model_fit <- fit_regression_model(data, formula, model_type, time_var, event_var)
     
@@ -974,8 +960,9 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
     
     # Create gtsummary table only if model fitting succeeded
     if (!is.null(model_fit)) {
+        outcome_type <- model_type_to_outcome_type(detect_model_type(model_fit))
         table_result <- create_gtsummary_table(model_fit, effect_measure, analysis_name, other_map, 
-                                              data, outcome_var, confounders, "binary")
+                                              data, outcome_var, confounders, outcome_type)
         
         # Get list of variables that were completely removed from the table
         filtered_variables <- get_filtered_variables_from_table(table_result, model_fit)
@@ -1097,13 +1084,13 @@ create_gtsummary_table <- function(model_fit, effect_measure, analysis_name, oth
                                   outcome_type = NULL) {
     
     # Determine model type for caption
-    model_type <- get_model_type(model_fit)
+    model_type <- detect_model_type(model_fit)
     
     # Determine outcome type from model if not provided
     if (is.null(outcome_type)) {
-        detected_model_type <- detect_model_type(model_fit)
-        outcome_type <- model_type_to_outcome_type(detected_model_type)
-        log_enhanced(sprintf("Detected outcome type '%s' from model type '%s'", outcome_type, detected_model_type), level = "DEBUG")
+        model_type <- detect_model_type(model_fit)
+        outcome_type <- model_type_to_outcome_type(model_type)
+        log_enhanced(sprintf("Detected outcome type '%s' from model type '%s'", outcome_type, model_type), level = "DEBUG")
     }
     
     # Get all variable labels and filter to only include variables in the model
@@ -1752,7 +1739,7 @@ modify_gt_table_pvalues <- function(gt_table, table_result, data, outcome_var, c
             pval <- calculate_variable_overall_significance(data, var_name, outcome_var, 
                                                            treatment_var = treatment_var,
                                                            confounders = var_confounders, 
-                                                           outcome_type = model_type_to_outcome_type(get_model_type(model_fit))) 
+                                                           outcome_type = model_type_to_outcome_type(detect_model_type(model_fit))) 
             factor_label_pvalues[[var_name]] <- pval
         }
     }
@@ -1970,7 +1957,7 @@ calculate_factor_label_pvalue <- function(model_fit, variable_name, data, outcom
             calculate_variable_overall_significance(data, variable_name, outcome_var,
                                                   treatment_var = treatment_var,
                                                   confounders = var_confounders,
-                                                  outcome_type = model_type_to_outcome_type("logistic"))
+                                                  outcome_type = model_type_to_outcome_type(model_type))
         },
         "cox" = {
             # Determine time and event variables programmatically
@@ -1993,7 +1980,7 @@ calculate_factor_label_pvalue <- function(model_fit, variable_name, data, outcom
                     data, variable_name, outcome_var,
                     treatment_var = treatment_var,
                     confounders = var_confounders,
-                    outcome_type = model_type_to_outcome_type("cox"),
+                    outcome_type = model_type_to_outcome_type(model_type),
                     time_var = time_var,
                     event_var = event_var
                 )

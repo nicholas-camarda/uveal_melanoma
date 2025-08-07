@@ -842,42 +842,42 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, other_ma
         )
     }
     
-    # Create summary table of PFS-2 characteristics
-    summary_table <- pfs2_data %>%
-        select(recurrence1_treatment_clean, tt_pfs2_months, pfs2_event, 
-               age_at_diagnosis, sex) %>%  # Remove location since it was collapsed
-        tbl_summary(
-            by = recurrence1_treatment_clean,
-            missing = "no",
-            label = list(
-                tt_pfs2_months ~ "PFS-2 Time (months)",
-                pfs2_event ~ "2nd Recurrence Events",
-                age_at_diagnosis ~ "Age at Diagnosis",
-                sex ~ "Sex"
-            ),
-            statistic = list(
-                tt_pfs2_months ~ "{median} ({p25}, {p75})",
-                pfs2_event ~ "{n} ({p}%)",  # Standard categorical format
-                age_at_diagnosis ~ "{mean} ({sd})"
-            ),
-            digits = list(
-                tt_pfs2_months ~ 1,
-                age_at_diagnosis ~ 1
-            )
-        ) %>%
-        add_overall() %>%
-        add_p(test = list(all_continuous() ~ "kruskal.test", all_categorical() ~ "fisher.test"), 
-              test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))) %>%
-        bold_labels() %>%
-        modify_header(
-            label = "**Characteristic**",
-            stat_0 = "**Overall**\nN = {N}",
-            stat_1 = "**Plaque**\nN = {n}",
-            stat_2 = "**GKSRS**\nN = {n}",
-            p.value = "**p-value**"
-        ) %>%
-        modify_caption("PFS-2 Analysis: Characteristics of Recurrent Patients by Second-Line Treatment") %>%
-        as_gt()
+    # Create summary table of PFS-2 characteristics (using the premade one from analyze_time_to_event_outcomes)
+    # summary_table <- pfs2_data %>%
+    #     select(recurrence1_treatment_clean, tt_pfs2_months, pfs2_event, 
+    #            age_at_diagnosis, sex) %>%  # Remove location since it was collapsed
+    #     tbl_summary(
+    #         by = recurrence1_treatment_clean,
+    #         missing = "no",
+    #         label = list(
+    #             tt_pfs2_months ~ "PFS-2 Time (months)",
+    #             pfs2_event ~ "2nd Recurrence Events",
+    #             age_at_diagnosis ~ "Age at Diagnosis",
+    #             sex ~ "Sex"
+    #         ),
+    #         statistic = list(
+    #             tt_pfs2_months ~ "{median} ({p25}, {p75})",
+    #             pfs2_event ~ "{n} ({p}%)",  # Standard categorical format
+    #             age_at_diagnosis ~ "{mean} ({sd})"
+    #         ),
+    #         digits = list(
+    #             tt_pfs2_months ~ 1,
+    #             age_at_diagnosis ~ 1
+    #         )
+    #     ) %>%
+    #     add_overall() %>%
+    #     add_p(test = list(all_continuous() ~ "kruskal.test", all_categorical() ~ "fisher.test"), 
+    #           test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))) %>%
+    #     bold_labels() %>%
+    #     modify_header(
+    #         label = "**Characteristic**",
+    #         stat_0 = "**Overall**\nN = {N}",
+    #         stat_1 = "**Plaque**\nN = {n}",
+    #         stat_2 = "**GKSRS**\nN = {n}",
+    #         p.value = "**p-value**"
+    #     ) %>%
+    #     modify_caption("PFS-2 Analysis: Characteristics of Recurrent Patients by Second-Line Treatment") %>%
+    #     as_gt()
     
     # Note: File saving is handled by the analyze_time_to_event_outcomes function called above
     # which properly organizes outputs into the established directory structure
@@ -887,7 +887,7 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, other_ma
     return(list(
         pfs2_data = pfs2_data,
         survival_analysis = pfs2_survival,
-        summary_table = summary_table
+        summary_table = pfs2_survival$cox_table  # Use the standardized table from generate_regression_table
     ))
 }
 

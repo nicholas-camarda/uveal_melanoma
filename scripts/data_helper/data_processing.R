@@ -322,6 +322,11 @@ create_derived_variables <- function(data) {
                 !is.na(dod) ~ time_length(interval(treatment_date, dod), "months"),
                 TRUE ~ time_length(interval(treatment_date, last_known_alive_date), "months")
             ),
+            # Melanoma-specific survival time (same as death time since death is the endpoint)
+            tt_mss_months = case_when(
+                !is.na(dod) ~ time_length(interval(treatment_date, dod), "months"),
+                TRUE ~ time_length(interval(treatment_date, last_known_alive_date), "months")
+            ),
             # Create progression-free survival time (first of recurrence OR death)
             tt_pfs_months = pmin(tt_recurrence_months, tt_death_months, na.rm = FALSE),
             
@@ -393,6 +398,7 @@ create_derived_variables <- function(data) {
             tt_mets_months_analysis = if_else(tt_mets_months < 0, 0, tt_mets_months),
             tt_recurrence_months_analysis = if_else(tt_recurrence_months < 0, 0, tt_recurrence_months),
             tt_death_months_analysis = if_else(tt_death_months < 0, 0, tt_death_months),
+            tt_mss_months_analysis = if_else(tt_mss_months < 0, 0, tt_mss_months),
             tt_pfs_months_analysis = pmin(tt_recurrence_months_analysis, tt_death_months_analysis, na.rm = FALSE)
         )
 
@@ -406,6 +412,8 @@ create_derived_variables <- function(data) {
             recurrence_event = if_else(recurrence1 == "Y", 1, 0, missing = 0),
             mets_event = if_else(mets_progression == "Y", 1, 0, missing = 0),
             death_event = if_else(!is.na(dod), 1, 0, missing = 0),
+            # Melanoma-specific survival event (same as death event since death is the endpoint)
+            mss_event = if_else(!is.na(dod), 1, 0, missing = 0),
             # Progression-free survival event: progression OR death (whichever comes first)
             pfs_event = if_else(recurrence_event == 1 | death_event == 1, 1, 0),
             # PFS-2 event: 1 if 2nd recurrence occurred, 0 if censored (only for patients with first recurrence)
@@ -1261,6 +1269,37 @@ create_analytic_dataset <- function(output_dirs = NULL) {
         )
     }
 
+    # Validate confounders for each cohort (moved from analysis stage to data processing stage)
+    log_enhanced("Validating confounders for each cohort", level = "INFO")
+    validated_confounders_by_cohort <- list()
+    
+    for (cohort_name in names(factored_filtered_data)) {
+        log_enhanced(sprintf("Validating confounders for cohort: %s", cohort_name), level = "INFO")
+        
+        # Get the confounders for this cohort (assuming confounders is a global variable)
+        if (exists("confounders") && !is.null(confounders) && length(confounders) > 0) {
+            valid_confounders <- generate_valid_confounders(factored_filtered_data[[cohort_name]], confounders)
+            
+            if (length(valid_confounders) != length(confounders)) {
+                log_enhanced(sprintf("Removed %d invalid confounders for cohort %s: %s", 
+                                   length(confounders) - length(valid_confounders),
+                                   cohort_name,
+                                   paste(setdiff(confounders, valid_confounders), collapse = ", ")), level = "WARN")
+            }
+            
+            validated_confounders_by_cohort[[cohort_name]] <- valid_confounders
+            log_enhanced(sprintf("Validated confounders for cohort %s: %s", 
+                               cohort_name, paste(valid_confounders, collapse = ", ")), level = "INFO")
+        } else {
+            validated_confounders_by_cohort[[cohort_name]] <- character(0)
+            log_enhanced(sprintf("No confounders to validate for cohort %s", cohort_name), level = "INFO")
+        }
+    }
+    
+    # Save the validated confounders for each cohort
+    saveRDS(validated_confounders_by_cohort, file.path(PROCESSED_DATA_DIR, "validated_confounders_by_cohort.rds"))
+    log_enhanced("Saved validated confounders for all cohorts", level = "INFO")
+
     # Save the combined other_map for all cohorts
     saveRDS(other_map, file.path(PROCESSED_DATA_DIR, "other_map.rds"))
     log_enhanced("Saved combined other_map information for all cohorts", level = "INFO")
@@ -1271,7 +1310,8 @@ create_analytic_dataset <- function(output_dirs = NULL) {
     return(list(
         analytic_data = factored_filtered_data,
         summary_tables = summary_tables,
-        other_map = other_map
+        other_map = other_map,
+        validated_confounders_by_cohort = validated_confounders_by_cohort
     ))
 }
 

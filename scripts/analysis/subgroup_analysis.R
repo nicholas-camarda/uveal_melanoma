@@ -474,10 +474,8 @@ process_subgroup_data <- function(data, subgroup_var, confounders, include_basel
         confounders_to_use <- c(confounders_to_use, "initial_tumor_height")
     }
 
-    # Validate confounders
-    if (length(confounders_to_use) > 0) {
-        confounders_to_use <- generate_valid_confounders(data, confounders_to_use, threshold = THRESHOLD_RARITY)
-    }
+    # Confounders are now pre-validated in data processing stage
+    # No need to validate here
 
     # Process subgroup variable (bin if continuous, treat factors as categorical)
     processed_data <- data

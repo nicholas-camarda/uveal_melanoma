@@ -400,7 +400,8 @@ GEP_RECOMMENDED_TESTING_SAMPLE <- 30      # Recommended minimum for testing set
 
 # GEP-specific derived variables
 GEP_DERIVED_VARIABLES <- c("gep_class_simple", "prame_status", "mfs_5yr", "mfs_7yr", 
-                           "mfs_10yr", "mss_5yr", "mss_7yr", "mss_10yr")
+                           "mfs_10yr", "mss_5yr", "mss_7yr", "mss_10yr",
+                           "tt_mss_months", "mss_event")
 
 # =============================================================================
 # SUMMARY: This file contains ALL configuration constants for the analysis pipeline

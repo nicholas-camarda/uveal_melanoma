@@ -20,7 +20,8 @@ validate_gep_variables_with_report <- function(data) {
         "biopsy1_gep", "biopsy1_gep_mfs", "biopsy1_gep_mss",
         "gep_class_simple", "prame_status",
         "expected_mfs_5yr", "expected_mfs_7yr", "expected_mfs_10yr",
-        "expected_mss_5yr", "expected_mss_7yr", "expected_mss_10yr"
+        "expected_mss_5yr", "expected_mss_7yr", "expected_mss_10yr",
+        "tt_mss_months", "mss_event"
     )
     
     # Check 1: Verify all required variables exist
