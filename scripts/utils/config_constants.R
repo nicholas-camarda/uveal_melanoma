@@ -67,7 +67,8 @@ EXTREME_ESTIMATE_THRESHOLD <- 100        # Maximum allowed odds/hazard ratios
 CI_WIDTH_THRESHOLD <- 1000               # Maximum confidence interval width (raw difference) - DEPRECATED
 EXPONENTIATED_CI_THRESHOLD <- 100        # Maximum CI width for exponentiated values (ORs, HRs)
 LOG_SCALE_CI_THRESHOLD <- 10             # Maximum CI width for log scale values (log-odds, log-hazards)
-NEAR_PERFECT_SEPARATION_THRESHOLD <- 0.001  # Threshold for near-perfect separation detection
+NEAR_PERFECT_SEPARATION_THRESHOLD <- 0.001  # Threshold for near-perfect separation detection (exponentiated scale)
+LOG_SCALE_NEAR_PERFECT_SEPARATION_THRESHOLD <- 0.1  # Threshold for near-perfect separation detection (log scale)
 
 # Tumor size thresholds for cohort eligibility
 TUMOR_HEIGHT_THRESHOLD <- 10             # mm

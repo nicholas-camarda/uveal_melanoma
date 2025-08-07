@@ -2,29 +2,6 @@
 # Author: Nicholas Camarda
 # Description: Simple, clean table generation focusing on diagnostic files first
 
-#' Get cohort-specific other_map for consistent other_map handling
-#'
-#' @param dataset_name Character string for dataset name (e.g., "uveal_melanoma_full_cohort")
-#' @param processed_data_dir Character string for processed data directory
-#' @return List containing other_map for the specific cohort
-get_cohort_specific_other_map <- function(dataset_name, processed_data_dir = "final_data/Analytic Dataset") {
-    # Extract cohort name from dataset name
-    cohort_name <- gsub("uveal_melanoma_", "", dataset_name)
-    cohort_name <- gsub("_cohort", "", cohort_name)
-    
-    # Create cohort-specific other_map filename
-    other_map_file <- file.path(processed_data_dir, paste0(cohort_name, "_other_map.rds"))
-    
-    if (file.exists(other_map_file)) {
-        other_map <- readRDS(other_map_file)
-        log_enhanced(sprintf("Loaded cohort-specific other_map for %s from %s", cohort_name, other_map_file), level = "INFO")
-        return(other_map)
-    } else {
-        log_enhanced(sprintf("No cohort-specific other_map found for %s at %s, using empty list", cohort_name, other_map_file), level = "INFO")
-        return(list())
-    }
-}
-
 #' Build model formula for regression
 #'
 #' @param outcome_var Character string name of outcome variable
@@ -218,11 +195,6 @@ fit_regression_model <- function(data, formula, model_type, time_var = NULL, eve
         return(NULL)
     })
 }
-
-#' Exclude events before treatment
-#'
-#' @param data Data frame
-
 
 #' Create comprehensive diagnostics with all required tabs
 #'
@@ -607,7 +579,7 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
     
     # Implement logical sorting: (Intercept) first, then variables grouped by type
     # Create a custom sorting order that groups factor labels with their coefficients
-    custom_order <- function(var_name) {
+    custom_order <- function(var_name, row_type_val) {
         if (var_name == "(Intercept)") {
             return(1)  # Always first
         } else {
@@ -617,9 +589,6 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
             } else {
                 var_name
             }
-            
-            # Get the row type for this variable
-            row_type <- raw_model_output_tab$row_type[raw_model_output_tab$variable == var_name]
             
             # Create a better grouping system that keeps factor labels with their coefficients
             # First, identify all unique base variables and their positions
@@ -648,7 +617,7 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
             base_priority <- base_to_group[[base_name]]
             
             # Factor labels come before coefficients within each variable group
-            if (row_type == "Factor Label") {
+            if (row_type_val == "Factor Label") {
                 return(base_priority)
             } else {
                 return(base_priority + 0.5)  # Coefficients come after factor labels
@@ -656,8 +625,9 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
         }
     }
     
-    # Sort using custom order
-    raw_model_output_tab <- raw_model_output_tab[order(sapply(raw_model_output_tab$variable, custom_order)), ]
+    # Sort using custom order - pass both variable name and row type
+    sort_order <- mapply(custom_order, raw_model_output_tab$variable, raw_model_output_tab$row_type)
+    raw_model_output_tab <- raw_model_output_tab[order(sort_order), ]
     
     # Apply the SAME filtering logic as the table generation
     # This ensures consistency between diagnostics and table output
@@ -690,11 +660,20 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
     # Only check coefficient rows (not factor labels)
     coeff_rows <- raw_model_output_tab$row_type == "Coefficient"
     if (any(coeff_rows)) {
+        # Determine the correct effect measure for the model type
+        if ("coxph" %in% class(model_fit)) {
+            effect_measure <- "HR"
+        } else if ("glm" %in% class(model_fit)) {
+            effect_measure <- "OR"
+        } else {
+            effect_measure <- "MD"  # Mean Difference for linear models
+        }
+        
         diagnostic_extreme_result <- detect_extreme_regression_estimates(
             estimate = raw_model_output_tab$log_coefficient[coeff_rows],
             ci_lower = raw_model_output_tab$log_ci_lower[coeff_rows],
             ci_upper = raw_model_output_tab$log_ci_upper[coeff_rows],
-            effect_measure = ifelse("coxph" %in% class(model_fit), "HR", "OR"),
+            effect_measure = effect_measure,
             is_exponentiated = FALSE  # Raw diagnostics are on log scale
         )
         
@@ -1035,6 +1014,9 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
         filtered_table_result <- extreme_filtering_result$tbl_filtered
         
         # Create comprehensive diagnostics with all required tabs
+        # Extract the actual filtered variables from the extreme filtering result
+        filtered_variables <- extreme_filtering_result$diagnostics$extreme_terms
+        
         diagnostics <- create_comprehensive_diagnostics(model_fit, data, outcome_var, 
                                                        predictor_vars, confounders, analysis_name, 
                                                        dataset_name, filtered_variables, other_map, 
@@ -1107,15 +1089,22 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
 #' @param data Data frame used for the model (for interaction p-value calculation)
 #' @param outcome_var Name of the outcome variable
 #' @param confounders Character vector of confounders
-#' @param outcome_type Type of outcome ("binary", "survival", "continuous")
+#' @param outcome_type Type of outcome ("binary", "survival", "continuous"). If NULL, will be detected from model_fit
 #' @param show_interaction_pvalues Logical, whether to show interaction p-values
 #' @return gtsummary table object
 create_gtsummary_table <- function(model_fit, effect_measure, analysis_name, other_map = NULL, 
                                   data = NULL, outcome_var = NULL, confounders = NULL, 
-                                  outcome_type = "binary") {
+                                  outcome_type = NULL) {
     
     # Determine model type for caption
     model_type <- get_model_type(model_fit)
+    
+    # Determine outcome type from model if not provided
+    if (is.null(outcome_type)) {
+        detected_model_type <- detect_model_type(model_fit)
+        outcome_type <- model_type_to_outcome_type(detected_model_type)
+        log_enhanced(sprintf("Detected outcome type '%s' from model type '%s'", outcome_type, detected_model_type), level = "DEBUG")
+    }
     
     # Get all variable labels and filter to only include variables in the model
     all_variable_labels <- get_variable_labels()
@@ -1313,10 +1302,11 @@ get_cohort_specific_other_map <- function(dataset_name, processed_data_dir = "fi
 #' @param data Data frame used for the model
 #' @param outcome_var Name of the outcome variable
 #' @param confounders Character vector of confounders
-#' @param outcome_type Type of outcome ("binary" or "survival")
+#' @param outcome_type Type of outcome ("binary", "survival", or "continuous"). If NULL, will be detected from model_fit
 #' @param treatment_var Name of the treatment variable in the model (default: "treatment_group")
+#' @param model_fit Fitted model object (optional, used for automatic outcome type detection)
 #' @return Modified gtsummary table object
-add_factor_label_pvalues_to_table <- function(table, data, outcome_var, confounders = NULL, outcome_type = "binary", treatment_var = "treatment_group") {
+add_factor_label_pvalues_to_table <- function(table, data, outcome_var, confounders = NULL, outcome_type = NULL, treatment_var = "treatment_group", model_fit = NULL) {
     
     log_enhanced("Starting add_factor_label_pvalues_to_table", level = "DEBUG")
     
@@ -1339,16 +1329,32 @@ add_factor_label_pvalues_to_table <- function(table, data, outcome_var, confound
     
     # Calculate overall variable significance p-values for each variable
     factor_label_pvalues <- list()
+    
+    # Determine outcome type from model if not provided
+    if (is.null(outcome_type) && !is.null(model_fit)) {
+        model_type <- detect_model_type(model_fit)
+        outcome_type <- model_type_to_outcome_type(model_type)
+        log_enhanced(sprintf("Detected outcome type '%s' from model type '%s'", outcome_type, model_type), level = "DEBUG")
+    } else if (is.null(outcome_type)) {
+        # Fallback to binary if no model provided
+        outcome_type <- "binary"
+        log_enhanced("No model provided, using default outcome type 'binary'", level = "DEBUG")
+    }
+    
     for (var_name in variables) {
         # For each variable, exclude it from the confounders list
         var_confounders <- filtered_confounders[filtered_confounders != var_name]
         
-        # Calculate overall significance using likelihood ratio test
-        # Use the passed treatment variable parameter
-        pval <- calculate_variable_overall_significance(data, var_name, outcome_var, 
-                                                       treatment_var = treatment_var,
-                                                       confounders = var_confounders, 
-                                                       outcome_type = outcome_type)
+        # Use the new unified approach if model is provided, otherwise use the old approach
+        if (!is.null(model_fit)) {
+            pval <- calculate_factor_label_pvalue(model_fit, var_name, data, outcome_var, var_confounders, treatment_var = treatment_var)
+        } else {
+            # Calculate overall significance using likelihood ratio test (old approach)
+            pval <- calculate_variable_overall_significance(data, var_name, outcome_var, 
+                                                           treatment_var = treatment_var,
+                                                           confounders = var_confounders, 
+                                                           outcome_type = outcome_type)
+        }
         factor_label_pvalues[[var_name]] <- pval
     }
     
@@ -1392,8 +1398,9 @@ remove_orphaned_variables <- function(table, model_fit) {
     
     table_data <- table$table_body
     
-    # Determine if the table is exponentiated
-    is_exponentiated <- any(grepl("OR|HR", table$table_header$label))
+    # Determine if the table is exponentiated - use the same logic as the main filtering
+    # Check if the table has OR/HR in the coefficients label
+    is_exponentiated <- any(grepl("OR|HR", table$table_body$coefficients_label, ignore.case = TRUE))
     
     # Use the centralized extreme estimate detection function
     # Only check rows that have numeric estimates
@@ -1745,7 +1752,7 @@ modify_gt_table_pvalues <- function(gt_table, table_result, data, outcome_var, c
             pval <- calculate_variable_overall_significance(data, var_name, outcome_var, 
                                                            treatment_var = treatment_var,
                                                            confounders = var_confounders, 
-                                                           outcome_type = "binary")
+                                                           outcome_type = model_type_to_outcome_type(get_model_type(model_fit))) 
             factor_label_pvalues[[var_name]] <- pval
         }
     }
@@ -1822,6 +1829,21 @@ format_confidence_intervals_post <- function(x) {
         # If we can't parse it, return the original value
         return(val)
     })
+}
+
+#' Convert model type to outcome type
+#'
+#' @param model_type Character string indicating model type
+#' @return Character string indicating outcome type
+model_type_to_outcome_type <- function(model_type) {
+    switch(model_type,
+        "logistic" = "binary",
+        "linear" = "continuous", 
+        "cox" = "survival",
+        "other_glm" = "binary",  # Default for other GLMs
+        "unknown" = "binary",    # Default fallback
+        "binary"  # If already an outcome type, return as is
+    )
 }
 
 #' Detect the type of regression model
@@ -1948,7 +1970,7 @@ calculate_factor_label_pvalue <- function(model_fit, variable_name, data, outcom
             calculate_variable_overall_significance(data, variable_name, outcome_var,
                                                   treatment_var = treatment_var,
                                                   confounders = var_confounders,
-                                                  outcome_type = "binary")
+                                                  outcome_type = model_type_to_outcome_type("logistic"))
         },
         "cox" = {
             # Determine time and event variables programmatically
@@ -1971,7 +1993,7 @@ calculate_factor_label_pvalue <- function(model_fit, variable_name, data, outcom
                     data, variable_name, outcome_var,
                     treatment_var = treatment_var,
                     confounders = var_confounders,
-                    outcome_type = "survival",
+                    outcome_type = model_type_to_outcome_type("cox"),
                     time_var = time_var,
                     event_var = event_var
                 )

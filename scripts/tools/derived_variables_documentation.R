@@ -275,8 +275,8 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
     # ===== RECURRENCE TREATMENT VARIABLES =====
     recurrence1_treatment_clean = list(
         description = "Cleaned categorization of first recurrence treatment",
-        calculation = "case_when(str_detect(tolower(recurrence1_treatment), 'gk') ~ 'GKSRS', str_detect(tolower(recurrence1_treatment), 'enuc') ~ 'Enucleation', str_detect(tolower(recurrence1_treatment), 'ttt') ~ 'TTT', TRUE ~ 'Other')",
-        purpose = "Categorized treatment for PFS-2 analysis",
+        calculation = "case_when(str_detect(tolower(recurrence1_treatment), 'gk') ~ 'GKSRS', str_detect(tolower(recurrence1_treatment), 'enuc') ~ 'Enucleation', str_detect(tolower(recurrence1_treatment), 'ttt') ~ 'TTT', TRUE ~ recurrence1_treatment)",
+        purpose = "Categorized treatment for PFS-2 analysis. Note: Rare categories are collapsed into 'Other' by the standard rare category processing system.",
         data_type = "character",
         units = "categorical"
     ),

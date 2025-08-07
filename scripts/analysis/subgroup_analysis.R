@@ -1509,28 +1509,20 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
             log_enhanced(sprintf("Data prepared for HTML table, rows: %d", nrow(gtsummary_data)), level = "INFO")
             
             # Create gt table with proper styling (like regular regression tables)
-            # Add manual indentation to factor levels since cell_padding is not available in gt 1.0.0
-            gtsummary_data_with_indent <- gtsummary_data %>%
-                mutate(
-                    `Subgroup Level` = if_else(
-                        !grepl("^[A-Z]", `Subgroup Level`),  # Factor levels (not header rows)
-                        paste0("    ", `Subgroup Level`),    # Add 4 spaces for indentation
-                        `Subgroup Level`                     # Keep headers as-is
-                    )
-                )
-            
-            html_table <- gtsummary_data_with_indent %>%
+            # Use the is_header field from the original data to determine styling
+            html_table <- gtsummary_data %>%
                 gt() %>%
                 # Title using gtsummary-style formatting
                 tab_header(
                     title = md(sprintf("**Subgroup Analysis: %s**", outcome_name))
                 ) %>%
                 # Style header rows (factor names) as bold - like bold_labels()
+                # Only bold the factor name column, not the data
                 tab_style(
                     style = cell_text(weight = "bold"),
                     locations = cells_body(
-                        columns = everything(),
-                        rows = grepl("^[A-Z]", `Subgroup Level`)  # Header rows start with capital letters
+                        columns = "Subgroup Level",  # Only bold the factor name, not the data
+                        rows = final_table$is_header  # Use the is_header field directly
                     )
                 ) %>%
                 # Style factor levels as italicized - like italicize_levels()
@@ -1539,7 +1531,7 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
                     style = cell_text(style = "italic"),
                     locations = cells_body(
                         columns = "Subgroup Level",  # Only italicize the factor level names, not the data
-                        rows = grepl("^    ", `Subgroup Level`)  # Factor levels (indented with 4 spaces)
+                        rows = !final_table$is_header  # Use the is_header field directly
                     )
                 ) %>%
                 # Replace missing with blank

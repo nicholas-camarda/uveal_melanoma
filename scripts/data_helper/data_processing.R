@@ -415,12 +415,13 @@ create_derived_variables <- function(data) {
                 TRUE ~ NA_real_
             ),
             # Clean recurrence treatment variable for PFS-2 analysis
+            # Create with all original values, let rare category collapsing handle "Other"
             recurrence1_treatment_clean = case_when(
                 recurrence1 == "Y" & !is.na(recurrence1_treatment) ~ case_when(
                     str_detect(tolower(recurrence1_treatment), "gk") ~ "GKSRS",
                     str_detect(tolower(recurrence1_treatment), "enuc") ~ "Enucleation", 
                     str_detect(tolower(recurrence1_treatment), "ttt") ~ "TTT",
-                    TRUE ~ "Other"
+                    TRUE ~ recurrence1_treatment  # Keep original value for rare category processing
                 ),
                 TRUE ~ NA_character_
             )
@@ -599,8 +600,8 @@ prepare_factor_levels <- function(data) {
             ),
             
             # Recurrence treatment group for PFS-2 analysis
+            # Let factor levels be determined by actual data values, then rare category collapsing will handle "Other"
             recurrence1_treatment_clean = factor(recurrence1_treatment_clean,
-                levels = c("Enucleation", "GKSRS", "TTT", "Other"),
                 ordered = FALSE  # CRITICAL: Use treatment contrasts, not polynomial
             ),
 
@@ -1211,26 +1212,24 @@ create_analytic_dataset <- function(output_dirs = NULL) {
     for (cohort_name in names(factored_filtered_data)) {
         log_enhanced(sprintf("Processing rare categories for cohort: %s", cohort_name), level = "INFO")
         
-        # Get the list of variables that might need category collapsing
-        # Use the same variables as the old system: confounders + continuous_subgroup_vars (binned)
-        subgroup_vars_to_process <- paste0(continuous_subgroup_vars, "_binned")
-        all_vars_to_process <- c(confounders, subgroup_vars_to_process)
+        # Get ALL factor variables that might need category collapsing
+        # Process ALL factor variables, not just confounders and continuous_subgroup_vars
+        all_vars_to_process <- names(factored_filtered_data[[cohort_name]])
         
         # Filter to variables that exist in the data and are factors
-        factor_vars <- intersect(all_vars_to_process, names(factored_filtered_data[[cohort_name]]))
-        factor_vars <- factor_vars[sapply(factored_filtered_data[[cohort_name]][factor_vars], is.factor)]
+        factor_vars <- all_vars_to_process[sapply(factored_filtered_data[[cohort_name]][all_vars_to_process], is.factor)]
         
         if (length(factor_vars) > 0) {
             # Collapse rare categories for this cohort
             collapse_result <- handle_rare_categories(factored_filtered_data[[cohort_name]], factor_vars)
             factored_filtered_data[[cohort_name]] <- collapse_result$data
             other_map[[cohort_name]] <- collapse_result$other_map
-            
+   
             # Log what was collapsed
-            if (length(collapse_result$other_map) > 0) {
+            if (length(other_map[[cohort_name]]) > 0) {
                 log_enhanced(sprintf("Categories collapsed into 'Other' for cohort %s:", cohort_name), level = "INFO")
-                for (var_name in names(collapse_result$other_map)) {
-                    collapsed_cats <- collapse_result$other_map[[var_name]]
+                for (var_name in names(other_map[[cohort_name]])) {
+                    collapsed_cats <- other_map[[cohort_name]][[var_name]]
                     log_enhanced(sprintf("  %s: %s", var_name, paste(collapsed_cats, collapse = ", ")), level = "INFO")
                 }
             } else {

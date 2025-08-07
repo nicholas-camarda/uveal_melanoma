@@ -24,8 +24,6 @@ detect_extreme_regression_estimates <- function(estimate, ci_lower, ci_upper, ef
     for (i in seq_along(estimate)) {
         reason <- NULL
         
-
-        
         if (toupper(effect_measure) %in% c("HR", "OR", "RR", "MD", "BETA", "ESTIMATE", "LOG-ODDS", "LOG-HAZARD")) {
             # 1. Infinite CIs (always extreme regardless of scale)
             if (is.infinite(ci_upper[i]) || is.infinite(ci_lower[i])) {
@@ -45,7 +43,8 @@ detect_extreme_regression_estimates <- function(estimate, ci_lower, ci_upper, ef
                                     ci_lower[i], ci_upper[i], ci_upper[i] - ci_lower[i])
                 }
                 # Very small lower CI (near-perfect separation on ratio scale)
-                else if (!is.na(ci_lower[i]) && ci_lower[i] < 1e-6) {
+                # For exponentiated OR/HR, check if lower bound is very close to 0
+                else if (!is.na(ci_lower[i]) && ci_lower[i] < NEAR_PERFECT_SEPARATION_THRESHOLD) {
                     reason <- sprintf("Near-perfect separation detected: CI lower bound = %.8f", ci_lower[i])
                 }
             } else {
@@ -63,7 +62,7 @@ detect_extreme_regression_estimates <- function(estimate, ci_lower, ci_upper, ef
                         reason <- sprintf("Perfect separation detected (log scale): estimate = %.2f", estimate[i])
                     }
                     # Check for near-perfect separation: very large absolute estimates with tight CIs
-                    else if (abs(estimate[i]) > 5 && ci_width < 0.1) {
+                    else if (abs(estimate[i]) > 5 && ci_width < LOG_SCALE_NEAR_PERFECT_SEPARATION_THRESHOLD) {
                         reason <- sprintf("Near-perfect separation detected (log scale): estimate = %.2f, CI = (%.2f, %.2f)", 
                                         estimate[i], ci_lower[i], ci_upper[i])
                     }
@@ -206,9 +205,9 @@ apply_extreme_estimate_filtering <- function(tbl, model_fit, effect_measure = "O
         
         # Detect extreme estimates from table data
         # DETERMINISTIC APPROACH: Use effect_measure to determine scale instead of fragile value detection
-        # Exponentiated measures: OR, HR, MD (always positive when exponentiated)
-        # Log scale measures: beta, estimate, log-odds, log-hazard (can be negative)
-        is_table_exponentiated <- effect_measure %in% c("OR", "HR", "MD")
+        # Exponentiated measures: OR, HR (always positive when exponentiated)
+        # Raw scale measures: MD, beta, estimate (can be negative)
+        is_table_exponentiated <- effect_measure %in% c("OR", "HR")
         
         extreme_detection <- detect_extreme_regression_estimates(table_estimates, table_ci_lower, table_ci_upper, effect_measure, is_exponentiated = is_table_exponentiated)
         
