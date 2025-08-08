@@ -1,10 +1,6 @@
-# GEP Validation Utilities
+# GEP Variable Checks (renamed from gep_validation_utilities.R)
 # Author: Nicholas Camarda
-# Description: GEP (Gene Expression Profile) validation functions for Objective 4
-
-# =============================================================================
-# GEP VALIDATION FUNCTIONS
-# =============================================================================
+# Description: Validation of GEP-related variables for Objective 4
 
 #' Validate GEP-related variables with detailed results for inclusion in the validation report.
 #'
@@ -14,17 +10,12 @@ validate_gep_variables_with_report <- function(data) {
     log_enhanced("Starting GEP variable validation checks", level = "INFO", indent = 1)
     validation_passed <- TRUE
     detailed_results <- list()
-    
-    # Required GEP variables that should exist
     required_gep_vars <- c(
         "biopsy1_gep", "biopsy1_gep_mfs", "biopsy1_gep_mss",
         "gep_class_simple", "prame_status",
         "expected_mfs_5yr", "expected_mfs_7yr", "expected_mfs_10yr",
-        "expected_mss_5yr", "expected_mss_7yr", "expected_mss_10yr",
-        "tt_mss_months", "mss_event"
+        "expected_mss_5yr", "expected_mss_7yr", "expected_mss_10yr"
     )
-    
-    # Check 1: Verify all required variables exist
     missing_vars <- setdiff(required_gep_vars, names(data))
     if (length(missing_vars) > 0) {
         detailed_results$missing_variables <- missing_vars
@@ -32,22 +23,15 @@ validate_gep_variables_with_report <- function(data) {
     } else {
         detailed_results$missing_variables <- NULL
     }
-    
-    # Data availability statistics
-    patients_with_gep <- sum(!is.na(data$biopsy1_gep) & 
-                           data$biopsy1_gep != "Failed" & 
-                           data$biopsy1_gep != "Unknown")
+    patients_with_gep <- sum(!is.na(data$biopsy1_gep) & data$biopsy1_gep != "Failed" & data$biopsy1_gep != "Unknown")
     patients_with_mfs <- sum(!is.na(data$biopsy1_gep_mfs))
     patients_with_mss <- sum(!is.na(data$biopsy1_gep_mss))
-    
-    # Training/testing split statistics (if available)
     training_testing_stats <- NULL
     if ("gep_validation_set" %in% names(data)) {
         validation_set_counts <- table(data$gep_validation_set, useNA = "ifany")
         training_count <- ifelse("Training" %in% names(validation_set_counts), validation_set_counts["Training"], 0)
         testing_count <- ifelse("Testing" %in% names(validation_set_counts), validation_set_counts["Testing"], 0)
         no_gep_count <- ifelse("No GEP Data" %in% names(validation_set_counts), validation_set_counts["No GEP Data"], 0)
-        
         training_testing_stats <- list(
             training_patients = training_count,
             testing_patients = testing_count,
@@ -56,7 +40,6 @@ validate_gep_variables_with_report <- function(data) {
             testing_rate = round(100 * testing_count / nrow(data), 1)
         )
     }
-    
     detailed_results$data_availability <- list(
         total_patients = nrow(data),
         patients_with_gep = patients_with_gep,
@@ -67,22 +50,15 @@ validate_gep_variables_with_report <- function(data) {
         mss_availability_rate = round(100 * patients_with_mss / nrow(data), 1),
         training_testing_split = training_testing_stats
     )
-    
-    # Only proceed with detailed checks if all variables exist
     if (length(missing_vars) == 0) {
-        # GEP class distribution
         if ("gep_class_simple" %in% names(data)) {
             gep_distribution <- table(data$gep_class_simple, useNA = "ifany")
             detailed_results$gep_distribution <- gep_distribution
         }
-        
-        # PRAME status distribution
         if ("prame_status" %in% names(data)) {
             prame_distribution <- table(data$prame_status, useNA = "ifany")
             detailed_results$prame_distribution <- prame_distribution
         }
-        
-        # Validation of extrapolation logic
         detailed_results$extrapolation_valid <- TRUE
         if (all(c("expected_mfs_5yr", "expected_mfs_7yr") %in% names(data))) {
             valid_data <- data[!is.na(data$expected_mfs_5yr) & data$expected_mfs_5yr > 0, ]
@@ -97,9 +73,7 @@ validate_gep_variables_with_report <- function(data) {
             }
         }
     }
-    
     detailed_results$validation_passed <- validation_passed
-    
     return(list(
         validation_passed = validation_passed,
         detailed_results = detailed_results
@@ -114,7 +88,6 @@ validate_gep_variables_with_report <- function(data) {
 #' @param data Data frame to validate (typically the full cohort)
 #' @return TRUE if all validations pass, FALSE otherwise
 validate_gep_variables <- function(data) {
-    # Use the detailed validation function and return just the boolean result
     result <- validate_gep_variables_with_report(data)
     return(result$validation_passed)
-} 
+}

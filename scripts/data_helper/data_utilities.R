@@ -38,18 +38,37 @@ handle_rare_categories <- function(data, vars, threshold = 5) {
     for (var in vars) {
         if (var %in% names(data) && is.factor(data[[var]])) {
             log_enhanced(sprintf("Checking for rare categories in %s", var))
-            # Get category counts
+            
+            # 1) Forced collapsing based on centralized config (always to 'Other')
+            if (exists("FORCED_OTHER_BY_VARIABLE") && var %in% names(FORCED_OTHER_BY_VARIABLE)) {
+                forced_levels <- FORCED_OTHER_BY_VARIABLE[[var]]
+                # Collapse only levels that actually exist
+                forced_levels_present <- intersect(forced_levels, levels(data[[var]]))
+                if (length(forced_levels_present) > 0) {
+                    if (VERBOSE) {
+                        log_enhanced(sprintf("Forcing collapse of specified levels in %s into 'Other': %s", var, paste(forced_levels_present, collapse=", ")))
+                    }
+                    data[[var]] <- fct_collapse(data[[var]], Other = forced_levels_present) %>%
+                        fct_drop() %>%
+                        fct_relevel("Other", after = Inf) %>%
+                        factor()
+                    # Track forced-collapsed categories
+                    other_map[[var]] <- unique(c(other_map[[var]], forced_levels_present))
+                }
+            }
+            
+            # 2) Rarity-based collapsing (post-forced)
+            # Get category counts after forced collapse
             cat_counts <- table(data[[var]])
-            rare_cats <- names(cat_counts)[cat_counts < threshold]
-            valid_cats <- names(cat_counts)[cat_counts >= threshold]
+            rare_cats <- names(cat_counts)[cat_counts < threshold & names(cat_counts) != "Other"]
+            valid_cats <- names(cat_counts)[cat_counts >= threshold | names(cat_counts) == "Other"]
 
             if (length(rare_cats) > 0) {
-                # Only create "Other" if we have at least 2 rare categories to collapse
+                # Only create/inflate "Other" if at least 2 rare categories to collapse
                 if (length(rare_cats) >= 2) {
-                    # Check if collapsing would leave at least 2 valid levels
                     total_rare_count <- sum(cat_counts[rare_cats])
                     would_have_valid_other <- total_rare_count >= threshold
-                    final_valid_levels <- length(valid_cats) + (if (would_have_valid_other) 1 else 0)
+                    final_valid_levels <- length(valid_cats) + (if (would_have_valid_other && !("Other" %in% names(cat_counts))) 1 else 0)
                     
                     if (final_valid_levels >= 2) {
                         if (VERBOSE) {
@@ -59,18 +78,16 @@ handle_rare_categories <- function(data, vars, threshold = 5) {
                             }
                         }
 
-                        # Collapse rare categories into "Other"
                         data[[var]] <- fct_collapse(data[[var]],
                             Other = rare_cats
                         ) %>%
                             fct_drop() %>%
                             fct_relevel("Other", after = Inf) %>%
                             factor()
-                        
-                        # Track which categories were collapsed into Other
-                        other_map[[var]] <- rare_cats
 
-                        # Diagnostic logging to verify the fix worked
+                        # Track which categories were collapsed into Other (append to any forced ones)
+                        other_map[[var]] <- unique(c(other_map[[var]], rare_cats))
+
                         if (VERBOSE) {
                             log_enhanced(sprintf("After collapse - %s levels: %s", var, paste(levels(data[[var]]), collapse=", ")))
                             log_enhanced(sprintf("After collapse - %s counts: %s", var, paste(names(table(data[[var]])), "=", table(data[[var]]), collapse=", ")))
@@ -83,7 +100,6 @@ handle_rare_categories <- function(data, vars, threshold = 5) {
                         }
                     }
                 } else {
-                    # Only 1 rare category - don't create "Other", just log it
                     if (VERBOSE) {
                         log_enhanced(sprintf("\nSkipping collapse for %s: only 1 rare category (%s, n=%d) - not creating 'Other'", 
                                           var, rare_cats[1], cat_counts[rare_cats[1]]))

@@ -24,7 +24,8 @@ run_objective_4 <- function(data, dataset_name, output_dirs, prefix, other_map =
 
     # Simple GEP validation
     log_function("simple_gep_validation", "Simple GEP validation - Actual vs Expected rates")
-    simple_gep_results <- simple_gep_validation(data, output_dirs$obj4_simple, prefix)
+    # Simple GEP outputs go under the MFS directory for consistency
+    simple_gep_results <- simple_gep_validation(data, output_dirs$obj4_mfs, prefix)
     log_enhanced("Simple GEP validation completed", level = "INFO", indent = 1)
 
     log_section_complete("STEP 4: GEP PREDICTIVE ACCURACY VALIDATION", step4_start_time)

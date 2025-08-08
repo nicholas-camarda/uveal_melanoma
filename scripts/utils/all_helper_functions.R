@@ -19,19 +19,29 @@ USE_CLINICAL_BINNING_CONTINUOUS <- TRUE  # DEFAULT: Use clinical thresholds for 
 ############### LOAD / INSTALL REQUIRED LIBRARIES ####################
 ######################################################################
 use <- function(pkg) {
+    # Bootstrap pak if needed
+    if (!requireNamespace("pak", quietly = TRUE)) {
+        install.packages("pak")
+    }
+
+    # Install if missing using pak; try CRAN first, then Bioconductor via bioc::
     if (!requireNamespace(pkg, quietly = TRUE)) {
-        # Try CRAN first
         tryCatch(
-            install.packages(pkg),
-            error = function(e) {
-                message(sprintf("→ %s not on CRAN, trying Bioconductor…", pkg))
-                if (!requireNamespace("BiocManager", quietly = TRUE)) {
-                    install.packages("BiocManager")
-                }
-                BiocManager::install(pkg, ask = FALSE, update = FALSE)
+            {
+                pak::pkg_install(pkg, ask = FALSE)
+            },
+            error = function(e1) {
+                # Attempt Bioconductor namespace via pak
+                tryCatch(
+                    pak::pkg_install(paste0("bioc::", pkg), ask = FALSE),
+                    error = function(e2) {
+                        stop(sprintf("Failed to install package '%s' via pak (CRAN and Bioconductor attempts). Original errors: %s | %s", pkg, conditionMessage(e1), conditionMessage(e2)))
+                    }
+                )
             }
         )
     }
+
     suppressPackageStartupMessages(
         library(pkg, character.only = TRUE)
     )
@@ -90,14 +100,10 @@ use("mice") # Multiple imputation by chained equations
 source("scripts/utils/config_constants.R")
 source("scripts/utils/logging_utilities.R")
 source("scripts/utils/validation_utilities.R")
-source("scripts/utils/gep_validation_utilities.R")
 source("scripts/utils/model_utilities.R")
 
 # Source the extreme estimate handling utilities
 source("scripts/utils/extreme_estimate_handling.R")
-
-# Source the GEP validation core functions
-source("scripts/analysis/gep_validation_core.R")
 
 # Source the table generation utilities
 source("scripts/utils/table_generation.R")
@@ -114,8 +120,17 @@ source("scripts/analysis/statistical_analysis.R")
 source("scripts/analysis/tumor_height_analysis.R")
 source("scripts/analysis/vision_safety_analysis.R")
 source("scripts/analysis/subgroup_analysis.R")
-source("scripts/analysis/gep_validation_analysis.R")
-# Primary outcomes subgroup analysis functions now in subgroup_analysis.R
+
+# Source GEP evaluation modules
+source("scripts/gep/utils/gep_model_evaluation_metrics.R")
+source("scripts/gep/cores/gep_evaluation_core_mfs.R")
+source("scripts/gep/cores/gep_evaluation_core_mss.R")
+source("scripts/gep/diagnostics/gep_data_diagnostics.R")
+source("scripts/gep/visualization/gep_visuals.R")
+source("scripts/gep/reporting/gep_reporting.R")
+source("scripts/gep/simple/gep_simple_validation.R")
+source("scripts/gep/orchestration/gep_evaluation_orchestration.R")
+source("scripts/gep/utils/gep_variable_checks.R")
 
 # Source the forest plot script
 source("scripts/visualization/forest_plot.R")

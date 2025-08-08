@@ -170,6 +170,12 @@ COHORT_CONSTANT_VARIABLES <- list(
 # preserving the confounding adjustment for stages with adequate sample sizes.
 STAGES_TO_EXCLUDE_FROM_MODIFIED <- c("3B", "3C", "4")
 
+# Centralized forced-to-Other configuration for factor variables (code-level)
+# Any levels listed here will always be collapsed into 'Other' for the given variable, regardless of counts
+FORCED_OTHER_BY_VARIABLE <- list(
+  initial_overall_stage_modified = STAGES_TO_EXCLUDE_FROM_MODIFIED
+)
+
 # =============================================================================
 # DATA VALIDATION THRESHOLDS AND REQUIREMENTS
 # =============================================================================
@@ -400,8 +406,7 @@ GEP_RECOMMENDED_TESTING_SAMPLE <- 30      # Recommended minimum for testing set
 
 # GEP-specific derived variables
 GEP_DERIVED_VARIABLES <- c("gep_class_simple", "prame_status", "mfs_5yr", "mfs_7yr", 
-                           "mfs_10yr", "mss_5yr", "mss_7yr", "mss_10yr",
-                           "tt_mss_months", "mss_event")
+                           "mfs_10yr", "mss_5yr", "mss_7yr", "mss_10yr")
 
 # =============================================================================
 # SUMMARY: This file contains ALL configuration constants for the analysis pipeline

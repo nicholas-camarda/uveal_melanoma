@@ -66,6 +66,17 @@ The analysis is structured around four prioritized research objectives:
 - **4a.** Metastasis-free survival validation
 - **4b.** Melanoma-specific survival validation
 
+#### GEP Module Architecture (scripts/gep/**)
+- cores/: `gep_evaluation_core_mfs.R`, `gep_evaluation_core_mss.R` — evaluation algorithms only (no plotting/IO)
+- diagnostics/: `gep_data_diagnostics.R` — missingness assessment, competing-risk prep
+- visualization/: `gep_visuals.R` — plots only
+- reporting/: `gep_reporting.R` — reports/Excel/text writers
+- simple/: `gep_simple_validation.R` — expected vs actual summaries, plots, report
+- orchestration/: `gep_evaluation_orchestration.R` — orchestration only; calls cores/visuals/reporting
+- utils/: `gep_model_evaluation_metrics.R` (shared calculators), `gep_variable_checks.R` (variable validation)
+
+All modules are sourced centrally in `scripts/utils/all_helper_functions.R`. Objective 4 orchestrator (`scripts/workflow/objective_4_gep_analysis.R`) invokes the orchestration module which delegates to cores/visuals/reporting.
+
 ---
 
 ## Data Processing Workflow
@@ -198,9 +209,7 @@ project_working_directory/
 │   │   ├── tumor_height_analysis.R        # Tumor dimension analysis
 │   │   ├── vision_safety_analysis.R       # Safety endpoint analysis
 │   │   ├── subgroup_analysis.R             # CONSOLIDATED: All subgroup analyses
-│   │   ├── gep_validation_analysis.R       # GEP validation analysis
-│   │   ├── gep_validation_core.R           # GEP validation core functions
-│   │   └── gep_validation_helpers.R        # GEP validation helper functions
+│   │   └── (GEP modules moved under scripts/gep/**)
 │   ├── visualization/
 │   │   └── forest_plot.R                   # Forest plot generation
 │   ├── utils/
@@ -212,8 +221,24 @@ project_working_directory/
 │   │   ├── model_utilities.R               # Model utility functions
 │   │   ├── extreme_estimate_handling.R     # Extreme estimate handling
 │   │   ├── forest_plot_diagnostics.R       # Forest plot diagnostics
-│   │   ├── gep_validation_utilities.R      # GEP validation utilities
 │   │   └── logging_utilities.R             # Logging system
+│   ├── gep/                                # NEW: Modular GEP validation architecture
+│   │   ├── cores/
+│   │   │   ├── gep_evaluation_core_mfs.R        # MFS evaluation algorithms (no IO)
+│   │   │   └── gep_evaluation_core_mss.R        # MSS evaluation algorithms (no IO)
+│   │   ├── diagnostics/
+│   │   │   └── gep_data_diagnostics.R           # Missingness assessment, competing-risk prep
+│   │   ├── visualization/
+│   │   │   └── gep_visuals.R                    # Plots only
+│   │   ├── reporting/
+│   │   │   └── gep_reporting.R                  # Reports/Excel/text writers only
+│   │   ├── simple/
+│   │   │   └── gep_simple_validation.R          # Simple expected vs actual summaries and plots
+│   │   ├── orchestration/
+│   │   │   └── gep_evaluation_orchestration.R   # Orchestration only (calls cores/visuals/reporting)
+│   │   └── utils/
+│   │       ├── gep_model_evaluation_metrics.R   # Shared calculators (O/E, calibration, discrimination, NRI, CI, hazards)
+│   │       └── gep_variable_checks.R            # Variable validation checks
 │   ├── workflow/                           # NEW: Objective-specific workflow scripts
 │   │   ├── analysis_orchestration.R        # Main orchestration functions
 │   │   ├── objective_0_data_processing.R   # Data processing workflow
@@ -435,7 +460,7 @@ Set analysis settings globally to improve reproducibility:
 - **Features:** Centralized configuration, consistent variable definitions, confounder specifications, treatment factor levels, plot dimensions, GEP validation settings
 - **Benefits:** Easy modification of analysis parameters, consistent methodology across objectives
 
-### **🔧 Centralized Helper Functions**
+### **🔄 Centralized Helper Functions**
 All libraries and utilities loaded through a single source:
 
 - **File:** `scripts/utils/all_helper_functions.R`

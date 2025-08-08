@@ -322,11 +322,6 @@ create_derived_variables <- function(data) {
                 !is.na(dod) ~ time_length(interval(treatment_date, dod), "months"),
                 TRUE ~ time_length(interval(treatment_date, last_known_alive_date), "months")
             ),
-            # Melanoma-specific survival time (same as death time since death is the endpoint)
-            tt_mss_months = case_when(
-                !is.na(dod) ~ time_length(interval(treatment_date, dod), "months"),
-                TRUE ~ time_length(interval(treatment_date, last_known_alive_date), "months")
-            ),
             # Create progression-free survival time (first of recurrence OR death)
             tt_pfs_months = pmin(tt_recurrence_months, tt_death_months, na.rm = FALSE),
             
@@ -398,7 +393,6 @@ create_derived_variables <- function(data) {
             tt_mets_months_analysis = if_else(tt_mets_months < 0, 0, tt_mets_months),
             tt_recurrence_months_analysis = if_else(tt_recurrence_months < 0, 0, tt_recurrence_months),
             tt_death_months_analysis = if_else(tt_death_months < 0, 0, tt_death_months),
-            tt_mss_months_analysis = if_else(tt_mss_months < 0, 0, tt_mss_months),
             tt_pfs_months_analysis = pmin(tt_recurrence_months_analysis, tt_death_months_analysis, na.rm = FALSE)
         )
 
@@ -412,8 +406,6 @@ create_derived_variables <- function(data) {
             recurrence_event = if_else(recurrence1 == "Y", 1, 0, missing = 0),
             mets_event = if_else(mets_progression == "Y", 1, 0, missing = 0),
             death_event = if_else(!is.na(dod), 1, 0, missing = 0),
-            # Melanoma-specific survival event (same as death event since death is the endpoint)
-            mss_event = if_else(!is.na(dod), 1, 0, missing = 0),
             # Progression-free survival event: progression OR death (whichever comes first)
             pfs_event = if_else(recurrence_event == 1 | death_event == 1, 1, 0),
             # PFS-2 event: 1 if 2nd recurrence occurred, 0 if censored (only for patients with first recurrence)

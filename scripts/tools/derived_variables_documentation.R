@@ -347,22 +347,6 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         units = "probability (0-1)"
     ),
     
-    tt_mss_months = list(
-        description = "Time to melanoma-specific survival in months",
-        calculation = "case_when(!is.na(dod) ~ time_length(interval(treatment_date, dod), 'months'), TRUE ~ time_length(interval(treatment_date, last_known_alive_date), 'months'))",
-        purpose = "Time-to-event variable for GEP validation analysis",
-        data_type = "numeric",
-        units = "months"
-    ),
-    
-    mss_event = list(
-        description = "Melanoma-specific survival event indicator",
-        calculation = "if_else(!is.na(dod), 1, 0, missing = 0)",
-        purpose = "Event indicator for GEP validation analysis",
-        data_type = "numeric",
-        units = "binary (0/1)"
-    ),
-    
     prame_status = list(
         description = "PRAME status from GEP analysis",
         calculation = "case_when(str_detect(biopsy1_gep, 'PRAME_positive') ~ 'Positive', str_detect(biopsy1_gep, 'PRAME_negative') ~ 'Negative', str_detect(biopsy1_gep, 'PRAME_not_reported|PRAME_Unknown') ~ 'Unknown', TRUE ~ 'Not Available')",
