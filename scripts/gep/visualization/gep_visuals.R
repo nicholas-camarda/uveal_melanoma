@@ -2,6 +2,15 @@
 # Visualization-only: calibration, discrimination, decision curves, integrated visuals
 
 #' Create unified GEP validation visual outputs
+#'
+#' Generate calibration, discrimination, and decision curve visualizations for
+#' MFS and MSS validation results and save them to disk.
+#'
+#' @param mfs_results List of MFS validation results (may be NULL)
+#' @param mss_results List of MSS validation results (may be NULL)
+#' @param output_dir Directory path to save visual outputs
+#' @param prefix Filename prefix used for saved files
+#' @return Invisibly returns NULL after writing files
 create_gep_validation_visuals <- function(mfs_results, mss_results, output_dir, prefix) {
     log_enhanced("Creating unified GEP validation visual outputs", level = "INFO")
     if (!is.null(mfs_results)) {

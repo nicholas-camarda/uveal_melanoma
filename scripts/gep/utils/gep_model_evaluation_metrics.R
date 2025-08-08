@@ -26,6 +26,16 @@ calculate_observed_expected_rates <- function(data, expected_var, event_var, tim
 }
 
 #' Calculate calibration metrics (simple logistic calibration)
+#'
+#' Fit a logistic calibration model of observed event vs predicted probability
+#' and derive intercept, slope, Integrated Calibration Index (ICI), and a
+#' Nam-D'Agostino p-value proxy.
+#'
+#' @param data Data frame containing observed outcome and predicted probabilities
+#' @param expected_var Character name of predicted probability column
+#' @param event_var Character name of binary event indicator column
+#' @param time_var Character name of time variable (not used in simplified method)
+#' @return A data.frame with `intercept`, `slope`, `ici`, and `nam_dagostino_p` columns
 calculate_calibration_metrics <- function(data, expected_var, event_var, time_var) {
     log_enhanced("Calculating calibration metrics", level = "DEBUG")
     calibration_model <- glm(as.formula(paste(event_var, "~", expected_var)), 

@@ -341,7 +341,10 @@ save_gt_html <- function(table, filename, ...) {
     invisible(filename)
 }
 
-#' Clean table headers by removing markdown formatting
+#' Clean gt table headers by removing markdown asterisks
+#'
+#' @param gt_table A gt table object
+#' @return Modified gt table object with cleaned column labels
 clean_table_headers <- function(gt_table) {
     # Get the column labels
     table_data <- gt_table[["_boxhead"]]
@@ -364,6 +367,9 @@ clean_table_headers <- function(gt_table) {
 }
 
 #' Apply publication-ready styling to gt tables
+#'
+#' @param gt_table A gt table object
+#' @return Styled gt table object with standardized publication formatting
 apply_publication_styling <- function(gt_table) {
     gt_table %>%
         tab_options(

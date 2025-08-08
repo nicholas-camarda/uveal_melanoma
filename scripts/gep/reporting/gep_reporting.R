@@ -2,6 +2,14 @@
 # Reporting-only: assemble reports, write Excel/text summaries, unified summary
 
 #' Create MFS Validation Report
+#'
+#' Assemble a structured report of MFS validation metrics across timepoints.
+#'
+#' @param validation_results Named list of per-timepoint MFS results
+#' @param prame_analysis PRAME-augmented analysis results (may be NULL)
+#' @param missing_data_analysis Missing-data diagnostics results
+#' @param dataset_name Optional dataset label used in the report
+#' @return A list with summary metrics and interpretation text suitable for saving
 create_mfs_validation_report <- function(validation_results, prame_analysis, missing_data_analysis, dataset_name) {
     log_enhanced("Creating comprehensive MFS validation report", level = "INFO", indent = 1)
     report <- list(
@@ -46,6 +54,17 @@ create_mfs_validation_report <- function(validation_results, prame_analysis, mis
 }
 
 #' Save All MFS Validation Results
+#'
+#' Persist MFS validation artifacts to disk, including summaries (xlsx), RDS
+#' objects, and a text summary.
+#'
+#' @param validation_results Named list of per-timepoint MFS results
+#' @param validation_report Structured report object from `create_mfs_validation_report`
+#' @param missing_data_analysis Missing-data diagnostics results
+#' @param prame_analysis PRAME-augmented analysis results (may be NULL)
+#' @param output_dir Directory path to save artifacts
+#' @param prefix Filename prefix for saved files
+#' @return Invisibly returns NULL after writing files
 save_mfs_validation_results <- function(validation_results, validation_report, missing_data_analysis, prame_analysis, output_dir, prefix) {
     log_enhanced("Saving MFS validation results", level = "INFO", indent = 1)
     tryCatch({
@@ -139,6 +158,16 @@ save_mfs_validation_results <- function(validation_results, validation_report, m
 }
 
 #' Create MSS validation report
+#'
+#' Assemble a structured report summarizing MSS calibration/discrimination and
+#' competing risk analyses across timepoints.
+#'
+#' @param standard_results Named list of standard MSS results (per timepoint)
+#' @param competing_results Named list of competing risk MSS results (per timepoint)
+#' @param prame_results PRAME-augmented MSS analysis results (may be NULL)
+#' @param missing_data Missing-data diagnostics results
+#' @param dataset_name Optional dataset label used in the report
+#' @return A list with `summary_stats` and `timepoint_summaries`
 create_mss_validation_report <- function(standard_results, competing_results, prame_results, missing_data, dataset_name) {
     log_enhanced("Creating comprehensive MSS validation report", level = "INFO")
     summary_stats <- data.frame(
@@ -171,6 +200,18 @@ create_mss_validation_report <- function(standard_results, competing_results, pr
 }
 
 #' Save MSS validation results
+#'
+#' Persist MSS validation artifacts to disk, including per-timepoint sheets for
+#' observed/expected, calibration, discrimination, and competing risks.
+#'
+#' @param standard_results Named list of standard MSS results (per timepoint)
+#' @param competing_results Named list of competing risk MSS results (per timepoint)
+#' @param validation_report Report object from `create_mss_validation_report`
+#' @param missing_data Missing-data diagnostics results (may be NULL)
+#' @param prame_results PRAME-augmented MSS analysis results (may be NULL)
+#' @param output_dir Directory path to save artifacts
+#' @param prefix Filename prefix for saved files
+#' @return Invisibly returns NULL after writing files
 save_mss_validation_results <- function(standard_results, competing_results, validation_report, 
                                        missing_data, prame_results, output_dir, prefix) {
     log_enhanced("Saving MSS validation results", level = "INFO")
@@ -261,6 +302,16 @@ create_mss_validation_summary_text <- function(standard_results, competing_resul
 }
 
 #' Create unified GEP validation summary
+#'
+#' Create a unified comparison and integrated visuals for MFS and MSS,
+#' saving a combined report and summary artifacts in a subdirectory.
+#'
+#' @param mfs_results MFS validation results (may be NULL)
+#' @param mss_results MSS validation results (may be NULL)
+#' @param dataset_name Optional dataset label
+#' @param output_dir Base directory for outputs
+#' @param prefix Filename prefix for saved files
+#' @return A list with `comparison_table` and path to `unified_dir`
 create_unified_gep_validation_summary <- function(mfs_results, mss_results, dataset_name, output_dir, prefix) {
     log_enhanced("Creating unified GEP validation summary", level = "INFO")
     unified_dir <- file.path(output_dir, "unified_summary")
@@ -278,6 +329,13 @@ create_unified_gep_validation_summary <- function(mfs_results, mss_results, data
 }
 
 #' Create GEP comparison table
+#'
+#' Build a tidy comparison table of calibration and discrimination metrics
+#' across outcomes (MFS/MSS) and timepoints.
+#'
+#' @param mfs_results MFS validation results (may be NULL)
+#' @param mss_results MSS validation results (may be NULL)
+#' @return A data.frame with rows for outcome/timepoint and key metrics
 create_gep_comparison_table <- function(mfs_results, mss_results) {
     log_enhanced("Creating GEP comparison table", level = "DEBUG")
     comparison_data <- data.frame()
@@ -321,6 +379,16 @@ create_gep_comparison_table <- function(mfs_results, mss_results) {
 }
 
 #' Create comprehensive GEP report
+#'
+#' Write a human-readable text summary and optional Excel comparison table to
+#' describe overall GEP validation performance across outcomes and timepoints.
+#'
+#' @param mfs_results MFS validation results (may be NULL)
+#' @param mss_results MSS validation results (may be NULL)
+#' @param comparison_table Data frame of comparison metrics (may be empty)
+#' @param output_dir Directory to write report files
+#' @param prefix Filename prefix for saved files
+#' @return Invisibly returns NULL after writing files
 create_comprehensive_gep_report <- function(mfs_results, mss_results, comparison_table, output_dir, prefix) {
     log_enhanced("Creating comprehensive GEP report", level = "DEBUG")
     summary_lines <- c(

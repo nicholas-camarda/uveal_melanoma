@@ -3,14 +3,14 @@
 
 #' Missing Data Assessment and Multiple Imputation (Diagnostics)
 #'
-#' Assesses patterns of missing GEP data and evaluates for informative missingness
-#' using baseline comparisons and simplified multiple imputation sensitivity analysis.
+#' Assess patterns of missing GEP-related data and evaluate for informative
+#' missingness using baseline comparisons, survival differences, and a simple
+#' multiple-imputation sensitivity analysis.
 #'
-#' @param data Data frame with complete patient cohort including missing GEP data
-#' @return List with missing_patterns (summary of missing data patterns),
-#'   baseline_comparison (statistical tests comparing GEP-tested vs missing patients),
-#'   outcome_by_missing (survival differences by missing pattern), and
-#'   informative_missingness_detected (logical indicating significant differences)
+#' @param data Data frame containing cohort with possible missing GEP variables
+#' @return A list with `missing_patterns`, `baseline_comparison`,
+#'   `outcome_by_missing`, `imputation_analysis`, and
+#'   `informative_missingness_detected`.
 assess_gep_missing_data <- function(data) {
     log_enhanced("Assessing GEP missing data patterns and informative missingness", level = "INFO", indent = 1)
     
@@ -215,12 +215,13 @@ assess_gep_missing_data <- function(data) {
 
 #' Prepare MSS Data with Competing Risk Variables (Diagnostics)
 #'
-#' Prepares melanoma-specific survival data for competing risk analysis by identifying
-#' melanoma-specific deaths versus other causes of death.
+#' Prepare melanoma-specific survival data for competing risk analysis by
+#' deriving event type (melanoma-specific vs competing) and related indicators
+#' using either cause-of-death information or fallbacks when unavailable.
 #'
 #' @param data Data frame with GEP predictions and survival data
-#' @return Data frame with competing_risk_status (0=alive, 1=melanoma death, 2=other death),
-#'   melanoma_death_event and other_death_event indicators, plus validation summaries
+#' @return A data frame with indicators: `melanoma_death_event`,
+#'   `competing_death_event`, `tt_death_years`, and validation summaries.
 prepare_mss_competing_risk_data <- function(data) {
     
     log_enhanced("Preparing data for MSS competing risk analysis", level = "DEBUG")

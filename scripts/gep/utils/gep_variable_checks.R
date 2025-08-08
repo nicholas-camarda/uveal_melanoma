@@ -79,15 +79,3 @@ validate_gep_variables_with_report <- function(data) {
         detailed_results = detailed_results
     ))
 }
-
-#' Validate GEP-related variables were created correctly (Objective 4)
-#'
-#' Performs comprehensive validation of all GEP-related variables created in data_processing.R
-#' to ensure they are properly formatted and contain expected values for the validation analysis.
-#'
-#' @param data Data frame to validate (typically the full cohort)
-#' @return TRUE if all validations pass, FALSE otherwise
-validate_gep_variables <- function(data) {
-    result <- validate_gep_variables_with_report(data)
-    return(result$validation_passed)
-}

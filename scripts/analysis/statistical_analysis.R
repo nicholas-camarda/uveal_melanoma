@@ -157,6 +157,7 @@ analyze_binary_outcome_rates <- function(data, outcome_var, time_var, event_var,
 #' @param analysis_type Character string (default: "post_treatment_only"). Either "post_treatment_only" (removes patients with pre-treatment events) or "all_patients" (includes all patients).
 #' @param dataset_name Name of the dataset (character).
 #' @param legend_labels Character vector of labels for the legend (default: NULL, uses factor levels of group_var).
+#' @param other_map Optional named list for additional mapping or customization used by downstream table generation.
 #' @param output_dirs List of output directories organized by analysis type (recurrence, mets, os, pfs, height, subgroups, etc.).
 #' @param prefix Character string used as a file prefix for output files (e.g., "full_cohort_"). Used to identify cohort or analysis context in filenames.
 #'
@@ -760,7 +761,7 @@ plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dir
 #' @param data Data frame.
 #' @param confounders Character vector of confounder variable names (default: NULL).
 #' @param dataset_name Name of the dataset (character).
-#' @param other_map List. Additional mapping or arguments to pass to the analysis. Default is empty list.
+#' @param other_map Optional named list for additional mapping or customization used by downstream table generation.
 #' @param output_dirs List of output directories organized by analysis type (recurrence, mets, os, pfs, height, subgroups, etc.).
 #' @param prefix Character string used as a file prefix for output files (e.g., "full_cohort_"). Used to identify cohort or analysis context in filenames.
 #'

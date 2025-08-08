@@ -1,5 +1,16 @@
 # GEP Evaluation Orchestration (no algorithms)
 
+#' Analyze GEP MFS Validation
+#'
+#' Orchestrate MFS validation at multiple timepoints, computing observed vs
+#' expected, calibration, discrimination, decision curves, PRAME analysis, and
+#' saving outputs.
+#'
+#' @param data Data frame with GEP predictions and outcomes
+#' @param dataset_name Optional character label for reporting
+#' @param timepoints Numeric vector of years (default `GEP_VALIDATION_TIMEPOINTS`)
+#' @param bootstrap_iterations Integer bootstrap iterations for calibration slope
+#' @return A list with `validation_results`, `prame_analysis`, `missing_data_analysis`, and `validation_report`.
 analyze_gep_mfs_validation <- function(data, dataset_name = NULL, timepoints = GEP_VALIDATION_TIMEPOINTS, bootstrap_iterations = GEP_BOOTSTRAP_ITERATIONS) {
     log_enhanced("Starting GEP Metastasis-Free Survival validation analysis", level = "INFO")
     mfs_output_dir <- output_dirs$obj4_mfs
@@ -79,6 +90,18 @@ analyze_gep_mfs_validation <- function(data, dataset_name = NULL, timepoints = G
     ))
 }
 
+#' Analyze GEP MSS Validation
+#'
+#' Orchestrate MSS validation at multiple timepoints, computing observed vs
+#' expected, calibration, discrimination, competing risks, PRAME analysis,
+#' and saving outputs.
+#'
+#' @param data Data frame with GEP predictions and outcomes
+#' @param dataset_name Optional character label for reporting
+#' @param timepoints Numeric vector of years (default `GEP_VALIDATION_TIMEPOINTS`)
+#' @param bootstrap_iterations Integer bootstrap iterations for discrimination where applicable
+#' @return A list with `standard_results`, `competing_results`, `prame_results`,
+#'   `missing_data_analysis`, and `validation_report`.
 analyze_gep_mss_validation <- function(data, dataset_name = NULL, timepoints = GEP_VALIDATION_TIMEPOINTS, bootstrap_iterations = GEP_BOOTSTRAP_ITERATIONS) {
     log_enhanced("Starting GEP Melanoma-Specific Survival validation analysis", level = "INFO")
     mss_output_dir <- output_dirs$obj4_mss

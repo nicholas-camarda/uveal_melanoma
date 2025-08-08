@@ -18,6 +18,13 @@ USE_CLINICAL_BINNING_CONTINUOUS <- TRUE  # DEFAULT: Use clinical thresholds for 
 ######################################################################
 ############### LOAD / INSTALL REQUIRED LIBRARIES ####################
 ######################################################################
+#' Ensure package is installed and loaded via pak
+#'
+#' Installs a package via pak (CRAN first, then Bioconductor) if missing and
+#' loads it with startup messages suppressed.
+#'
+#' @param pkg Character package name
+#' @return Invisibly loads the package into the session
 use <- function(pkg) {
     # Bootstrap pak if needed
     if (!requireNamespace("pak", quietly = TRUE)) {

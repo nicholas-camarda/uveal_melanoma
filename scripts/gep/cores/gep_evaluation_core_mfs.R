@@ -93,6 +93,21 @@ calculate_observed_expected_mfs <- function(data, timepoint) {
 }
 
 #' Perform Calibration Assessment (MFS)
+#'
+#' Assess calibration of GEP-predicted MFS risk at a given timepoint using
+#' Nam-D'Agostino chi-square, Integrated Calibration Index (ICI), and a
+#' bootstrap-corrected calibration slope.
+#'
+#' @param data Data frame with GEP predictions and survival outcomes.
+#'   Must contain `tt_mets_months`, `mets_event`, and timepoint-specific
+#'   expected survival columns (e.g., `expected_mfs_5yr`).
+#' @param timepoint Numeric year value (e.g., 5, 7, 10) specifying the
+#'   MFS evaluation timepoint.
+#' @param bootstrap_iterations Integer number of bootstrap iterations for
+#'   slope optimism correction.
+#' @return A list with elements: `n`, `n_groups`, `nam_dagostino_statistic`,
+#'   `nam_dagostino_p`, `ici`, `calibration_slope`, `calibration_intercept`,
+#'   and `group_results`.
 perform_calibration_mfs <- function(data, timepoint, bootstrap_iterations) {
     log_enhanced(sprintf("Performing calibration assessment for %d-year MFS", timepoint), level = "INFO", indent = 2)
     
@@ -280,6 +295,18 @@ perform_calibration_mfs <- function(data, timepoint, bootstrap_iterations) {
 } 
 
 #' Discrimination Analysis (MFS)
+#'
+#' Compute discrimination metrics at a given timepoint for MFS predictions,
+#' including Harrell's C-index, Uno's C-index, and time-specific AUC.
+#'
+#' @param data Data frame with predicted survival and observed outcomes.
+#'   Requires `tt_mets_months`, `mets_event`, and timepoint-specific expected
+#'   survival probabilities (e.g., `expected_mfs_5yr`).
+#' @param timepoint Numeric year value (e.g., 5, 7, 10) specifying the
+#'   MFS evaluation timepoint.
+#' @return A list with elements: `n`, `events`, `events_by_timepoint`,
+#'   `harrell_c`, `uno_c`, `auc_timepoint`, optional CIs, and bookkeeping
+#'   fields such as `timepoint_months`.
 perform_discrimination_mfs <- function(data, timepoint) {
     log_enhanced(sprintf("Performing discrimination analysis for %d-year MFS", timepoint), level = "INFO", indent = 2)
     
@@ -472,6 +499,17 @@ perform_discrimination_mfs <- function(data, timepoint) {
 } 
 
 #' Decision Curve Analysis for MFS
+#'
+#' Evaluate clinical usefulness of MFS predictions via decision curve
+#' analysis across a range of risk thresholds at a given timepoint.
+#'
+#' @param data Data frame with predicted risk and observed outcomes at
+#'   the specified timepoint.
+#' @param timepoint Numeric year value (e.g., 5, 7, 10) specifying the
+#'   MFS evaluation timepoint.
+#' @return A list with elements: `n`, `events`, `event_rate`,
+#'   `optimal_threshold`, `optimal_net_benefit`, `threshold_range_min`,
+#'   `threshold_range_max`, `area_between_curves`, and `dca_curve_data`.
 perform_decision_curve_analysis_mfs <- function(data, timepoint) {
     log_enhanced(sprintf("Performing decision curve analysis for %d-year MFS", timepoint), level = "INFO", indent = 2)
     
@@ -564,6 +602,15 @@ perform_decision_curve_analysis_mfs <- function(data, timepoint) {
 } 
 
 #' PRAME-Augmented Analysis with NRI for MFS
+#'
+#' Assess added value of PRAME status by comparing base GEP risk vs
+#' PRAME-augmented risk classifications using NRI and IDI across
+#' multiple timepoints.
+#'
+#' @param data Data frame with GEP predictions, PRAME status, and outcomes.
+#' @param timepoints Numeric vector of year values for evaluation.
+#' @return A list containing dataset-level PRAME availability details and
+#'   per-timepoint NRI results.
 perform_prame_augmented_analysis_mfs <- function(data, timepoints) {
     log_enhanced("Performing PRAME-augmented analysis with NRI calculation", level = "INFO", indent = 1)
     

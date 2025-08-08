@@ -2,6 +2,15 @@
 # Computes expected vs actual 5-year MFS/MSS by GEP class and saves outputs
 
 #' Create simple GEP validation plots
+#'
+#' Create side-by-side expected vs actual 5-year survival point plots for MFS
+#' and MSS by GEP class, saving PNGs to disk.
+#'
+#' @param mfs_results Data frame of MFS class-level expected/actual rates
+#' @param mss_results Data frame of MSS class-level expected/actual rates
+#' @param output_dir Directory path to save images
+#' @param prefix Filename prefix for saved files
+#' @return Invisibly returns NULL after writing files
 create_simple_gep_plots <- function(mfs_results, mss_results, output_dir, prefix) {
     mfs_plot <- ggplot(mfs_results, aes(x = gep_class_simple)) +
         geom_point(aes(y = expected_rate, color = "Expected"), size = 3) +
@@ -47,6 +56,16 @@ create_simple_gep_plots <- function(mfs_results, mss_results, output_dir, prefix
 }
 
 #' Create simple GEP report
+#'
+#' Write a text-based summary of 5-year expected vs actual survival by GEP
+#' class for MFS and MSS, including an overall summary table.
+#'
+#' @param mfs_results Data frame of MFS class-level results
+#' @param mss_results Data frame of MSS class-level results
+#' @param overall_summary Data frame with overall expected/actual summaries
+#' @param output_dir Directory to write the report
+#' @param prefix Filename prefix for saved files
+#' @return Invisibly returns NULL after writing files
 create_simple_gep_report <- function(mfs_results, mss_results, overall_summary, output_dir, prefix) {
     report_content <- c(
         "SIMPLE GEP VALIDATION REPORT",
@@ -104,6 +123,14 @@ create_simple_gep_report <- function(mfs_results, mss_results, overall_summary, 
 }
 
 #' Simple GEP validation - Actual vs Expected rates
+#'
+#' Compute 5-year expected vs actual survival by GEP class for MFS and MSS,
+#' save summary tables and plots, and return the key data frames.
+#'
+#' @param data Data frame with required GEP predictions and outcomes
+#' @param output_dir Directory to save outputs
+#' @param prefix Filename prefix for saved files
+#' @return A list with `mfs_results`, `mss_results`, and `overall_summary`
 simple_gep_validation <- function(data, output_dir, prefix) {
     log_enhanced("Starting SIMPLE GEP validation (Project Goals)", level = "INFO")
     if (!dir.exists(output_dir)) {

@@ -12,7 +12,7 @@
 #' @param output_dirs Named list of output directories for saving analysis results (e.g., recurrence, mets, os, pfs, height, subgroups).
 #' @param prefix Character string used as a prefix for output files (e.g., "full_cohort_") to identify cohort or analysis context.
 #' @param confounders Character vector of confounder variable names to include in regression models.
-#' @param other_map Optional named list for additional mapping or customization (default: empty list).
+#' @param other_map Optional named list for additional mapping or customization used by downstream table generation.
 #'
 #' @return A list with the following elements:
 #'   - `changes`: Summary data frame of tumor height changes by treatment group.

@@ -3,10 +3,14 @@
 
 #' Perform standard MSS validation
 #'
-#' @param data Prepared MSS data
-#' @param timepoint Timepoint in years
-#' @param bootstrap_iterations Number of bootstrap iterations
-#' @return List with validation results
+#' Validate melanoma-specific survival (MSS) predictions at a given timepoint
+#' by computing observed vs expected rates, calibration, and discrimination
+#' metrics using shared calculators.
+#'
+#' @param data Data frame prepared for MSS analysis
+#' @param timepoint Numeric year value for evaluation (e.g., 5, 7, 10)
+#' @param bootstrap_iterations Integer number of bootstrap iterations for discrimination metrics where applicable
+#' @return A list with `observed_expected`, `calibration`, `discrimination`, and `timepoint`.
 perform_standard_mss_validation <- function(data, timepoint, bootstrap_iterations) {
     
     log_enhanced(sprintf("Performing standard MSS validation for %d-year timepoint", timepoint), level = "DEBUG")
@@ -53,9 +57,12 @@ perform_standard_mss_validation <- function(data, timepoint, bootstrap_iteration
 
 #' Perform competing risk MSS validation
 #'
-#' @param data Prepared MSS data
-#' @param timepoint Timepoint in years
-#' @return List with competing risk results
+#' Evaluate MSS predictions using competing risks by computing cumulative
+#' incidence functions and cause-specific hazards by GEP class.
+#'
+#' @param data Data frame prepared for MSS competing risk analysis
+#' @param timepoint Numeric year value for evaluation (e.g., 5, 7, 10)
+#' @return A list with `cumulative_incidence`, `cause_specific_hazards`, and `timepoint`.
 perform_competing_risk_mss_validation <- function(data, timepoint) {
     
     log_enhanced(sprintf("Performing competing risk MSS validation for %d-year timepoint", timepoint), level = "DEBUG")
@@ -96,9 +103,12 @@ perform_competing_risk_mss_validation <- function(data, timepoint) {
 
 #' Perform PRAME-augmented analysis for MSS
 #'
-#' @param data Prepared MSS data
-#' @param timepoints Vector of timepoints
-#' @return List with PRAME analysis results
+#' Assess added value of PRAME status by comparing base GEP predictions vs
+#' PRAME-augmented categories using NRI across timepoints.
+#'
+#' @param data Data frame prepared for MSS with PRAME status
+#' @param timepoints Numeric vector of year values for evaluation
+#' @return A named list of NRI results by timepoint (when feasible)
 perform_prame_augmented_analysis_mss <- function(data, timepoints) {
     
     log_enhanced("Performing PRAME-augmented MSS analysis", level = "DEBUG")

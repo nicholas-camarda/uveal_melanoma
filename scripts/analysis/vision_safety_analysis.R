@@ -10,7 +10,7 @@
 #' @param data A data frame containing vision-related variables.
 #' @param output_dirs A named list of output directories organized by analysis type (e.g., recurrence, mets, os, pfs, height, subgroups).
 #' @param prefix A character string used as a file prefix for output files (e.g., "full_cohort_") to identify cohort or analysis context in filenames.
-#' @param other_map Optional list for additional mapping or configuration (default is an empty list).
+#' @param other_map Optional named list for additional mapping or customization used by downstream table generation.
 #'
 #' @return A list with the following elements:
 #'   - changes: summary data frame of vision changes by treatment group
