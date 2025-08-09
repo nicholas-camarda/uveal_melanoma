@@ -42,7 +42,15 @@ create_forest_plot_diagnostics <- function(subgroup_results, other_map = NULL, e
             next
         }
         
-        # Variable header row
+        # Variable header row with interaction p-value if available
+        var_data <- subgroup_results[[var_name]]
+        header_interaction_p <- if (!is.null(var_data$interaction_p)) var_data$interaction_p else NA
+        header_reason <- ""
+        if (is.null(header_interaction_p) || is.na(header_interaction_p)) {
+            if (!is.null(var_data$interaction_diagnostics) && !is.null(var_data$interaction_diagnostics$failure_reason)) {
+                header_reason <- paste("Missing interaction p-value:", var_data$interaction_diagnostics$failure_reason)
+            }
+        }
         diagnostics_rows[[length(diagnostics_rows) + 1]] <- data.frame(
             variable = var_name,
             level = "__HEADER__",
@@ -54,9 +62,9 @@ create_forest_plot_diagnostics <- function(subgroup_results, other_map = NULL, e
             treatment_effect = NA,
             ci_lower = NA,
             ci_upper = NA,
-            p_value = NA,
+            p_value = header_interaction_p,
             status = "header",
-            reason = "",
+            reason = header_reason,
             other_variable_contents = "",
             stringsAsFactors = FALSE
         )
@@ -168,22 +176,22 @@ create_forest_plot_diagnostics <- function(subgroup_results, other_map = NULL, e
                     
                     # Record valid subgroup level
                     diagnostics_rows[[length(diagnostics_rows) + 1]] <- data.frame(
-                        variable = var_name,
-                        level = as.character(row_data$subgroup_level),
-                        n_total = row_data$n_total,
-                        n_plaque = row_data$n_plaque,
-                        n_gksrs = row_data$n_gksrs,
-                        events_plaque = events_plaque,
-                        events_gksrs = events_gksrs,
-                        treatment_effect = row_data$treatment_effect,
-                        ci_lower = row_data$ci_lower,
-                        ci_upper = row_data$ci_upper,
-                        p_value = row_data$p_value,
-                        status = "plotted",
-                        reason = "",
-                        other_variable_contents = other_contents,
-                        stringsAsFactors = FALSE
-                    )
+                         variable = var_name,
+                         level = as.character(row_data$subgroup_level),
+                         n_total = row_data$n_total,
+                         n_plaque = row_data$n_plaque,
+                         n_gksrs = row_data$n_gksrs,
+                         events_plaque = events_plaque,
+                         events_gksrs = events_gksrs,
+                         treatment_effect = row_data$treatment_effect,
+                         ci_lower = row_data$ci_lower,
+                         ci_upper = row_data$ci_upper,
+                         p_value = row_data$p_value,
+                         status = "plotted",
+                         reason = "",
+                         other_variable_contents = other_contents,
+                         stringsAsFactors = FALSE
+                     )
                 }
             }
             
@@ -242,6 +250,20 @@ create_forest_plot_diagnostics <- function(subgroup_results, other_map = NULL, e
         return(data.frame())
     }
     
-    diagnostics_df <- do.call(rbind, diagnostics_rows)
+    # Normalize columns across all row frames to avoid rbind column mismatch
+    normalized <- lapply(diagnostics_rows, function(df) {
+        all_cols <- c(
+            "variable", "level", "n_total", "n_plaque", "n_gksrs",
+            "events_plaque", "events_gksrs", "treatment_effect", "ci_lower", "ci_upper",
+            "p_value", "status", "reason", "other_variable_contents"
+        )
+        # Add any missing columns as NA
+        for (col in setdiff(all_cols, names(df))) df[[col]] <- NA
+        # Reorder
+        df <- df[, all_cols, drop = FALSE]
+        df
+    })
+    
+    diagnostics_df <- do.call(rbind, normalized)
     return(diagnostics_df)
 } 

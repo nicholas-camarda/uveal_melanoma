@@ -51,6 +51,7 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders,
     wilcox.test(height_change ~ treatment_group, data = data_with_height_change)
 
     # Table for publication (row-level input)
+    # Custom for this because we are showing something simple
     tbl_summary_obj <- data_with_height_change %>%
         select(treatment_group, height_change) %>%
         tbl_summary(

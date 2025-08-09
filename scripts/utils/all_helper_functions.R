@@ -112,21 +112,38 @@ source("scripts/utils/model_utilities.R")
 # Source the extreme estimate handling utilities
 source("scripts/utils/extreme_estimate_handling.R")
 
-# Source the table generation utilities
-source("scripts/utils/table_generation.R")
+# Source the table generation utilities (modularized)
+source("scripts/tables/table_generation_core.R")
+source("scripts/tables/table_model_fitting.R")
+source("scripts/tables/table_formatting.R")
+source("scripts/tables/table_diagnostics.R")
+source("scripts/tables/table_io.R")
 
-# Source the data processing script
-source("scripts/data_helper/data_processing.R")
+# Source the data processing modules (modularized)
+source("scripts/data_helper/data_loading.R")
+source("scripts/data_helper/data_derivation.R")
+source("scripts/data_helper/cohort_creation.R")
+source("scripts/data_helper/data_summaries.R")
+source("scripts/data_helper/cohort_orchestration.R")
 
 # Source the utility and helper scripts
 source("scripts/data_helper/data_utilities.R")
 source("scripts/utils/output_utilities.R")
 
 # Source the main analysis function scripts
-source("scripts/analysis/statistical_analysis.R")
 source("scripts/analysis/tumor_height_analysis.R")
 source("scripts/analysis/vision_safety_analysis.R")
-source("scripts/analysis/subgroup_analysis.R")
+# Source modular statistical analysis (override monolith definitions)
+source("scripts/analysis/binary_outcomes.R")
+source("scripts/analysis/survival_outcomes.R")
+source("scripts/analysis/rmst_visualization.R")
+
+# Source modular subgroup analysis (override monolith definitions)
+source("scripts/subgroup/subgroup_data_prep.R")
+source("scripts/subgroup/subgroup_survival.R")
+source("scripts/subgroup/subgroup_binary.R")
+source("scripts/subgroup/subgroup_height.R")
+source("scripts/subgroup/subgroup_formatting.R")
 
 # Source GEP evaluation modules
 source("scripts/gep/utils/gep_model_evaluation_metrics.R")
@@ -139,8 +156,12 @@ source("scripts/gep/simple/gep_simple_validation.R")
 source("scripts/gep/orchestration/gep_evaluation_orchestration.R")
 source("scripts/gep/utils/gep_variable_checks.R")
 
-# Source the forest plot script
-source("scripts/visualization/forest_plot.R")
+# Source the forest plot script (commented out to use modular version)
+# source("scripts/visualization/forest_plot.R")
+# Source modular forest plot (override monolith definitions)
+source("scripts/visualization/forest_plot_data.R")
+source("scripts/visualization/forest_plot_draw.R")
+source("scripts/visualization/forest_plot_formatting.R")
 
 # Source the forest plot diagnostics script
 source("scripts/utils/forest_plot_diagnostics.R")

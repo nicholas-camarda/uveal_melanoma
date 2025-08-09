@@ -29,7 +29,7 @@ if (USE_LOGS) {
 # DEBUG: We are running specific objectives for all cohorts to debug each objective in isolation
 # Run specific objective for specific dataset and objective number,
 # 0 for data processing
-run_specific_objective("uveal_melanoma_full_cohort", 0)
+# run_specific_objective("uveal_melanoma_full_cohort", 0)
 # then, eg. 1 for primary outcomes, 2 for safety/toxicity, 3 for repeat radiation efficacy, 4 for GEP validation
 run_specific_objective("uveal_melanoma_full_cohort", 1)
 # run_specific_objective("uveal_melanoma_restricted_cohort", 1)

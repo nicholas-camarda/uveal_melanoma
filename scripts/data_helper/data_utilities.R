@@ -183,6 +183,7 @@ bin_continuous <- function(vec, bins = 2, custom_breaks = NULL, varname = NULL, 
 #' @examples
 #' summarize_data(data)
 summarize_data <- function(data, verbose = TRUE) {
+
     if (verbose) {
         log_enhanced("\nData Summary:")
         log_enhanced(sprintf("Total patients: %d", nrow(data)))
@@ -565,3 +566,31 @@ calculate_variable_overall_significance <- function(data, variable_name, outcome
         return(NA)
     })
 } 
+
+#' Load cohort-specific other_map.rds file
+#'
+#' Unified function to load cohort-specific other_map files for consistent handling
+#' across all analysis functions.
+#'
+#' @param dataset_name Character string for dataset name (e.g., "uveal_melanoma_full_cohort")
+#' @param processed_data_dir Character string for processed data directory
+#' @return List containing other_map information for the specific cohort
+#' @examples
+#' other_map <- get_cohort_specific_other_map("uveal_melanoma_full_cohort")
+get_cohort_specific_other_map <- function(dataset_name, processed_data_dir = "final_data/Analytic Dataset") {
+    other_map_file <- file.path(processed_data_dir, "other_map.rds")
+    if (file.exists(other_map_file)) {
+        combined_other_map <- readRDS(other_map_file)
+        if (dataset_name %in% names(combined_other_map)) {
+            cohort_other_map <- combined_other_map[[dataset_name]]
+            log_enhanced(sprintf("Loaded cohort-specific other_map for %s with %d variables", dataset_name, length(cohort_other_map)), level = "INFO")
+            return(cohort_other_map)
+        } else {
+            log_enhanced(sprintf("Dataset %s not found in combined other_map, using empty list", dataset_name), level = "INFO")
+            return(list())
+        }
+    } else {
+        log_enhanced(sprintf("No combined other_map.rds found at %s, using empty list", other_map_file), level = "INFO")
+        return(list())
+    }
+}

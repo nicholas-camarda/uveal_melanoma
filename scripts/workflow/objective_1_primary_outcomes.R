@@ -86,6 +86,19 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     )
     log_enhanced("Overall survival analysis completed", level = "INFO", indent = 1)
 
+    # Proportional hazards diagnostics (OS)
+    try({
+        if (!is.null(os_analysis$cox_model)) {
+            test_proportional_hazards_assumption(
+                cox_model   = os_analysis$cox_model,
+                outcome_name = "Overall Survival Probability",
+                output_dir   = output_dirs$obj1_ph_diagnostics,
+                file_prefix  = paste0(prefix, "overall_survival_probability_"),
+                dataset_name = dataset_name
+            )
+        }
+    }, silent = TRUE)
+
     # 1d. Progression Free Survival (includes both progression AND death)
     log_function("analyze_time_to_event_outcomes", "Progression-free survival analysis (progression OR death)")
     pfs_analysis <- analyze_time_to_event_outcomes(
@@ -102,6 +115,19 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         prefix = prefix
     )
     log_enhanced("Progression-free survival analysis completed", level = "INFO", indent = 1)
+
+    # Proportional hazards diagnostics (PFS)
+    try({
+        if (!is.null(pfs_analysis$cox_model)) {
+            test_proportional_hazards_assumption(
+                cox_model   = pfs_analysis$cox_model,
+                outcome_name = "Progression-Free Survival Probability",
+                output_dir   = output_dirs$obj1_ph_diagnostics,
+                file_prefix  = paste0(prefix, "progression_free_survival_probability_"),
+                dataset_name = dataset_name
+            )
+        }
+    }, silent = TRUE)
 
     # 1e. Tumor height changes
     log_function("analyze_tumor_height_changes", "Primary and sensitivity tumor height analysis")
@@ -313,7 +339,22 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
             tab_name <- tools::toTitleCase(gsub("_", " ", subgroup_var))
             tab_name <- gsub("[^A-Za-z0-9_]", "_", tab_name)
             tab_name <- substr(tab_name, 1, 31)
-            primary_diagnostics_list[[tab_name]] <- result$subgroup_effects
+            other_contents <- if (!is.null(primary_other_maps[[subgroup_var]]) && length(primary_other_maps[[subgroup_var]]) > 0) paste(primary_other_maps[[subgroup_var]], collapse = ", ") else ""
+            header_row <- data.frame(
+                subgroup_variable = subgroup_var,
+                subgroup_level = "__HEADER__",
+                n_total = NA, n_plaque = NA, n_gksrs = NA,
+                events_plaque = NA, events_gksrs = NA,
+                treatment_effect = NA, ci_lower = NA, ci_upper = NA,
+                p_value = result$interaction_p,
+                other_variable_contents = other_contents,
+                stringsAsFactors = FALSE
+            )
+            # Ensure detail rows have the column present
+            result$subgroup_effects$other_variable_contents <- ""
+            # Bind header row before the detailed subgroup rows
+            df_out <- rbind(header_row, result$subgroup_effects)
+            primary_diagnostics_list[[tab_name]] <- df_out
         }
     }
     consolidated_primary_path <- file.path(output_dirs$obj1_subgroup_primary, paste0(prefix, "primary_tumor_height_diagnostics.xlsx"))
@@ -335,7 +376,20 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
             tab_name <- tools::toTitleCase(gsub("_", " ", subgroup_var))
             tab_name <- gsub("[^A-Za-z0-9_]", "_", tab_name)
             tab_name <- substr(tab_name, 1, 31)
-            sensitivity_diagnostics_list[[tab_name]] <- result$subgroup_effects
+            other_contents <- if (!is.null(sensitivity_other_maps[[subgroup_var]]) && length(sensitivity_other_maps[[subgroup_var]]) > 0) paste(sensitivity_other_maps[[subgroup_var]], collapse = ", ") else ""
+            header_row <- data.frame(
+                subgroup_variable = subgroup_var,
+                subgroup_level = "__HEADER__",
+                n_total = NA, n_plaque = NA, n_gksrs = NA,
+                events_plaque = NA, events_gksrs = NA,
+                treatment_effect = NA, ci_lower = NA, ci_upper = NA,
+                p_value = result$interaction_p,
+                other_variable_contents = other_contents,
+                stringsAsFactors = FALSE
+            )
+            result$subgroup_effects$other_variable_contents <- ""
+            df_out <- rbind(header_row, result$subgroup_effects)
+            sensitivity_diagnostics_list[[tab_name]] <- df_out
         }
     }
     consolidated_sensitivity_path <- file.path(output_dirs$obj1_subgroup_sensitivity, paste0(prefix, "sensitivity_tumor_height_diagnostics.xlsx"))
@@ -503,8 +557,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     log_enhanced("Progression-free survival subgroup analysis completed", level = "INFO", indent = 1)
 
     # FOREST PLOT DIAGNOSTICS COLLECTION
-    # Initialize forest plot diagnostics collector
-    diagnostics_list <- list()
+    # Add diagnostics for other outcomes to the existing diagnostics_list
 
     # Collect diagnostics using dedicated function with raw data
     diagnostics_list[["local_recurrence"]] <- create_forest_plot_diagnostics(
@@ -530,7 +583,14 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
 
     # Save forest plot diagnostics (following tumor height pattern)
     consolidated_forest_path <- file.path(output_dirs$obj1_forest_plots, paste0(prefix, "forest_plot_diagnostics.xlsx"))
-    writexl::write_xlsx(diagnostics_list, consolidated_forest_path)
+    # Drop the redundant interaction_p column from diagnostics export (interaction p is already on header via p_value)
+    diagnostics_list_no_interaction <- lapply(diagnostics_list, function(df) {
+        if (is.data.frame(df) && ("interaction_p" %in% names(df))) {
+            df <- df[, setdiff(names(df), "interaction_p"), drop = FALSE]
+        }
+        df
+    })
+    writexl::write_xlsx(diagnostics_list_no_interaction, consolidated_forest_path)
     log_enhanced(sprintf("Forest plot diagnostics written to %s with %d tabs", consolidated_forest_path, length(diagnostics_list)), level = "INFO", indent = 1)
 
     # Save primary outcomes subgroup results
