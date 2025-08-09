@@ -89,7 +89,7 @@ create_simple_gep_report <- function(mfs_results, mss_results, overall_summary, 
         "METASTASIS-FREE SURVIVAL (MFS) - 5 YEAR:",
         "----------------------------------------"
     )
-    for (i in 1:nrow(mfs_results)) {
+    for (i in seq_len(nrow(mfs_results))) {
         row <- mfs_results[i, ]
         report_content <- c(
             report_content,
@@ -105,7 +105,7 @@ create_simple_gep_report <- function(mfs_results, mss_results, overall_summary, 
         "MELANOMA-SPECIFIC SURVIVAL (MSS) - 5 YEAR:",
         "------------------------------------------"
     )
-    for (i in 1:nrow(mss_results)) {
+    for (i in seq_len(nrow(mss_results))) {
         row <- mss_results[i, ]
         report_content <- c(
             report_content,

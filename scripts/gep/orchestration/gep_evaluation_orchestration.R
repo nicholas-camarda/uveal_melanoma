@@ -22,7 +22,7 @@ analyze_gep_mfs_validation <- function(data, dataset_name = NULL, timepoints = G
         count(gep_validation_set, gep_class_simple) %>%
         tidyr::pivot_wider(names_from = gep_class_simple, values_from = n, values_fill = 0)
     log_enhanced("GEP Validation Set Distribution:", level = "INFO", indent = 1)
-    for (i in 1:nrow(gep_distribution)) {
+    for (i in seq_len(nrow(gep_distribution))) {
         set_name <- gep_distribution$gep_validation_set[i]
         class_1a <- ifelse(is.na(gep_distribution$`Class 1A`[i]), 0, gep_distribution$`Class 1A`[i])
         class_1b <- ifelse(is.na(gep_distribution$`Class 1B`[i]), 0, gep_distribution$`Class 1B`[i])

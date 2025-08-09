@@ -83,7 +83,7 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
             dimnames = list(names(coefs), c("2.5 %", "97.5 %"))
         )
 
-        for (i in 1:nrow(ci_mapping)) {
+        for (i in seq_len(nrow(ci_mapping))) {
             term_name <- ci_mapping$term[i]
             if (term_name %in% names(coefs)) {
                 conf_int[term_name, "2.5 %"] <- ci_mapping$conf.low[i]

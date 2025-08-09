@@ -47,7 +47,7 @@ create_comprehensive_variable_census <- function(
             if (is.factor(x)) {
                 paste(levels(x), collapse = ", ")
             } else if (is.character(x)) {
-                paste(unique(x)[1:min(5, length(unique(x)))], collapse = ", ")
+                paste(unique(x)[seq_len(min(5, length(unique(x))))], collapse = ", ")
             } else if (is.numeric(x)) {
                 paste(range(x, na.rm = TRUE), collapse = " to ")
             } else {
@@ -247,7 +247,7 @@ create_census_html_report <- function(census, summary, output_dir) {
     )
 
     # Add category counts
-    for (i in 1:length(summary$categories)) {
+    for (i in seq_along(summary$categories)) {
         html_content <- paste0(
             html_content,
             "<tr><td>", names(summary$categories)[i], "</td><td>", summary$categories[i], "</td></tr>"
@@ -268,7 +268,7 @@ create_census_html_report <- function(census, summary, output_dir) {
             "<tr><th>Variable Name</th><th>Description</th><th>Type</th><th>Derived</th><th>Current</th><th>Missing</th></tr>"
         )
 
-        for (i in 1:nrow(category_data)) {
+        for (i in seq_len(nrow(category_data))) {
             row <- category_data[i, ]
             html_content <- paste0(
                 html_content,
@@ -315,7 +315,7 @@ main <- function() {
     cat("Missing from current:", result$summary$missing_from_current, "\n")
 
     cat("\n=== VARIABLE CATEGORIES ===\n")
-    for (i in 1:length(result$summary$categories)) {
+    for (i in seq_along(result$summary$categories)) {
         cat(names(result$summary$categories)[i], ":", result$summary$categories[i], "\n")
     }
 

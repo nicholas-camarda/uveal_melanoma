@@ -483,7 +483,7 @@ test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Surv
                 log_enhanced(sprintf("PH ASSUMPTION VIOLATIONS DETECTED for %d variable(s):", nrow(violations)),
                     level = "WARN", indent = 1
                 )
-                for (i in 1:nrow(violations)) {
+                for (i in seq_len(nrow(violations))) {
                     log_enhanced(
                         sprintf(
                             "- %s: p = %.4f (%s)",
@@ -636,7 +636,7 @@ test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Surv
             )
 
             cat("Individual variable tests:\n", file = summary_filename, append = TRUE)
-            for (i in 1:nrow(ph_summary_with_global)) {
+            for (i in seq_len(nrow(ph_summary_with_global))) {
                 row <- ph_summary_with_global[i, ]
                 cat(
                     sprintf(

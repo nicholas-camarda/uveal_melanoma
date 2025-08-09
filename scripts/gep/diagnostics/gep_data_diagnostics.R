@@ -36,7 +36,7 @@ assess_gep_missing_data <- function(data) {
         mutate(percentage = round(100 * n / sum(n), 1))
 
     log_enhanced("GEP data availability patterns:", level = "INFO", indent = 2)
-    for (i in 1:nrow(missing_pattern_summary)) {
+    for (i in seq_len(nrow(missing_pattern_summary))) {
         pattern <- missing_pattern_summary$missing_gep_group[i]
         n <- missing_pattern_summary$n[i]
         pct <- missing_pattern_summary$percentage[i]

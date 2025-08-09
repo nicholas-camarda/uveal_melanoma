@@ -355,7 +355,7 @@ clean_table_headers <- function(gt_table) {
 
     if (!is.null(table_data)) {
         # Clean up column labels by removing markdown asterisks
-        for (i in 1:nrow(table_data)) {
+        for (i in seq_len(nrow(table_data))) {
             if (!is.na(table_data$column_label[i])) {
                 # Remove ** from column labels
                 clean_label <- gsub("\\*\\*([^*]+)\\*\\*", "\\1", table_data$column_label[i])

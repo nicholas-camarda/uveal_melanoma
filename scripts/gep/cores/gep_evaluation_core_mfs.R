@@ -206,7 +206,7 @@ perform_calibration_mfs <- function(data, timepoint, bootstrap_iterations) {
                     arrange(predicted_risk) %>%
                     mutate(
                         # Estimate local observed rate using moving window
-                        window_obs_rate = sapply(1:n(), function(i) {
+                        window_obs_rate = sapply(seq_len(n()), function(i) {
                             window_indices <- max(1, i - 10):min(nrow(.), i + 10)
                             window_data <- cal_data[window_indices, ]
                             window_events <- sum(window_data$observed_event == 1 & window_data$observed_time <= timepoint_months)

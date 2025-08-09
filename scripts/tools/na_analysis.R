@@ -35,7 +35,7 @@ analyze_na_patterns_focused <- function(data, cohort_name) {
     if (nrow(few_na_vars) > 0) {
         cat("\nDetailed analysis of patients with missing data in variables with 1-5 NAs:\n")
 
-        for (i in 1:nrow(few_na_vars)) {
+        for (i in seq_len(nrow(few_na_vars))) {
             var_name <- few_na_vars$variable[i]
             na_count <- few_na_vars$na_count[i]
 

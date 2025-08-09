@@ -131,7 +131,7 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
                 other_notes <- c(other_notes, sprintf("Other for %s: %s", variable_display_name, paste(other_map[[var_name]], collapse = ", ")))
             }
             # Iterate over each subgroup level row
-            for (i in 1:nrow(se)) {
+            for (i in seq_len(nrow(se))) {
                 rd <- se[i, ]
                 # Skip rows with missing effect or CI
                 if (is.na(rd$treatment_effect) || is.na(rd$ci_lower) || is.na(rd$ci_upper)) next

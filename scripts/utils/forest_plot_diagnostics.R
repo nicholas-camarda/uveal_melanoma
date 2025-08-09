@@ -76,7 +76,7 @@ create_forest_plot_diagnostics <- function(subgroup_results, other_map = NULL, e
             if (!is.null(var_data$subgroup_effects) && nrow(var_data$subgroup_effects) > 0) {
                 # Add subgroup rows
                 effects_data <- var_data$subgroup_effects
-                for (i in 1:nrow(effects_data)) {
+                for (i in seq_len(nrow(effects_data))) {
                     row_data <- effects_data[i, ]
 
                     # Check for infinite CIs specifically
