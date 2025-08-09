@@ -416,8 +416,8 @@ GEP_RECOMMENDED_TESTING_SAMPLE <- 30 # Recommended minimum for testing set
 
 # GEP-specific derived variables
 GEP_DERIVED_VARIABLES <- c(
-    "gep_class_simple", "prame_status", "mfs_5yr", "mfs_7yr",
-    "mfs_10yr", "mss_5yr", "mss_7yr", "mss_10yr"
+    "gep_class_simple", "prame_status", "expected_mfs_5yr", "expected_mfs_7yr",
+    "expected_mfs_10yr", "expected_mss_5yr", "expected_mss_7yr", "expected_mss_10yr"
 )
 
 # =============================================================================

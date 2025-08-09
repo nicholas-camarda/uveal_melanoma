@@ -48,10 +48,13 @@ handle_rare_categories <- function(data, vars, threshold = 5) {
                     if (VERBOSE) {
                         log_enhanced(sprintf("Forcing collapse of specified levels in %s into 'Other': %s", var, paste(forced_levels_present, collapse = ", ")))
                     }
-                    data[[var]] <- fct_collapse(data[[var]], Other = forced_levels_present) %>%
-                        fct_drop() %>%
-                        fct_relevel("Other", after = Inf) %>%
-                        factor()
+                    # Ensure 'Other' exists in levels to avoid unknown-level warnings when refactoring
+                    collapsed <- fct_collapse(data[[var]], Other = forced_levels_present) %>%
+                        fct_drop()
+                    if ("Other" %in% levels(collapsed)) {
+                        collapsed <- fct_relevel(collapsed, "Other", after = Inf)
+                    }
+                    data[[var]] <- factor(collapsed)
                     # Track forced-collapsed categories
                     other_map[[var]] <- unique(c(other_map[[var]], forced_levels_present))
                 }
@@ -78,12 +81,12 @@ handle_rare_categories <- function(data, vars, threshold = 5) {
                             }
                         }
 
-                        data[[var]] <- fct_collapse(data[[var]],
-                            Other = rare_cats
-                        ) %>%
-                            fct_drop() %>%
-                            fct_relevel("Other", after = Inf) %>%
-                            factor()
+                        collapsed <- fct_collapse(data[[var]], Other = rare_cats) %>%
+                            fct_drop()
+                        if ("Other" %in% levels(collapsed)) {
+                            collapsed <- fct_relevel(collapsed, "Other", after = Inf)
+                        }
+                        data[[var]] <- factor(collapsed)
 
                         # Track which categories were collapsed into Other (append to any forced ones)
                         other_map[[var]] <- unique(c(other_map[[var]], rare_cats))
