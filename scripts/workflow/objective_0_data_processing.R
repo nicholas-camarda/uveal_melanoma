@@ -7,7 +7,7 @@
 #'
 #' This script is intended to be run as the first step in the analysis pipeline.
 #' All subsequent objectives depend on the outputs generated here.
-#' 
+#'
 #' @note Requires global variables RECREATE_ANALYTIC_DATASETS, OUTPUT_DIR, and confounders
 #'
 #' @return List containing all analysis results, model objects, and output file paths for each analysis type

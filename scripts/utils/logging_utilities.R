@@ -14,7 +14,7 @@
 log_enhanced <- function(msg, level = "INFO", indent = 0) {
     timestamp <- format(Sys.time(), "%H:%M:%S")
     indent_str <- paste(rep("  ", indent), collapse = "")
-    
+
     # Format based on level
     formatted_msg <- switch(level,
         "SECTION" = sprintf("\n%s[%s] === %s ===\n", indent_str, timestamp, msg),
@@ -22,9 +22,9 @@ log_enhanced <- function(msg, level = "INFO", indent = 0) {
         "INFO" = sprintf("%s[%s] %s", indent_str, timestamp, msg),
         "WARN" = sprintf("%s[%s] WARNING: %s", indent_str, timestamp, msg),
         "ERROR" = sprintf("%s[%s] ERROR: %s", indent_str, timestamp, msg),
-        sprintf("%s[%s] %s", indent_str, timestamp, msg)  # default
+        sprintf("%s[%s] %s", indent_str, timestamp, msg) # default
     )
-    
+
     message(formatted_msg)
 }
 
@@ -37,13 +37,13 @@ log_enhanced <- function(msg, level = "INFO", indent = 0) {
 log_progress <- function(current, total, item_name = NULL, action = "Processing") {
     progress_pct <- round(100 * current / total, 1)
     base_msg <- sprintf("%s (%d/%d - %.1f%%)", action, current, total, progress_pct)
-    
+
     if (!is.null(item_name)) {
         full_msg <- sprintf("%s: %s", base_msg, item_name)
     } else {
         full_msg <- base_msg
     }
-    
+
     log_enhanced(full_msg, level = "PROGRESS")
 }
 
@@ -75,4 +75,4 @@ log_section_complete <- function(section_name, start_time) {
 #' @param purpose Description of what the function does
 log_function <- function(func_name, purpose) {
     log_enhanced(sprintf("Executing %s: %s", func_name, purpose), level = "INFO", indent = 1)
-} 
+}

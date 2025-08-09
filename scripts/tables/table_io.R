@@ -15,28 +15,27 @@
 #' @param confounders Character vector of confounders
 #' @param treatment_var Name of the treatment variable in the model (default: "treatment_group")
 #' @return List of output file paths
-save_table_outputs <- function(table_result, raw_output, model_fit, analysis_name, 
-                              dataset_name, output_dir, prefix, diagnostics = NULL, data = NULL, outcome_var = NULL, confounders = NULL, treatment_var = "treatment_group") {
-    
+save_table_outputs <- function(table_result, raw_output, model_fit, analysis_name,
+                               dataset_name, output_dir, prefix, diagnostics = NULL, data = NULL, outcome_var = NULL, confounders = NULL, treatment_var = "treatment_group") {
     # Create output directory if it doesn't exist
     if (!dir.exists(output_dir)) {
         dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
     }
-    
+
     # Generate file names
     base_filename <- paste0(prefix, analysis_name)
     html_filename <- paste0(base_filename, "_", tolower(class(model_fit)[1]), ".html")
     diagnostics_filename <- paste0(base_filename, "_diagnostics.xlsx")
-    
+
     # Save HTML table (only if table_result is not NULL)
     html_path <- file.path(output_dir, html_filename)
     cat("DEBUG: generate_regression_table - HTML table generation\n")
     cat("  Table result is NULL:", is.null(table_result), "\n")
     cat("  HTML path:", html_path, "\n")
-    
+
     if (!is.null(table_result)) {
         cat("DEBUG: Table result is not NULL, proceeding with modification\n")
-        
+
         # Check if the table has meaningful content before proceeding
         table_has_content <- FALSE
         if (!is.null(diagnostics) && !is.null(diagnostics$filtering_summary)) {
@@ -47,7 +46,7 @@ save_table_outputs <- function(table_result, raw_output, model_fit, analysis_nam
                 table_has_content <- any(!is.na(suppressWarnings(as.numeric(table_data$estimate))))
             }
         }
-        
+
         if (!table_has_content) {
             log_enhanced("Skipping HTML table generation - no meaningful content due to extreme estimates or model issues", level = "WARN")
             diagnostic_html_path <- file.path(output_dir, paste0(base_filename, "_NO_CONTENT_DIAGNOSTIC.html"))
@@ -63,108 +62,114 @@ save_table_outputs <- function(table_result, raw_output, model_fit, analysis_nam
             writeLines(diagnostic_content, diagnostic_html_path)
             log_enhanced(sprintf("Diagnostic HTML file saved to %s", diagnostic_html_path), level = "INFO")
         } else {
-            tryCatch({
-                cat("DEBUG: About to call modify_gt_table_pvalues\n")
-                cat("  Table class:", class(table_result), "\n")
-                cat("  Outcome var:", outcome_var, "\n")
-                cat("  Confounders:", paste(confounders, collapse = ", "), "\n")
-                
-                modified_table <- modify_gt_table_pvalues(table_result %>% as_gt(), table_result, data, outcome_var, confounders, model_fit, treatment_var = treatment_var)
-                
-                cat("DEBUG: After modify_gt_table_pvalues\n")
-                cat("  Modified table class:", class(modified_table), "\n")
-                
-                gt_table <- modified_table %>% as_gt()
-                gt_table <- gt_table %>% gtsave(html_path)
-                
-                if (!is.null(diagnostics) && !is.null(diagnostics$filtering_summary)) {
-                    main_predictor_filtered <- diagnostics$filtering_summary$main_predictor_filtered
-                    if (main_predictor_filtered) {
-                        warning_text <- "⚠️ WARNING: Main predictor variable was filtered out due to perfect separation or extreme estimates"
-                        html_content <- readLines(html_path)
-                        footnote_pattern <- '<tfoot class="gt_sourcenotes">'
-                        footnote_index <- grep(footnote_pattern, html_content)
-                        if (length(footnote_index) > 0) {
-                            tfoot_end_pattern <- '</tfoot>'
-                            tfoot_end_index <- grep(tfoot_end_pattern, html_content)
-                            tfoot_end_index <- tfoot_end_index[tfoot_end_index > footnote_index[1]]
-                            if (length(tfoot_end_index) > 0) {
-                                warning_html <- sprintf('    <tr>\n      <td class="gt_sourcenote" colspan="4"><span class=\'gt_from_md\'>%s</span></td>\n    </tr>', warning_text)
-                                html_content <- c(
-                                    html_content[1:(tfoot_end_index[1]-1)],
-                                    warning_html,
-                                    html_content[tfoot_end_index[1]:length(html_content)]
-                                )
-                                writeLines(html_content, html_path)
+            tryCatch(
+                {
+                    cat("DEBUG: About to call modify_gt_table_pvalues\n")
+                    cat("  Table class:", class(table_result), "\n")
+                    cat("  Outcome var:", outcome_var, "\n")
+                    cat("  Confounders:", paste(confounders, collapse = ", "), "\n")
+
+                    modified_table <- modify_gt_table_pvalues(table_result %>% as_gt(), table_result, data, outcome_var, confounders, model_fit, treatment_var = treatment_var)
+
+                    cat("DEBUG: After modify_gt_table_pvalues\n")
+                    cat("  Modified table class:", class(modified_table), "\n")
+
+                    gt_table <- modified_table %>% as_gt()
+                    gt_table <- gt_table %>% gtsave(html_path)
+
+                    if (!is.null(diagnostics) && !is.null(diagnostics$filtering_summary)) {
+                        main_predictor_filtered <- diagnostics$filtering_summary$main_predictor_filtered
+                        if (main_predictor_filtered) {
+                            warning_text <- "⚠️ WARNING: Main predictor variable was filtered out due to perfect separation or extreme estimates"
+                            html_content <- readLines(html_path)
+                            footnote_pattern <- '<tfoot class="gt_sourcenotes">'
+                            footnote_index <- grep(footnote_pattern, html_content)
+                            if (length(footnote_index) > 0) {
+                                tfoot_end_pattern <- "</tfoot>"
+                                tfoot_end_index <- grep(tfoot_end_pattern, html_content)
+                                tfoot_end_index <- tfoot_end_index[tfoot_end_index > footnote_index[1]]
+                                if (length(tfoot_end_index) > 0) {
+                                    warning_html <- sprintf('    <tr>\n      <td class="gt_sourcenote" colspan="4"><span class=\'gt_from_md\'>%s</span></td>\n    </tr>', warning_text)
+                                    html_content <- c(
+                                        html_content[1:(tfoot_end_index[1] - 1)],
+                                        warning_html,
+                                        html_content[tfoot_end_index[1]:length(html_content)]
+                                    )
+                                    writeLines(html_content, html_path)
+                                }
                             }
                         }
                     }
+                    log_enhanced(sprintf("HTML table saved to %s", html_path), level = "INFO")
+                },
+                error = function(e) {
+                    error_msg <- if (is.list(e) && !is.null(e$message)) e$message else as.character(e)
+                    cat("DEBUG: Error in HTML table generation:", error_msg, "\n")
+                    log_enhanced(sprintf("Failed to save HTML table: %s", error_msg), level = "ERROR")
                 }
-                log_enhanced(sprintf("HTML table saved to %s", html_path), level = "INFO")
-            }, error = function(e) {
-                error_msg <- if (is.list(e) && !is.null(e$message)) e$message else as.character(e)
-                cat("DEBUG: Error in HTML table generation:", error_msg, "\n")
-                log_enhanced(sprintf("Failed to save HTML table: %s", error_msg), level = "ERROR")
-            })
+            )
         }
     } else {
         cat("DEBUG: Table result is NULL, skipping HTML generation\n")
         log_enhanced("No HTML table to save - model fitting failed", level = "INFO")
     }
-    
+
     diagnostics_path <- file.path(output_dir, diagnostics_filename)
     if (!is.null(diagnostics)) {
-        tryCatch({
-            wb <- createWorkbook()
-            if (!is.null(diagnostics$model_summary)) {
-                addWorksheet(wb, "Model_summary")
-                writeData(wb, "Model_summary", diagnostics$model_summary)
-            }
-            if (!is.null(diagnostics$model_diagnostics)) {
-                addWorksheet(wb, "Model_diagnostics")
-                writeData(wb, "Model_diagnostics", diagnostics$model_diagnostics)
-            }
-            if (!is.null(diagnostics$data_characteristics)) {
-                addWorksheet(wb, "Data_characteristics")
-                writeData(wb, "Data_characteristics", diagnostics$data_characteristics)
-            }
-            if (!is.null(diagnostics$other_level_details)) {
-                addWorksheet(wb, "Other_level_details")
-                writeData(wb, "Other_level_details", diagnostics$other_level_details)
-            }
-            if (!is.null(diagnostics$excluded_rows)) {
-                addWorksheet(wb, "Excluded_Rows")
-                writeData(wb, "Excluded_Rows", diagnostics$excluded_rows)
-            }
-            if (!is.null(diagnostics$raw_model_output)) {
-                addWorksheet(wb, "Raw_model_output")
-                if (is.data.frame(diagnostics$raw_model_output)) {
-                    raw_output_formatted <- diagnostics$raw_model_output
-                    if ("p_value" %in% names(raw_output_formatted)) {
-                        raw_output_formatted$p_value <- as.character(raw_output_formatted$p_value)
-                        raw_output_formatted$p_value[raw_output_formatted$p_value == "NA"] <- ""
-                    }
-                    writeData(wb, "Raw_model_output", raw_output_formatted)
-                } else {
-                    writeData(wb, "Raw_model_output", data.frame(
-                        message = diagnostics$raw_model_output,
-                        stringsAsFactors = FALSE
-                    ))
+        tryCatch(
+            {
+                wb <- createWorkbook()
+                if (!is.null(diagnostics$model_summary)) {
+                    addWorksheet(wb, "Model_summary")
+                    writeData(wb, "Model_summary", diagnostics$model_summary)
                 }
+                if (!is.null(diagnostics$model_diagnostics)) {
+                    addWorksheet(wb, "Model_diagnostics")
+                    writeData(wb, "Model_diagnostics", diagnostics$model_diagnostics)
+                }
+                if (!is.null(diagnostics$data_characteristics)) {
+                    addWorksheet(wb, "Data_characteristics")
+                    writeData(wb, "Data_characteristics", diagnostics$data_characteristics)
+                }
+                if (!is.null(diagnostics$other_level_details)) {
+                    addWorksheet(wb, "Other_level_details")
+                    writeData(wb, "Other_level_details", diagnostics$other_level_details)
+                }
+                if (!is.null(diagnostics$excluded_rows)) {
+                    addWorksheet(wb, "Excluded_Rows")
+                    writeData(wb, "Excluded_Rows", diagnostics$excluded_rows)
+                }
+                if (!is.null(diagnostics$raw_model_output)) {
+                    addWorksheet(wb, "Raw_model_output")
+                    if (is.data.frame(diagnostics$raw_model_output)) {
+                        raw_output_formatted <- diagnostics$raw_model_output
+                        if ("p_value" %in% names(raw_output_formatted)) {
+                            raw_output_formatted$p_value <- as.character(raw_output_formatted$p_value)
+                            raw_output_formatted$p_value[raw_output_formatted$p_value == "NA"] <- ""
+                        }
+                        writeData(wb, "Raw_model_output", raw_output_formatted)
+                    } else {
+                        writeData(wb, "Raw_model_output", data.frame(
+                            message = diagnostics$raw_model_output,
+                            stringsAsFactors = FALSE
+                        ))
+                    }
+                }
+                if (!is.null(diagnostics$filtering_summary)) {
+                    addWorksheet(wb, "Filtering_summary")
+                    writeData(wb, "Filtering_summary", diagnostics$filtering_summary)
+                }
+                saveWorkbook(wb, diagnostics_path, overwrite = TRUE)
+                log_enhanced(sprintf("Comprehensive diagnostics saved to %s", diagnostics_path), level = "INFO")
+            },
+            error = function(e) {
+                log_enhanced(sprintf("Failed to save diagnostics: %s", e$message), level = "ERROR")
             }
-            if (!is.null(diagnostics$filtering_summary)) {
-                addWorksheet(wb, "Filtering_summary")
-                writeData(wb, "Filtering_summary", diagnostics$filtering_summary)
-            }
-            saveWorkbook(wb, diagnostics_path, overwrite = TRUE)
-            log_enhanced(sprintf("Comprehensive diagnostics saved to %s", diagnostics_path), level = "INFO")
-        }, error = function(e) {
-            log_enhanced(sprintf("Failed to save diagnostics: %s", e$message), level = "ERROR")
-        })
+        )
     } else {
         log_enhanced("No diagnostics to save", level = "WARN")
     }
-    
+
     return(list(
         html_path = html_path,
         diagnostics_path = diagnostics_path

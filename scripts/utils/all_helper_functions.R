@@ -13,7 +13,7 @@ RECREATE_ANALYTIC_DATASETS <- TRUE
 VERBOSE <- TRUE
 
 # Toggle between clinical binning for continuous variables and legacy median-based cutoffs
-USE_CLINICAL_BINNING_CONTINUOUS <- TRUE  # DEFAULT: Use clinical thresholds for tumor height (10mm) and diameter (20mm)
+USE_CLINICAL_BINNING_CONTINUOUS <- TRUE # DEFAULT: Use clinical thresholds for tumor height (10mm) and diameter (20mm)
 
 ######################################################################
 ############### LOAD / INSTALL REQUIRED LIBRARIES ####################
@@ -204,36 +204,35 @@ dir.create(OUTPUT_DIR, showWarnings = FALSE, recursive = TRUE)
 #' @examples
 #' setup_cohort_outputs("uveal_melanoma_full_cohort", "uveal_full")
 setup_cohort_outputs <- function(dataset_name, cohort_dir_name = NULL) {
-    
     # Generate prefix based on dataset name
     prefix <- case_when(
         grepl("full", dataset_name) ~ "full_cohort_",
-        grepl("restricted", dataset_name) ~ "restricted_cohort_", 
+        grepl("restricted", dataset_name) ~ "restricted_cohort_",
         grepl("gksrs", dataset_name) ~ "gksrs_only_cohort_",
         TRUE ~ paste0(dataset_name, "_")
     )
-    
+
     # Determine cohort directory name if not provided
     if (is.null(cohort_dir_name)) {
         cohort_dir_name <- case_when(
             grepl("full", dataset_name) ~ "uveal_full",
-            grepl("restricted", dataset_name) ~ "uveal_restricted", 
+            grepl("restricted", dataset_name) ~ "uveal_restricted",
             grepl("gksrs", dataset_name) ~ "gksrs",
             TRUE ~ dataset_name
         )
     }
-    
+
     # Create cohort base directory
     cohort_base_dir <- file.path("final_data/Analysis", cohort_dir_name)
-    
+
     # Create the complete directory structure
     output_dirs <- create_output_structure(cohort_base_dir)
-    
+
     # Log the setup
     log_enhanced(sprintf("Created output structure for %s", dataset_name), level = "INFO")
     log_enhanced(sprintf("Prefix: %s", prefix), level = "INFO", indent = 1)
     log_enhanced(sprintf("Base directory: %s", cohort_base_dir), level = "INFO", indent = 1)
-    
+
     return(list(
         prefix = prefix,
         cohort_base_dir = cohort_base_dir,
@@ -254,35 +253,34 @@ setup_cohort_outputs <- function(dataset_name, cohort_dir_name = NULL) {
 #' @examples
 #' validate_naming_consistency("uveal_melanoma_full_cohort", "full_cohort_", "uveal_full")
 validate_naming_consistency <- function(dataset_name, prefix, cohort_dir_name) {
-    
     # Check prefix consistency
     prefix_expected <- case_when(
         grepl("full", dataset_name) ~ "full_cohort_",
-        grepl("restricted", dataset_name) ~ "restricted_cohort_", 
+        grepl("restricted", dataset_name) ~ "restricted_cohort_",
         grepl("gksrs", dataset_name) ~ "gksrs_only_cohort_",
         TRUE ~ paste0(dataset_name, "_")
     )
-    
+
     # Check cohort directory name consistency
     cohort_dir_expected <- case_when(
         grepl("full", dataset_name) ~ "uveal_full",
-        grepl("restricted", dataset_name) ~ "uveal_restricted", 
+        grepl("restricted", dataset_name) ~ "uveal_restricted",
         grepl("gksrs", dataset_name) ~ "gksrs",
         TRUE ~ dataset_name
     )
-    
+
     # Validate
     prefix_consistent <- prefix == prefix_expected
     cohort_dir_consistent <- cohort_dir_name == cohort_dir_expected
-    
+
     if (!prefix_consistent) {
         log_enhanced(sprintf("PREFIX INCONSISTENCY: Expected '%s', got '%s'", prefix_expected, prefix), level = "ERROR")
     }
-    
+
     if (!cohort_dir_consistent) {
         log_enhanced(sprintf("COHORT DIR INCONSISTENCY: Expected '%s', got '%s'", cohort_dir_expected, cohort_dir_name), level = "ERROR")
     }
-    
+
     return(prefix_consistent && cohort_dir_consistent)
 }
 
@@ -295,20 +293,20 @@ validate_naming_consistency <- function(dataset_name, prefix, cohort_dir_name) {
 #' @param label Character string with display label
 #' @return Character string safe for use in filenames
 #' @examples
-#' make_filename_safe("Overall Survival Probability")  # "overall_survival_probability"
-#' make_filename_safe("Progression-Free Survival")     # "progression_free_survival"
+#' make_filename_safe("Overall Survival Probability") # "overall_survival_probability"
+#' make_filename_safe("Progression-Free Survival") # "progression_free_survival"
 make_filename_safe <- function(label) {
     if (is.null(label) || is.na(label)) {
         return("unknown")
     }
-    
+
     # Convert to lowercase, replace spaces and special characters with underscores
     safe_name <- label %>%
         tolower() %>%
-        gsub("[^a-z0-9]", "_", .) %>%  # Replace non-alphanumeric with underscore
-        gsub("_+", "_", .) %>%         # Replace multiple underscores with single
-        gsub("^_|_$", "", .)           # Remove leading/trailing underscores
-    
+        gsub("[^a-z0-9]", "_", .) %>% # Replace non-alphanumeric with underscore
+        gsub("_+", "_", .) %>% # Replace multiple underscores with single
+        gsub("^_|_$", "", .) # Remove leading/trailing underscores
+
     return(safe_name)
 }
 

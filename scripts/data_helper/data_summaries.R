@@ -6,7 +6,6 @@
 #'
 #' @return A list with interval_metrics and summary_stats
 calculate_treatment_duration_metrics <- function(data) {
-
     data <- data %>%
         mutate(
             total_followup_days = as.numeric(difftime(last_known_alive_date, treatment_date, units = "days")),
@@ -89,13 +88,13 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
 
         prefix <- case_when(
             grepl("full", cohort_name) ~ "full_cohort_",
-            grepl("restricted", cohort_name) ~ "restricted_cohort_", 
+            grepl("restricted", cohort_name) ~ "restricted_cohort_",
             grepl("gksrs", cohort_name) ~ "gksrs_only_cohort_",
             TRUE ~ paste0(cohort_name, "_")
         )
         cohort_dir_key <- case_when(
             grepl("uveal_melanoma_full_cohort", cohort_name) ~ "full_cohort",
-            grepl("uveal_melanoma_restricted_cohort", cohort_name) ~ "restricted_cohort", 
+            grepl("uveal_melanoma_restricted_cohort", cohort_name) ~ "restricted_cohort",
             grepl("uveal_melanoma_gksrs_only_cohort", cohort_name) ~ "gksrs_only_cohort",
             TRUE ~ cohort_name
         )
@@ -103,13 +102,17 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
         if (!is.null(output_dirs) && !is.null(output_dirs[[cohort_dir_key]])) {
             treatment_duration_dir <- output_dirs[[cohort_dir_key]]$treatment_duration
             baseline_output_dir <- output_dirs[[cohort_dir_key]]$baseline_characteristics
-            log_enhanced(sprintf("Using cohort-specific directories for %s (mapped to %s): treatment_duration=%s, baseline=%s", 
-                               cohort_name, cohort_dir_key, treatment_duration_dir, baseline_output_dir), level = "INFO")
+            log_enhanced(sprintf(
+                "Using cohort-specific directories for %s (mapped to %s): treatment_duration=%s, baseline=%s",
+                cohort_name, cohort_dir_key, treatment_duration_dir, baseline_output_dir
+            ), level = "INFO")
         } else {
             treatment_duration_dir <- file.path("final_data/Analysis", "General", "treatment_duration")
             baseline_output_dir <- file.path("final_data/Analysis", "General", "baseline_characteristics")
-            log_enhanced(sprintf("Using fallback directories for %s (mapped to %s): treatment_duration=%s, baseline=%s", 
-                               cohort_name, cohort_dir_key, treatment_duration_dir, baseline_output_dir), level = "WARN")
+            log_enhanced(sprintf(
+                "Using fallback directories for %s (mapped to %s): treatment_duration=%s, baseline=%s",
+                cohort_name, cohort_dir_key, treatment_duration_dir, baseline_output_dir
+            ), level = "WARN")
         }
 
         dir.create(treatment_duration_dir, showWarnings = FALSE, recursive = TRUE)
@@ -132,7 +135,7 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
                     level_counts <- table(data[[var]], useNA = "no")
                     valid_levels <- sum(level_counts > 0)
                     if (valid_levels < 2) {
-                        log_enhanced(sprintf("Variable '%s' has insufficient levels for statistical testing (%d levels). Will display but skip p-value. Counts: %s", var, valid_levels, paste(names(level_counts), "=", level_counts, collapse=", ")), level = "INFO")
+                        log_enhanced(sprintf("Variable '%s' has insufficient levels for statistical testing (%d levels). Will display but skip p-value. Counts: %s", var, valid_levels, paste(names(level_counts), "=", level_counts, collapse = ", ")), level = "INFO")
                         vars_with_insufficient_levels <- c(vars_with_insufficient_levels, var)
                     }
                 }
@@ -170,24 +173,30 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
             add_overall()
 
         log_enhanced("Adding statistical tests (will skip variables with insufficient levels)", level = "INFO")
-        tbl <- tryCatch({
-            tbl %>% add_p(test = list(all_categorical() ~ "fisher.test"), test.args = list(all_categorical() ~ list(simulate.p.value = TRUE)))
-        }, error = function(e) {
-            log_enhanced(sprintf("Some statistical tests failed (expected for variables with <2 levels): %s", e$message), level = "INFO")
-            tbl
-        })
+        tbl <- tryCatch(
+            {
+                tbl %>% add_p(test = list(all_categorical() ~ "fisher.test"), test.args = list(all_categorical() ~ list(simulate.p.value = TRUE)))
+            },
+            error = function(e) {
+                log_enhanced(sprintf("Some statistical tests failed (expected for variables with <2 levels): %s", e$message), level = "INFO")
+                tbl
+            }
+        )
 
         tbl <- tbl %>%
             bold_labels() %>%
             modify_header(label = "**Characteristic**", stat_0 = "**Overall**\nN = {N}") %>%
             modify_caption("Baseline Characteristics")
 
-        gt_tbl <- tryCatch({
-            as_gt(tbl)
-        }, error = function(e) {
-            log_enhanced(sprintf("Error converting to gt: %s", e$message), level = "ERROR")
-            NULL
-        })
+        gt_tbl <- tryCatch(
+            {
+                as_gt(tbl)
+            },
+            error = function(e) {
+                log_enhanced(sprintf("Error converting to gt: %s", e$message), level = "ERROR")
+                NULL
+            }
+        )
 
         if (!is.null(gt_tbl)) {
             summary_tbl <- gt_tbl %>%

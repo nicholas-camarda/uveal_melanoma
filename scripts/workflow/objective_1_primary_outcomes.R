@@ -27,7 +27,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     if (is.null(confounders)) {
         confounders <- get("confounders", envir = .GlobalEnv)
     }
-    
+
     # Display the confounders that will be used for statistical adjustment
     log_enhanced(
         sprintf(
@@ -87,17 +87,20 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     log_enhanced("Overall survival analysis completed", level = "INFO", indent = 1)
 
     # Proportional hazards diagnostics (OS)
-    try({
-        if (!is.null(os_analysis$cox_model)) {
-            test_proportional_hazards_assumption(
-                cox_model   = os_analysis$cox_model,
-                outcome_name = "Overall Survival Probability",
-                output_dir   = output_dirs$obj1_ph_diagnostics,
-                file_prefix  = paste0(prefix, "overall_survival_probability_"),
-                dataset_name = dataset_name
-            )
-        }
-    }, silent = TRUE)
+    try(
+        {
+            if (!is.null(os_analysis$cox_model)) {
+                test_proportional_hazards_assumption(
+                    cox_model = os_analysis$cox_model,
+                    outcome_name = "Overall Survival Probability",
+                    output_dir = output_dirs$obj1_ph_diagnostics,
+                    file_prefix = paste0(prefix, "overall_survival_probability_"),
+                    dataset_name = dataset_name
+                )
+            }
+        },
+        silent = TRUE
+    )
 
     # 1d. Progression Free Survival (includes both progression AND death)
     log_function("analyze_time_to_event_outcomes", "Progression-free survival analysis (progression OR death)")
@@ -117,17 +120,20 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     log_enhanced("Progression-free survival analysis completed", level = "INFO", indent = 1)
 
     # Proportional hazards diagnostics (PFS)
-    try({
-        if (!is.null(pfs_analysis$cox_model)) {
-            test_proportional_hazards_assumption(
-                cox_model   = pfs_analysis$cox_model,
-                outcome_name = "Progression-Free Survival Probability",
-                output_dir   = output_dirs$obj1_ph_diagnostics,
-                file_prefix  = paste0(prefix, "progression_free_survival_probability_"),
-                dataset_name = dataset_name
-            )
-        }
-    }, silent = TRUE)
+    try(
+        {
+            if (!is.null(pfs_analysis$cox_model)) {
+                test_proportional_hazards_assumption(
+                    cox_model = pfs_analysis$cox_model,
+                    outcome_name = "Progression-Free Survival Probability",
+                    output_dir = output_dirs$obj1_ph_diagnostics,
+                    file_prefix = paste0(prefix, "progression_free_survival_probability_"),
+                    dataset_name = dataset_name
+                )
+            }
+        },
+        silent = TRUE
+    )
 
     # 1e. Tumor height changes
     log_function("analyze_tumor_height_changes", "Primary and sensitivity tumor height analysis")

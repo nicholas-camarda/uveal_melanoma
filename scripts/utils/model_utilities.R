@@ -19,34 +19,37 @@ enforce_unordered_factors <- function(data, verbose = FALSE) {
     if (verbose) {
         log_enhanced("Enforcing unordered factors for modeling", level = "INFO")
     }
-    
+
     factor_vars <- names(data)[sapply(data, is.factor)]
     converted_count <- 0
-    
+
     for (var in factor_vars) {
         if (is.ordered(data[[var]])) {
             # Get current levels to preserve order
             current_levels <- levels(data[[var]])
-            
+
             # Convert to unordered factor while preserving level order
-            data[[var]] <- factor(data[[var]], 
-                                 levels = current_levels, 
-                                 ordered = FALSE)
-            
+            data[[var]] <- factor(data[[var]],
+                levels = current_levels,
+                ordered = FALSE
+            )
+
             converted_count <- converted_count + 1
             if (verbose) {
-                log_enhanced(sprintf("  Converted ordered factor '%s' to unordered (levels: %s)", 
-                                   var, paste(current_levels, collapse = ", ")), level = "INFO")
+                log_enhanced(sprintf(
+                    "  Converted ordered factor '%s' to unordered (levels: %s)",
+                    var, paste(current_levels, collapse = ", ")
+                ), level = "INFO")
             }
         }
     }
-    
+
     if (verbose && converted_count > 0) {
         log_enhanced(sprintf("✓ Converted %d ordered factors to unordered for modeling", converted_count), level = "INFO")
     } else if (verbose) {
         log_enhanced("✓ No ordered factors found - all factors already unordered", level = "INFO")
     }
-    
+
     return(data)
 }
 
@@ -75,27 +78,27 @@ get_treatment_coefficient_name <- function(model, treatment_var, data) {
     if (is.null(model) || inherits(model, "try-error")) {
         return(NULL)
     }
-    
+
     # Get coefficient names from the model
     coef_names <- names(coef(model))
     if (is.null(coef_names)) {
         return(NULL)
     }
-    
+
     # Look for treatment coefficient
     # Pattern: treatment_var + level (e.g., "treatment_groupGKSRS")
     treatment_pattern <- paste0("^", treatment_var, "[A-Z]")
     treatment_coef <- coef_names[grepl(treatment_pattern, coef_names)]
-    
+
     if (length(treatment_coef) > 0) {
-        return(treatment_coef[1])  # Return first match
+        return(treatment_coef[1]) # Return first match
     }
-    
+
     # If not found with pattern, try exact match
     if (treatment_var %in% coef_names) {
         return(treatment_var)
     }
-    
+
     return(NULL)
 }
 
@@ -114,44 +117,44 @@ get_interaction_coefficient_name <- function(model, treatment_var, subgroup_var,
     if (is.null(model) || inherits(model, "try-error")) {
         return(NULL)
     }
-    
+
     # Get coefficient names from the model
     coef_names <- names(coef(model))
     if (is.null(coef_names)) {
         return(NULL)
     }
-    
+
     # Look for interaction coefficient
     # Pattern: treatment_var + level:subgroup_var + level (e.g., "treatment_groupGKSRS:age_at_diagnosis")
     # or treatment_var + level:subgroup_var + level (e.g., "treatment_groupGKSRS:age_at_diagnosis_binned≥65")
-    
+
     # First, try to find the treatment level
     treatment_pattern <- paste0("^", treatment_var, "[A-Z]")
     treatment_coef <- coef_names[grepl(treatment_pattern, coef_names)]
-    
+
     if (length(treatment_coef) == 0) {
         return(NULL)
     }
-    
+
     treatment_level <- treatment_coef[1]
-    
+
     # CRITICAL FIX: Look for the specific interaction coefficient for this subgroup level
     # The pattern should be: treatment_level:subgroup_var + subgroup_level
     specific_interaction_pattern <- paste0(treatment_level, ":", subgroup_var, subgroup_level)
     specific_interaction_coef <- coef_names[coef_names == specific_interaction_pattern]
-    
+
     if (length(specific_interaction_coef) > 0) {
         return(specific_interaction_coef[1])
     }
-    
+
     # Fallback: Look for any interaction with the subgroup variable
     interaction_pattern <- paste0(treatment_level, ":", subgroup_var)
     interaction_coef <- coef_names[grepl(interaction_pattern, coef_names)]
-    
+
     if (length(interaction_coef) > 0) {
-        return(interaction_coef[1])  # Return first match
+        return(interaction_coef[1]) # Return first match
     }
-    
+
     # If not found, try with subgroup level included
     if (!is.null(subgroup_level)) {
         # Try different patterns for the interaction
@@ -160,7 +163,7 @@ get_interaction_coefficient_name <- function(model, treatment_var, subgroup_var,
             paste0(treatment_level, ":", subgroup_var, ".*", subgroup_level),
             paste0(treatment_level, ":", subgroup_var, ".*", gsub("[^a-zA-Z0-9]", "", subgroup_level))
         )
-        
+
         for (pattern in patterns) {
             interaction_coef <- coef_names[grepl(pattern, coef_names)]
             if (length(interaction_coef) > 0) {
@@ -168,6 +171,6 @@ get_interaction_coefficient_name <- function(model, treatment_var, subgroup_var,
             }
         }
     }
-    
+
     return(NULL)
-} 
+}

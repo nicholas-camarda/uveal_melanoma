@@ -20,7 +20,7 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
     # Clean dataset name for display
     display_name <- tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name)))
     log_section_start("STATISTICAL ANALYSIS", display_name)
-    
+
     # Check dependencies before running analysis objectives
     if (any(objectives_to_run %in% c(1, 2, 3, 4))) {
         # Check if required files exist for analysis objectives
@@ -28,17 +28,21 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
             file.path(PROCESSED_DATA_DIR, paste0(dataset_name, ".rds")),
             file.path(PROCESSED_DATA_DIR, "other_map.rds")
         )
-        
+
         missing_files <- required_files[!file.exists(required_files)]
-        
+
         if (length(missing_files) > 0 && !(0 %in% objectives_to_run)) {
-            stop(sprintf("DEPENDENCY ERROR: Required files missing for dataset '%s': %s\nRun Objective 0 first or include it in objectives_to_run.", 
-                        dataset_name, paste(basename(missing_files), collapse = ", ")))
+            stop(sprintf(
+                "DEPENDENCY ERROR: Required files missing for dataset '%s': %s\nRun Objective 0 first or include it in objectives_to_run.",
+                dataset_name, paste(basename(missing_files), collapse = ", ")
+            ))
         }
-        
+
         if (length(missing_files) > 0 && (0 %in% objectives_to_run)) {
-            log_enhanced(sprintf("WARNING: Required files missing for dataset '%s': %s\nObjective 0 will create these files.", 
-                                dataset_name, paste(basename(missing_files), collapse = ", ")), level = "WARN")
+            log_enhanced(sprintf(
+                "WARNING: Required files missing for dataset '%s': %s\nObjective 0 will create these files.",
+                dataset_name, paste(basename(missing_files), collapse = ", ")
+            ), level = "WARN")
         }
     }
 
@@ -73,9 +77,11 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
             log_enhanced(sprintf("No validated confounders found for cohort %s, using original confounders", dataset_name), level = "WARN")
             cohort_confounders <- confounders
         } else {
-            log_enhanced(sprintf("Loaded %d validated confounders for cohort %s: %s", 
-                               length(cohort_confounders), dataset_name, 
-                               paste(cohort_confounders, collapse = ", ")), level = "INFO")
+            log_enhanced(sprintf(
+                "Loaded %d validated confounders for cohort %s: %s",
+                length(cohort_confounders), dataset_name,
+                paste(cohort_confounders, collapse = ", ")
+            ), level = "INFO")
         }
     } else {
         log_enhanced("No validated confounders file found, using original confounders", level = "WARN")
@@ -128,22 +134,24 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
 #' @export
 run_specific_objective <- function(dataset_name, objective_number) {
     log_enhanced(sprintf("Running only Objective %d for dataset: %s", objective_number, dataset_name), level = "INFO")
-    
+
     # Check dependencies for analysis objectives (1-4)
     if (objective_number %in% c(1, 2, 3, 4)) {
         required_files <- c(
             file.path(PROCESSED_DATA_DIR, paste0(dataset_name, ".rds")),
             file.path(PROCESSED_DATA_DIR, "other_map.rds")
         )
-        
+
         missing_files <- required_files[!file.exists(required_files)]
-        
+
         if (length(missing_files) > 0) {
-            stop(sprintf("DEPENDENCY ERROR: Required files missing for dataset '%s': %s\nRun Objective 0 first to create these files.", 
-                        dataset_name, paste(basename(missing_files), collapse = ", ")))
+            stop(sprintf(
+                "DEPENDENCY ERROR: Required files missing for dataset '%s': %s\nRun Objective 0 first to create these files.",
+                dataset_name, paste(basename(missing_files), collapse = ", ")
+            ))
         }
     }
-    
+
     results <- run_my_analysis(dataset_name, objectives_to_run = objective_number)
     return(results)
 }
@@ -219,4 +227,3 @@ main_execution <- function() {
 
     log_section_complete("MAIN EXECUTION PHASE", main_start_time)
 }
-

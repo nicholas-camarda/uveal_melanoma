@@ -58,7 +58,7 @@ analyze_gep_mfs_validation <- function(data, dataset_name = NULL, timepoints = G
     })
     names(events_per_timepoint) <- paste0(timepoints, "yr")
     log_enhanced("Events per timepoint:", level = "INFO", indent = 1)
-    for(i in seq_along(events_per_timepoint)) {
+    for (i in seq_along(events_per_timepoint)) {
         ep_status <- ifelse(events_per_timepoint[i] >= 100, "✓", "⚠ <100")
         log_enhanced(sprintf("%s: %d events %s", names(events_per_timepoint)[i], events_per_timepoint[i], ep_status), level = "INFO", indent = 2)
     }
@@ -124,7 +124,7 @@ analyze_gep_mss_validation <- function(data, dataset_name = NULL, timepoints = G
     })
     names(events_per_timepoint) <- paste0(timepoints, "yr")
     log_enhanced("Events per timepoint:", level = "INFO", indent = 1)
-    for(i in seq_along(events_per_timepoint)) {
+    for (i in seq_along(events_per_timepoint)) {
         ep_status <- ifelse(events_per_timepoint[i] >= 100, "✓", "⚠ <100")
         log_enhanced(sprintf("%s: %d events %s", names(events_per_timepoint)[i], events_per_timepoint[i], ep_status), level = "INFO", indent = 2)
     }
@@ -143,8 +143,10 @@ analyze_gep_mss_validation <- function(data, dataset_name = NULL, timepoints = G
     log_enhanced("Performing PRAME-augmented MSS analysis", level = "INFO", indent = 1)
     prame_results <- perform_prame_augmented_analysis_mss(analysis_data, timepoints)
     validation_report <- create_mss_validation_report(standard_results, competing_results, prame_results, missing_data_analysis, dataset_name)
-    save_mss_validation_results(standard_results, competing_results, validation_report, 
-                               missing_data_analysis, prame_results, mss_output_dir, prefix)
+    save_mss_validation_results(
+        standard_results, competing_results, validation_report,
+        missing_data_analysis, prame_results, mss_output_dir, prefix
+    )
     log_enhanced("GEP MSS validation analysis completed successfully", level = "INFO")
     return(list(
         standard_results = standard_results,

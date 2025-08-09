@@ -12,7 +12,7 @@ source("scripts/utils/all_helper_functions.R")
 # Each variable includes: description, calculation method, purpose, and data type
 
 DERIVED_VARIABLE_DOCUMENTATION <- list(
-    
+
     # ===== DEMOGRAPHIC AND BASIC VARIABLES =====
     age_at_diagnosis = list(
         description = "Patient age at time of diagnosis",
@@ -21,7 +21,7 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "years"
     ),
-    
+
     # ===== FOLLOW-UP TIME VARIABLES =====
     follow_up_days = list(
         description = "Total follow-up time from diagnosis to last known alive date",
@@ -30,7 +30,6 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "days"
     ),
-    
     follow_up_years = list(
         description = "Total follow-up time in years",
         calculation = "follow_up_days / DAYS_IN_YEAR",
@@ -38,7 +37,6 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "years"
     ),
-    
     follow_up_months = list(
         description = "Total follow-up time in months",
         calculation = "follow_up_days / DAYS_IN_MONTH",
@@ -46,7 +44,7 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "months"
     ),
-    
+
     # ===== TREATMENT VARIABLES =====
     treatment_date = list(
         description = "Date of initial treatment (GKSRS or Plaque)",
@@ -55,7 +53,7 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "Date",
         units = "date"
     ),
-    
+
     # ===== TIME-TO-EVENT VARIABLES (MONTHS) =====
     tt_recurrence_months = list(
         description = "Time from treatment to first recurrence (months)",
@@ -64,7 +62,6 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "months"
     ),
-    
     tt_mets_months = list(
         description = "Time from treatment to metastatic progression (months)",
         calculation = "case_when(mets_progression == 'Y' ~ interval(treatment_date, mets_progression_date), TRUE ~ interval(treatment_date, last_known_alive_date))",
@@ -72,7 +69,6 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "months"
     ),
-    
     tt_death_months = list(
         description = "Time from treatment to death (months)",
         calculation = "case_when(!is.na(dod) ~ interval(treatment_date, dod), TRUE ~ interval(treatment_date, last_known_alive_date))",
@@ -80,7 +76,6 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "months"
     ),
-    
     tt_pfs_months = list(
         description = "Progression-free survival time (recurrence OR death, whichever comes first)",
         calculation = "pmin(tt_recurrence_months, tt_death_months, na.rm = FALSE)",
@@ -88,7 +83,7 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "months"
     ),
-    
+
     # ===== PFS-2 VARIABLES (SECOND PROGRESSION) =====
     tt_pfs2_months = list(
         description = "Time from first recurrence treatment to second recurrence (months)",
@@ -97,7 +92,7 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "months"
     ),
-    
+
     # ===== LEGACY TIME VARIABLES (DAYS) =====
     tt_recurrence = list(
         description = "Time from treatment to first recurrence (days) - LEGACY",
@@ -106,7 +101,6 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "days"
     ),
-    
     tt_mets = list(
         description = "Time from treatment to metastatic progression (days) - LEGACY",
         calculation = "case_when(mets_progression == 'Y' ~ difftime(mets_progression_date, treatment_date, units = 'days'), TRUE ~ difftime(last_known_alive_date, treatment_date, units = 'days'))",
@@ -114,7 +108,6 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "days"
     ),
-    
     tt_death = list(
         description = "Time from treatment to death (days) - LEGACY",
         calculation = "case_when(!is.na(dod) ~ difftime(dod, treatment_date, units = 'days'), TRUE ~ difftime(last_known_alive_date, treatment_date, units = 'days'))",
@@ -122,7 +115,6 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "days"
     ),
-    
     tt_pfs2 = list(
         description = "Time from first recurrence treatment to second recurrence (days) - LEGACY",
         calculation = "case_when(recurrence1 == 'Y' & !is.na(recurrence1_treatment_date) & recurrence2 == 'Y' ~ difftime(recurrence2_date, recurrence1_treatment_date, units = 'days'), recurrence1 == 'Y' & !is.na(recurrence1_treatment_date) ~ difftime(last_known_alive_date, recurrence1_treatment_date, units = 'days'), TRUE ~ NA)",
@@ -130,7 +122,7 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "days"
     ),
-    
+
     # ===== TIME VARIABLES (YEARS) =====
     tt_recurrence_years = list(
         description = "Time from treatment to first recurrence (years)",
@@ -139,7 +131,6 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "years"
     ),
-    
     tt_mets_years = list(
         description = "Time from treatment to metastatic progression (years)",
         calculation = "case_when(mets_progression == 'Y' ~ interval(treatment_date, mets_progression_date), TRUE ~ interval(treatment_date, last_known_alive_date))",
@@ -147,7 +138,6 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "years"
     ),
-    
     tt_death_years = list(
         description = "Time from treatment to death (years)",
         calculation = "case_when(!is.na(dod) ~ interval(treatment_date, dod), TRUE ~ interval(treatment_date, last_known_alive_date))",
@@ -155,7 +145,6 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "years"
     ),
-    
     tt_pfs2_years = list(
         description = "Time from first recurrence treatment to second recurrence (years)",
         calculation = "case_when(recurrence1 == 'Y' & !is.na(recurrence1_treatment_date) & recurrence2 == 'Y' ~ interval(recurrence1_treatment_date, recurrence2_date), recurrence1 == 'Y' & !is.na(recurrence1_treatment_date) ~ interval(recurrence1_treatment_date, last_known_alive_date), TRUE ~ NA)",
@@ -163,7 +152,7 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "years"
     ),
-    
+
     # ===== TUMOR RESPONSE VARIABLES =====
     height_change = list(
         description = "Change in tumor height from initial to follow-up",
@@ -172,7 +161,7 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "mm"
     ),
-    
+
     # ===== PRE-TREATMENT FLAGS =====
     mets_before_treatment = list(
         description = "Flag for patients with metastatic progression before treatment",
@@ -181,7 +170,6 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "logical",
         units = "boolean"
     ),
-    
     recurrence_before_treatment = list(
         description = "Flag for patients with recurrence before treatment",
         calculation = "tt_recurrence_months < 0",
@@ -189,7 +177,6 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "logical",
         units = "boolean"
     ),
-    
     death_before_treatment = list(
         description = "Flag for patients who died before treatment",
         calculation = "tt_death_months < 0",
@@ -197,7 +184,7 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "logical",
         units = "boolean"
     ),
-    
+
     # ===== ANALYSIS-READY TIME VARIABLES =====
     tt_mets_months_analysis = list(
         description = "Time to metastasis for analysis (negative values set to 0)",
@@ -206,7 +193,6 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "months"
     ),
-    
     tt_recurrence_months_analysis = list(
         description = "Time to recurrence for analysis (negative values set to 0)",
         calculation = "if_else(tt_recurrence_months < 0, 0, tt_recurrence_months)",
@@ -214,7 +200,6 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "months"
     ),
-    
     tt_death_months_analysis = list(
         description = "Time to death for analysis (negative values set to 0)",
         calculation = "if_else(tt_death_months < 0, 0, tt_death_months)",
@@ -222,7 +207,6 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "months"
     ),
-    
     tt_pfs_months_analysis = list(
         description = "Progression-free survival for analysis (negative values set to 0)",
         calculation = "pmin(tt_recurrence_months_analysis, tt_death_months_analysis, na.rm = FALSE)",
@@ -230,7 +214,7 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "months"
     ),
-    
+
     # ===== EVENT INDICATORS =====
     recurrence_event = list(
         description = "Binary indicator for first recurrence (1 = occurred, 0 = censored)",
@@ -239,7 +223,6 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "binary"
     ),
-    
     mets_event = list(
         description = "Binary indicator for metastatic progression (1 = occurred, 0 = censored)",
         calculation = "if_else(mets_progression == 'Y', 1, 0, missing = 0)",
@@ -247,7 +230,6 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "binary"
     ),
-    
     death_event = list(
         description = "Binary indicator for death (1 = occurred, 0 = censored)",
         calculation = "if_else(!is.na(dod), 1, 0, missing = 0)",
@@ -255,7 +237,6 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "binary"
     ),
-    
     pfs_event = list(
         description = "Binary indicator for progression-free survival (1 = progression OR death, 0 = censored)",
         calculation = "if_else(recurrence_event == 1 | death_event == 1, 1, 0)",
@@ -263,7 +244,6 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "binary"
     ),
-    
     pfs2_event = list(
         description = "Binary indicator for PFS-2 (1 = second recurrence, 0 = censored, NA = no first recurrence)",
         calculation = "case_when(recurrence1 == 'Y' & !is.na(recurrence1_treatment_date) & recurrence2 == 'Y' ~ 1, recurrence1 == 'Y' & !is.na(recurrence1_treatment_date) ~ 0, TRUE ~ NA)",
@@ -271,7 +251,7 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "binary"
     ),
-    
+
     # ===== RECURRENCE TREATMENT VARIABLES =====
     recurrence1_treatment_clean = list(
         description = "Cleaned categorization of first recurrence treatment",
@@ -280,7 +260,7 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "character",
         units = "categorical"
     ),
-    
+
     # ===== BASELINE STATUS VARIABLES =====
     mets_free_at_baseline = list(
         description = "Flag for patients without metastatic disease at baseline",
@@ -289,7 +269,7 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "logical",
         units = "boolean"
     ),
-    
+
     # ===== GEP VALIDATION VARIABLES (OBJECTIVE 4) =====
     gep_class_simple = list(
         description = "Simplified GEP classification for analysis",
@@ -298,7 +278,6 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "character",
         units = "categorical"
     ),
-    
     expected_mfs_5yr = list(
         description = "Expected 5-year metastasis-free survival from GEP",
         calculation = "biopsy1_gep_mfs",
@@ -306,7 +285,6 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "probability (0-1)"
     ),
-    
     expected_mfs_7yr = list(
         description = "Expected 7-year metastasis-free survival from GEP (extrapolated)",
         calculation = "biopsy1_gep_mfs^(7/5)",
@@ -314,7 +292,6 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "probability (0-1)"
     ),
-    
     expected_mfs_10yr = list(
         description = "Expected 10-year metastasis-free survival from GEP (extrapolated)",
         calculation = "biopsy1_gep_mfs^(10/5)",
@@ -322,7 +299,6 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "probability (0-1)"
     ),
-    
     expected_mss_5yr = list(
         description = "Expected 5-year melanoma-specific survival from GEP",
         calculation = "biopsy1_gep_mss",
@@ -330,7 +306,6 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "probability (0-1)"
     ),
-    
     expected_mss_7yr = list(
         description = "Expected 7-year melanoma-specific survival from GEP (extrapolated)",
         calculation = "biopsy1_gep_mss^(7/5)",
@@ -338,7 +313,6 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "probability (0-1)"
     ),
-    
     expected_mss_10yr = list(
         description = "Expected 10-year melanoma-specific survival from GEP (extrapolated)",
         calculation = "biopsy1_gep_mss^(10/5)",
@@ -346,7 +320,6 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "probability (0-1)"
     ),
-    
     prame_status = list(
         description = "PRAME status from GEP analysis",
         calculation = "case_when(str_detect(biopsy1_gep, 'PRAME_positive') ~ 'Positive', str_detect(biopsy1_gep, 'PRAME_negative') ~ 'Negative', str_detect(biopsy1_gep, 'PRAME_not_reported|PRAME_Unknown') ~ 'Unknown', TRUE ~ 'Not Available')",
@@ -354,7 +327,7 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "character",
         units = "categorical"
     ),
-    
+
     # ===== GEP VALIDATION SET =====
     gep_validation_set = list(
         description = "Training/testing split for GEP validation analysis",
@@ -363,7 +336,7 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "character",
         units = "categorical"
     ),
-    
+
     # ===== MODIFIED STAGE VARIABLE =====
     initial_overall_stage_modified = list(
         description = "Modified overall stage excluding stages with insufficient numbers",
@@ -383,8 +356,8 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
 #' @param variable_name Name of the derived variable (optional)
 #' @return List of variable documentation or specific variable info
 #' @examples
-#' get_derived_variable_docs()  # All variables
-#' get_derived_variable_docs("age_at_diagnosis")  # Specific variable
+#' get_derived_variable_docs() # All variables
+#' get_derived_variable_docs("age_at_diagnosis") # Specific variable
 get_derived_variable_docs <- function(variable_name = NULL) {
     if (is.null(variable_name)) {
         return(DERIVED_VARIABLE_DOCUMENTATION)
@@ -405,7 +378,7 @@ get_derived_variable_docs <- function(variable_name = NULL) {
 print_derived_variables_summary <- function() {
     cat("=== DERIVED VARIABLES SUMMARY ===\n")
     cat("Total derived variables:", length(DERIVED_VARIABLE_DOCUMENTATION), "\n\n")
-    
+
     for (var_name in names(DERIVED_VARIABLE_DOCUMENTATION)) {
         var_info <- DERIVED_VARIABLE_DOCUMENTATION[[var_name]]
         cat(sprintf("%s:\n", var_name))
@@ -457,15 +430,14 @@ categorize_derived_variable <- function(variable_name) {
 #' @param include_timestamp Whether to include timestamp in filename (default: TRUE)
 #' @return Path to created Excel file
 #' @examples
-#' export_derived_variables_to_excel()  # Creates timestamped file
-#' export_derived_variables_to_excel("my_docs.xlsx", include_timestamp = FALSE)  # Custom filename
+#' export_derived_variables_to_excel() # Creates timestamped file
+#' export_derived_variables_to_excel("my_docs.xlsx", include_timestamp = FALSE) # Custom filename
 export_derived_variables_to_excel <- function(output_file = NULL, include_timestamp = TRUE) {
-    
     # Check if openxlsx is available
     if (!requireNamespace("openxlsx", quietly = TRUE)) {
         stop("openxlsx package is required. Install with: install.packages('openxlsx')")
     }
-    
+
     # Create output filename
     if (is.null(output_file)) {
         if (include_timestamp) {
@@ -475,7 +447,7 @@ export_derived_variables_to_excel <- function(output_file = NULL, include_timest
             output_file <- "derived_variables_documentation.xlsx"
         }
     }
-    
+
     # Convert documentation to data frame
     doc_list <- DERIVED_VARIABLE_DOCUMENTATION
     doc_df <- data.frame(
@@ -488,20 +460,20 @@ export_derived_variables_to_excel <- function(output_file = NULL, include_timest
         Units = sapply(doc_list, function(x) x$units),
         stringsAsFactors = FALSE
     )
-    
+
     # Sort by category and then by variable name
     doc_df <- doc_df[order(doc_df$Category, doc_df$Variable_Name), ]
-    
+
     # Create workbook
     wb <- openxlsx::createWorkbook()
-    
+
     # Add worksheet
     sheet_name <- "Derived Variables"
     openxlsx::addWorksheet(wb, sheet_name)
-    
+
     # Write data
     openxlsx::writeData(wb, sheet_name, doc_df, startRow = 2, startCol = 1)
-    
+
     # Add header
     header_style <- openxlsx::createStyle(
         fontSize = 12,
@@ -511,35 +483,36 @@ export_derived_variables_to_excel <- function(output_file = NULL, include_timest
         valign = "center",
         textDecoration = "bold"
     )
-    
-    openxlsx::writeData(wb, sheet_name, 
-                       data.frame(Header = "DERIVED VARIABLES DOCUMENTATION"), 
-                       startRow = 1, startCol = 1)
+
+    openxlsx::writeData(wb, sheet_name,
+        data.frame(Header = "DERIVED VARIABLES DOCUMENTATION"),
+        startRow = 1, startCol = 1
+    )
     openxlsx::mergeCells(wb, sheet_name, cols = 1:7, rows = 1)
     openxlsx::addStyle(wb, sheet_name, header_style, rows = 1, cols = 1)
-    
+
     # Style column headers
     openxlsx::addStyle(wb, sheet_name, header_style, rows = 2, cols = 1:7)
-    
+
     # Set column widths
-    openxlsx::setColWidths(wb, sheet_name, cols = 1, widths = 25)  # Variable Name
-    openxlsx::setColWidths(wb, sheet_name, cols = 2, widths = 15)  # Category
-    openxlsx::setColWidths(wb, sheet_name, cols = 3, widths = 40)  # Description
-    openxlsx::setColWidths(wb, sheet_name, cols = 4, widths = 60)  # Calculation
-    openxlsx::setColWidths(wb, sheet_name, cols = 5, widths = 40)  # Purpose
-    openxlsx::setColWidths(wb, sheet_name, cols = 6, widths = 12)  # Data Type
-    openxlsx::setColWidths(wb, sheet_name, cols = 7, widths = 10)  # Units
-    
+    openxlsx::setColWidths(wb, sheet_name, cols = 1, widths = 25) # Variable Name
+    openxlsx::setColWidths(wb, sheet_name, cols = 2, widths = 15) # Category
+    openxlsx::setColWidths(wb, sheet_name, cols = 3, widths = 40) # Description
+    openxlsx::setColWidths(wb, sheet_name, cols = 4, widths = 60) # Calculation
+    openxlsx::setColWidths(wb, sheet_name, cols = 5, widths = 40) # Purpose
+    openxlsx::setColWidths(wb, sheet_name, cols = 6, widths = 12) # Data Type
+    openxlsx::setColWidths(wb, sheet_name, cols = 7, widths = 10) # Units
+
     # Add alternating row colors for readability
     alt_style <- openxlsx::createStyle(fgFill = "#F2F2F2")
     for (i in seq(4, nrow(doc_df) + 2, by = 2)) {
         openxlsx::addStyle(wb, sheet_name, alt_style, rows = i, cols = 1:7)
     }
-    
+
     # Add summary sheet
     summary_sheet <- "Summary"
     openxlsx::addWorksheet(wb, summary_sheet)
-    
+
     # Create summary statistics
     category_counts <- table(doc_df$Category)
     summary_df <- data.frame(
@@ -547,28 +520,29 @@ export_derived_variables_to_excel <- function(output_file = NULL, include_timest
         Count = as.numeric(category_counts),
         Percentage = round(as.numeric(category_counts) / sum(category_counts) * 100, 1)
     )
-    
-    openxlsx::writeData(wb, summary_sheet, 
-                       data.frame(Header = "DERIVED VARIABLES SUMMARY"), 
-                       startRow = 1, startCol = 1)
+
+    openxlsx::writeData(wb, summary_sheet,
+        data.frame(Header = "DERIVED VARIABLES SUMMARY"),
+        startRow = 1, startCol = 1
+    )
     openxlsx::mergeCells(wb, summary_sheet, cols = 1:3, rows = 1)
     openxlsx::addStyle(wb, summary_sheet, header_style, rows = 1, cols = 1)
-    
+
     openxlsx::writeData(wb, summary_sheet, summary_df, startRow = 3, startCol = 1)
     openxlsx::addStyle(wb, summary_sheet, header_style, rows = 3, cols = 1:3)
-    
+
     # Set summary column widths
     openxlsx::setColWidths(wb, summary_sheet, cols = 1, widths = 25)
     openxlsx::setColWidths(wb, summary_sheet, cols = 2, widths = 10)
     openxlsx::setColWidths(wb, summary_sheet, cols = 3, widths = 15)
-    
+
     # Save workbook
     openxlsx::saveWorkbook(wb, output_file, overwrite = TRUE)
-    
+
     cat(sprintf("Derived variables documentation exported to: %s\n", output_file))
     cat(sprintf("Total variables documented: %d\n", nrow(doc_df)))
     cat(sprintf("Categories: %s\n", paste(names(category_counts), collapse = ", ")))
-    
+
     return(output_file)
 }
 
@@ -580,15 +554,14 @@ export_derived_variables_to_excel <- function(output_file = NULL, include_timest
 #' @param include_timestamp Whether to include timestamp in filename (default: TRUE)
 #' @return Path to created Excel file
 #' @examples
-#' generate_derived_variables_documentation()  # Creates file in tools_output folder
+#' generate_derived_variables_documentation() # Creates file in tools_output folder
 generate_derived_variables_documentation <- function(include_timestamp = FALSE) {
-    
     # Create output directory if it doesn't exist
     output_dir <- file.path(PROCESSED_DATA_DIR, "tools_output")
     if (!dir.exists(output_dir)) {
         dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
     }
-    
+
     # Generate filename
     if (include_timestamp) {
         timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
@@ -596,14 +569,14 @@ generate_derived_variables_documentation <- function(include_timestamp = FALSE) 
     } else {
         filename <- "derived_variables_documentation.xlsx"
     }
-    
+
     output_file <- file.path(output_dir, filename)
-    
+
     # Export to Excel
     result_file <- export_derived_variables_to_excel(output_file, include_timestamp = FALSE)
-    
+
     log_enhanced(sprintf("Derived variables documentation generated: %s", result_file), level = "INFO")
-    
+
     return(result_file)
 }
 
@@ -621,19 +594,18 @@ generate_derived_variables_documentation <- function(include_timestamp = FALSE) 
 #' @examples
 #' validate_derived_variables_documentation(processed_data)
 validate_derived_variables_documentation <- function(processed_data) {
-    
     # Get all documented variables
     documented_vars <- names(DERIVED_VARIABLE_DOCUMENTATION)
-    
+
     # Get all variables from processed data
     actual_vars <- unique(unlist(lapply(processed_data, names)))
-    
+
     # Find missing documentation
     missing_docs <- setdiff(actual_vars, documented_vars)
-    
+
     # Find documented variables not in data
     extra_docs <- setdiff(documented_vars, actual_vars)
-    
+
     # Create validation report
     validation_results <- list(
         documented_variables = length(documented_vars),
@@ -643,22 +615,22 @@ validate_derived_variables_documentation <- function(processed_data) {
         documentation_complete = length(missing_docs) == 0,
         documentation_accurate = length(extra_docs) == 0
     )
-    
+
     # Print summary
     cat("=== DERIVED VARIABLES DOCUMENTATION VALIDATION ===\n")
     cat(sprintf("Documented variables: %d\n", validation_results$documented_variables))
     cat(sprintf("Actual variables: %d\n", validation_results$actual_variables))
     cat(sprintf("Documentation complete: %s\n", validation_results$documentation_complete))
     cat(sprintf("Documentation accurate: %s\n", validation_results$documentation_accurate))
-    
+
     if (length(missing_docs) > 0) {
         cat(sprintf("Missing documentation for: %s\n", paste(missing_docs, collapse = ", ")))
     }
-    
+
     if (length(extra_docs) > 0) {
         cat(sprintf("Extra documentation for: %s\n", paste(extra_docs, collapse = ", ")))
     }
-    
+
     return(validation_results)
 }
 

@@ -6,30 +6,31 @@
 #' @param plot_data List with formatted data for forestploter
 #' @return A formatted forestploter object
 apply_forest_plot_formatting <- function(fp, plot_data) {
-    
     # Find rows that should be bold (variable headers)
     bold_rows <- which(plot_data$is_summary & plot_data$font_face == "bold")
-    
+
     # Skip the first row (main header) for variable-specific formatting
     variable_header_rows <- bold_rows[-1]
-    
+
     # Apply bold formatting to variable headers
     for (row_idx in variable_header_rows) {
-        fp <- edit_plot(fp, 
-                       row = row_idx, 
-                       col = 1,  # First column (subgroup names)
-                       gp = gpar(fontface = "bold"))
+        fp <- edit_plot(fp,
+            row = row_idx,
+            col = 1, # First column (subgroup names)
+            gp = gpar(fontface = "bold")
+        )
     }
-    
+
     # Apply italic formatting to "No data available" rows
     italic_rows <- which(plot_data$font_face == "italic")
     for (row_idx in italic_rows) {
-        fp <- edit_plot(fp, 
-                       row = row_idx, 
-                       col = 1,  # First column (subgroup names)
-                       gp = gpar(fontface = "italic", col = "grey50"))
+        fp <- edit_plot(fp,
+            row = row_idx,
+            col = 1, # First column (subgroup names)
+            gp = gpar(fontface = "italic", col = "grey50")
+        )
     }
-    
+
     return(fp)
 }
 
@@ -56,7 +57,9 @@ symmetric_log_clip <- function(lower_vals, upper_vals,
     # Combine and clean values
     vals <- c(lower_vals, upper_vals)
     vals <- vals[is.finite(vals) & vals > 0]
-    if (length(vals) == 0) return(c(0.1, 10))
+    if (length(vals) == 0) {
+        return(c(0.1, 10))
+    }
 
     # Work on absolute log10 distances from 1
     log_abs <- abs(log10(vals))
@@ -94,11 +97,13 @@ symmetric_log_clip <- function(lower_vals, upper_vals,
 #' @param max_span Maximum half-width allowed for the axis (absolute units).
 #' @return Numeric length-2 vector giving c(min, max) clip values centred on 0.
 symmetric_linear_clip <- function(lower_vals, upper_vals,
-                                   buffer = 0.1, trim_pct = 0.05,
-                                   max_span = 5) {
+                                  buffer = 0.1, trim_pct = 0.05,
+                                  max_span = 5) {
     vals <- c(lower_vals, upper_vals)
     vals <- vals[is.finite(vals)]
-    if (length(vals) == 0) return(c(-1, 1))
+    if (length(vals) == 0) {
+        return(c(-1, 1))
+    }
 
     # Work with absolute magnitude (distance from 0)
     abs_vals <- abs(vals)
@@ -134,6 +139,8 @@ get_forest_plot_diagnostics <- function(fp) {
 #' @param diagnostics_list Named list where each element is a data.frame of diagnostics
 #' @param file_path Full path of the .xlsx to create
 write_diagnostics_excel <- function(diagnostics_list, file_path) {
-    if (length(diagnostics_list) == 0) return(invisible(NULL))
+    if (length(diagnostics_list) == 0) {
+        return(invisible(NULL))
+    }
     writexl::write_xlsx(diagnostics_list, file_path)
 }

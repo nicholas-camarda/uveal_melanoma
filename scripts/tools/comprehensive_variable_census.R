@@ -1,9 +1,9 @@
 #' Comprehensive Variable Census
-#' 
+#'
 #' This script creates a complete inventory of all variables in the dataset,
 #' combining the original data dictionary with derived variables and current
 #' dataset structure. This provides a single source of truth for all variables.
-#' 
+#'
 #' @author AI Assistant
 #' @date 2025-01-31
 
@@ -14,33 +14,31 @@ library(tidyr)
 library(openxlsx)
 
 #' Create comprehensive variable census
-#' 
+#'
 #' @param data_dict_path Path to the Excel file containing the data dictionary
 #' @param output_dir Directory to save the census output
 #' @return List containing the comprehensive census
 create_comprehensive_variable_census <- function(
     data_dict_path = DATA_DICTIONARY_PATH,
-    output_dir = TOOLS_OUTPUT_DIR
-) {
-    
+    output_dir = TOOLS_OUTPUT_DIR) {
     # Create output directory
     dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
-    
+
     # Load original data dictionary
     cat("Loading original data dictionary...\n")
     data_dict <- read_excel(data_dict_path, sheet = "Sheet1")
-    
+
     # Clean column names - handle the actual column names from the file
     names(data_dict) <- c("variable_name", "description", "statistical_goals", "notes", "notes2")
-    
+
     # Remove the problematic notes2 column
     data_dict <- data_dict[, c("variable_name", "description", "statistical_goals", "notes")]
-    
+
     # Load current dataset to get actual variable information
     cat("Loading current dataset...\n")
     source("scripts/utils/all_helper_functions.R")
     current_data <- readRDS("final_data/Analytic Dataset/uveal_melanoma_full_cohort.rds")
-    
+
     # Create current dataset variable information
     current_vars <- data.frame(
         variable_name = names(current_data),
@@ -60,14 +58,14 @@ create_comprehensive_variable_census <- function(
         current_n = sapply(current_data, function(x) length(x)),
         stringsAsFactors = FALSE
     )
-    
+
     # Merge original dictionary with current dataset info
     comprehensive_census <- left_join(data_dict, current_vars, by = "variable_name")
-    
+
     # Add derived variable information
     derived_vars <- get_derived_variables_info()
     comprehensive_census <- left_join(comprehensive_census, derived_vars, by = "variable_name")
-    
+
     # Add variable categories
     comprehensive_census <- comprehensive_census %>%
         mutate(
@@ -90,7 +88,7 @@ create_comprehensive_variable_census <- function(
             is_current = variable_name %in% names(current_data),
             is_original = variable_name %in% data_dict$variable_name
         )
-    
+
     # Create summary statistics
     summary_stats <- list(
         total_variables = nrow(comprehensive_census),
@@ -100,30 +98,34 @@ create_comprehensive_variable_census <- function(
         missing_from_current = sum(!comprehensive_census$is_current, na.rm = TRUE),
         categories = table(comprehensive_census$variable_category)
     )
-    
+
     # Save comprehensive census
     saveRDS(comprehensive_census, file.path(output_dir, "comprehensive_variable_census.rds"))
-    
+
     # HTML report removed - only Excel output as requested
-    
+
     # Create XLSX export with multiple sheets
     wb <- createWorkbook()
-    
+
     # Main census sheet
     addWorksheet(wb, "Variable_Census")
     writeData(wb, "Variable_Census", comprehensive_census)
-    
+
     # Summary statistics sheet
     summary_df <- data.frame(
-        Metric = c("Total Variables", "Original Variables", "Derived Variables", 
-                  "Current Variables", "Missing from Current"),
-        Count = c(summary_stats$total_variables, summary_stats$original_variables,
-                 summary_stats$derived_variables, summary_stats$current_variables,
-                 summary_stats$missing_from_current)
+        Metric = c(
+            "Total Variables", "Original Variables", "Derived Variables",
+            "Current Variables", "Missing from Current"
+        ),
+        Count = c(
+            summary_stats$total_variables, summary_stats$original_variables,
+            summary_stats$derived_variables, summary_stats$current_variables,
+            summary_stats$missing_from_current
+        )
     )
     addWorksheet(wb, "Summary_Statistics")
     writeData(wb, "Summary_Statistics", summary_df)
-    
+
     # Category breakdown sheet
     category_df <- data.frame(
         Category = names(summary_stats$categories),
@@ -131,13 +133,13 @@ create_comprehensive_variable_census <- function(
     )
     addWorksheet(wb, "Category_Breakdown")
     writeData(wb, "Category_Breakdown", category_df)
-    
+
     # Save XLSX file
     saveWorkbook(wb, file.path(output_dir, "comprehensive_variable_census.xlsx"), overwrite = TRUE)
-    
+
     cat("Comprehensive variable census created successfully!\n")
     cat("Files saved to:", output_dir, "\n")
-    
+
     return(list(
         census = comprehensive_census,
         summary = summary_stats,
@@ -146,7 +148,7 @@ create_comprehensive_variable_census <- function(
 }
 
 #' Get derived variables information
-#' 
+#'
 #' @return Data frame with derived variable information
 get_derived_variables_info <- function() {
     # This would be populated from the derived variables documentation
@@ -157,7 +159,7 @@ get_derived_variables_info <- function() {
         source_variables = character(),
         stringsAsFactors = FALSE
     )
-    
+
     # Add known derived variables
     known_derived <- data.frame(
         variable_name = c(
@@ -168,7 +170,7 @@ get_derived_variables_info <- function() {
         ),
         derivation_logic = c(
             "Time from diagnosis to death in years",
-            "Time from diagnosis to metastasis in years", 
+            "Time from diagnosis to metastasis in years",
             "Time from diagnosis to progression in months",
             "Time from diagnosis to recurrence in years",
             "Binary indicator for death (1 = died, 0 = censored)",
@@ -178,7 +180,7 @@ get_derived_variables_info <- function() {
             "Treatment group (Plaque vs GKSRS)",
             "Age at diagnosis calculated from DOB",
             "Initial tumor height in mm",
-            "Initial tumor diameter in mm", 
+            "Initial tumor diameter in mm",
             "Initial T stage",
             "Initial N stage",
             "Initial M stage"
@@ -186,7 +188,7 @@ get_derived_variables_info <- function() {
         source_variables = c(
             "date_diagnosis, date_death",
             "date_diagnosis, date_mets",
-            "date_diagnosis, date_progression", 
+            "date_diagnosis, date_progression",
             "date_diagnosis, date_recurrence",
             "date_death, date_last_followup",
             "date_mets, date_last_followup",
@@ -197,22 +199,21 @@ get_derived_variables_info <- function() {
             "tumor_height_initial",
             "tumor_diameter_initial",
             "t_stage_initial",
-            "n_stage_initial", 
+            "n_stage_initial",
             "m_stage_initial"
         ),
         stringsAsFactors = FALSE
     )
-    
+
     return(rbind(derived_vars, known_derived))
 }
 
 #' Create HTML report for variable census
-#' 
+#'
 #' @param census Comprehensive variable census data frame
 #' @param summary Summary statistics
 #' @param output_dir Output directory
 create_census_html_report <- function(census, summary, output_dir) {
-    
     # Create HTML content
     html_content <- paste0(
         "<!DOCTYPE html>",
@@ -230,7 +231,6 @@ create_census_html_report <- function(census, summary, output_dir) {
         "</head><body>",
         "<h1>Comprehensive Variable Census</h1>",
         "<p><strong>Generated:</strong> ", Sys.time(), "</p>",
-        
         "<div class='summary'>",
         "<h2>Summary Statistics</h2>",
         "<ul>",
@@ -241,35 +241,37 @@ create_census_html_report <- function(census, summary, output_dir) {
         "<li><strong>Missing from Current:</strong> ", summary$missing_from_current, "</li>",
         "</ul>",
         "</div>",
-        
         "<h2>Variable Categories</h2>",
         "<table>",
         "<tr><th>Category</th><th>Count</th></tr>"
     )
-    
+
     # Add category counts
     for (i in 1:length(summary$categories)) {
-        html_content <- paste0(html_content,
+        html_content <- paste0(
+            html_content,
             "<tr><td>", names(summary$categories)[i], "</td><td>", summary$categories[i], "</td></tr>"
         )
     }
-    
+
     html_content <- paste0(html_content, "</table>")
-    
+
     # Add detailed variable table by category
     for (category in unique(census$variable_category)) {
         category_data <- census[census$variable_category == category, ]
-        
-        html_content <- paste0(html_content,
+
+        html_content <- paste0(
+            html_content,
             "<div class='category'>",
             "<h3>", category, " (", nrow(category_data), " variables)</h3>",
             "<table>",
             "<tr><th>Variable Name</th><th>Description</th><th>Type</th><th>Derived</th><th>Current</th><th>Missing</th></tr>"
         )
-        
+
         for (i in 1:nrow(category_data)) {
             row <- category_data[i, ]
-            html_content <- paste0(html_content,
+            html_content <- paste0(
+                html_content,
                 "<tr>",
                 "<td>", row$variable_name, "</td>",
                 "<td>", ifelse(is.na(row$description), "", row$description), "</td>",
@@ -280,12 +282,12 @@ create_census_html_report <- function(census, summary, output_dir) {
                 "</tr>"
             )
         }
-        
+
         html_content <- paste0(html_content, "</table></div>")
     }
-    
+
     html_content <- paste0(html_content, "</body></html>")
-    
+
     # Save HTML file
     writeLines(html_content, file.path(output_dir, "comprehensive_variable_census.html"))
 }
@@ -295,42 +297,42 @@ main <- function() {
     cat("=== COMPREHENSIVE VARIABLE CENSUS TOOL ===\n")
     cat("This tool creates a complete inventory of all variables in the dataset.\n")
     cat("It combines the original data dictionary with current dataset structure.\n\n")
-    
+
     # Check if data dictionary exists
     data_dict_path <- "data/Ocular Melanoma Master Spreadsheet FINAL FOR STATS (4-30-25).xlsx"
     if (!file.exists(data_dict_path)) {
         stop("Data dictionary file not found: ", data_dict_path)
     }
-    
+
     cat("Creating comprehensive variable census...\n")
     result <- create_comprehensive_variable_census()
-    
+
     cat("\n=== SUMMARY ===\n")
     cat("Total variables:", result$summary$total_variables, "\n")
     cat("Original variables:", result$summary$original_variables, "\n")
     cat("Derived variables:", result$summary$derived_variables, "\n")
     cat("Current variables:", result$summary$current_variables, "\n")
     cat("Missing from current:", result$summary$missing_from_current, "\n")
-    
+
     cat("\n=== VARIABLE CATEGORIES ===\n")
     for (i in 1:length(result$summary$categories)) {
         cat(names(result$summary$categories)[i], ":", result$summary$categories[i], "\n")
     }
-    
+
     cat("\n=== OUTPUT FILES ===\n")
     cat("XLSX file:", file.path(result$output_dir, "comprehensive_variable_census.xlsx"), "\n")
     cat("HTML report:", file.path(result$output_dir, "comprehensive_variable_census.html"), "\n")
     cat("RDS file:", file.path(result$output_dir, "comprehensive_variable_census.rds"), "\n")
-    
+
     cat("\n=== NEXT STEPS ===\n")
     cat("1. Open the XLSX file to review variable details\n")
     cat("2. Check the HTML report for formatted view\n")
     cat("3. Use the RDS file for programmatic access\n")
-    
+
     cat("\nComprehensive variable census completed successfully!\n")
 }
 
 # Run if called directly
 if (!interactive()) {
     main()
-} 
+}

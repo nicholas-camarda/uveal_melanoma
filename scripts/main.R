@@ -1,5 +1,5 @@
 # Uveal Melanoma Treatment Outcomes Analysis
-# Author: Nicholas Camarda 
+# Author: Nicholas Camarda
 # Description: Analysis comparing outcomes between Gamma Knife and plaque brachytherapy
 #              for uveal melanoma treatment, including both full and restricted cohort analyses
 # Main script to run the analysis
@@ -51,4 +51,3 @@ if (USE_LOGS) {
     close(log_con)
     log_enhanced("Log file closed successfully")
 }
-

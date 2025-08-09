@@ -27,22 +27,26 @@ plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dir
             ),
             Significance_Level = case_when(
                 RMST_P_Value < 0.001 ~ "p < 0.001",
-                RMST_P_Value < 0.01 ~ "p < 0.01", 
+                RMST_P_Value < 0.01 ~ "p < 0.01",
                 RMST_P_Value < 0.05 ~ "p < 0.05",
                 TRUE ~ "Not significant"
             )
         )
-    
+
     # Create the plot
     p <- ggplot(plot_data, aes(x = Time_Point_Years, y = RMST_P_Value)) +
         geom_line(linewidth = 1.2, color = "steelblue", alpha = 0.8) +
         geom_point(aes(color = Significant, size = Significant), alpha = 0.9) +
         geom_hline(yintercept = 0.05, linetype = "dashed", color = "red", linewidth = 0.8) +
         geom_hline(yintercept = 0.01, linetype = "dotted", color = "darkred", linewidth = 0.6) +
-        annotate("text", x = max(plot_data$Time_Point_Years), y = 0.05, label = "p = 0.05", 
-                 hjust = -0.1, vjust = -0.2, color = "red", size = 3.5) +
-        annotate("text", x = max(plot_data$Time_Point_Years), y = 0.01, label = "p = 0.01", 
-                 hjust = -0.1, vjust = -0.2, color = "darkred", size = 3.5) +
+        annotate("text",
+            x = max(plot_data$Time_Point_Years), y = 0.05, label = "p = 0.05",
+            hjust = -0.1, vjust = -0.2, color = "red", size = 3.5
+        ) +
+        annotate("text",
+            x = max(plot_data$Time_Point_Years), y = 0.01, label = "p = 0.01",
+            hjust = -0.1, vjust = -0.2, color = "darkred", size = 3.5
+        ) +
         scale_color_manual(
             values = c("TRUE" = "#E31A1C", "FALSE" = "#1F78B4"),
             labels = c("TRUE" = "Significant (p < 0.05)", "FALSE" = "Not significant"),
@@ -59,11 +63,13 @@ plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dir
                 scale_x_continuous(
                     breaks = time_breaks,
                     labels = paste0(time_breaks, " yr"),
-                    limits = c(min(plot_data$Time_Point_Years), 
-                              max(plot_data$Time_Point_Years) + 1.25)
+                    limits = c(
+                        min(plot_data$Time_Point_Years),
+                        max(plot_data$Time_Point_Years) + 1.25
+                    )
                 )
             } else {
-                scale_x_continuous()  # Default scale if no valid breaks
+                scale_x_continuous() # Default scale if no valid breaks
             }
         } +
         scale_y_continuous(
@@ -89,55 +95,56 @@ plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dir
             panel.grid.minor = element_blank(),
             plot.caption = element_text(size = 10, hjust = 0.5, margin = margin(t = 15))
         )
-    
+
     # Add text annotations for p-values and direction
     p <- p + geom_text(
-        aes(label = sprintf("p=%.3f\n%s%.1f mo", RMST_P_Value, 
-                           ifelse(RMST_Difference > 0, "+", ""), RMST_Difference)),
+        aes(label = sprintf(
+            "p=%.3f\n%s%.1f mo", RMST_P_Value,
+            ifelse(RMST_Difference > 0, "+", ""), RMST_Difference
+        )),
         vjust = -0.8, hjust = 0.5, size = 3, color = "black"
     )
-    
+
     # Save the plot with proper error handling
     if (is.null(output_dirs)) {
         warning("output_dirs is NULL, cannot save RMST plot")
         return(p)
     }
-    
+
     # Determine output directory with proper validation
-    output_dir <- switch(
-        outcome_label,
+    output_dir <- switch(outcome_label,
         "Overall Survival Probability" = output_dirs$obj1_os,
         "Progression-Free Survival Probability" = output_dirs$obj1_pfs,
         "PFS-2 Probability (Freedom from 2nd Recurrence)" = output_dirs$obj3_pfs2,
-        "PFS-2 Probability" = output_dirs$obj3_pfs2,  # Add this case for test compatibility
-        NULL  # No fallback - let the calling function handle it
+        "PFS-2 Probability" = output_dirs$obj3_pfs2, # Add this case for test compatibility
+        NULL # No fallback - let the calling function handle it
     )
-    
+
     # Validate output_dir
     if (is.null(output_dir)) {
         warning("Could not determine output directory for outcome_label: ", outcome_label)
         return(p)
     }
-    
+
     # Create output directory if it doesn't exist
     if (!dir.exists(output_dir)) {
         dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
     }
-    
+
     # Generate filename with validation
     filename <- paste0(prefix, gsub("[^A-Za-z0-9]", "_", outcome_label), "_rmst_pvalue_progression.png")
     if (is.null(filename) || filename == "" || is.na(filename)) {
         warning("Generated filename is empty or invalid")
         return(p)
     }
-    
+
     filepath <- file.path(output_dir, filename)
-    
+
     ggsave(
         filepath,
         p,
         width = RMST_PLOT_WIDTH, height = RMST_PLOT_HEIGHT, dpi = PLOT_DPI, bg = "white"
     )
-    
+
     return(p)
 }

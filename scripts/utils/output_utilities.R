@@ -31,25 +31,25 @@ create_output_structure <- function(cohort_dir) {
         obj1_subgroup_sensitivity = file.path(cohort_dir, "01_Efficacy", "g_subgroup_analysis", "tumor_height_sensitivity"),
         # obj1_subgroup_clinical = file.path(cohort_dir, "01_Efficacy", "g_subgroup_analysis", "clinical_outcomes"),
         obj1_forest_plots = file.path(cohort_dir, "01_Efficacy", "g_subgroup_analysis", "forest_plots"),
-        
+
         # OBJECTIVE 2: Safety/Toxicity of Plaque vs GKSRS
         obj2_vision = file.path(cohort_dir, "02_Safety", "a_vision_changes"),
         obj2_retinopathy = file.path(cohort_dir, "02_Safety", "b_retinopathy"),
         obj2_nvg = file.path(cohort_dir, "02_Safety", "c_neovascular_glaucoma"),
         obj2_srd = file.path(cohort_dir, "02_Safety", "d_serous_retinal_detachment"),
-        
+
         # OBJECTIVE 3: Efficacy of Repeat Radiation
         obj3_pfs2 = file.path(cohort_dir, "03_Repeat_Radiation", "a_pfs2"),
         obj3_ph_diagnostics = file.path(cohort_dir, "03_Repeat_Radiation", "b_proportional_hazards_diagnostics"),
-        
+
         # OBJECTIVE 4: GEP Predictive Accuracy
         obj4_mfs = file.path(cohort_dir, "04_GEP_Validation", "a_metastasis_free_survival"),
         obj4_mss = file.path(cohort_dir, "04_GEP_Validation", "b_melanoma_specific_survival"),
-        
+
         # Cross-cutting analyses (baseline characteristics go here for each cohort)
         baseline_characteristics = file.path(cohort_dir, "00_General", "baseline_characteristics"),
         treatment_duration = file.path(cohort_dir, "00_General", "treatment_duration")
-        
+
         # # Maintain backwards compatibility with old names for existing code
         # recurrence = file.path(cohort_dir, "01_Efficacy", "a_recurrence"),
         # mets = file.path(cohort_dir, "01_Efficacy", "b_metastatic_progression"),
@@ -64,7 +64,7 @@ create_output_structure <- function(cohort_dir) {
         # nvg = file.path(cohort_dir, "02_Safety", "c_neovascular_glaucoma"),
         # srg = file.path(cohort_dir, "02_Safety", "d_serous_retinal_detachment")
     )
-    
+
     # Create all directories
     for (dir_name in names(dirs)) {
         dir_path <- dirs[[dir_name]]
@@ -75,7 +75,7 @@ create_output_structure <- function(cohort_dir) {
             }
         }
     }
-    
+
     return(dirs)
 }
 
@@ -92,110 +92,115 @@ create_output_structure <- function(cohort_dir) {
 #' @examples
 #' merge_cohort_tables(full_data, restricted_data, "final_data/Analysis/merged_tables/")
 merge_cohort_tables <- function(full_cohort_data, restricted_cohort_data, output_path = NULL) {
-    
     log_enhanced("=== STARTING TABLE MERGING: Full and Restricted Cohorts ===", level = "INFO")
-    
+
     # Set default output path if not provided
     if (is.null(output_path)) {
         # MERGED_TABLES_DIR
         output_path <- file.path("final_data", "Analysis", "merged_tables")
     }
-    
+
     # Create output directory
     if (!dir.exists(output_path)) {
         dir.create(output_path, recursive = TRUE, showWarnings = FALSE)
         log_enhanced(sprintf("Created merged tables directory: %s", output_path))
     }
-    
+
     log_enhanced(sprintf("Merging tables will be saved to: %s", output_path))
-    
+
     # Use globally defined variables for baseline characteristics summary
     vars_to_summarize <- BASELINE_VARIABLES_TO_SUMMARIZE
-    
+
     # Get variable labels for human-readable display
     variable_labels <- get_variable_labels()
-    
-    tryCatch({
-        # Create baseline table for full cohort
-        full_baseline <- full_cohort_data %>%
-            select(all_of(vars_to_summarize), treatment_group) %>%
-            tbl_summary(
-                by = treatment_group,
-                missing = "no",
-                label = variable_labels,
-                statistic = list(
-                    all_continuous() ~ "{mean} ({sd})",
-                    all_categorical() ~ "{n} ({p}%)"
+
+    tryCatch(
+        {
+            # Create baseline table for full cohort
+            full_baseline <- full_cohort_data %>%
+                select(all_of(vars_to_summarize), treatment_group) %>%
+                tbl_summary(
+                    by = treatment_group,
+                    missing = "no",
+                    label = variable_labels,
+                    statistic = list(
+                        all_continuous() ~ "{mean} ({sd})",
+                        all_categorical() ~ "{n} ({p}%)"
+                    )
+                ) %>%
+                add_overall() %>%
+                add_p(
+                    test = list(all_categorical() ~ "fisher.test"),
+                    test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))
+                ) %>%
+                bold_labels() %>%
+                modify_header(
+                    label = "**Characteristic**",
+                    stat_0 = "**Overall**\nN = {N}",
+                    stat_1 = "**Plaque**\nN = {n}",
+                    stat_2 = "**GKSRS**\nN = {n}",
+                    p.value = "**p-value**"
                 )
-            ) %>%
-            add_overall() %>%
-            add_p(test = list(all_categorical() ~ "fisher.test"), 
-                  test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))) %>%
-            bold_labels() %>%
-            modify_header(
-                label = "**Characteristic**",
-                stat_0 = "**Overall**\nN = {N}",
-                stat_1 = "**Plaque**\nN = {n}",
-                stat_2 = "**GKSRS**\nN = {n}",
-                p.value = "**p-value**"
-            )
-        
-        # Create baseline table for restricted cohort
-        restricted_baseline <- restricted_cohort_data %>%
-            select(all_of(vars_to_summarize), treatment_group) %>%
-            tbl_summary(
-                by = treatment_group,
-                missing = "no",
-                label = variable_labels,
-                statistic = list(
-                    all_continuous() ~ "{mean} ({sd})",
-                    all_categorical() ~ "{n} ({p}%)"
+
+            # Create baseline table for restricted cohort
+            restricted_baseline <- restricted_cohort_data %>%
+                select(all_of(vars_to_summarize), treatment_group) %>%
+                tbl_summary(
+                    by = treatment_group,
+                    missing = "no",
+                    label = variable_labels,
+                    statistic = list(
+                        all_continuous() ~ "{mean} ({sd})",
+                        all_categorical() ~ "{n} ({p}%)"
+                    )
+                ) %>%
+                add_overall() %>%
+                add_p(
+                    test = list(all_categorical() ~ "fisher.test"),
+                    test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))
+                ) %>%
+                bold_labels() %>%
+                modify_header(
+                    label = "**Characteristic**",
+                    stat_0 = "**Overall**\nN = {N}",
+                    stat_1 = "**Plaque**\nN = {n}",
+                    stat_2 = "**GKSRS**\nN = {n}",
+                    p.value = "**p-value**"
                 )
+
+            # Merge tables side by side
+            merged_table <- tbl_merge(
+                tbls = list(full_baseline, restricted_baseline),
+                tab_spanner = c("**Full Cohort**", "**Restricted Cohort**")
             ) %>%
-            add_overall() %>%
-            add_p(test = list(all_categorical() ~ "fisher.test"), 
-                  test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))) %>%
-            bold_labels() %>%
-            modify_header(
-                label = "**Characteristic**",
-                stat_0 = "**Overall**\nN = {N}",
-                stat_1 = "**Plaque**\nN = {n}",
-                stat_2 = "**GKSRS**\nN = {n}",
-                p.value = "**p-value**"
+                modify_caption("**Table 1: Baseline Characteristics**")
+
+            # Save as HTML
+            save_gt_html(
+                merged_table,
+                filename = file.path(output_path, "merged_baseline_characteristics.html")
             )
-        
-        # Merge tables side by side
-        merged_table <- tbl_merge(
-            tbls = list(full_baseline, restricted_baseline),
-            tab_spanner = c("**Full Cohort**", "**Restricted Cohort**")
-        ) %>%
-            modify_caption("**Table 1: Baseline Characteristics**")
-        
-        # Save as HTML
-        save_gt_html(
-            merged_table,
-            filename = file.path(output_path, "merged_baseline_characteristics.html")
-        )
-        
-        # Save as Excel
-        merged_table %>%
-            as_tibble() %>%
-            writexl::write_xlsx(
-                path = file.path(output_path, "merged_baseline_characteristics.xlsx")
-            )
-        
-        log_enhanced("Saved merged baseline characteristics table (Excel and HTML)")
-        
-    }, error = function(e) {
-        log_enhanced(sprintf("Error merging baseline tables: %s", e$message))
-        log_enhanced("Skipping baseline table merge", level = "INFO")
-    })
-    
+
+            # Save as Excel
+            merged_table %>%
+                as_tibble() %>%
+                writexl::write_xlsx(
+                    path = file.path(output_path, "merged_baseline_characteristics.xlsx")
+                )
+
+            log_enhanced("Saved merged baseline characteristics table (Excel and HTML)")
+        },
+        error = function(e) {
+            log_enhanced(sprintf("Error merging baseline tables: %s", e$message))
+            log_enhanced("Skipping baseline table merge", level = "INFO")
+        }
+    )
+
     # Summary message
     log_enhanced("=== COMPLETED TABLE MERGING ===", level = "INFO")
     log_enhanced(sprintf("Merged baseline characteristics table saved to: %s", output_path))
     log_enhanced("Files created: merged_baseline_characteristics.xlsx and merged_baseline_characteristics.html", level = "INFO")
-    
+
     return(invisible(NULL))
 }
 
@@ -211,112 +216,111 @@ merge_cohort_tables <- function(full_cohort_data, restricted_cohort_data, output
 #' @examples
 #' create_all_combined_forest_plots("final_data", c("full", "restricted"))
 create_all_combined_forest_plots <- function(base_dir, cohort_names = c("full", "restricted")) {
-    
     log_enhanced("Creating all combined forest plots and summary tables", level = "INFO")
-    
+
     # Create output directory for combined plots
     combined_output_dir <- file.path(base_dir, "Analysis", "combined_cohorts")
     if (!dir.exists(combined_output_dir)) {
         dir.create(combined_output_dir, recursive = TRUE, showWarnings = FALSE)
         log_enhanced(sprintf("Created combined output directory: %s", combined_output_dir), level = "INFO", indent = 1)
     }
-    
+
     # Track results
     results <- list()
-    
+
     # Primary outcomes to process
     primary_outcomes <- c(
         "local_recurrence" = "Local Recurrence",
-        "metastatic_progression" = "Metastatic Progression", 
+        "metastatic_progression" = "Metastatic Progression",
         "overall_survival" = "Overall Survival",
         "progression_free_survival" = "Progression-Free Survival"
     )
-    
+
     # Process each primary outcome
     for (outcome_key in names(primary_outcomes)) {
         outcome_name <- primary_outcomes[outcome_key]
-        
-        tryCatch({
-            log_enhanced(sprintf("Processing combined plots for %s", outcome_name), level = "INFO", indent = 1)
-            
-            # Load subgroup results from both cohorts
-            full_results <- NULL
-            restricted_results <- NULL
-            
-            # Attempt to load results from the most recent test output
-            test_dirs <- list.dirs(TEST_OUTPUT_DIR, recursive = FALSE)
-            if (length(test_dirs) > 0) {
-                latest_test_dir <- test_dirs[length(test_dirs)]
-                
-                # Look for subgroup results files
-                full_file <- file.path(latest_test_dir, "comprehensive", "primary_outcomes", "subgroup_analysis", paste0("full_", outcome_key, "_subgroup_results.rds"))
-                restricted_file <- file.path(latest_test_dir, "comprehensive", "primary_outcomes", "subgroup_analysis", paste0("restricted_", outcome_key, "_subgroup_results.rds"))
-                
-                if (file.exists(full_file)) {
-                    full_results <- readRDS(full_file)
-                    log_enhanced(sprintf("Loaded full cohort results for %s", outcome_name), level = "INFO", indent = 2)
+
+        tryCatch(
+            {
+                log_enhanced(sprintf("Processing combined plots for %s", outcome_name), level = "INFO", indent = 1)
+
+                # Load subgroup results from both cohorts
+                full_results <- NULL
+                restricted_results <- NULL
+
+                # Attempt to load results from the most recent test output
+                test_dirs <- list.dirs(TEST_OUTPUT_DIR, recursive = FALSE)
+                if (length(test_dirs) > 0) {
+                    latest_test_dir <- test_dirs[length(test_dirs)]
+
+                    # Look for subgroup results files
+                    full_file <- file.path(latest_test_dir, "comprehensive", "primary_outcomes", "subgroup_analysis", paste0("full_", outcome_key, "_subgroup_results.rds"))
+                    restricted_file <- file.path(latest_test_dir, "comprehensive", "primary_outcomes", "subgroup_analysis", paste0("restricted_", outcome_key, "_subgroup_results.rds"))
+
+                    if (file.exists(full_file)) {
+                        full_results <- readRDS(full_file)
+                        log_enhanced(sprintf("Loaded full cohort results for %s", outcome_name), level = "INFO", indent = 2)
+                    }
+
+                    if (file.exists(restricted_file)) {
+                        restricted_results <- readRDS(restricted_file)
+                        log_enhanced(sprintf("Loaded restricted cohort results for %s", outcome_name), level = "INFO", indent = 2)
+                    }
                 }
-                
-                if (file.exists(restricted_file)) {
-                    restricted_results <- readRDS(restricted_file)
-                    log_enhanced(sprintf("Loaded restricted cohort results for %s", outcome_name), level = "INFO", indent = 2)
+
+                # Create combined forest plot if both results are available
+                if (!is.null(full_results) && !is.null(restricted_results)) {
+                    # Determine effect measure
+                    effect_measure <- ifelse(outcome_key %in% c("overall_survival", "progression_free_survival"), "HR", "OR")
+
+                    # Create combined forest plot
+                    combined_plot <- create_combined_forest_plot(
+                        full_results = full_results,
+                        restricted_results = restricted_results,
+                        outcome_name = outcome_name,
+                        treatment_labels = c("GKSRS", "Plaque"),
+                        variable_order = FOREST_PLOT_VARIABLE_ORDER,
+                        effect_measure = effect_measure,
+                        favours_labels = c("Favours GKSRS", "Favours Plaque")
+                    )
+
+                    # Save the plot
+                    plot_path <- file.path(combined_output_dir, paste0("combined_", outcome_key, "_forest_plot.png"))
+                    png(plot_path, width = 14, height = 10, units = "in", res = 300)
+                    plot(combined_plot)
+                    dev.off()
+
+                    log_enhanced(sprintf("Combined forest plot saved: %s", plot_path), level = "INFO", indent = 2)
+
+                    results[[outcome_key]] <- list(
+                        plot = combined_plot,
+                        path = plot_path,
+                        status = "success"
+                    )
+                } else {
+                    log_enhanced(sprintf("Skipping %s - missing subgroup results", outcome_name), level = "WARN", indent = 2)
+                    results[[outcome_key]] <- list(
+                        status = "skipped",
+                        reason = "missing_data"
+                    )
                 }
-            }
-            
-            # Create combined forest plot if both results are available
-            if (!is.null(full_results) && !is.null(restricted_results)) {
-                
-                # Determine effect measure
-                effect_measure <- ifelse(outcome_key %in% c("overall_survival", "progression_free_survival"), "HR", "OR")
-                
-                # Create combined forest plot
-                combined_plot <- create_combined_forest_plot(
-                    full_results = full_results,
-                    restricted_results = restricted_results,
-                    outcome_name = outcome_name,
-                    treatment_labels = c("GKSRS", "Plaque"),
-                    variable_order = FOREST_PLOT_VARIABLE_ORDER,
-                    effect_measure = effect_measure,
-                    favours_labels = c("Favours GKSRS", "Favours Plaque")
-                )
-                
-                # Save the plot
-                plot_path <- file.path(combined_output_dir, paste0("combined_", outcome_key, "_forest_plot.png"))
-                png(plot_path, width = 14, height = 10, units = "in", res = 300)
-                plot(combined_plot)
-                dev.off()
-                
-                log_enhanced(sprintf("Combined forest plot saved: %s", plot_path), level = "INFO", indent = 2)
-                
+            },
+            error = function(e) {
+                log_enhanced(sprintf("Error creating combined plot for %s: %s", outcome_name, e$message), level = "ERROR", indent = 2)
                 results[[outcome_key]] <- list(
-                    plot = combined_plot,
-                    path = plot_path,
-                    status = "success"
-                )
-                
-            } else {
-                log_enhanced(sprintf("Skipping %s - missing subgroup results", outcome_name), level = "WARN", indent = 2)
-                results[[outcome_key]] <- list(
-                    status = "skipped",
-                    reason = "missing_data"
+                    status = "error",
+                    error = e$message
                 )
             }
-            
-        }, error = function(e) {
-            log_enhanced(sprintf("Error creating combined plot for %s: %s", outcome_name, e$message), level = "ERROR", indent = 2)
-            results[[outcome_key]] <- list(
-                status = "error",
-                error = e$message
-            )
-        })
+        )
     }
-    
+
     # Summary
     successful_plots <- sum(sapply(results, function(x) x$status == "success"))
     total_plots <- length(results)
-    
+
     log_enhanced(sprintf("Combined forest plots completed: %d/%d successful", successful_plots, total_plots), level = "INFO")
-    
+
     return(results)
 }
 
@@ -324,7 +328,7 @@ create_all_combined_forest_plots <- function(base_dir, cohort_names = c("full", 
 #'
 #' This is a wrapper around gt::gtsave that automatically applies factor level
 #' indentation to HTML tables for consistent formatting across the entire codebase.
-#' 
+#'
 #' @param table A gt table object OR gtsummary table object
 #' @param filename File path where to save the HTML table
 #' @param ... Additional arguments passed to gt::gtsave
@@ -337,7 +341,7 @@ save_gt_html <- function(table, filename, ...) {
     } else {
         gt::gtsave(table, filename = filename, ...)
     }
-    
+
     invisible(filename)
 }
 
@@ -348,7 +352,7 @@ save_gt_html <- function(table, filename, ...) {
 clean_table_headers <- function(gt_table) {
     # Get the column labels
     table_data <- gt_table[["_boxhead"]]
-    
+
     if (!is.null(table_data)) {
         # Clean up column labels by removing markdown asterisks
         for (i in 1:nrow(table_data)) {
@@ -358,11 +362,11 @@ clean_table_headers <- function(gt_table) {
                 table_data$column_label[i] <- clean_label
             }
         }
-        
+
         # Update the table
         gt_table[["_boxhead"]] <- table_data
     }
-    
+
     return(gt_table)
 }
 
@@ -400,12 +404,14 @@ apply_publication_styling <- function(gt_table) {
 #' @param file_path Full path of the .xlsx to create
 #' @return Invisible NULL
 write_analysis_diagnostics_excel <- function(diagnostics, file_path) {
-  if (is.null(diagnostics) || length(diagnostics) == 0) return(invisible(NULL))
-  if (is.data.frame(diagnostics)) {
-    writexl::write_xlsx(list(Diagnostics = diagnostics), file_path)
-  } else if (is.list(diagnostics)) {
-    writexl::write_xlsx(diagnostics, file_path)
-  } else {
-    stop("diagnostics must be a data.frame or a named list of data.frames")
-  }
+    if (is.null(diagnostics) || length(diagnostics) == 0) {
+        return(invisible(NULL))
+    }
+    if (is.data.frame(diagnostics)) {
+        writexl::write_xlsx(list(Diagnostics = diagnostics), file_path)
+    } else if (is.list(diagnostics)) {
+        writexl::write_xlsx(diagnostics, file_path)
+    } else {
+        stop("diagnostics must be a data.frame or a named list of data.frames")
+    }
 }

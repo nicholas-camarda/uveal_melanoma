@@ -67,9 +67,11 @@ create_analytic_dataset <- function(output_dirs = NULL) {
         if (exists("confounders") && !is.null(confounders) && length(confounders) > 0) {
             valid_confounders <- generate_valid_confounders(factored_filtered_data[[cohort_name]], confounders)
             if (length(valid_confounders) != length(confounders)) {
-                log_enhanced(sprintf("Removed %d invalid confounders for cohort %s: %s", 
-                                   length(confounders) - length(valid_confounders), cohort_name,
-                                   paste(setdiff(confounders, valid_confounders), collapse = ", ")), level = "WARN")
+                log_enhanced(sprintf(
+                    "Removed %d invalid confounders for cohort %s: %s",
+                    length(confounders) - length(valid_confounders), cohort_name,
+                    paste(setdiff(confounders, valid_confounders), collapse = ", ")
+                ), level = "WARN")
             }
             validated_confounders_by_cohort[[cohort_name]] <- valid_confounders
             log_enhanced(sprintf("Validated confounders for cohort %s: %s", cohort_name, paste(valid_confounders, collapse = ", ")), level = "INFO")

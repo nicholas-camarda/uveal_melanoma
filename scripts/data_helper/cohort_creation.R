@@ -14,7 +14,7 @@ apply_criteria <- function(data) {
         filter(!is.na(treatment_group)) %>%
         filter(!(id %in% SPECIFIC_PATIENTS_TO_EXCLUDE) | is.na(id)) %>%
         mutate(cohort = "All Patients")
-    
+
     log_enhanced(sprintf("Removed %d patients from full cohort based on NA values in consort_group, treatment_group, or id", nrow(data) - nrow(full_cohort)), level = "INFO")
     log_enhanced(sprintf("IDs of patients removed: %s", paste(SPECIFIC_PATIENTS_TO_EXCLUDE, collapse = ", ")), level = "INFO")
 
@@ -85,13 +85,14 @@ prepare_factor_levels <- function(data) {
             pain = factor(pain, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
             initial_overall_stage = factor(initial_overall_stage, levels = c("1", "2A", "2B", "3A", "3B", "3C", "4"), ordered = FALSE),
             initial_stage_binary = factor(ifelse(initial_overall_stage == "4", "Stage IV", "Stage I-III"),
-                                          levels = c("Stage I-III", "Stage IV"), ordered = FALSE),
+                levels = c("Stage I-III", "Stage IV"), ordered = FALSE
+            ),
             biopsy1_gep = factor(biopsy1_gep,
                 levels = c(
-                    "Class_1A_PRAME_negative","Class_1A_PRAME_positive","Class_1A_PRAME_not_reported",
-                    "Class_1B_PRAME_negative","Class_1B_PRAME_positive",
-                    "Class_2_PRAME_negative","Class_2_PRAME_positive","Class_2_PRAME_Unknown","Class_2_PRAME_not_reported",
-                    "Failed","Unknown","Class_1A_PRAME_discordant"
+                    "Class_1A_PRAME_negative", "Class_1A_PRAME_positive", "Class_1A_PRAME_not_reported",
+                    "Class_1B_PRAME_negative", "Class_1B_PRAME_positive",
+                    "Class_2_PRAME_negative", "Class_2_PRAME_positive", "Class_2_PRAME_Unknown", "Class_2_PRAME_not_reported",
+                    "Failed", "Unknown", "Class_1A_PRAME_discordant"
                 ), ordered = FALSE
             ),
             gep_class_simple = factor(gep_class_simple, levels = c("Class 1A", "Class 1B", "Class 2"), ordered = FALSE),

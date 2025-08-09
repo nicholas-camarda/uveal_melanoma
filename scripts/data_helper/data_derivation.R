@@ -170,8 +170,8 @@ create_derived_variables <- function(data) {
     data <- data %>%
         mutate(
             gep_validation_set = case_when(
-                !is.na(biopsy1_gep_mfs) & !is.na(biopsy1_gep_mss) & 
-                gep_class_simple %in% c("Class 1A", "Class 1B", "Class 2") ~ 
+                !is.na(biopsy1_gep_mfs) & !is.na(biopsy1_gep_mss) &
+                    gep_class_simple %in% c("Class 1A", "Class 1B", "Class 2") ~
                     sample(c("Training", "Testing"), n(), replace = TRUE, prob = c(0.7, 0.3)),
                 TRUE ~ "No GEP Data"
             )
@@ -181,7 +181,7 @@ create_derived_variables <- function(data) {
         mutate(
             # Preserve original stage values; forced collapse to 'Other' will happen centrally
             initial_overall_stage_modified = factor(
-                 as.character(initial_overall_stage),
+                as.character(initial_overall_stage),
                 levels = c("1", "2A", "2B", "3A", "3B", "3C", "4"),
                 ordered = FALSE
             )
@@ -203,8 +203,9 @@ create_binned_continuous_variables <- function(data) {
         mutate(
             age_at_diagnosis_binned = factor(
                 ifelse(age_at_diagnosis < median(age_at_diagnosis, na.rm = TRUE),
-                       paste0("< ", round(median(age_at_diagnosis, na.rm = TRUE), 1)),
-                       paste0("≥ ", round(median(age_at_diagnosis, na.rm = TRUE), 1))),
+                    paste0("< ", round(median(age_at_diagnosis, na.rm = TRUE), 1)),
+                    paste0("≥ ", round(median(age_at_diagnosis, na.rm = TRUE), 1))
+                ),
                 levels = c(
                     paste0("< ", round(median(age_at_diagnosis, na.rm = TRUE), 1)),
                     paste0("≥ ", round(median(age_at_diagnosis, na.rm = TRUE), 1))
@@ -233,8 +234,9 @@ create_binned_continuous_variables <- function(data) {
             } else {
                 factor(
                     ifelse(initial_tumor_height < LEGACY_CUTOFFS$initial_tumor_height,
-                           paste0("< ", LEGACY_CUTOFFS$initial_tumor_height, " mm"),
-                           paste0("≥ ", LEGACY_CUTOFFS$initial_tumor_height, " mm")),
+                        paste0("< ", LEGACY_CUTOFFS$initial_tumor_height, " mm"),
+                        paste0("≥ ", LEGACY_CUTOFFS$initial_tumor_height, " mm")
+                    ),
                     levels = c(
                         paste0("< ", LEGACY_CUTOFFS$initial_tumor_height, " mm"),
                         paste0("≥ ", LEGACY_CUTOFFS$initial_tumor_height, " mm")
@@ -266,8 +268,9 @@ create_binned_continuous_variables <- function(data) {
             } else {
                 factor(
                     ifelse(initial_tumor_diameter < LEGACY_CUTOFFS$initial_tumor_diameter,
-                           paste0("< ", LEGACY_CUTOFFS$initial_tumor_diameter, " mm"),
-                           paste0("≥ ", LEGACY_CUTOFFS$initial_tumor_diameter, " mm")),
+                        paste0("< ", LEGACY_CUTOFFS$initial_tumor_diameter, " mm"),
+                        paste0("≥ ", LEGACY_CUTOFFS$initial_tumor_diameter, " mm")
+                    ),
                     levels = c(
                         paste0("< ", LEGACY_CUTOFFS$initial_tumor_diameter, " mm"),
                         paste0("≥ ", LEGACY_CUTOFFS$initial_tumor_diameter, " mm")

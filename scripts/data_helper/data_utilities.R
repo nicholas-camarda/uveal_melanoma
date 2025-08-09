@@ -38,7 +38,7 @@ handle_rare_categories <- function(data, vars, threshold = 5) {
     for (var in vars) {
         if (var %in% names(data) && is.factor(data[[var]])) {
             log_enhanced(sprintf("Checking for rare categories in %s", var))
-            
+
             # 1) Forced collapsing based on centralized config (always to 'Other')
             if (exists("FORCED_OTHER_BY_VARIABLE") && var %in% names(FORCED_OTHER_BY_VARIABLE)) {
                 forced_levels <- FORCED_OTHER_BY_VARIABLE[[var]]
@@ -46,7 +46,7 @@ handle_rare_categories <- function(data, vars, threshold = 5) {
                 forced_levels_present <- intersect(forced_levels, levels(data[[var]]))
                 if (length(forced_levels_present) > 0) {
                     if (VERBOSE) {
-                        log_enhanced(sprintf("Forcing collapse of specified levels in %s into 'Other': %s", var, paste(forced_levels_present, collapse=", ")))
+                        log_enhanced(sprintf("Forcing collapse of specified levels in %s into 'Other': %s", var, paste(forced_levels_present, collapse = ", ")))
                     }
                     data[[var]] <- fct_collapse(data[[var]], Other = forced_levels_present) %>%
                         fct_drop() %>%
@@ -56,7 +56,7 @@ handle_rare_categories <- function(data, vars, threshold = 5) {
                     other_map[[var]] <- unique(c(other_map[[var]], forced_levels_present))
                 }
             }
-            
+
             # 2) Rarity-based collapsing (post-forced)
             # Get category counts after forced collapse
             cat_counts <- table(data[[var]])
@@ -69,7 +69,7 @@ handle_rare_categories <- function(data, vars, threshold = 5) {
                     total_rare_count <- sum(cat_counts[rare_cats])
                     would_have_valid_other <- total_rare_count >= threshold
                     final_valid_levels <- length(valid_cats) + (if (would_have_valid_other && !("Other" %in% names(cat_counts))) 1 else 0)
-                    
+
                     if (final_valid_levels >= 2) {
                         if (VERBOSE) {
                             log_enhanced(sprintf("\nCollapsing %d rare categories in %s into 'Other':", length(rare_cats), var))
@@ -89,20 +89,24 @@ handle_rare_categories <- function(data, vars, threshold = 5) {
                         other_map[[var]] <- unique(c(other_map[[var]], rare_cats))
 
                         if (VERBOSE) {
-                            log_enhanced(sprintf("After collapse - %s levels: %s", var, paste(levels(data[[var]]), collapse=", ")))
-                            log_enhanced(sprintf("After collapse - %s counts: %s", var, paste(names(table(data[[var]])), "=", table(data[[var]]), collapse=", ")))
+                            log_enhanced(sprintf("After collapse - %s levels: %s", var, paste(levels(data[[var]]), collapse = ", ")))
+                            log_enhanced(sprintf("After collapse - %s counts: %s", var, paste(names(table(data[[var]])), "=", table(data[[var]]), collapse = ", ")))
                         }
                     } else {
                         if (VERBOSE) {
                             log_enhanced(sprintf("\nSkipping collapse for %s: would result in insufficient valid levels", var))
-                            log_enhanced(sprintf("Valid categories: %d, Rare total: %d (threshold: %d)", 
-                                              length(valid_cats), total_rare_count, threshold))
+                            log_enhanced(sprintf(
+                                "Valid categories: %d, Rare total: %d (threshold: %d)",
+                                length(valid_cats), total_rare_count, threshold
+                            ))
                         }
                     }
                 } else {
                     if (VERBOSE) {
-                        log_enhanced(sprintf("\nSkipping collapse for %s: only 1 rare category (%s, n=%d) - not creating 'Other'", 
-                                          var, rare_cats[1], cat_counts[rare_cats[1]]))
+                        log_enhanced(sprintf(
+                            "\nSkipping collapse for %s: only 1 rare category (%s, n=%d) - not creating 'Other'",
+                            var, rare_cats[1], cat_counts[rare_cats[1]]
+                        ))
                     }
                 }
             }
@@ -159,17 +163,17 @@ generate_valid_confounders <- function(data, confounders, threshold = THRESHOLD_
 #' @examples
 #' bin_continuous(1:10, bins = 3)
 bin_continuous <- function(vec, bins = 2, custom_breaks = NULL, varname = NULL, digits_lab = 2) {
-  if (!is.null(custom_breaks)) {
-    cut(vec, breaks = custom_breaks, include.lowest = TRUE, right = FALSE)
-  } else {
-    # Use quantiles (e.g., median split for bins=2, tertiles for bins=3, etc.)
-    q <- quantile(vec, probs = seq(0, 1, length.out = bins + 1), na.rm = TRUE)
-    # Ensure unique breaks (if not, fallback to pretty)
-    if (length(unique(q)) < length(q)) {
-      q <- pretty(vec, n = bins)
+    if (!is.null(custom_breaks)) {
+        cut(vec, breaks = custom_breaks, include.lowest = TRUE, right = FALSE)
+    } else {
+        # Use quantiles (e.g., median split for bins=2, tertiles for bins=3, etc.)
+        q <- quantile(vec, probs = seq(0, 1, length.out = bins + 1), na.rm = TRUE)
+        # Ensure unique breaks (if not, fallback to pretty)
+        if (length(unique(q)) < length(q)) {
+            q <- pretty(vec, n = bins)
+        }
+        cut(vec, breaks = q, include.lowest = TRUE, right = FALSE, dig.lab = digits_lab)
     }
-    cut(vec, breaks = q, include.lowest = TRUE, right = FALSE, dig.lab = digits_lab)
-  }
 }
 
 #' Summarize key variables in the dataset
@@ -183,34 +187,33 @@ bin_continuous <- function(vec, bins = 2, custom_breaks = NULL, varname = NULL, 
 #' @examples
 #' summarize_data(data)
 summarize_data <- function(data, verbose = TRUE) {
-
     if (verbose) {
         log_enhanced("\nData Summary:")
         log_enhanced(sprintf("Total patients: %d", nrow(data)))
-        
+
         log_enhanced("\nTreatment Groups:")
         print(table(data$treatment_group))
-        
+
         log_enhanced("\nCohort Distribution:")
         print(table(data$cohort))
-        
+
         log_enhanced("\nTumor Characteristics:")
-        log_enhanced(sprintf("Location: %s", paste(unique(data$location), collapse=", ")))
-        log_enhanced(sprintf("Optic Nerve Involvement: %s", paste(unique(data$optic_nerve), collapse=", ")))
-        log_enhanced(sprintf("Initial Stage: %s", paste(unique(data$initial_overall_stage), collapse=", ")))
-        
+        log_enhanced(sprintf("Location: %s", paste(unique(data$location), collapse = ", ")))
+        log_enhanced(sprintf("Optic Nerve Involvement: %s", paste(unique(data$optic_nerve), collapse = ", ")))
+        log_enhanced(sprintf("Initial Stage: %s", paste(unique(data$initial_overall_stage), collapse = ", ")))
+
         log_enhanced("\nGene Expression Profile:")
         print(table(data$biopsy1_gep))
-        
+
         log_enhanced("\nOutcomes:")
         log_enhanced(sprintf("Recurrence: %d patients", sum(data$recurrence_event)))
         log_enhanced(sprintf("Metastasis: %d patients", sum(data$mets_event)))
         log_enhanced(sprintf("Death: %d patients", sum(data$death_event)))
-        
+
         log_enhanced("\nFollow-up:")
-        log_enhanced(sprintf("Median follow-up: %.1f years", median(data$follow_up_years, na.rm=TRUE)))
+        log_enhanced(sprintf("Median follow-up: %.1f years", median(data$follow_up_years, na.rm = TRUE)))
     }
-} 
+}
 
 #' Calculate interaction p-value for a single variable
 #'
@@ -231,36 +234,37 @@ summarize_data <- function(data, verbose = TRUE) {
 #' @examples
 #' # Binary outcome
 #' calculate_variable_interaction_pvalue(data, "age_group", "recurrence", confounders = c("sex", "location"))
-#' 
-#' # Survival outcome  
-#' calculate_variable_interaction_pvalue(data, "age_group", "survival_time", outcome_type = "survival", 
-#'                                     time_var = "follow_up_time", event_var = "death_event")
-#' 
+#'
+#' # Survival outcome
+#' calculate_variable_interaction_pvalue(data, "age_group", "survival_time",
+#'     outcome_type = "survival",
+#'     time_var = "follow_up_time", event_var = "death_event"
+#' )
+#'
 #' # Continuous outcome
 #' calculate_variable_interaction_pvalue(data, "age_group", "tumor_size", outcome_type = "continuous")
-calculate_variable_interaction_pvalue <- function(data, variable_name, outcome_var, 
-                                                treatment_var = "treatment_group",
-                                                confounders = NULL, 
-                                                outcome_type = "binary",
-                                                time_var = NULL,
-                                                event_var = NULL) {
-    
+calculate_variable_interaction_pvalue <- function(data, variable_name, outcome_var,
+                                                  treatment_var = "treatment_group",
+                                                  confounders = NULL,
+                                                  outcome_type = "binary",
+                                                  time_var = NULL,
+                                                  event_var = NULL) {
     # Input validation
     if (length(variable_name) != 1 || !variable_name %in% names(data)) {
         warning(sprintf("Variable '%s' not found in data", variable_name))
         return(NA)
     }
-    
+
     if (length(treatment_var) != 1 || !treatment_var %in% names(data)) {
         warning(sprintf("Treatment variable '%s' not found in data", treatment_var))
         return(NA)
     }
-    
+
     if (length(outcome_var) != 1 || !outcome_var %in% names(data)) {
         warning(sprintf("Outcome variable '%s' not found in data", outcome_var))
         return(NA)
     }
-    
+
     # For survival outcomes, check required variables
     if (outcome_type == "survival") {
         if (is.null(time_var) || length(time_var) != 1 || !time_var %in% names(data)) {
@@ -272,7 +276,7 @@ calculate_variable_interaction_pvalue <- function(data, variable_name, outcome_v
             return(NA)
         }
     }
-    
+
     # Remove rows with missing values for key variables
     required_vars <- c(variable_name, treatment_var, outcome_var)
     if (outcome_type == "survival") {
@@ -281,15 +285,15 @@ calculate_variable_interaction_pvalue <- function(data, variable_name, outcome_v
     if (!is.null(confounders)) {
         required_vars <- c(required_vars, confounders)
     }
-    
-    data_clean <- data %>% 
+
+    data_clean <- data %>%
         filter(if_all(all_of(required_vars), ~ !is.na(.x)))
-    
+
     if (nrow(data_clean) == 0) {
         warning("No complete cases available for analysis")
         return(NA)
     }
-    
+
     # Check if variable has sufficient levels/variation
     if (is.factor(data_clean[[variable_name]])) {
         level_counts <- table(data_clean[[variable_name]])
@@ -298,7 +302,7 @@ calculate_variable_interaction_pvalue <- function(data, variable_name, outcome_v
             return(NA)
         }
     }
-    
+
     # Check treatment variable has sufficient levels
     if (is.factor(data_clean[[treatment_var]])) {
         treatment_counts <- table(data_clean[[treatment_var]])
@@ -307,83 +311,88 @@ calculate_variable_interaction_pvalue <- function(data, variable_name, outcome_v
             return(NA)
         }
     }
-    
+
     # Build confounder string
     confounders_str <- if (is.null(confounders) || length(confounders) == 0) {
         ""
     } else {
         paste(" + ", paste(confounders, collapse = " + "))
     }
-    
+
     # Build interaction term
     interaction_term <- paste0(treatment_var, " * ", variable_name)
-    
+
     # Build formulas and fit models based on outcome type
-    tryCatch({
-        if (outcome_type == "binary") {
-            # Model with interaction
-            formula_str <- paste0(outcome_var, " ~ ", interaction_term, confounders_str)
-            model <- glm(as.formula(formula_str), data = data_clean, family = binomial())
-            
-            # Model without interaction
-            no_interaction_formula <- paste0(outcome_var, " ~ ", 
-                                           treatment_var, " + ", variable_name, confounders_str)
-            no_interaction_model <- glm(as.formula(no_interaction_formula), data = data_clean, family = binomial())
-            
-            # Calculate interaction p-value
-            interaction_test <- anova(no_interaction_model, model, test = "Chisq")
-            if (nrow(interaction_test) >= 2 && "Pr(>Chi)" %in% names(interaction_test)) {
-                return(interaction_test$`Pr(>Chi)`[2])
+    tryCatch(
+        {
+            if (outcome_type == "binary") {
+                # Model with interaction
+                formula_str <- paste0(outcome_var, " ~ ", interaction_term, confounders_str)
+                model <- glm(as.formula(formula_str), data = data_clean, family = binomial())
+
+                # Model without interaction
+                no_interaction_formula <- paste0(
+                    outcome_var, " ~ ",
+                    treatment_var, " + ", variable_name, confounders_str
+                )
+                no_interaction_model <- glm(as.formula(no_interaction_formula), data = data_clean, family = binomial())
+
+                # Calculate interaction p-value
+                interaction_test <- anova(no_interaction_model, model, test = "Chisq")
+                if (nrow(interaction_test) >= 2 && "Pr(>Chi)" %in% names(interaction_test)) {
+                    return(interaction_test$`Pr(>Chi)`[2])
+                } else {
+                    return(NA)
+                }
+            } else if (outcome_type == "survival") {
+                # Model with interaction
+                formula_str <- paste0("Surv(", time_var, ", ", event_var, ") ~ ", interaction_term, confounders_str)
+                model <- coxph(as.formula(formula_str), data = data_clean, model = TRUE)
+
+                # Model without interaction
+                no_interaction_formula <- paste0(
+                    "Surv(", time_var, ", ", event_var, ") ~ ",
+                    treatment_var, " + ", variable_name, confounders_str
+                )
+                no_interaction_model <- coxph(as.formula(no_interaction_formula), data = data_clean, model = TRUE)
+
+                # Calculate interaction p-value
+                interaction_test <- anova(no_interaction_model, model)
+                if (length(interaction_test$`Pr(>|Chi|)`) >= 2) {
+                    return(interaction_test$`Pr(>|Chi|)`[2])
+                } else {
+                    return(NA)
+                }
+            } else if (outcome_type == "continuous") {
+                # Model with interaction
+                formula_str <- paste0(outcome_var, " ~ ", interaction_term, confounders_str)
+                model <- lm(as.formula(formula_str), data = data_clean)
+
+                # Model without interaction
+                no_interaction_formula <- paste0(
+                    outcome_var, " ~ ",
+                    treatment_var, " + ", variable_name, confounders_str
+                )
+                no_interaction_model <- lm(as.formula(no_interaction_formula), data = data_clean)
+
+                # Calculate interaction p-value
+                interaction_test <- anova(no_interaction_model, model)
+                if (nrow(interaction_test) >= 2 && "Pr(>F)" %in% names(interaction_test)) {
+                    return(interaction_test$`Pr(>F)`[2])
+                } else {
+                    return(NA)
+                }
             } else {
+                warning(sprintf("Unsupported outcome type: %s", outcome_type))
                 return(NA)
             }
-            
-        } else if (outcome_type == "survival") {
-            # Model with interaction
-            formula_str <- paste0("Surv(", time_var, ", ", event_var, ") ~ ", interaction_term, confounders_str)
-            model <- coxph(as.formula(formula_str), data = data_clean, model = TRUE)
-            
-            # Model without interaction
-            no_interaction_formula <- paste0("Surv(", time_var, ", ", event_var, ") ~ ", 
-                                           treatment_var, " + ", variable_name, confounders_str)
-            no_interaction_model <- coxph(as.formula(no_interaction_formula), data = data_clean, model = TRUE)
-            
-            # Calculate interaction p-value
-            interaction_test <- anova(no_interaction_model, model)
-            if (length(interaction_test$`Pr(>|Chi|)`) >= 2) {
-                return(interaction_test$`Pr(>|Chi|)`[2])
-            } else {
-                return(NA)
-            }
-            
-        } else if (outcome_type == "continuous") {
-            # Model with interaction
-            formula_str <- paste0(outcome_var, " ~ ", interaction_term, confounders_str)
-            model <- lm(as.formula(formula_str), data = data_clean)
-            
-            # Model without interaction
-            no_interaction_formula <- paste0(outcome_var, " ~ ", 
-                                           treatment_var, " + ", variable_name, confounders_str)
-            no_interaction_model <- lm(as.formula(no_interaction_formula), data = data_clean)
-            
-            # Calculate interaction p-value
-            interaction_test <- anova(no_interaction_model, model)
-            if (nrow(interaction_test) >= 2 && "Pr(>F)" %in% names(interaction_test)) {
-                return(interaction_test$`Pr(>F)`[2])
-            } else {
-                return(NA)
-            }
-            
-        } else {
-            warning(sprintf("Unsupported outcome type: %s", outcome_type))
+        },
+        error = function(e) {
+            warning(sprintf("Error calculating interaction p-value for %s: %s", variable_name, e$message))
             return(NA)
         }
-        
-    }, error = function(e) {
-        warning(sprintf("Error calculating interaction p-value for %s: %s", variable_name, e$message))
-        return(NA)
-    })
-} 
+    )
+}
 
 #' Calculate overall variable significance using likelihood ratio test
 #'
@@ -402,31 +411,32 @@ calculate_variable_interaction_pvalue <- function(data, variable_name, outcome_v
 #'
 #' @examples
 #' calculate_variable_overall_significance(data, "age_group", "recurrence", confounders = c("sex", "location"))
-#' calculate_variable_overall_significance(data, "age_group", "survival_time", outcome_type = "survival",
-#'                                        time_var = "time", event_var = "event")
+#' calculate_variable_overall_significance(data, "age_group", "survival_time",
+#'     outcome_type = "survival",
+#'     time_var = "time", event_var = "event"
+#' )
 calculate_variable_overall_significance <- function(data, variable_name, outcome_var,
-                                                   treatment_var = "treatment_group",
-                                                   confounders = NULL, 
-                                                   outcome_type = "binary",
-                                                   time_var = NULL,
-                                                   event_var = NULL) {
-    
+                                                    treatment_var = "treatment_group",
+                                                    confounders = NULL,
+                                                    outcome_type = "binary",
+                                                    time_var = NULL,
+                                                    event_var = NULL) {
     # Input validation
     if (length(variable_name) != 1 || !variable_name %in% names(data)) {
         warning(sprintf("Variable '%s' not found in data", variable_name))
         return(NA)
     }
-    
+
     if (length(treatment_var) != 1 || !treatment_var %in% names(data)) {
         warning(sprintf("Treatment variable '%s' not found in data", treatment_var))
         return(NA)
     }
-    
+
     if (length(outcome_var) != 1 || !outcome_var %in% names(data)) {
         warning(sprintf("Outcome variable '%s' not found in data", outcome_var))
         return(NA)
     }
-    
+
     # For survival outcomes, check required variables
     if (outcome_type == "survival") {
         if (is.null(time_var) || length(time_var) != 1 || !time_var %in% names(data)) {
@@ -438,7 +448,7 @@ calculate_variable_overall_significance <- function(data, variable_name, outcome
             return(NA)
         }
     }
-    
+
     # Remove rows with missing values for key variables
     required_vars <- c(variable_name, treatment_var, outcome_var)
     if (outcome_type == "survival") {
@@ -447,15 +457,15 @@ calculate_variable_overall_significance <- function(data, variable_name, outcome
     if (!is.null(confounders)) {
         required_vars <- c(required_vars, confounders)
     }
-    
-    data_clean <- data %>% 
+
+    data_clean <- data %>%
         filter(if_all(all_of(required_vars), ~ !is.na(.x)))
-    
+
     if (nrow(data_clean) == 0) {
         warning("No complete cases available for analysis")
         return(NA)
     }
-    
+
     # Check if variable has sufficient levels/variation
     if (is.factor(data_clean[[variable_name]])) {
         level_counts <- table(data_clean[[variable_name]])
@@ -464,108 +474,126 @@ calculate_variable_overall_significance <- function(data, variable_name, outcome
             return(NA)
         }
     }
-    
+
     # Build confounder string
     confounders_str <- if (is.null(confounders) || length(confounders) == 0) {
         ""
     } else {
         paste(" + ", paste(confounders, collapse = " + "))
     }
-    
+
     # Build formulas and fit models based on outcome type
-    tryCatch({
-        if (outcome_type == "binary") {
-            if (variable_name == treatment_var) {
-                # Test treatment_group: reduced model excludes treatment_var entirely
-                formula_with_var <- paste0(outcome_var, " ~ ", treatment_var, confounders_str)
-                formula_without_var <- paste0(outcome_var, " ~ 1", confounders_str)
-            } else {
-                # Test other variables: reduced model keeps treatment_var, excludes variable_name
-                formula_with_var <- paste0(outcome_var, " ~ ", treatment_var, " + ", variable_name, confounders_str)
-                formula_without_var <- paste0(outcome_var, " ~ ", treatment_var, confounders_str)
-            }
-            model_with_var <- glm(as.formula(formula_with_var), data = data_clean, family = binomial())
-            model_without_var <- glm(as.formula(formula_without_var), data = data_clean, family = binomial())
-            
-            # Check if both models converged
-            if (!model_with_var$converged || !model_without_var$converged) {
-                warning(sprintf("Models did not converge for variable '%s'. Likelihood ratio test may be unreliable.", variable_name))
-                # Try the likelihood ratio test anyway, but handle errors gracefully
-                lrt_test <- tryCatch({
-                    anova(model_without_var, model_with_var, test = "Chisq")
-                }, error = function(e) {
-                    warning(sprintf("Likelihood ratio test failed for variable '%s': %s", variable_name, e$message))
-                    return(NULL)
-                })
-            } else {
+    tryCatch(
+        {
+            if (outcome_type == "binary") {
+                if (variable_name == treatment_var) {
+                    # Test treatment_group: reduced model excludes treatment_var entirely
+                    formula_with_var <- paste0(outcome_var, " ~ ", treatment_var, confounders_str)
+                    formula_without_var <- paste0(outcome_var, " ~ 1", confounders_str)
+                } else {
+                    # Test other variables: reduced model keeps treatment_var, excludes variable_name
+                    formula_with_var <- paste0(outcome_var, " ~ ", treatment_var, " + ", variable_name, confounders_str)
+                    formula_without_var <- paste0(outcome_var, " ~ ", treatment_var, confounders_str)
+                }
+                model_with_var <- glm(as.formula(formula_with_var), data = data_clean, family = binomial())
+                model_without_var <- glm(as.formula(formula_without_var), data = data_clean, family = binomial())
+
+                # Check if both models converged
+                if (!model_with_var$converged || !model_without_var$converged) {
+                    warning(sprintf("Models did not converge for variable '%s'. Likelihood ratio test may be unreliable.", variable_name))
+                    # Try the likelihood ratio test anyway, but handle errors gracefully
+                    lrt_test <- tryCatch(
+                        {
+                            anova(model_without_var, model_with_var, test = "Chisq")
+                        },
+                        error = function(e) {
+                            warning(sprintf("Likelihood ratio test failed for variable '%s': %s", variable_name, e$message))
+                            return(NULL)
+                        }
+                    )
+                } else {
+                    # Calculate likelihood ratio test
+                    lrt_test <- tryCatch(
+                        {
+                            anova(model_without_var, model_with_var, test = "Chisq")
+                        },
+                        error = function(e) {
+                            warning(sprintf("Likelihood ratio test failed for variable '%s': %s", variable_name, e$message))
+                            return(NULL)
+                        }
+                    )
+                }
+
+                if (!is.null(lrt_test) && nrow(lrt_test) >= 2 && "Pr(>Chi)" %in% names(lrt_test)) {
+                    return(lrt_test$`Pr(>Chi)`[2])
+                } else {
+                    # If likelihood ratio test fails, return NA
+                    # The individual coefficient p-values will be available in the diagnostic output
+                    # and can be used to assess the significance of individual levels
+                    warning(sprintf("Likelihood ratio test failed for variable '%s'. Factor label p-value will be NA. Check individual coefficient p-values for significance.", variable_name))
+                    return(NA)
+                }
+            } else if (outcome_type == "survival") {
+                if (variable_name == treatment_var) {
+                    formula_with_var <- paste0("Surv(", time_var, ", ", event_var, ") ~ ", treatment_var, confounders_str)
+                    formula_without_var <- paste0("Surv(", time_var, ", ", event_var, ") ~ 1", confounders_str)
+                } else {
+                    formula_with_var <- paste0("Surv(", time_var, ", ", event_var, ") ~ ", treatment_var, " + ", variable_name, confounders_str)
+                    formula_without_var <- paste0("Surv(", time_var, ", ", event_var, ") ~ ", treatment_var, confounders_str)
+                }
+
+                # Fit models with error handling
+                model_with_var <- tryCatch(
+                    {
+                        coxph(as.formula(formula_with_var), data = data_clean, model = TRUE)
+                    },
+                    error = function(e) {
+                        return(NULL)
+                    }
+                )
+
+                model_without_var <- tryCatch(
+                    {
+                        coxph(as.formula(formula_without_var), data = data_clean, model = TRUE)
+                    },
+                    error = function(e) {
+                        return(NULL)
+                    }
+                )
+
+                if (is.null(model_with_var) || is.null(model_without_var)) {
+                    return(NA)
+                }
+
                 # Calculate likelihood ratio test
-                lrt_test <- tryCatch({
-                    anova(model_without_var, model_with_var, test = "Chisq")
-                }, error = function(e) {
-                    warning(sprintf("Likelihood ratio test failed for variable '%s': %s", variable_name, e$message))
-                    return(NULL)
-                })
-            }
-            
-            if (!is.null(lrt_test) && nrow(lrt_test) >= 2 && "Pr(>Chi)" %in% names(lrt_test)) {
-                return(lrt_test$`Pr(>Chi)`[2])
-            } else {
-                # If likelihood ratio test fails, return NA
-                # The individual coefficient p-values will be available in the diagnostic output
-                # and can be used to assess the significance of individual levels
-                warning(sprintf("Likelihood ratio test failed for variable '%s'. Factor label p-value will be NA. Check individual coefficient p-values for significance.", variable_name))
-                return(NA)
-            }
-        } else if (outcome_type == "survival") {
-            if (variable_name == treatment_var) {
-                formula_with_var <- paste0("Surv(", time_var, ", ", event_var, ") ~ ", treatment_var, confounders_str)
-                formula_without_var <- paste0("Surv(", time_var, ", ", event_var, ") ~ 1", confounders_str)
-            } else {
-                formula_with_var <- paste0("Surv(", time_var, ", ", event_var, ") ~ ", treatment_var, " + ", variable_name, confounders_str)
-                formula_without_var <- paste0("Surv(", time_var, ", ", event_var, ") ~ ", treatment_var, confounders_str)
-            }
-            
-            # Fit models with error handling
-            model_with_var <- tryCatch({
-                coxph(as.formula(formula_with_var), data = data_clean, model = TRUE)
-            }, error = function(e) {
-                return(NULL)
-            })
-            
-            model_without_var <- tryCatch({
-                coxph(as.formula(formula_without_var), data = data_clean, model = TRUE)
-            }, error = function(e) {
-                return(NULL)
-            })
-            
-            if (is.null(model_with_var) || is.null(model_without_var)) {
-                return(NA)
-            }
-            
-            # Calculate likelihood ratio test
-            lrt_test <- tryCatch({
-                anova(model_without_var, model_with_var, test = "Chisq")
-            }, error = function(e) {
-                return(NULL)
-            })
-            
-            if (is.null(lrt_test)) {
-                return(NA)
-            }
-            
-            if (nrow(lrt_test) >= 2 && "Pr(>|Chi|)" %in% names(lrt_test)) {
-                return(lrt_test$`Pr(>|Chi|)`[2])
+                lrt_test <- tryCatch(
+                    {
+                        anova(model_without_var, model_with_var, test = "Chisq")
+                    },
+                    error = function(e) {
+                        return(NULL)
+                    }
+                )
+
+                if (is.null(lrt_test)) {
+                    return(NA)
+                }
+
+                if (nrow(lrt_test) >= 2 && "Pr(>|Chi|)" %in% names(lrt_test)) {
+                    return(lrt_test$`Pr(>|Chi|)`[2])
+                } else {
+                    return(NA)
+                }
             } else {
                 return(NA)
             }
-        } else {
+        },
+        error = function(e) {
+            warning(sprintf("Error in calculate_variable_overall_significance: %s", e$message))
             return(NA)
         }
-    }, error = function(e) {
-        warning(sprintf("Error in calculate_variable_overall_significance: %s", e$message))
-        return(NA)
-    })
-} 
+    )
+}
 
 #' Load cohort-specific other_map.rds file
 #'

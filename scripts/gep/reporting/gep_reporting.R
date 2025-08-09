@@ -42,9 +42,9 @@ create_mfs_validation_report <- function(validation_results, prame_analysis, mis
         } else {
             "Insufficient PRAME data for augmented analysis"
         },
-        missing_data_impact = if (!is.null(missing_data_analysis$informative_missingness_detected) && 
-                                      !is.na(missing_data_analysis$informative_missingness_detected) && 
-                                      missing_data_analysis$informative_missingness_detected) {
+        missing_data_impact = if (!is.null(missing_data_analysis$informative_missingness_detected) &&
+            !is.na(missing_data_analysis$informative_missingness_detected) &&
+            missing_data_analysis$informative_missingness_detected) {
             "Significant differences detected between patients with and without GEP data - results may be biased"
         } else {
             "No evidence of informative missingness pattern for GEP data"
@@ -67,68 +67,71 @@ create_mfs_validation_report <- function(validation_results, prame_analysis, mis
 #' @return Invisibly returns NULL after writing files
 save_mfs_validation_results <- function(validation_results, validation_report, missing_data_analysis, prame_analysis, output_dir, prefix) {
     log_enhanced("Saving MFS validation results", level = "INFO", indent = 1)
-    tryCatch({
-        oe_summary <- data.frame()
-        for (tp_key in names(validation_results)) {
-            result <- validation_results[[tp_key]]
-            if (!is.null(result$observed_expected)) {
-                oe_data <- result$observed_expected
-                for (class in names(oe_data$results_by_class)) {
-                    class_result <- oe_data$results_by_class[[class]]
-                    oe_summary <- rbind(oe_summary, data.frame(
+    tryCatch(
+        {
+            oe_summary <- data.frame()
+            for (tp_key in names(validation_results)) {
+                result <- validation_results[[tp_key]]
+                if (!is.null(result$observed_expected)) {
+                    oe_data <- result$observed_expected
+                    for (class in names(oe_data$results_by_class)) {
+                        class_result <- oe_data$results_by_class[[class]]
+                        oe_summary <- rbind(oe_summary, data.frame(
+                            Timepoint = paste0(result$timepoint, " years"),
+                            GEP_Class = class,
+                            N = class_result$n,
+                            Observed = class_result$observed,
+                            Expected = class_result$expected,
+                            OE_Ratio = class_result$oe_ratio,
+                            CI_Lower = class_result$poisson_ci_lower,
+                            CI_Upper = class_result$poisson_ci_upper
+                        ))
+                    }
+                }
+            }
+            if (nrow(oe_summary) > 0) {
+                write_xlsx(oe_summary, file.path(output_dir, paste0(prefix, "observed_expected_summary.xlsx")))
+            }
+            cal_summary <- data.frame()
+            for (tp_key in names(validation_results)) {
+                result <- validation_results[[tp_key]]
+                if (!is.null(result$calibration)) {
+                    cal_data <- result$calibration
+                    cal_summary <- rbind(cal_summary, data.frame(
                         Timepoint = paste0(result$timepoint, " years"),
-                        GEP_Class = class,
-                        N = class_result$n,
-                        Observed = class_result$observed,
-                        Expected = class_result$expected,
-                        OE_Ratio = class_result$oe_ratio,
-                        CI_Lower = class_result$poisson_ci_lower,
-                        CI_Upper = class_result$poisson_ci_upper
+                        N = cal_data$n,
+                        Nam_D_Agostino_p = cal_data$nam_dagostino_p,
+                        ICI = cal_data$ici,
+                        Calibration_Slope = cal_data$calibration_slope
                     ))
                 }
             }
-        }
-        if (nrow(oe_summary) > 0) {
-            write_xlsx(oe_summary, file.path(output_dir, paste0(prefix, "observed_expected_summary.xlsx")))
-        }
-        cal_summary <- data.frame()
-        for (tp_key in names(validation_results)) {
-            result <- validation_results[[tp_key]]
-            if (!is.null(result$calibration)) {
-                cal_data <- result$calibration
-                cal_summary <- rbind(cal_summary, data.frame(
-                    Timepoint = paste0(result$timepoint, " years"),
-                    N = cal_data$n,
-                    Nam_D_Agostino_p = cal_data$nam_dagostino_p,
-                    ICI = cal_data$ici,
-                    Calibration_Slope = cal_data$calibration_slope
-                ))
+            if (nrow(cal_summary) > 0) {
+                write_xlsx(cal_summary, file.path(output_dir, paste0(prefix, "calibration_summary.xlsx")))
             }
-        }
-        if (nrow(cal_summary) > 0) {
-            write_xlsx(cal_summary, file.path(output_dir, paste0(prefix, "calibration_summary.xlsx")))
-        }
-        disc_summary <- data.frame()
-        for (tp_key in names(validation_results)) {
-            result <- validation_results[[tp_key]]
-            if (!is.null(result$discrimination)) {
-                disc_data <- result$discrimination
-                disc_summary <- rbind(disc_summary, data.frame(
-                    Timepoint = paste0(result$timepoint, " years"),
-                    N = disc_data$n,
-                    Events = disc_data$events,
-                    Harrell_C = disc_data$harrell_c,
-                    Uno_C = disc_data$uno_c,
-                    AUC = disc_data$auc_timepoint
-                ))
+            disc_summary <- data.frame()
+            for (tp_key in names(validation_results)) {
+                result <- validation_results[[tp_key]]
+                if (!is.null(result$discrimination)) {
+                    disc_data <- result$discrimination
+                    disc_summary <- rbind(disc_summary, data.frame(
+                        Timepoint = paste0(result$timepoint, " years"),
+                        N = disc_data$n,
+                        Events = disc_data$events,
+                        Harrell_C = disc_data$harrell_c,
+                        Uno_C = disc_data$uno_c,
+                        AUC = disc_data$auc_timepoint
+                    ))
+                }
             }
+            if (nrow(disc_summary) > 0) {
+                write_xlsx(disc_summary, file.path(output_dir, paste0(prefix, "discrimination_summary.xlsx")))
+            }
+        },
+        error = function(e) {
+            log_enhanced("Error saving summary tables", level = "WARN", indent = 2)
         }
-        if (nrow(disc_summary) > 0) {
-            write_xlsx(disc_summary, file.path(output_dir, paste0(prefix, "discrimination_summary.xlsx")))
-        }
-    }, error = function(e) {
-        log_enhanced("Error saving summary tables", level = "WARN", indent = 2)
-    })
+    )
     saveRDS(validation_results, file.path(output_dir, paste0(prefix, "mfs_validation_results.rds")))
     saveRDS(missing_data_analysis, file.path(output_dir, paste0(prefix, "missing_data_analysis.rds")))
     saveRDS(prame_analysis, file.path(output_dir, paste0(prefix, "prame_analysis.rds")))
@@ -141,7 +144,7 @@ save_mfs_validation_results <- function(validation_results, validation_report, m
         "✓ Observed vs Expected rates with Poisson confidence intervals",
         "✓ Nam-D'Agostino calibration test and Integrated Calibration Index",
         "✓ Harrell's and Uno's C-index discrimination measures",
-        "✓ Time-specific AUC/ROC analysis", 
+        "✓ Time-specific AUC/ROC analysis",
         "✓ Decision curve analysis for net clinical benefit",
         "✓ PRAME-augmented analysis with net reclassification index",
         "✓ Missing data assessment and informative missingness evaluation",
@@ -212,8 +215,8 @@ create_mss_validation_report <- function(standard_results, competing_results, pr
 #' @param output_dir Directory path to save artifacts
 #' @param prefix Filename prefix for saved files
 #' @return Invisibly returns NULL after writing files
-save_mss_validation_results <- function(standard_results, competing_results, validation_report, 
-                                       missing_data, prame_results, output_dir, prefix) {
+save_mss_validation_results <- function(standard_results, competing_results, validation_report,
+                                        missing_data, prame_results, output_dir, prefix) {
     log_enhanced("Saving MSS validation results", level = "INFO")
     saveRDS(standard_results, file.path(output_dir, paste0(prefix, "mss_standard_validation_results.rds")))
     saveRDS(competing_results, file.path(output_dir, paste0(prefix, "mss_competing_risk_results.rds")))
@@ -224,15 +227,19 @@ save_mss_validation_results <- function(standard_results, competing_results, val
     if (!is.null(prame_results)) {
         saveRDS(prame_results, file.path(output_dir, paste0(prefix, "mss_prame_analysis.rds")))
     }
-    create_mss_validation_excel_files(standard_results, competing_results, validation_report, 
-                                     missing_data, prame_results, output_dir, prefix)
-    create_mss_validation_summary_text(standard_results, competing_results, validation_report, 
-                                      missing_data, prame_results, output_dir, prefix)
+    create_mss_validation_excel_files(
+        standard_results, competing_results, validation_report,
+        missing_data, prame_results, output_dir, prefix
+    )
+    create_mss_validation_summary_text(
+        standard_results, competing_results, validation_report,
+        missing_data, prame_results, output_dir, prefix
+    )
 }
 
 #' Create MSS validation Excel files
-create_mss_validation_excel_files <- function(standard_results, competing_results, validation_report, 
-                                             missing_data, prame_results, output_dir, prefix) {
+create_mss_validation_excel_files <- function(standard_results, competing_results, validation_report,
+                                              missing_data, prame_results, output_dir, prefix) {
     log_enhanced("Creating MSS validation Excel files", level = "INFO")
     excel_sheets <- list()
     excel_sheets[["Summary_Statistics"]] <- validation_report$summary_stats
@@ -274,8 +281,8 @@ create_mss_validation_excel_files <- function(standard_results, competing_result
 }
 
 #' Create MSS validation summary text
-create_mss_validation_summary_text <- function(standard_results, competing_results, validation_report, 
-                                              missing_data, prame_results, output_dir, prefix) {
+create_mss_validation_summary_text <- function(standard_results, competing_results, validation_report,
+                                               missing_data, prame_results, output_dir, prefix) {
     log_enhanced("Creating MSS validation summary text file", level = "INFO")
     summary_lines <- c(
         "GEP Melanoma-Specific Survival Validation Report",

@@ -12,73 +12,75 @@
 #' @param outcome_type Type of outcome ("binary", "survival", "continuous"). If NULL, will be detected from model_fit
 #' @param show_interaction_pvalues Logical, whether to show interaction p-values
 #' @return gtsummary table object
-create_gtsummary_table <- function(model_fit, effect_measure, analysis_name, other_map = NULL, 
-                                  data = NULL, outcome_var = NULL, confounders = NULL, 
-                                  outcome_type = NULL) {
-    
+create_gtsummary_table <- function(model_fit, effect_measure, analysis_name, other_map = NULL,
+                                   data = NULL, outcome_var = NULL, confounders = NULL,
+                                   outcome_type = NULL) {
     # Determine model type for caption
     model_type <- detect_model_type(model_fit)
-    
+
     # Determine outcome type from model if not provided
     if (is.null(outcome_type)) {
         model_type <- detect_model_type(model_fit)
         outcome_type <- model_type_to_outcome_type(model_type)
         log_enhanced(sprintf("Detected outcome type '%s' from model type '%s'", outcome_type, model_type), level = "DEBUG")
     }
-    
+
     # Get all variable labels and filter to only include variables in the model
     all_variable_labels <- get_variable_labels()
     model_terms <- attr(terms(model_fit), "term.labels")
     model_var_names <- unique(c("treatment_group", model_terms))
     variable_labels <- all_variable_labels[intersect(names(all_variable_labels), model_var_names)]
-    
+
     # Create the complete table first
-    table <- tryCatch({
-        model_fit %>%
-            tbl_regression(
-                exponentiate = (effect_measure %in% c("OR", "HR")),
-                label = variable_labels
-            ) %>%
-            bold_labels() %>%
-            italicize_levels() %>%
-            modify_header(
-                estimate = paste0("**", effect_measure, "**"),
-                conf.low = "**95% CI**",
-                p.value = "**p-value**"
-            ) %>%
-            modify_caption(build_professional_caption(model_type, effect_measure, analysis_name)) %>%
-            modify_post_fmt_fun(
-                fmt_fun = ~format_confidence_intervals_post(.),
-                columns = "conf.low"
-            )
-    }, error = function(e) {
-        log_enhanced(sprintf("Error creating gtsummary table: %s", e$message), level = "ERROR")
-        # Return a simple table with just the model summary
-        model_fit %>%
-            tbl_regression(
-                exponentiate = (effect_measure %in% c("OR", "HR")),
-                label = variable_labels
-            ) %>%
-            bold_labels() %>%
-            italicize_levels() %>%
-            modify_caption(build_professional_caption(model_type, effect_measure, analysis_name))
-    })
-    
+    table <- tryCatch(
+        {
+            model_fit %>%
+                tbl_regression(
+                    exponentiate = (effect_measure %in% c("OR", "HR")),
+                    label = variable_labels
+                ) %>%
+                bold_labels() %>%
+                italicize_levels() %>%
+                modify_header(
+                    estimate = paste0("**", effect_measure, "**"),
+                    conf.low = "**95% CI**",
+                    p.value = "**p-value**"
+                ) %>%
+                modify_caption(build_professional_caption(model_type, effect_measure, analysis_name)) %>%
+                modify_post_fmt_fun(
+                    fmt_fun = ~ format_confidence_intervals_post(.),
+                    columns = "conf.low"
+                )
+        },
+        error = function(e) {
+            log_enhanced(sprintf("Error creating gtsummary table: %s", e$message), level = "ERROR")
+            # Return a simple table with just the model summary
+            model_fit %>%
+                tbl_regression(
+                    exponentiate = (effect_measure %in% c("OR", "HR")),
+                    label = variable_labels
+                ) %>%
+                bold_labels() %>%
+                italicize_levels() %>%
+                modify_caption(build_professional_caption(model_type, effect_measure, analysis_name))
+        }
+    )
+
     # Post-process the table to remove variables with only reference levels
     table <- remove_orphaned_variables(table, model_fit)
-    
+
     # Apply extreme estimate filtering to the table
     table_data <- table$table_body
-    
+
     # Detect extreme estimates in the table data
     # Note: Main table uses exponentiate = (effect_measure %in% c("OR", "HR")), so check accordingly
     is_main_table_exponentiated <- (effect_measure %in% c("OR", "HR"))
-    
+
     # Only run detection on rows with valid estimates (not NA)
-    valid_rows <- !is.na(as.numeric(table_data$estimate)) & 
-                  !is.na(as.numeric(table_data$conf.low)) & 
-                  !is.na(as.numeric(table_data$conf.high))
-    
+    valid_rows <- !is.na(as.numeric(table_data$estimate)) &
+        !is.na(as.numeric(table_data$conf.low)) &
+        !is.na(as.numeric(table_data$conf.high))
+
     if (any(valid_rows)) {
         extreme_result <- detect_extreme_regression_estimates(
             estimate = as.numeric(table_data$estimate[valid_rows]),
@@ -87,7 +89,7 @@ create_gtsummary_table <- function(model_fit, effect_measure, analysis_name, oth
             effect_measure = effect_measure,
             is_exponentiated = is_main_table_exponentiated
         )
-        
+
         # Map back to original table indices
         if (length(extreme_result$extreme_indices) > 0) {
             valid_indices <- which(valid_rows)
@@ -96,15 +98,17 @@ create_gtsummary_table <- function(model_fit, effect_measure, analysis_name, oth
     } else {
         extreme_result <- list(extreme_indices = integer(0), exclusion_reasons = character(0))
     }
-    
+
     # Filter out extreme estimates
     if (length(extreme_result$extreme_indices) > 0) {
-        log_enhanced(sprintf("Filtering %d extreme estimates from table for %s", 
-                           length(extreme_result$extreme_indices), analysis_name), level = "INFO")
-        
+        log_enhanced(sprintf(
+            "Filtering %d extreme estimates from table for %s",
+            length(extreme_result$extreme_indices), analysis_name
+        ), level = "INFO")
+
         # Get the extreme terms to remove
         extreme_terms <- table_data$term[extreme_result$extreme_indices]
-        
+
         # Apply filtering
         filter_result <- filter_extreme_estimates_from_table(
             tbl_data = table_data,
@@ -112,55 +116,59 @@ create_gtsummary_table <- function(model_fit, effect_measure, analysis_name, oth
             variables_to_check = unique(table_data$variable),
             analysis_name = analysis_name
         )
-        
+
         # Update the table with filtered data
         table$table_body <- filter_result$tbl_data_filtered
-        
-        log_enhanced(sprintf("Removed %d rows with extreme estimates from table", 
-                           filter_result$rows_removed), level = "INFO")
+
+        log_enhanced(sprintf(
+            "Removed %d rows with extreme estimates from table",
+            filter_result$rows_removed
+        ), level = "INFO")
     }
-    
+
     # Remove variables that now only have reference levels (no coefficients)
     table_data_updated <- table$table_body
     variables_to_remove <- c()
-    
+
     for (var in unique(table_data_updated$variable)) {
         var_rows <- table_data_updated[table_data_updated$variable == var, ]
-        
+
         # Check if this is a continuous variable (has no "level" rows, only label rows)
         level_rows <- var_rows[var_rows$row_type == "level", ]
-        non_level_rows <- var_rows[var_rows$row_type != "level", ]  # Includes "label" and "coefficient" rows
-        
+        non_level_rows <- var_rows[var_rows$row_type != "level", ] # Includes "label" and "coefficient" rows
+
         # For continuous variables (no level rows), keep them if they have any non-level rows
         if (nrow(level_rows) == 0 && nrow(non_level_rows) > 0) {
             next
         }
-        
+
         # For categorical variables, count VALID level rows (those that will appear in final table)
         # Valid means: has estimate AND has both CI bounds (not NA/infinite)
         valid_level_rows <- level_rows[
-            !is.na(level_rows$estimate) & 
-            level_rows$estimate != "" &
-            !is.na(level_rows$conf.low) & 
-            !is.na(level_rows$conf.high) &
-            is.finite(as.numeric(level_rows$conf.low)) &
-            is.finite(as.numeric(level_rows$conf.high))
-        , ]
-        
+            !is.na(level_rows$estimate) &
+                level_rows$estimate != "" &
+                !is.na(level_rows$conf.low) &
+                !is.na(level_rows$conf.high) &
+                is.finite(as.numeric(level_rows$conf.low)) &
+                is.finite(as.numeric(level_rows$conf.high)),
+        ]
+
         if (nrow(valid_level_rows) == 0) {
             variables_to_remove <- c(variables_to_remove, var)
-            log_enhanced(sprintf("Removing variable '%s' - no valid levels remain after filtering (total_levels = %d, valid_levels = %d)", 
-                               var, nrow(level_rows), nrow(valid_level_rows)), level = "INFO")
+            log_enhanced(sprintf(
+                "Removing variable '%s' - no valid levels remain after filtering (total_levels = %d, valid_levels = %d)",
+                var, nrow(level_rows), nrow(valid_level_rows)
+            ), level = "INFO")
         }
     }
-    
+
     if (length(variables_to_remove) > 0) {
         table$table_body <- table_data_updated[!table_data_updated$variable %in% variables_to_remove, ]
     }
-    
+
     # Add "Other" level details if present in the data
     table <- add_other_level_details(table, data, other_map)
-    
+
     return(table)
 }
 
@@ -174,24 +182,23 @@ create_gtsummary_table <- function(model_fit, effect_measure, analysis_name, oth
 #' @param treatment_var Name of the treatment variable in the model (default: "treatment_group")
 #' @return Modified gt table object
 modify_gt_table_pvalues <- function(gt_table, table_result, data, outcome_var, confounders, model_fit = NULL, treatment_var = "treatment_group") {
-    
     # Get the original table data to understand the structure
     table_data <- table_result$table_body
-    
+
     # Get unique variables (including treatment_group for testing overall significance)
     all_variables <- unique(table_data$variable)
     variables <- all_variables
-    
+
     # Filter confounders to only include variables that are actually in the final table
     if (!is.null(confounders)) {
         filtered_confounders <- confounders[confounders %in% all_variables]
     } else {
         filtered_confounders <- NULL
     }
-    
+
     # Calculate overall variable significance p-values for each variable
     factor_label_pvalues <- list()
-    
+
     if (!is.null(model_fit)) {
         # Use the new unified approach with model type detection
         for (var_name in variables) {
@@ -202,17 +209,18 @@ modify_gt_table_pvalues <- function(gt_table, table_result, data, outcome_var, c
         # Fallback to old approach for backward compatibility
         for (var_name in variables) {
             var_confounders <- filtered_confounders[filtered_confounders != var_name]
-            pval <- calculate_variable_overall_significance(data, var_name, outcome_var, 
-                                                           treatment_var = treatment_var,
-                                                           confounders = var_confounders, 
-                                                           outcome_type = model_type_to_outcome_type(detect_model_type(model_fit))) 
+            pval <- calculate_variable_overall_significance(data, var_name, outcome_var,
+                treatment_var = treatment_var,
+                confounders = var_confounders,
+                outcome_type = model_type_to_outcome_type(detect_model_type(model_fit))
+            )
             factor_label_pvalues[[var_name]] <- pval
         }
     }
-    
+
     # Modify the gtsummary table
     modified_table <- table_result
-    
+
     for (var_name in all_variables) {
         pval <- factor_label_pvalues[[var_name]]
         var_rows <- which(table_data$variable == var_name)
@@ -224,7 +232,7 @@ modify_gt_table_pvalues <- function(gt_table, table_result, data, outcome_var, c
             }
         }
     }
-    
+
     return(modified_table)
 }
 
@@ -258,14 +266,14 @@ format_confidence_intervals_post <- function(x) {
 add_other_level_details <- function(table, data, other_map = list()) {
     # Check for variables with "Other" categories
     other_details <- c()
-    
+
     # Get variables that are actually present in the final table
     table_variables <- unique(table$table_body$variable)
-    
+
     # Check only factor variables that are present in the table
     factor_vars <- names(data)[sapply(data, is.factor)]
     table_factor_vars <- intersect(factor_vars, table_variables)
-    
+
     for (var_name in table_factor_vars) {
         if ("Other" %in% levels(data[[var_name]])) {
             # Ensure "Other" actually appears in the final table content
@@ -280,7 +288,7 @@ add_other_level_details <- function(table, data, other_map = list()) {
             }
         }
     }
-    
+
     # Create source note with "Other" details (appears below the table)
     source_note_parts <- c()
     existing_source_note <- table$source_note
@@ -311,46 +319,45 @@ add_other_level_details <- function(table, data, other_map = list()) {
 #' @param model_fit Fitted model object (optional)
 #' @return Modified gtsummary table object
 add_factor_label_pvalues_to_table <- function(
-    table, 
-    data, 
-    outcome_var, 
-    confounders = NULL, 
-    outcome_type = NULL, 
-    treatment_var = "treatment_group", 
-    model_fit = NULL
-) {
+    table,
+    data,
+    outcome_var,
+    confounders = NULL,
+    outcome_type = NULL,
+    treatment_var = "treatment_group",
+    model_fit = NULL) {
     # Log the start of the function for debugging
     log_enhanced("Starting add_factor_label_pvalues_to_table", level = "DEBUG")
-    
+
     # Extract the table body for manipulation
     table_data <- table$table_body
-    
+
     # Get all unique variables present in the table
     all_variables <- unique(table_data$variable)
     variables <- all_variables
-    
+
     # Filter confounders to only those present in the table variables
     if (!is.null(confounders)) {
         filtered_confounders <- confounders[confounders %in% all_variables]
     } else {
         filtered_confounders <- NULL
     }
-    
+
     # Log which variables will be tested for overall significance
     log_enhanced(
-        sprintf("Variables to test for overall significance: %s", paste(variables, collapse = ", ")), 
+        sprintf("Variables to test for overall significance: %s", paste(variables, collapse = ", ")),
         level = "DEBUG"
     )
-    
+
     # Initialize a list to store p-values for each variable
     factor_label_pvalues <- list()
-    
+
     # If outcome_type is not provided, try to detect it from the model_fit if available
     if (is.null(outcome_type) && !is.null(model_fit)) {
         model_type <- detect_model_type(model_fit)
         outcome_type <- model_type_to_outcome_type(model_type)
         log_enhanced(
-            sprintf("Detected outcome type '%s' from model type '%s'", outcome_type, model_type), 
+            sprintf("Detected outcome type '%s' from model type '%s'", outcome_type, model_type),
             level = "DEBUG"
         )
     } else if (is.null(outcome_type)) {
@@ -358,29 +365,30 @@ add_factor_label_pvalues_to_table <- function(
         outcome_type <- "binary"
         log_enhanced("No model provided, using default outcome type 'binary'", level = "DEBUG")
     }
-    
+
     # Loop through each variable to calculate the overall p-value
     for (var_name in variables) {
         # Exclude the current variable from the confounders for this test
         var_confounders <- filtered_confounders[filtered_confounders != var_name]
-        
+
         # Calculate the p-value using the model_fit if available, otherwise use the data directly
         if (!is.null(model_fit)) {
             pval <- calculate_factor_label_pvalue(
-                model_fit, var_name, data, outcome_var, var_confounders, treatment_var = treatment_var
+                model_fit, var_name, data, outcome_var, var_confounders,
+                treatment_var = treatment_var
             )
         } else {
             pval <- calculate_variable_overall_significance(
-                data, var_name, outcome_var, 
-                treatment_var = treatment_var, 
-                confounders = var_confounders, 
+                data, var_name, outcome_var,
+                treatment_var = treatment_var,
+                confounders = var_confounders,
                 outcome_type = outcome_type
             )
         }
         # Store the p-value for this variable
         factor_label_pvalues[[var_name]] <- pval
     }
-    
+
     # Update the table: clear all p-values for each variable, then set the overall p-value at the label row
     table_data <- table$table_body
     for (var_name in all_variables) {
@@ -396,7 +404,7 @@ add_factor_label_pvalues_to_table <- function(
             }
         }
     }
-    
+
     # Assign the modified table body back to the table object
     table$table_body <- table_data
     return(table)
@@ -408,43 +416,42 @@ add_factor_label_pvalues_to_table <- function(
 #' @param analysis_name Internal analysis name used in file naming
 #' @return A human-friendly caption string
 build_professional_caption <- function(model_type, effect_measure, analysis_name) {
-  # Map model type to readable label
-  model_label <- switch(model_type,
-    linear = "Linear model",
-    logistic = "Logistic regression",
-    cox = "Cox proportional hazards model",
-    other_glm = "Generalized linear model",
-    "Regression model"
-  )
-  # Keep captions concise; effect type is shown in the Estimate column header
-  effect_label <- NULL
-  # Derive a friendly analysis label
-  friendly <- analysis_name
-  friendly <- gsub("_cox$|_logistic$", "", friendly)
-  # If contains underscores, try to map first token via STANDARD_TABLE_LABELS
-  if (grepl("_", friendly)) {
-    parts <- strsplit(friendly, "_")[[1]]
-    primary <- parts[1]
-    remainder <- if (length(parts) > 1) paste(parts[-1], collapse = " ") else ""
-    # Known mappings
-    primary_label <- STANDARD_TABLE_LABELS[[primary]]
-    if (is.null(primary_label)) {
-      primary_label <- switch(primary,
-        height_change = "Tumor Height Change",
-        vision_change = "Vision Change",
-        primary
-      )
-      # Title case if it wasn't mapped
-      if (primary_label == primary) primary_label <- tools::toTitleCase(gsub("_", " ", primary))
+    # Map model type to readable label
+    model_label <- switch(model_type,
+        linear = "Linear model",
+        logistic = "Logistic regression",
+        cox = "Cox proportional hazards model",
+        other_glm = "Generalized linear model",
+        "Regression model"
+    )
+    # Keep captions concise; effect type is shown in the Estimate column header
+    effect_label <- NULL
+    # Derive a friendly analysis label
+    friendly <- analysis_name
+    friendly <- gsub("_cox$|_logistic$", "", friendly)
+    # If contains underscores, try to map first token via STANDARD_TABLE_LABELS
+    if (grepl("_", friendly)) {
+        parts <- strsplit(friendly, "_")[[1]]
+        primary <- parts[1]
+        remainder <- if (length(parts) > 1) paste(parts[-1], collapse = " ") else ""
+        # Known mappings
+        primary_label <- STANDARD_TABLE_LABELS[[primary]]
+        if (is.null(primary_label)) {
+            primary_label <- switch(primary,
+                height_change = "Tumor Height Change",
+                vision_change = "Vision Change",
+                primary
+            )
+            # Title case if it wasn't mapped
+            if (primary_label == primary) primary_label <- tools::toTitleCase(gsub("_", " ", primary))
+        }
+        remainder <- gsub("post treatment only", "post-treatment only", remainder, ignore.case = TRUE)
+        remainder <- gsub("primary", "Primary analysis", remainder, ignore.case = TRUE)
+        remainder <- gsub("sensitivity", "Sensitivity analysis", remainder, ignore.case = TRUE)
+        remainder <- trimws(remainder)
+        analysis_label <- if (nzchar(remainder)) paste(primary_label, "—", tools::toTitleCase(remainder)) else primary_label
+    } else {
+        analysis_label <- friendly
     }
-    remainder <- gsub("post treatment only", "post-treatment only", remainder, ignore.case = TRUE)
-    remainder <- gsub("primary", "Primary analysis", remainder, ignore.case = TRUE)
-    remainder <- gsub("sensitivity", "Sensitivity analysis", remainder, ignore.case = TRUE)
-    remainder <- trimws(remainder)
-    analysis_label <- if (nzchar(remainder)) paste(primary_label, "—", tools::toTitleCase(remainder)) else primary_label
-  } else {
-    analysis_label <- friendly
-  }
-  paste0(model_label, " — ", analysis_label)
+    paste0(model_label, " — ", analysis_label)
 }
-

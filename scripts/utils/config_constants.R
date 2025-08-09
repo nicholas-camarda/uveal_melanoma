@@ -3,10 +3,10 @@
 # Description: This file contains ALL constants, thresholds, and configuration settings
 #             used throughout the entire analysis pipeline. This is the SINGLE source
 #             of truth for all analysis parameters. DO NOT add constants elsewhere.
-#             
+#
 # CONTENTS:
 # - File paths and directory structures
-# - Data processing thresholds and settings  
+# - Data processing thresholds and settings
 # - Statistical analysis parameters (confounders, subgroups)
 # - Treatment group factor levels and labels
 # - Plot dimensions and visualization settings
@@ -62,23 +62,23 @@ INPUT_FILENAME <- "Ocular Melanoma Master Spreadsheet REVISED FOR STATS (5-10-25
 SPECIFIC_PATIENTS_TO_EXCLUDE <- c(271) # Patient 271: all supporting documentation was lost
 
 # Data quality thresholds
-THRESHOLD_RARITY <- 5                    # Minimum observations to keep a category
-EXTREME_ESTIMATE_THRESHOLD <- 100        # Maximum allowed odds/hazard ratios
-CI_WIDTH_THRESHOLD <- 1000               # Maximum confidence interval width (raw difference) - DEPRECATED
-EXPONENTIATED_CI_THRESHOLD <- 100        # Maximum CI width for exponentiated values (ORs, HRs)
-LOG_SCALE_CI_THRESHOLD <- 10             # Maximum CI width for log scale values (log-odds, log-hazards)
-NEAR_PERFECT_SEPARATION_THRESHOLD <- 0.001  # Threshold for near-perfect separation detection (exponentiated scale)
-LOG_SCALE_NEAR_PERFECT_SEPARATION_THRESHOLD <- 0.1  # Threshold for near-perfect separation detection (log scale)
+THRESHOLD_RARITY <- 5 # Minimum observations to keep a category
+EXTREME_ESTIMATE_THRESHOLD <- 100 # Maximum allowed odds/hazard ratios
+CI_WIDTH_THRESHOLD <- 1000 # Maximum confidence interval width (raw difference) - DEPRECATED
+EXPONENTIATED_CI_THRESHOLD <- 100 # Maximum CI width for exponentiated values (ORs, HRs)
+LOG_SCALE_CI_THRESHOLD <- 10 # Maximum CI width for log scale values (log-odds, log-hazards)
+NEAR_PERFECT_SEPARATION_THRESHOLD <- 0.001 # Threshold for near-perfect separation detection (exponentiated scale)
+LOG_SCALE_NEAR_PERFECT_SEPARATION_THRESHOLD <- 0.1 # Threshold for near-perfect separation detection (log scale)
 
 # Tumor size thresholds for cohort eligibility
-TUMOR_HEIGHT_THRESHOLD <- 10             # mm
-TUMOR_DIAMETER_THRESHOLD <- 20           # mm
+TUMOR_HEIGHT_THRESHOLD <- 10 # mm
+TUMOR_DIAMETER_THRESHOLD <- 20 # mm
 
 # Time conversion constants
 DAYS_IN_YEAR <- 365.25
 DAYS_IN_MONTH <- 30.44
-FOLLOW_UP_YEARS <- 5                     # For 5-year outcomes
-UNITS_OF_TIME <- "months"                # "days" or "months" or "years"
+FOLLOW_UP_YEARS <- 5 # For 5-year outcomes
+UNITS_OF_TIME <- "months" # "days" or "months" or "years"
 
 # =============================================================================
 # TREATMENT AND FACTOR LEVEL CONFIGURATION
@@ -91,17 +91,19 @@ UNITS_OF_TIME <- "months"                # "days" or "months" or "years"
 # WARNING: Changing these affects ALL regression models, tables, and plots
 
 # Treatment group configuration
-TREATMENT_FACTOR_LEVELS <- c("Plaque", "GKSRS")  # Plaque is reference group
-TREATMENT_REFERENCE_LEVEL <- TREATMENT_FACTOR_LEVELS[1]  # Explicitly define reference
-TREATMENT_COMPARISON_LEVEL <- TREATMENT_FACTOR_LEVELS[2]  # Explicitly define comparison
-TREATMENT_LABELS <- c("Plaque", "GKSRS")                    # For display/plotting (matches factor levels order)
-FAVOURS_LABELS <- c("Favours Plaque", "Favours GKSRS")      # For forest plot labels (matches factor levels order)
+TREATMENT_FACTOR_LEVELS <- c("Plaque", "GKSRS") # Plaque is reference group
+TREATMENT_REFERENCE_LEVEL <- TREATMENT_FACTOR_LEVELS[1] # Explicitly define reference
+TREATMENT_COMPARISON_LEVEL <- TREATMENT_FACTOR_LEVELS[2] # Explicitly define comparison
+TREATMENT_LABELS <- c("Plaque", "GKSRS") # For display/plotting (matches factor levels order)
+FAVOURS_LABELS <- c("Favours Plaque", "Favours GKSRS") # For forest plot labels (matches factor levels order)
 
 # Validation: Ensure consistency with TREATMENT_LABELS
 if (!all(TREATMENT_LABELS %in% TREATMENT_FACTOR_LEVELS)) {
-    stop(sprintf("CRITICAL ERROR: TREATMENT_LABELS (%s) must match TREATMENT_FACTOR_LEVELS (%s)", 
-                 paste(TREATMENT_LABELS, collapse = ", "), 
-                 paste(TREATMENT_FACTOR_LEVELS, collapse = ", ")))
+    stop(sprintf(
+        "CRITICAL ERROR: TREATMENT_LABELS (%s) must match TREATMENT_FACTOR_LEVELS (%s)",
+        paste(TREATMENT_LABELS, collapse = ", "),
+        paste(TREATMENT_FACTOR_LEVELS, collapse = ", ")
+    ))
 }
 
 # Binary factor configurations (used for ALL Y/N binary variables)
@@ -139,8 +141,8 @@ confounders <- c(
 
 # Define subgroup variables for analysis
 subgroup_vars <- c(
-    "age_at_diagnosis", "sex", "location", "initial_t_stage",  
-    "initial_tumor_height", "initial_tumor_diameter", 
+    "age_at_diagnosis", "sex", "location", "initial_t_stage",
+    "initial_tumor_height", "initial_tumor_diameter",
     "initial_overall_stage_modified", "biopsy1_gep", "optic_nerve"
 )
 
@@ -150,9 +152,9 @@ continuous_subgroup_vars <- c("age_at_diagnosis", "initial_tumor_height", "initi
 # Define variables that are constant within specific cohorts and should be excluded from subgroup analysis
 # These variables have no variation within the specified cohort and cannot be used for subgroup analysis
 COHORT_CONSTANT_VARIABLES <- list(
-    uveal_melanoma_restricted_cohort = c("optic_nerve"),  # All restricted patients have optic_nerve == "N"
-    uveal_melanoma_gksrs_only_cohort = c(),  # No constant variables in GKSRS-only cohort
-    uveal_melanoma_full_cohort = c()  # No constant variables in full cohort
+    uveal_melanoma_restricted_cohort = c("optic_nerve"), # All restricted patients have optic_nerve == "N"
+    uveal_melanoma_gksrs_only_cohort = c(), # No constant variables in GKSRS-only cohort
+    uveal_melanoma_full_cohort = c() # No constant variables in full cohort
 )
 
 # =============================================================================
@@ -163,17 +165,17 @@ COHORT_CONSTANT_VARIABLES <- list(
 # - TUMOR_SIZE_THRESHOLDS: Clinical criteria for treatment eligibility
 # - SPECIFIC_PATIENTS_TO_EXCLUDE: Patients with missing documentation
 # NOTE: Stage exclusions prevent perfect separation issues in statistical models
-# Data-driven analysis showed Stage 3B (n=6, 2.3%), Stage 3C (n=1, 0.4%), and Stage 4 (n=3, 1.1%) 
-# have insufficient patient numbers for reliable statistical analysis. Chi-square test confirmed 
-# significant difference in stage distribution between treatment groups (p=0.0008), indicating stage 
-# should be included as a confounder. Modified variable excludes problematic stages while 
+# Data-driven analysis showed Stage 3B (n=6, 2.3%), Stage 3C (n=1, 0.4%), and Stage 4 (n=3, 1.1%)
+# have insufficient patient numbers for reliable statistical analysis. Chi-square test confirmed
+# significant difference in stage distribution between treatment groups (p=0.0008), indicating stage
+# should be included as a confounder. Modified variable excludes problematic stages while
 # preserving the confounding adjustment for stages with adequate sample sizes.
 STAGES_TO_EXCLUDE_FROM_MODIFIED <- c("3B", "3C", "4")
 
 # Centralized forced-to-Other configuration for factor variables (code-level)
 # Any levels listed here will always be collapsed into 'Other' for the given variable, regardless of counts
 FORCED_OTHER_BY_VARIABLE <- list(
-  initial_overall_stage_modified = STAGES_TO_EXCLUDE_FROM_MODIFIED
+    initial_overall_stage_modified = STAGES_TO_EXCLUDE_FROM_MODIFIED
 )
 
 # =============================================================================
@@ -188,33 +190,41 @@ FORCED_OTHER_BY_VARIABLE <- list(
 # - MAXIMUM_MISSING_DATA_PERCENTAGE: Maximum allowed missing data for critical variables
 
 # Data validation thresholds
-MINIMUM_COLUMNS_AFTER_PROCESSING <- 150  # Minimum expected columns after data processing
-MAXIMUM_MISSING_DATA_PERCENTAGE <- 50    # Maximum allowed missing data percentage for critical variables
+MINIMUM_COLUMNS_AFTER_PROCESSING <- 150 # Minimum expected columns after data processing
+MAXIMUM_MISSING_DATA_PERCENTAGE <- 50 # Maximum allowed missing data percentage for critical variables
 
 # Critical variables that must exist in the dataset
-CRITICAL_VARIABLES <- c("id", "treatment_group", "age_at_diagnosis", "sex", "location", 
-                        "initial_tumor_height", "initial_tumor_diameter", "initial_t_stage",
-                        "recurrence1", "mets_progression", "last_known_alive_date")
+CRITICAL_VARIABLES <- c(
+    "id", "treatment_group", "age_at_diagnosis", "sex", "location",
+    "initial_tumor_height", "initial_tumor_diameter", "initial_t_stage",
+    "recurrence1", "mets_progression", "last_known_alive_date"
+)
 
 # Variables created during data processing
-DERIVED_VARIABLES <- c("age_at_diagnosis_binned", "initial_tumor_height_binned", 
-                       "initial_tumor_diameter_binned", "initial_stage_binary",
-                       "gep_class_simple", "prame_status", "recurrence1_treatment_clean")
+DERIVED_VARIABLES <- c(
+    "age_at_diagnosis_binned", "initial_tumor_height_binned",
+    "initial_tumor_diameter_binned", "initial_stage_binary",
+    "gep_class_simple", "prame_status", "recurrence1_treatment_clean"
+)
 
 # Factor variables that must have proper levels
-CRITICAL_FACTORS <- c("treatment_group", "sex", "location", 
-                      "biopsy1_gep", "gep_class_simple", "prame_status")
+CRITICAL_FACTORS <- c(
+    "treatment_group", "sex", "location",
+    "biopsy1_gep", "gep_class_simple", "prame_status"
+)
 
 # Variables to check for missing data
-MISSING_DATA_CHECK_VARIABLES <- c("age_at_diagnosis", "sex", "location", "initial_tumor_height", 
-                                  "initial_tumor_diameter", "treatment_group", "recurrence1", 
-                                  "mets_progression", "last_known_alive_date")
+MISSING_DATA_CHECK_VARIABLES <- c(
+    "age_at_diagnosis", "sex", "location", "initial_tumor_height",
+    "initial_tumor_diameter", "treatment_group", "recurrence1",
+    "mets_progression", "last_known_alive_date"
+)
 
 # Expected cohort sizes (ranges)
 EXPECTED_COHORT_SIZES <- list(
-    uveal_melanoma_full_cohort = c(250, 300),      # Expected range for full cohort
-    uveal_melanoma_restricted_cohort = c(150, 200), # Expected range for restricted cohort  
-    uveal_melanoma_gksrs_only_cohort = c(80, 120)  # Expected range for GKSRS-only cohort
+    uveal_melanoma_full_cohort = c(250, 300), # Expected range for full cohort
+    uveal_melanoma_restricted_cohort = c(150, 200), # Expected range for restricted cohort
+    uveal_melanoma_gksrs_only_cohort = c(80, 120) # Expected range for GKSRS-only cohort
 )
 
 # =============================================================================
@@ -228,26 +238,26 @@ EXPECTED_COHORT_SIZES <- list(
 STANDARD_TABLE_LABELS <- list(
     # Demographics
     age_at_diagnosis = "Age at Diagnosis",
-    sex = "Sex", 
+    sex = "Sex",
     race = "Race",
     ethnicity = "Ethnicity",
-    
+
     # Eye and tumor characteristics
     eye = "Eye",
     location = "Tumor Location",
     initial_tumor_height = "Initial Tumor Height (mm)",
-    initial_tumor_diameter = "Initial Tumor Diameter (mm)", 
+    initial_tumor_diameter = "Initial Tumor Diameter (mm)",
     initial_overall_stage = "Overall Stage",
     initial_overall_stage_modified = "Initial Overall Stage (Modified)",
     initial_t_stage = "Initial T-Stage",
     initial_n_stage = "N Stage",
     initial_m_stage = "M Stage",
     unstaged = "Unstaged",
-    
+
     # Treatment
     treatment_group = "Treatment Group",
     treatment_date = "Treatment Date",
-    
+
     # Clinical features
     initial_vision = "Initial Visual Acuity (logMAR)",
     srf = "Subretinal Fluid (SRF)",
@@ -258,74 +268,74 @@ STANDARD_TABLE_LABELS <- list(
     flashes_photopsia = "Flashes/Photopsia",
     floaters = "Floaters",
     pain = "Pain",
-    
+
     # Tumor features
     internal_reflectivity = "Internal Reflectivity",
     optic_nerve = "Optic Nerve Involvement",
-    
+
     # Staging
     n_stage = "N Stage",
     m_stage = "M Stage",
     initial_metastases = "Initial Metastases",
     initial_mets = "Initial Metastases",
-    
+
     # Outcomes
     recurrence1 = "Local Recurrence",
     mets_progression = "Metastatic Progression",
     last_known_alive_date = "Last Known Alive Date",
-    
+
     # Derived variables
     age_at_diagnosis_binned = "Age at Diagnosis (Binned)",
     initial_tumor_height_binned = "Initial Tumor Height (Binned)",
     initial_tumor_diameter_binned = "Initial Tumor Diameter (Binned)",
     initial_stage_binary = "Initial Stage (Binary)",
-    
+
     # GEP variables
     biopsy1_gep = "Gene Expression Profile",
     gep_class_simple = "GEP Class (Simple)",
     prame_status = "PRAME Status",
-    
+
     # Follow-up
     total_followup_days = "Total Follow-up (Days)",
     total_years = "Total Follow-up (Years)",
-    
+
     # Treatment outcomes
     recurrence1_treatment_clean = "Local Recurrence (Treatment Clean)"
 )
 
 # Evidence-based T-stage cutoffs for continuous variable binning
-T_STAGE_HEIGHT_CUTOFFS <- c(3.0, 6.0, 9.0, 12.0, 15.0)  # Creates ranges: ≤3.0, 3.1-6.0, 6.1-9.0, 9.1-12.0, 12.1-15.0, >15.0
-T_STAGE_DIAMETER_CUTOFFS <- c(3.0, 6.0, 9.0, 12.0, 15.0, 18.0)  # Creates ranges: ≤3.0, 3.1-6.0, 6.1-9.0, 9.1-12.0, 12.1-15.0, 15.1-18.0, >18.0
+T_STAGE_HEIGHT_CUTOFFS <- c(3.0, 6.0, 9.0, 12.0, 15.0) # Creates ranges: ≤3.0, 3.1-6.0, 6.1-9.0, 9.1-12.0, 12.1-15.0, >15.0
+T_STAGE_DIAMETER_CUTOFFS <- c(3.0, 6.0, 9.0, 12.0, 15.0, 18.0) # Creates ranges: ≤3.0, 3.1-6.0, 6.1-9.0, 9.1-12.0, 12.1-15.0, 15.1-18.0, >18.0
 
 # Legacy median-based cutoffs (for backward compatibility)
 LEGACY_CUTOFFS <- list(
-    age_at_diagnosis = 65,  # Age cutoff for elderly vs young
-    initial_tumor_height = 6.0,  # Height cutoff for small vs large tumors (median-based)
-    initial_tumor_diameter = 11.0  # Diameter cutoff for small vs large tumors (median-based)
+    age_at_diagnosis = 65, # Age cutoff for elderly vs young
+    initial_tumor_height = 6.0, # Height cutoff for small vs large tumors (median-based)
+    initial_tumor_diameter = 11.0 # Diameter cutoff for small vs large tumors (median-based)
 )
 
 # Variables to include in baseline characteristics tables
 BASELINE_VARIABLES_TO_SUMMARIZE <- c(
     # Demographics
     "age_at_diagnosis", "sex", "race", "ethnicity",
-    
+
     # Eye and tumor characteristics
-    "eye", "location", "initial_tumor_height", "initial_tumor_diameter", 
+    "eye", "location", "initial_tumor_height", "initial_tumor_diameter",
     "initial_overall_stage", "initial_overall_stage_modified", "initial_t_stage", "initial_n_stage", "initial_m_stage", "unstaged",
-    
+
     # Clinical features
-    "initial_vision", "srf", "op", "symptoms", "vision_loss_blurred_vision", 
+    "initial_vision", "srf", "op", "symptoms", "vision_loss_blurred_vision",
     "visual_field_defect", "flashes_photopsia", "floaters", "pain",
-    
+
     # Tumor features
     "internal_reflectivity", "optic_nerve",
-    
+
     # Staging
     "initial_mets",
-    
+
     # GEP
     "biopsy1_gep",
-    
+
     # Treatment
     "treatment_group"
 )
@@ -346,14 +356,14 @@ FOREST_PLOT_VARIABLE_ORDER <- c(
 )
 
 # Plot dimensions and settings for all output figures
-FOREST_PLOT_WIDTH <- 10    # inches (reasonable width)
-FOREST_PLOT_HEIGHT <- 12   # inches (increased height for all subgroup levels)
-SURVIVAL_PLOT_WIDTH <- 10  # inches  
-SURVIVAL_PLOT_HEIGHT <- 8  # inches
-RMST_PLOT_WIDTH <- 10      # inches
-RMST_PLOT_HEIGHT <- 6      # inches
-PLOT_DPI <- 300           # resolution
-PLOT_UNITS <- "in"        # units
+FOREST_PLOT_WIDTH <- 10 # inches (reasonable width)
+FOREST_PLOT_HEIGHT <- 12 # inches (increased height for all subgroup levels)
+SURVIVAL_PLOT_WIDTH <- 10 # inches
+SURVIVAL_PLOT_HEIGHT <- 8 # inches
+RMST_PLOT_WIDTH <- 10 # inches
+RMST_PLOT_HEIGHT <- 6 # inches
+PLOT_DPI <- 300 # resolution
+PLOT_UNITS <- "in" # units
 
 # =============================================================================
 # GEP VALIDATION CONFIGURATION (OBJECTIVE 4)
@@ -366,54 +376,56 @@ PLOT_UNITS <- "in"        # units
 # - GEP_DCA_THRESHOLD_*: Decision curve analysis thresholds
 
 # Core GEP validation settings
-GEP_VALIDATION_TIMEPOINTS <- c(5, 7, 10)  # years for validation analysis
-GEP_BOOTSTRAP_ITERATIONS <- 200           # bootstrap samples for optimism correction
+GEP_VALIDATION_TIMEPOINTS <- c(5, 7, 10) # years for validation analysis
+GEP_BOOTSTRAP_ITERATIONS <- 200 # bootstrap samples for optimism correction
 
 # PRAME augmentation constants
-GEP_PRAME_ADJUSTMENT_FACTOR <- 1.3    # 30% increase in risk for PRAME positive patients
-GEP_PRAME_REDUCTION_FACTOR <- 0.9     # 10% decrease in risk for PRAME negative patients  
-GEP_RISK_CAP_MAXIMUM <- 0.95          # Maximum allowed risk prediction (cap at 95%)
+GEP_PRAME_ADJUSTMENT_FACTOR <- 1.3 # 30% increase in risk for PRAME positive patients
+GEP_PRAME_REDUCTION_FACTOR <- 0.9 # 10% decrease in risk for PRAME negative patients
+GEP_RISK_CAP_MAXIMUM <- 0.95 # Maximum allowed risk prediction (cap at 95%)
 
 # Risk stratification cutoffs for NRI analysis
-GEP_RISK_CUTOFFS <- c(0, 0.1, 0.3, 1.0)  # Risk categories: <10%, 10-30%, >30%
+GEP_RISK_CUTOFFS <- c(0, 0.1, 0.3, 1.0) # Risk categories: <10%, 10-30%, >30%
 GEP_RISK_LABELS <- c("Low", "Intermediate", "High")
 
 # Decision curve analysis thresholds
-GEP_DCA_THRESHOLD_MIN <- 0.01          # Minimum risk threshold (1%)
-GEP_DCA_THRESHOLD_MAX <- 0.50          # Maximum risk threshold (50%)
-GEP_DCA_THRESHOLD_STEP <- 0.01         # Step size for threshold sequence
+GEP_DCA_THRESHOLD_MIN <- 0.01 # Minimum risk threshold (1%)
+GEP_DCA_THRESHOLD_MAX <- 0.50 # Maximum risk threshold (50%)
+GEP_DCA_THRESHOLD_STEP <- 0.01 # Step size for threshold sequence
 
 # Data cleaning and validation bounds
-GEP_MAX_FOLLOWUP_YEARS <- 50           # Maximum reasonable follow-up time in years
-GEP_MIN_FOLLOWUP_YEARS <- 0.01         # Minimum follow-up time in years
-GEP_MIN_RISK_PREDICTION <- 0.001       # Minimum allowed risk prediction (avoid zero)
-GEP_MAX_RISK_PREDICTION <- 0.999       # Maximum allowed risk prediction (avoid perfect)
+GEP_MAX_FOLLOWUP_YEARS <- 50 # Maximum reasonable follow-up time in years
+GEP_MIN_FOLLOWUP_YEARS <- 0.01 # Minimum follow-up time in years
+GEP_MIN_RISK_PREDICTION <- 0.001 # Minimum allowed risk prediction (avoid zero)
+GEP_MAX_RISK_PREDICTION <- 0.999 # Maximum allowed risk prediction (avoid perfect)
 
 # Calibration analysis constants
-GEP_MIN_GROUP_SIZE <- 5                # Minimum patients per calibration group
-GEP_DEFAULT_N_GROUPS <- 10             # Default number of calibration groups
-GEP_MIN_N_GROUPS <- 3                  # Minimum number of calibration groups
-GEP_LOESS_SPAN <- 0.3                  # Smoothing parameter for loess calibration curves
+GEP_MIN_GROUP_SIZE <- 5 # Minimum patients per calibration group
+GEP_DEFAULT_N_GROUPS <- 10 # Default number of calibration groups
+GEP_MIN_N_GROUPS <- 3 # Minimum number of calibration groups
+GEP_LOESS_SPAN <- 0.3 # Smoothing parameter for loess calibration curves
 
 # Sample size requirements for analysis
-GEP_MIN_SAMPLE_SIZE <- 20              # Minimum sample size for any analysis
-GEP_MIN_EVENTS_COMPETING_RISK <- 5     # Minimum events for competing risk analysis
-GEP_MIN_BOOTSTRAP_SAMPLE <- 30         # Minimum sample size for bootstrap analysis
-GEP_MAX_BOOTSTRAP_ITERATIONS <- 100    # Maximum bootstrap iterations for speed
-GEP_MISSING_DATA_THRESHOLD <- 10       # Minimum patients needed for missing data analysis
-GEP_RECOMMENDED_VALIDATION_SAMPLE <- 100  # Recommended minimum for robust validation
-GEP_RECOMMENDED_TESTING_SAMPLE <- 30      # Recommended minimum for testing set
+GEP_MIN_SAMPLE_SIZE <- 20 # Minimum sample size for any analysis
+GEP_MIN_EVENTS_COMPETING_RISK <- 5 # Minimum events for competing risk analysis
+GEP_MIN_BOOTSTRAP_SAMPLE <- 30 # Minimum sample size for bootstrap analysis
+GEP_MAX_BOOTSTRAP_ITERATIONS <- 100 # Maximum bootstrap iterations for speed
+GEP_MISSING_DATA_THRESHOLD <- 10 # Minimum patients needed for missing data analysis
+GEP_RECOMMENDED_VALIDATION_SAMPLE <- 100 # Recommended minimum for robust validation
+GEP_RECOMMENDED_TESTING_SAMPLE <- 30 # Recommended minimum for testing set
 
 # GEP-specific derived variables
-GEP_DERIVED_VARIABLES <- c("gep_class_simple", "prame_status", "mfs_5yr", "mfs_7yr", 
-                           "mfs_10yr", "mss_5yr", "mss_7yr", "mss_10yr")
+GEP_DERIVED_VARIABLES <- c(
+    "gep_class_simple", "prame_status", "mfs_5yr", "mfs_7yr",
+    "mfs_10yr", "mss_5yr", "mss_7yr", "mss_10yr"
+)
 
 # =============================================================================
 # SUMMARY: This file contains ALL configuration constants for the analysis pipeline
 # =============================================================================
 # CRITICAL: This is the SINGLE source of truth for all analysis parameters
 # - DO NOT add constants to other files
-# - DO NOT duplicate constants across files  
+# - DO NOT duplicate constants across files
 # - ALL analysis scripts source this file through all_helper_functions.R
 # - Changes here affect the ENTIRE analysis pipeline
 # =============================================================================

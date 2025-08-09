@@ -24,11 +24,11 @@
 #'
 #' @examples
 #' analyze_tumor_height_changes(
-#'   data = analytic_data,
-#'   output_dirs = list(obj1_height_primary = "output/height"),
-#'   prefix = "full_cohort_",
-#'   confounders = c("age_at_diagnosis", "sex"),
-#'   other_map = list()
+#'     data = analytic_data,
+#'     output_dirs = list(obj1_height_primary = "output/height"),
+#'     prefix = "full_cohort_",
+#'     confounders = c("age_at_diagnosis", "sex"),
+#'     other_map = list()
 #' )
 analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders, other_map = list()) {
     # Use height_change variable that was already calculated in data_processing.R
@@ -45,7 +45,7 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders,
             iqr_change = IQR(height_change, na.rm = TRUE),
             .groups = "drop"
         )
-    
+
     plaque <- data_with_height_change %>% filter(treatment_group == "Plaque")
     gk <- data_with_height_change %>% filter(treatment_group == "GKSRS")
     wilcox.test(height_change ~ treatment_group, data = data_with_height_change)
@@ -75,16 +75,16 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders,
         ) %>%
         modify_caption("Tumor Height Changes Analysis") %>%
         as_gt()
-    
+
     # Save table
     save_gt_html(
         tbl_summary_obj,
         filename = file.path(output_dirs$obj1_height_primary, paste0(prefix, "height_changes.html"))
     )
-    
+
     # PRIMARY ANALYSIS: Linear regression WITHOUT initial tumor height adjustment
     log_enhanced("Fitting PRIMARY linear regression model for tumor height changes (without baseline height adjustment)")
-    
+
     # Use the unified table generation system for primary analysis
     primary_result <- generate_regression_table(
         data = data_with_height_change,
@@ -92,7 +92,7 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders,
         predictor_vars = "treatment_group",
         confounders = confounders,
         model_type = "linear",
-        effect_measure = "MD",  # Mean Difference for continuous outcome
+        effect_measure = "MD", # Mean Difference for continuous outcome
         analysis_name = "height_change_primary",
         dataset_name = "tumor_height",
         output_dir = output_dirs$obj1_height_primary,
@@ -100,13 +100,13 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders,
         # handle_rare = TRUE, # REMOVED
         other_map = other_map
     )
-    
+
     primary_height_lm <- primary_result$model
     primary_height_lm_tbl <- primary_result$table
 
     # SENSITIVITY ANALYSIS: Linear regression WITH initial tumor height adjustment
     log_enhanced("Fitting SENSITIVITY linear regression model for tumor height changes (with baseline height adjustment)")
-    
+
     # Use the unified table generation system for sensitivity analysis
     sensitivity_result <- generate_regression_table(
         data = data_with_height_change,
@@ -114,7 +114,7 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders,
         predictor_vars = "treatment_group",
         confounders = c(confounders, "initial_tumor_height"),
         model_type = "linear",
-        effect_measure = "MD",  # Mean Difference for continuous outcome
+        effect_measure = "MD", # Mean Difference for continuous outcome
         analysis_name = "height_change_sensitivity",
         dataset_name = "tumor_height",
         output_dir = output_dirs$obj1_height_sensitivity,
@@ -122,7 +122,7 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders,
         # handle_rare = TRUE, # REMOVED
         other_map = other_map
     )
-    
+
     sensitivity_height_lm <- sensitivity_result$model
     sensitivity_height_lm_tbl <- sensitivity_result$table
 
@@ -134,4 +134,4 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders,
         sensitivity_regression_model = sensitivity_height_lm,
         sensitivity_regression_table = sensitivity_height_lm_tbl
     ))
-} 
+}

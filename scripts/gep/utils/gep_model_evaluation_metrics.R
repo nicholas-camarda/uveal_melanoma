@@ -38,8 +38,9 @@ calculate_observed_expected_rates <- function(data, expected_var, event_var, tim
 #' @return A data.frame with `intercept`, `slope`, `ici`, and `nam_dagostino_p` columns
 calculate_calibration_metrics <- function(data, expected_var, event_var, time_var) {
     log_enhanced("Calculating calibration metrics", level = "DEBUG")
-    calibration_model <- glm(as.formula(paste(event_var, "~", expected_var)), 
-                           data = data, family = binomial())
+    calibration_model <- glm(as.formula(paste(event_var, "~", expected_var)),
+        data = data, family = binomial()
+    )
     intercept <- coef(calibration_model)[1]
     slope <- coef(calibration_model)[2]
     predicted_probs <- predict(calibration_model, type = "response")
@@ -57,18 +58,28 @@ calculate_calibration_metrics <- function(data, expected_var, event_var, time_va
 #' Calculate discrimination metrics (simplified)
 calculate_discrimination_metrics <- function(data, expected_var, event_var, time_var, bootstrap_iterations) {
     log_enhanced("Calculating discrimination metrics", level = "DEBUG")
-    harrell_c <- tryCatch({
-        cor(data[[expected_var]], data[[event_var]], method = "spearman")
-    }, error = function(e) { NA })
+    harrell_c <- tryCatch(
+        {
+            cor(data[[expected_var]], data[[event_var]], method = "spearman")
+        },
+        error = function(e) {
+            NA
+        }
+    )
     uno_c <- harrell_c
     if (bootstrap_iterations > 0) {
         bootstrap_c <- numeric(bootstrap_iterations)
         for (i in 1:bootstrap_iterations) {
             boot_indices <- sample(nrow(data), replace = TRUE)
             boot_data <- data[boot_indices, ]
-            bootstrap_c[i] <- tryCatch({
-                cor(boot_data[[expected_var]], boot_data[[event_var]], method = "spearman")
-            }, error = function(e) { NA })
+            bootstrap_c[i] <- tryCatch(
+                {
+                    cor(boot_data[[expected_var]], boot_data[[event_var]], method = "spearman")
+                },
+                error = function(e) {
+                    NA
+                }
+            )
         }
         c_ci_lower <- quantile(bootstrap_c, 0.025, na.rm = TRUE)
         c_ci_upper <- quantile(bootstrap_c, 0.975, na.rm = TRUE)
@@ -126,11 +137,16 @@ calculate_cause_specific_hazards <- function(data, time_var, event_var, group_va
 #' Calculate net reclassification index (simplified)
 calculate_net_reclassification_index <- function(data, base_pred, enhanced_pred, event_var) {
     log_enhanced("Calculating net reclassification index", level = "DEBUG")
-    nri <- tryCatch({
-        base_cor <- cor(data[[base_pred]], data[[event_var]], method = "spearman")
-        enhanced_cor <- cor(data[[enhanced_pred]], data[[event_var]], method = "spearman")
-        enhanced_cor - base_cor
-    }, error = function(e) { NA })
+    nri <- tryCatch(
+        {
+            base_cor <- cor(data[[base_pred]], data[[event_var]], method = "spearman")
+            enhanced_cor <- cor(data[[enhanced_pred]], data[[event_var]], method = "spearman")
+            enhanced_cor - base_cor
+        },
+        error = function(e) {
+            NA
+        }
+    )
     return(data.frame(
         nri = nri,
         stringsAsFactors = FALSE

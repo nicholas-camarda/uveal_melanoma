@@ -16,7 +16,7 @@
 #' fix_event_date_consistency(data, "recurrence1", "recurrence1_date")
 fix_event_date_consistency <- function(data, event_var, date_var, event_yes = "Y", event_no = "N") {
     log_enhanced(sprintf("Checking consistency between %s and %s", event_var, date_var), level = "INFO")
-    
+
     n_event_should_be_yes <- sum(!is.na(data[[date_var]]) & data[[event_var]] != event_yes, na.rm = TRUE)
     n_date_should_be_na <- sum(data[[event_var]] == event_yes & is.na(data[[date_var]]), na.rm = TRUE)
 
@@ -29,7 +29,7 @@ fix_event_date_consistency <- function(data, event_var, date_var, event_yes = "Y
             ),
             !!date_var := if_else(.data[[event_var]] == event_yes, .data[[date_var]], as.Date(NA))
         )
-        
+
     if (VERBOSE) {
         log_enhanced(sprintf("Found %d events with dates", sum(!is.na(data[[date_var]]))), level = "INFO")
         log_enhanced(sprintf("Found %d events marked as '%s'", sum(data[[event_var]] == event_yes, na.rm = TRUE), event_yes), level = "INFO")
@@ -51,7 +51,7 @@ fix_event_date_consistency <- function(data, event_var, date_var, event_yes = "Y
             n_date_should_be_na, event_var, event_yes, date_var
         ), level = "INFO")
     }
-    
+
     return(data)
 }
 
@@ -113,7 +113,7 @@ load_and_clean_data <- function(filename) {
                 TRUE ~ NA_character_
             )
         )
-    
+
     log_enhanced("eligible_both: initial_tumor_diameter <= 20mm, initial_tumor_height <= 10mm, optic_nerve == 'N'", level = "INFO")
     log_enhanced("gksrs_only: initial_tumor_diameter > 20mm, initial_tumor_height > 10mm, optic_nerve == 'Y'", level = "INFO")
     log_enhanced("other: catch-all for any other cases", level = "INFO")
@@ -137,7 +137,7 @@ load_and_clean_data <- function(filename) {
 
     cleaned_data <- cleaned_data %>%
         mutate(across(contains("date|dob|dod|last\\_followup", ignore.case = TRUE), as.Date))
-    
+
     date_cols <- colnames(cleaned_data)[
         grepl("date", colnames(cleaned_data), ignore.case = TRUE) |
             grepl("dob", colnames(cleaned_data), ignore.case = TRUE) |

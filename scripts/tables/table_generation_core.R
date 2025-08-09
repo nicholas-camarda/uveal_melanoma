@@ -10,10 +10,10 @@
 build_model_formula <- function(outcome_var, predictor_vars, confounders, model_type) {
     # Combine predictor and confounder variables
     all_vars <- c(predictor_vars, confounders)
-    
+
     # Remove any NULL or empty variables
     all_vars <- all_vars[!is.null(all_vars) & all_vars != ""]
-    
+
     if (length(all_vars) == 0) {
         # No variables to include
         formula_str <- paste(outcome_var, "~ 1")
@@ -21,7 +21,7 @@ build_model_formula <- function(outcome_var, predictor_vars, confounders, model_
         # Create formula with all variables
         formula_str <- paste(outcome_var, "~", paste(all_vars, collapse = " + "))
     }
-    
+
     return(as.formula(formula_str))
 }
 
@@ -32,7 +32,7 @@ build_model_formula <- function(outcome_var, predictor_vars, confounders, model_
 get_descriptive_model_type <- function(model_fit) {
     # Get the class of the model
     model_class <- class(model_fit)[1]
-    
+
     # Determine model type based on class
     if (model_class == "glm") {
         family <- model_fit$family$family
@@ -64,11 +64,11 @@ get_descriptive_model_type <- function(model_fit) {
 model_type_to_outcome_type <- function(model_type) {
     switch(model_type,
         "logistic" = "binary",
-        "linear" = "continuous", 
+        "linear" = "continuous",
         "cox" = "survival",
-        "other_glm" = "binary",  # Default for other GLMs
-        "unknown" = "binary",    # Default fallback
-        "binary"  # If already an outcome type, return as is
+        "other_glm" = "binary", # Default for other GLMs
+        "unknown" = "binary", # Default fallback
+        "binary" # If already an outcome type, return as is
     )
 }
 
@@ -80,7 +80,7 @@ detect_model_type <- function(model_fit) {
     if (is.null(model_fit)) {
         return("unknown")
     }
-    
+
     # Check for GLM models
     if ("glm" %in% class(model_fit)) {
         if (model_fit$family$family == "binomial") {
@@ -91,17 +91,17 @@ detect_model_type <- function(model_fit) {
             return("other_glm")
         }
     }
-    
+
     # Check for Cox proportional hazards models
     if ("coxph" %in% class(model_fit)) {
         return("cox")
     }
-    
+
     # Check for linear models
     if ("lm" %in% class(model_fit)) {
         return("linear")
     }
-    
+
     return("unknown")
 }
 
@@ -126,15 +126,15 @@ detect_model_type <- function(model_fit) {
 #' @return List containing table result and diagnostics
 generate_regression_table <- function(data, outcome_var, predictor_vars, confounders, model_type, effect_measure, analysis_name, dataset_name, output_dir, prefix, time_var = NULL, event_var = NULL, other_map = NULL, full_data = NULL, treatment_var = "treatment_group") {
     if (is.null(full_data)) full_data <- data
-    
+
     log_enhanced(sprintf("Generating regression table for %s", analysis_name), level = "INFO")
-    
+
     # Build model formula
     formula <- build_model_formula(outcome_var, predictor_vars, confounders, model_type)
-    
+
     # Fit regression model
     model_fit <- fit_regression_model(data, formula, model_type, time_var, event_var)
-    
+
     if (is.null(model_fit)) {
         log_enhanced("Model fitting failed - returning NULL result", level = "ERROR")
         return(list(
@@ -144,56 +144,65 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
             output_files = NULL
         ))
     }
-    
+
     # Check for perfect separation and handle gracefully
     if (!is.null(model_fit$perfect_separation_vars) && length(model_fit$perfect_separation_vars) > 0) {
-        log_enhanced(sprintf("Perfect separation detected in variables: %s. Model fitted but these variables may have unreliable estimates.", 
-                           paste(model_fit$perfect_separation_vars, collapse = ", ")), level = "WARN")
+        log_enhanced(sprintf(
+            "Perfect separation detected in variables: %s. Model fitted but these variables may have unreliable estimates.",
+            paste(model_fit$perfect_separation_vars, collapse = ", ")
+        ), level = "WARN")
     }
-    
+
     # Create gtsummary table only if model fitting succeeded
     if (!is.null(model_fit)) {
         outcome_type <- model_type_to_outcome_type(detect_model_type(model_fit))
-        table_result <- create_gtsummary_table(model_fit, effect_measure, analysis_name, other_map, 
-                                              data, outcome_var, confounders, outcome_type)
-        
+        table_result <- create_gtsummary_table(
+            model_fit, effect_measure, analysis_name, other_map,
+            data, outcome_var, confounders, outcome_type
+        )
+
         # Get list of variables that were completely removed from the table
         filtered_variables <- get_filtered_variables_from_table(table_result, model_fit)
     } else {
         table_result <- NULL
         filtered_variables <- NULL
     }
-    
+
     # Apply extreme estimate filtering and create diagnostics only if model fitting succeeded
     if (!is.null(model_fit) && !is.null(table_result)) {
         # Apply extreme estimate filtering to get detailed diagnostics
-        extreme_filtering_result <- apply_extreme_estimate_filtering(table_result, model_fit, effect_measure, 
-                                                                   variables_to_check = unique(c(predictor_vars, confounders)), 
-                                                                   analysis_name)
-        
+        extreme_filtering_result <- apply_extreme_estimate_filtering(table_result, model_fit, effect_measure,
+            variables_to_check = unique(c(predictor_vars, confounders)),
+            analysis_name
+        )
+
         # Use the filtered table instead of the original
         filtered_table_result <- extreme_filtering_result$tbl_filtered
-        
+
         # Create comprehensive diagnostics with all required tabs
         # Extract the actual filtered variables from the extreme filtering result
         filtered_variables <- extreme_filtering_result$diagnostics$extreme_terms
-        
-        diagnostics <- create_comprehensive_diagnostics(model_fit, data, outcome_var, 
-                                                       predictor_vars, confounders, analysis_name, 
-                                                       dataset_name, filtered_variables, other_map, 
-                                                       extreme_filtering_result$diagnostics, treatment_var = treatment_var)
-        
+
+        diagnostics <- create_comprehensive_diagnostics(model_fit, data, outcome_var,
+            predictor_vars, confounders, analysis_name,
+            dataset_name, filtered_variables, other_map,
+            extreme_filtering_result$diagnostics,
+            treatment_var = treatment_var
+        )
+
         # Create raw_output from diagnostics for save_table_outputs
         raw_output <- diagnostics$raw_model_output
-        
+
         # Save outputs using the filtered table
-        output_files <- save_table_outputs(filtered_table_result, raw_output, model_fit, 
-                                          analysis_name, dataset_name, output_dir, prefix, 
-                                          diagnostics, data, outcome_var, confounders, treatment_var = treatment_var)
+        output_files <- save_table_outputs(filtered_table_result, raw_output, model_fit,
+            analysis_name, dataset_name, output_dir, prefix,
+            diagnostics, data, outcome_var, confounders,
+            treatment_var = treatment_var
+        )
     } else {
         # Handle case where model fitting failed - still create diagnostics file
         filtered_table_result <- NULL
-        
+
         # Create minimal diagnostics documenting the failure
         diagnostics <- list(
             raw_model_output = "Model fitting failed - no diagnostics available",
@@ -219,20 +228,25 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
                 stringsAsFactors = FALSE
             )
         )
-        
+
         # Still save diagnostics file even when model fails
-        output_files <- tryCatch({
-            save_table_outputs(NULL, diagnostics$raw_model_output, NULL, 
-                              analysis_name, dataset_name, output_dir, prefix, 
-                              diagnostics, data, outcome_var, confounders, treatment_var = treatment_var)
-        }, error = function(e) {
-            log_enhanced(sprintf("Failed to save diagnostics file: %s", e$message), level = "ERROR")
-            NULL
-        })
+        output_files <- tryCatch(
+            {
+                save_table_outputs(NULL, diagnostics$raw_model_output, NULL,
+                    analysis_name, dataset_name, output_dir, prefix,
+                    diagnostics, data, outcome_var, confounders,
+                    treatment_var = treatment_var
+                )
+            },
+            error = function(e) {
+                log_enhanced(sprintf("Failed to save diagnostics file: %s", e$message), level = "ERROR")
+                NULL
+            }
+        )
     }
-    
+
     log_enhanced(sprintf("Regression table generation completed for %s", analysis_name), level = "INFO")
-    
+
     return(list(
         table = filtered_table_result,
         diagnostics = diagnostics,

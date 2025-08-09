@@ -6,4 +6,4 @@ setwd(dirname(normalizePath(".")))
 # Source existing helper functions (loads all necessary functions and constants)
 source("scripts/utils/all_helper_functions.R")
 
-test_check("ocular-melanoma-analysis") 
+test_check("ocular-melanoma-analysis")

@@ -7,62 +7,63 @@
 #'
 #' @param subgroup_results List of subgroup analysis results
 #' @param outcome_name Character string for the outcome name
-#' @param effect_measure Character string for the effect measure (default: "HR") 
+#' @param effect_measure Character string for the effect measure (default: "HR")
 #' @param dataset_name Character string for the dataset name
 #' @param output_path Character string for output file path (optional)
 #' @param other_map List mapping variable names to "Other" category contents (optional)
 #' @return A forestploter object
-create_forest_plot <- function(subgroup_results, 
+create_forest_plot <- function(subgroup_results,
                                outcome_name,
                                effect_measure = "HR",
                                dataset_name = "Dataset",
                                output_path = NULL,
                                other_map = NULL) {
-    
     # Handle empty or NULL results
     if (is.null(subgroup_results) || length(subgroup_results) == 0) {
         warning("No subgroup results provided for forest plot")
         return(NULL)
     }
-    
+
     # Create variable order from available results
     variable_order <- names(subgroup_results)
     if (length(variable_order) == 0) {
         warning("No valid subgroup variables found")
         return(NULL)
     }
-    
+
     # Create the forest plot using the single cohort function
-    tryCatch({
-        plot <- create_single_cohort_forest_plot(
-            subgroup_results = subgroup_results,
-            outcome_name = outcome_name,
-            cohort_name = dataset_name,
-            treatment_labels = TREATMENT_LABELS,
-            variable_order = variable_order,
-            effect_measure = effect_measure,
-            favours_labels = FAVOURS_LABELS,
-            clip = NULL,
-            other_map = other_map
-        )
-        
-        # Save to file if output_path is provided
-        if (!is.null(output_path)) {
-            # Create directory if it doesn't exist
-            dir.create(dirname(output_path), recursive = TRUE, showWarnings = FALSE)
-            
-            # Save as PNG
-            png(output_path, width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI)
-            plot(plot)
-            dev.off()
+    tryCatch(
+        {
+            plot <- create_single_cohort_forest_plot(
+                subgroup_results = subgroup_results,
+                outcome_name = outcome_name,
+                cohort_name = dataset_name,
+                treatment_labels = TREATMENT_LABELS,
+                variable_order = variable_order,
+                effect_measure = effect_measure,
+                favours_labels = FAVOURS_LABELS,
+                clip = NULL,
+                other_map = other_map
+            )
+
+            # Save to file if output_path is provided
+            if (!is.null(output_path)) {
+                # Create directory if it doesn't exist
+                dir.create(dirname(output_path), recursive = TRUE, showWarnings = FALSE)
+
+                # Save as PNG
+                png(output_path, width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI)
+                plot(plot)
+                dev.off()
+            }
+
+            return(plot)
+        },
+        error = function(e) {
+            warning(sprintf("Failed to create forest plot for %s: %s", outcome_name, e$message))
+            return(NULL)
         }
-        
-        return(plot)
-        
-    }, error = function(e) {
-        warning(sprintf("Failed to create forest plot for %s: %s", outcome_name, e$message))
-        return(NULL)
-    })
+    )
 }
 
 #' Create a forest plot for a single cohort's subgroup analysis results
@@ -78,55 +79,54 @@ create_forest_plot <- function(subgroup_results,
 #' @param title Character string for plot title (optional)
 #' @param other_map List mapping variable names to "Other" category contents (optional)
 #' @return A forestploter object
-create_single_cohort_forest_plot <- function(subgroup_results, 
-                                            outcome_name,
-                                            cohort_name = "Cohort",
-                                            treatment_labels = TREATMENT_LABELS,
-                                            variable_order,  # Now required for consistency
-                                            effect_measure = "HR",
-                                            favours_labels = NULL,
-                                            clip = NULL,
-                                            title = NULL,
-                                            other_map = NULL) {
-    
+create_single_cohort_forest_plot <- function(subgroup_results,
+                                             outcome_name,
+                                             cohort_name = "Cohort",
+                                             treatment_labels = TREATMENT_LABELS,
+                                             variable_order, # Now required for consistency
+                                             effect_measure = "HR",
+                                             favours_labels = NULL,
+                                             clip = NULL,
+                                             title = NULL,
+                                             other_map = NULL) {
     # Check that variable_order is provided
     if (missing(variable_order) || is.null(variable_order)) {
         stop("variable_order must be provided to ensure consistency across cohorts")
     }
-    
+
     # Set default favours labels if not provided
     if (is.null(favours_labels)) {
         favours_labels <- paste0("Favours ", treatment_labels)
     }
-    
+
     # Create the formatted data for forestploter
     plot_data <- create_forest_plot_data(subgroup_results, variable_order, treatment_labels, effect_measure, other_map)
-    
+
     # Set default title
     if (is.null(title)) {
         title <- sprintf("Subgroup Analysis: %s", outcome_name)
     }
-    
+
     # Set scale parameters: data-driven detection of ratio vs difference measures
     # If all estimates and CI bounds are positive, assume this is a ratio measure (HR/OR/RR)
     all_values <- c(plot_data$est_values, plot_data$lower_values, plot_data$upper_values)
     all_values <- all_values[!is.na(all_values)]
     use_log_scale <- length(all_values) > 0 && all(all_values > 0)
-    
+
     # Check for problematic values (≤ 0) when using log scale
     if (use_log_scale) {
         problematic_values <- any(
             !is.na(plot_data$est_values) & plot_data$est_values <= 0 |
-            !is.na(plot_data$lower_values) & plot_data$lower_values <= 0 |
-            !is.na(plot_data$upper_values) & plot_data$upper_values <= 0
+                !is.na(plot_data$lower_values) & plot_data$lower_values <= 0 |
+                !is.na(plot_data$upper_values) & plot_data$upper_values <= 0
         )
-        
+
         if (problematic_values) {
             warning("Found values ≤ 0 in forest plot data. Switching to linear scale to avoid log transformation errors.")
             use_log_scale <- FALSE
         }
     }
-    
+
     # Dynamic clipping: ensure reference line (1 or 0) is centered visually
     if (is.null(clip)) {
         if (use_log_scale) {
@@ -135,7 +135,7 @@ create_single_cohort_forest_plot <- function(subgroup_results,
             clip <- symmetric_linear_clip(plot_data$lower_values, plot_data$upper_values)
         }
     }
-    
+
     # Calculate clean x-axis ticks
     if (use_log_scale) {
         # For log scale, use clean powers and half-powers of 10
@@ -161,7 +161,7 @@ create_single_cohort_forest_plot <- function(subgroup_results,
         # Keep only ticks within clip range
         xticks <- xticks[xticks >= clip[1] & xticks <= clip[2]]
     }
-    
+
     # Create improved theme for forestploter with proper formatting following documentation
     tm <- forest_theme(
         base_size = 11,
@@ -188,15 +188,15 @@ create_single_cohort_forest_plot <- function(subgroup_results,
         # Core content formatting with dynamic font face and size
         core = list(
             fg_params = list(
-                fontface = plot_data$font_face,  # Dynamic font faces
-                cex = plot_data$text_size        # Dynamic text sizes
+                fontface = plot_data$font_face, # Dynamic font faces
+                cex = plot_data$text_size # Dynamic text sizes
             )
         )
     )
-    
+
     # Optional footnote disabled by default to avoid clutter
     footnote_text <- NULL
-    
+
     # Create the forest plot using correct forestploter syntax following documentation
     # CI column is position 4 (blank column after Subgroup, GKSRS_n, Plaque_n)
     fp <- forest(
@@ -206,7 +206,7 @@ create_single_cohort_forest_plot <- function(subgroup_results,
         upper = plot_data$upper_values,
         sizes = 0.4,
         is_summary = plot_data$is_summary,
-        ci_column = 4,  # Position of blank column
+        ci_column = 4, # Position of blank column
         ref_line = if (use_log_scale) 1 else 0,
         arrow_lab = favours_labels,
         xlim = clip,
@@ -215,9 +215,9 @@ create_single_cohort_forest_plot <- function(subgroup_results,
         theme = tm,
         title = title
     )
-    
+
     # Attach diagnostics for external retrieval
     attr(fp, "diagnostics") <- plot_data$diagnostics
-    
+
     return(fp)
 }

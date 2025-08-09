@@ -63,7 +63,7 @@ validate_gep_variables_with_report <- function(data) {
         if (all(c("expected_mfs_5yr", "expected_mfs_7yr") %in% names(data))) {
             valid_data <- data[!is.na(data$expected_mfs_5yr) & data$expected_mfs_5yr > 0, ]
             if (nrow(valid_data) > 0) {
-                expected_7yr <- valid_data$expected_mfs_5yr^(7/5)
+                expected_7yr <- valid_data$expected_mfs_5yr^(7 / 5)
                 actual_7yr <- valid_data$expected_mfs_7yr
                 extrapolation_errors <- sum(abs(expected_7yr - actual_7yr) > 1e-10, na.rm = TRUE)
                 if (extrapolation_errors > 0) {
