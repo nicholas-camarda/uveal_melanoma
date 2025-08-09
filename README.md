@@ -168,86 +168,88 @@ Analysis outputs are organized by **cohort → objective → sub-objective**:
 
 ```
 project_working_directory/
-├── data/                                    # Raw data files
+├── data/
 ├── final_data/
-│   ├── Analytic Dataset/                    # Processed datasets (RDS, Excel)
-│   └── Analysis/                            # NEW STRUCTURE
-│       ├── uveal_full/                      # Full cohort results
-│       │   ├── 00_General/                  # General analysis outputs
-│       │   ├── 01_Efficacy/                 # OBJECTIVE 1
+│   ├── Analytic Dataset/
+│   └── Analysis/
+│       ├── uveal_full/
+│       │   ├── 00_General/
+│       │   ├── 01_Efficacy/
 │       │   │   ├── a_recurrence/
 │       │   │   ├── b_metastatic_progression/
 │       │   │   ├── c_overall_survival/
 │       │   │   ├── d_progression_free_survival/
 │       │   │   ├── e_tumor_height_primary/
 │       │   │   ├── f_tumor_height_sensitivity/
-│       │   │   ├── g_subgroup_analysis/     # CONSOLIDATED
+│       │   │   ├── g_subgroup_analysis/
 │       │   │   │   ├── tumor_height_primary/
 │       │   │   │   ├── tumor_height_sensitivity/
-│       │   │   │   └── forest_plots/        # FOREST PLOTS
-│       │   │   └── h_proportional_hazards_diagnostics/  # PH ASSUMPTION TESTING
-│       │   ├── 02_Safety/                   # OBJECTIVE 2  
+│       │   │   │   └── forest_plots/
+│       │   │   └── h_proportional_hazards_diagnostics/
+│       │   ├── 02_Safety/
 │       │   │   ├── a_vision_changes/
 │       │   │   ├── b_retinopathy/
 │       │   │   ├── c_neovascular_glaucoma/
 │       │   │   └── d_serous_retinal_detachment/
-│       │   ├── 03_Repeat_Radiation/         # OBJECTIVE 3
+│       │   ├── 03_Repeat_Radiation/
 │       │   │   ├── a_pfs2/
-│       │   │   └── b_proportional_hazards_diagnostics/  # PH ASSUMPTION TESTING
-│       │   └── 04_GEP_Validation/           # OBJECTIVE 4
+│       │   │   └── b_proportional_hazards_diagnostics/
+│       │   └── 04_GEP_Validation/
 │       │       ├── a_metastasis_free_survival/
 │       │       └── b_melanoma_specific_survival/
-│       ├── uveal_restricted/                # Same structure for restricted cohort
-│       └── gksrs/                          # Same structure for GKSRS-only cohort
-├── logs/                                   # Analysis logs
+│       ├── uveal_restricted/
+│       └── gksrs/
+├── logs/
 ├── scripts/
-│   ├── main.R                              # UPDATED: Main analysis pipeline with objective-specific execution
+│   ├── main.R                              # Main analysis entrypoints
 │   ├── data_helper/
-│   │   └── data_processing.R               # Data cleaning and cohort creation
+│   │   ├── cohort_creation.R               # Cohort application/saving
+│   │   ├── cohort_orchestration.R          # Data processing orchestration
+│   │   ├── data_derivation.R               # Derived variable creation
+│   │   ├── data_loading.R                  # Raw data loading/cleaning
+│   │   ├── data_summaries.R                # QC summaries
+│   │   └── data_utilities.R                # Shared helpers
 │   ├── analysis/
-│   │   ├── statistical_analysis.R         # Core statistical functions
-│   │   ├── tumor_height_analysis.R        # Tumor dimension analysis
-│   │   ├── vision_safety_analysis.R       # Safety endpoint analysis
-│   │   ├── subgroup_analysis.R             # CONSOLIDATED: All subgroup analyses
-│   │   └── (GEP modules moved under scripts/gep/**)
+│   │   ├── binary_outcomes.R               # Logistic endpoints
+│   │   ├── rmst_visualization.R            # RMST utilities/plots
+│   │   ├── survival_outcomes.R             # KM/Cox + PH testing helpers
+│   │   ├── tumor_height_analysis.R         # Linear model analyses
+│   │   └── vision_safety_analysis.R        # Safety endpoints
+│   ├── subgroup/
+│   │   ├── subgroup_binary.R               # Binary subgroup models
+│   │   ├── subgroup_data_prep.R            # Subgroup data prep
+│   │   ├── subgroup_formatting.R           # HTML/Excel formatting
+│   │   ├── subgroup_height.R               # Height subgroup models
+│   │   └── subgroup_survival.R             # Survival subgroup models
+│   ├── tables/
+│   │   ├── table_diagnostics.R             # Capture diagnostics
+│   │   ├── table_diagnostics_extras.R      # Supplemental diagnostics
+│   │   ├── table_formatting.R              # Captions/headers/labels
+│   │   ├── table_generation_core.R         # Core table generation
+│   │   ├── table_io.R                      # Writers/readers
+│   │   └── table_model_fitting.R           # Model fitting
 │   ├── visualization/
-│   │   └── forest_plot.R                   # Forest plot generation
+│   │   ├── forest_plot_data.R              # Data assembly
+│   │   ├── forest_plot_draw.R              # Plot drawing
+│   │   └── forest_plot_formatting.R        # Theming/formatting
 │   ├── utils/
-│   │   ├── all_helper_functions.R          # CENTRALIZED: All libraries and helper functions
-│   │   ├── config_constants.R              # CENTRALIZED: All analysis configuration constants
-│   │   ├── output_utilities.R              # Output directory and file management
-│   │   ├── table_generation.R              # Table generation utilities
-│   │   ├── validation_utilities.R          # Data validation functions
-│   │   ├── model_utilities.R               # Model utility functions
-│   │   ├── extreme_estimate_handling.R     # Extreme estimate handling
-│   │   ├── forest_plot_diagnostics.R       # Forest plot diagnostics
-│   │   └── logging_utilities.R             # Logging system
-│   ├── gep/                                # NEW: Modular GEP validation architecture
-│   │   ├── cores/
-│   │   │   ├── gep_evaluation_core_mfs.R        # MFS evaluation algorithms (no IO)
-│   │   │   └── gep_evaluation_core_mss.R        # MSS evaluation algorithms (no IO)
-│   │   ├── diagnostics/
-│   │   │   └── gep_data_diagnostics.R           # Missingness assessment, competing-risk prep
-│   │   ├── visualization/
-│   │   │   └── gep_visuals.R                    # Plots only
-│   │   ├── reporting/
-│   │   │   └── gep_reporting.R                  # Reports/Excel/text writers only
-│   │   ├── simple/
-│   │   │   └── gep_simple_validation.R          # Simple expected vs actual summaries and plots
-│   │   ├── orchestration/
-│   │   │   └── gep_evaluation_orchestration.R   # Orchestration only (calls cores/visuals/reporting)
-│   │   └── utils/
-│   │       ├── gep_model_evaluation_metrics.R   # Shared calculators (O/E, calibration, discrimination, NRI, CI, hazards)
-│   │       └── gep_variable_checks.R            # Variable validation checks
-│   ├── workflow/                           # NEW: Objective-specific workflow scripts
-│   │   ├── analysis_orchestration.R        # Main orchestration functions
-│   │   ├── objective_0_data_processing.R   # Data processing workflow
-│   │   ├── objective_1_primary_outcomes.R  # Primary outcomes workflow
-│   │   ├── objective_2_safety_toxicity.R   # Safety/toxicity workflow
-│   │   ├── objective_3_repeat_radiation.R  # Repeat radiation workflow
-│   │   └── objective_4_gep_analysis.R      # GEP validation workflow
+│   │   ├── all_helper_functions.R          # Central loader/sourcing
+│   │   ├── config_constants.R              # Global configuration
+│   │   ├── extreme_estimate_handling.R     # Extreme estimate filtering
+│   │   ├── forest_plot_diagnostics.R       # Forest diagnostics
+│   │   ├── logging_utilities.R             # Logging
+│   │   ├── model_utilities.R               # Model helpers
+│   │   ├── output_utilities.R              # Output helpers (HTML save hardened)
+│   │   └── validation_utilities.R          # Data validation
+│   ├── workflow/
+│   │   ├── analysis_orchestration.R        # Main orchestration
+│   │   ├── objective_0_data_processing.R   # Objective 0
+│   │   ├── objective_1_primary_outcomes.R  # Objective 1
+│   │   ├── objective_2_safety_toxicity.R   # Objective 2
+│   │   ├── objective_3_repeat_radiation.R  # Objective 3
+│   │   └── objective_4_gep_analysis.R      # Objective 4
 │   └── tests/                              # Unit tests and validation
-└── README.md                               # This file
+└── README.md
 ```
 
 ---
@@ -430,7 +432,7 @@ A recent run of the analysis demonstrates this error handling:
 ### **🌲 Forest Plot Functionality**
 Comprehensive forest plot generation for subgroup analysis visualization:
 
-- **Function:** `create_single_cohort_forest_plot()` in `scripts/visualization/forest_plot.R`
+- **Modules:** `scripts/visualization/forest_plot_data.R`, `forest_plot_draw.R`, `forest_plot_formatting.R`
 - **Features:**
   - Dynamic effect measure handling (HR, OR, MD)
   - Automatic log scale for HR/OR, linear scale for mean differences
@@ -441,15 +443,19 @@ Comprehensive forest plot generation for subgroup analysis visualization:
 - **Location:** `{cohort}/01_Efficacy/g_subgroup_analysis/forest_plots/`
 
 ### **🎯 Consolidated Subgroup Analysis**
-Unified subgroup analysis framework:
+Modular subgroup analysis framework:
 
-- **File:** `scripts/analysis/subgroup_analysis.R` (replaces multiple scattered functions)
+- **Files:**
+  - `scripts/subgroup/subgroup_data_prep.R` — data preparation
+  - `scripts/subgroup/subgroup_survival.R` — survival subgroup models
+  - `scripts/subgroup/subgroup_binary.R` — binary subgroup models
+  - `scripts/subgroup/subgroup_height.R` — height subgroup models
+  - `scripts/subgroup/subgroup_formatting.R` — HTML/Excel table formatting
 - **Functions:**
-  - `analyze_treatment_effect_subgroups_survival()` - Cox regression with interaction terms
-  - `analyze_treatment_effect_subgroups_binary()` - Logistic regression with interaction terms
-  - `analyze_treatment_effect_subgroups_height()` - Linear regression with interaction terms
-  - `format_subgroup_analysis_tables()` - Standardized table formatting
-  - `format_subgroup_analysis_results()` - Excel output formatting
+  - `analyze_treatment_effect_subgroups_survival()`
+  - `analyze_treatment_effect_subgroups_binary()`
+  - `analyze_treatment_effect_subgroups_height()`
+  - `format_subgroup_analysis_results()` / `format_subgroup_analysis_tables()`
 - **Coverage:** All primary outcomes + tumor height changes (primary & sensitivity)
 - **Output:** Standardized interaction p-values, subgroup-specific effects, forest plots
 
