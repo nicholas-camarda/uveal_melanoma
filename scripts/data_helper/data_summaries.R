@@ -173,9 +173,14 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
             add_overall()
 
         log_enhanced("Adding statistical tests (will skip variables with insufficient levels)", level = "INFO")
+        # Build test list that skips vars with <2 levels using "no"
+        test_list <- list(all_categorical() ~ "fisher.test")
+        if (length(vars_with_insufficient_levels) > 0) {
+            for (var in vars_with_insufficient_levels) test_list[[var]] <- "no"
+        }
         tbl <- tryCatch(
             {
-                tbl %>% add_p(test = list(all_categorical() ~ "fisher.test"), test.args = list(all_categorical() ~ list(simulate.p.value = TRUE)))
+                tbl %>% add_p(test = test_list, test.args = list(all_categorical() ~ list(simulate.p.value = TRUE)))
             },
             error = function(e) {
                 log_enhanced(sprintf("Some statistical tests failed (expected for variables with <2 levels): %s", e$message), level = "INFO")

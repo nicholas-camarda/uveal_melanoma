@@ -1,41 +1,5 @@
 # Table Diagnostics Utilities
 
-#' Custom order function for table rows
-#'
-#' @param var_name Name of the variable
-#' @param row_type_val Type of row (e.g., "Coefficient", "Factor Label")
-#' @return Numeric value for ordering
-custom_order <- function(var_name, row_type_val) {
-    if (var_name == "(Intercept)") {
-        return(1)
-    } else {
-        base_name <- if (grepl("^[a-zA-Z_]+[A-Z]", var_name)) {
-            sub("^([a-zA-Z_]+?)[A-Z].*", "\\1", var_name)
-        } else {
-            var_name
-        }
-        unique_bases <- unique(raw_model_output_tab$variable_base[raw_model_output_tab$variable_base != "(Intercept)"])
-        base_to_group <- list()
-        group_counter <- 2
-        if (treatment_var %in% unique_bases) {
-            base_to_group[[treatment_var]] <- group_counter
-            group_counter <- group_counter + 1
-        }
-        for (base_var in unique_bases) {
-            if (base_var != treatment_var && !(base_var %in% names(base_to_group))) {
-                base_to_group[[base_var]] <- group_counter
-                group_counter <- group_counter + 1
-            }
-        }
-        base_priority <- base_to_group[[base_name]]
-        if (row_type_val == "Factor Label") {
-            return(base_priority)
-        } else {
-            return(base_priority + 0.5)
-        }
-    }
-}
-
 #' Create comprehensive diagnostics with all required tabs
 #'
 #' @param model_fit Fitted model object
@@ -300,8 +264,8 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
     effect_measure <- ifelse(is_survival_model, "HR", "OR")
 
     raw_model_output_tab <- data.frame(
-        variable = names(coefs),
         variable_base = variable_names,
+        variable = names(coefs),
         log_coefficient = as.numeric(coefs),
         log_ci_lower = as.numeric(conf_int_padded[, 1]),
         log_ci_upper = as.numeric(conf_int_padded[, 2]),
@@ -334,8 +298,8 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
     }
 
     factor_label_rows <- data.frame(
-        variable = factor_label_pvalues_tab$variable[factor_label_pvalues_tab$variable %in% categorical_variables],
         variable_base = factor_label_pvalues_tab$variable[factor_label_pvalues_tab$variable %in% categorical_variables],
+        variable = factor_label_pvalues_tab$variable[factor_label_pvalues_tab$variable %in% categorical_variables],
         log_coefficient = NA,
         log_ci_lower = NA,
         log_ci_upper = NA,
@@ -353,6 +317,47 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
     )
 
     raw_model_output_tab <- rbind(factor_label_rows, raw_model_output_tab)
+
+    # Define local ordering function that can see raw_model_output_tab and treatment_var in this scope
+    #' Custom ordering function for regression table rows
+    #'
+    #' Determines the display order of rows in the regression output table,
+    #' prioritizing the intercept, then treatment variable, then other variables,
+    #' and distinguishing between coefficient and factor label rows.
+    #'
+    #' @param var_name Character. The variable name for the row.
+    #' @param row_type_val Character. The type of row ("Coefficient" or "Factor Label").
+    #' @return Numeric. The sort order value for the row.
+    custom_order <- function(var_name, row_type_val) {
+        if (var_name == "(Intercept)") {
+            return(1)
+        } else {
+            base_name <- if (grepl("^[a-zA-Z_]+[A-Z]", var_name)) {
+                sub("^([a-zA-Z_]+?)[A-Z].*", "\\1", var_name)
+            } else {
+                var_name
+            }
+            unique_bases <- unique(raw_model_output_tab$variable_base[raw_model_output_tab$variable_base != "(Intercept)"])
+            base_to_group <- list()
+            group_counter <- 2
+            if (treatment_var %in% unique_bases) {
+                base_to_group[[treatment_var]] <- group_counter
+                group_counter <- group_counter + 1
+            }
+            for (base_var in unique_bases) {
+                if (base_var != treatment_var && !(base_var %in% names(base_to_group))) {
+                    base_to_group[[base_var]] <- group_counter
+                    group_counter <- group_counter + 1
+                }
+            }
+            base_priority <- base_to_group[[base_name]]
+            if (row_type_val == "Factor Label") {
+                return(base_priority)
+            } else {
+                return(base_priority + 0.5)
+            }
+        }
+    }
 
     sort_order <- mapply(custom_order, raw_model_output_tab$variable, raw_model_output_tab$row_type)
     raw_model_output_tab <- raw_model_output_tab[order(sort_order), ]
@@ -473,8 +478,8 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
     excluded_mask <- raw_model_output_tab$inclusion_status == "Filtered"
     if (any(excluded_mask)) {
         excluded_rows_tab <- data.frame(
-            variable = raw_model_output_tab$variable[excluded_mask],
             variable_base = raw_model_output_tab$variable_base[excluded_mask],
+            variable = raw_model_output_tab$variable[excluded_mask],
             log_coefficient = raw_model_output_tab$log_coefficient[excluded_mask],
             log_ci_lower = raw_model_output_tab$log_ci_lower[excluded_mask],
             log_ci_upper = raw_model_output_tab$log_ci_upper[excluded_mask],
