@@ -10,7 +10,10 @@ library(readxl)
 # Load the full cohort data
 full_cohort <- readRDS("final_data/Analytic Dataset/uveal_melanoma_full_cohort.rds")
 
-# Function to analyze NA patterns with focus on variables with 1-2 NAs
+#' Analyze NA patterns focusing on variables with few NAs
+#' @param data Data frame
+#' @param cohort_name Character label for cohort
+#' @return List with na_counts and few_na_vars
 analyze_na_patterns_focused <- function(data, cohort_name) {
   cat("\n=== Focused NA Analysis for", cohort_name, "===\n")
   cat("Total patients:", nrow(data), "\n")
@@ -79,7 +82,10 @@ cat("GKSRS cohort variables with 1-5 NAs:", nrow(gksrs_analysis$few_na_vars), "\
 # Check if the same patients have NAs across cohorts
 cat("\n=== Cross-cohort NA consistency ===\n")
 
-# Get patients with NAs in variables with 1-5 NAs for each cohort
+#' Get patient IDs with NAs among variables with few NAs
+#' @param data Data frame
+#' @param few_na_vars Tibble with columns variable and na_count
+#' @return Integer vector of patient ids
 get_patients_with_few_na <- function(data, few_na_vars) {
   if(nrow(few_na_vars) == 0) return(integer(0))
   

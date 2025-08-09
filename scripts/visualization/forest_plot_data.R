@@ -91,7 +91,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
         var_header$`p-value` <- ""
         # Check for interaction p-value and capture failure reason
         if (!is.null(subgroup_results[[var_name]]$interaction_p) && !is.na(subgroup_results[[var_name]]$interaction_p)) {
-            var_header$`Interaction p` <- format_p_value(subgroup_results[[var_name]]$interaction_p)
+            var_header$`Interaction p` <- forest_format_p_value(subgroup_results[[var_name]]$interaction_p)
             interaction_failure_reason <- ""  # No reason needed when successful
         } else {
             var_header$`Interaction p` <- ""
@@ -145,10 +145,9 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                     row_data <- effects_data[i, ]
                     
                     # Skip rows with NA, non-finite, or (for ratio measures) non-positive values
-                    invalid_numeric <- function(x) { is.na(x) || !is.finite(x) }
-                    if (invalid_numeric(row_data$treatment_effect) ||
-                        invalid_numeric(row_data$ci_lower) ||
-                        invalid_numeric(row_data$ci_upper)) {
+                    if (diagnostics_invalid_numeric(row_data$treatment_effect) ||
+                        diagnostics_invalid_numeric(row_data$ci_lower) ||
+                        diagnostics_invalid_numeric(row_data$ci_upper)) {
                         
                         # Still record diagnostics for skipped rows
                         diagnostics_rows[[length(diagnostics_rows)+1]] <- data.frame(
@@ -252,7 +251,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                                                          row_data$treatment_effect,
                                                          row_data$ci_lower,
                                                          row_data$ci_upper)
-                    subgroup_row$`p-value` <- format_p_value(row_data$p_value)
+                    subgroup_row$`p-value` <- forest_format_p_value(row_data$p_value)
                     subgroup_row$`Interaction p` <- ""
                     
                     all_rows[[length(all_rows) + 1]] <- subgroup_row
@@ -596,7 +595,7 @@ format_sample_size <- function(n_group, n_total = NULL) {
 #'
 #' @param p_value Numeric p-value
 #' @return Character string of formatted p-value
-format_p_value <- function(p_value) {
+forest_format_p_value <- function(p_value) {
     if (is.na(p_value) || is.null(p_value)) {
         return("")
     }
@@ -607,4 +606,12 @@ format_p_value <- function(p_value) {
     } else {
         return(sprintf("%.2f", p_value))
     }
+}
+
+#' Determine whether a numeric value is invalid for diagnostics
+#' Accepts numeric or character "Inf" entries and flags them as invalid
+#' @param x numeric or character
+#' @return TRUE if NA, non-finite, or string "Inf"
+diagnostics_invalid_numeric <- function(x) {
+  is.na(x) || !is.finite(x) || (is.character(x) && x == "Inf")
 }

@@ -11,7 +11,10 @@ full_cohort <- readRDS("final_data/Analytic Dataset/uveal_melanoma_full_cohort.r
 restricted_cohort <- readRDS("final_data/Analytic Dataset/uveal_melanoma_restricted_cohort.rds")
 gksrs_only_cohort <- readRDS("final_data/Analytic Dataset/uveal_melanoma_gksrs_only_cohort.rds")
 
-# Function to analyze event counts by treatment group
+#' Analyze event counts for small-sample separation risks
+#' @param data Data frame with outcome and group columns
+#' @param cohort_name Character label for cohort (for messages)
+#' @return Invisible NULL (prints a diagnostic summary)
 analyze_event_counts <- function(data, cohort_name) {
   cat("\n=== ", cohort_name, " Cohort Analysis ===\n")
   

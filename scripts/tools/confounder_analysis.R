@@ -7,7 +7,9 @@ source("scripts/utils/all_helper_functions.R")
 # Source configuration
 # No need to source all_helper_functions.R - it will be sourced by the calling script
 
-# Helper functions for effect size interpretation
+#' Interpret Cohen's d into qualitative label
+#' @param d Numeric effect size
+#' @return Character interpretation
 interpret_cohens_d <- function(d) {
     if (abs(d) < 0.2) return("negligible effect")
     if (abs(d) < 0.5) return("small effect")
@@ -15,6 +17,9 @@ interpret_cohens_d <- function(d) {
     return("large effect")
 }
 
+#' Interpret Cramer's V into qualitative label
+#' @param v Numeric effect size
+#' @return Character interpretation
 interpret_cramers_v <- function(v) {
     if (v < 0.1) return("weak association")
     if (v < 0.3) return("moderate association")
@@ -22,6 +27,9 @@ interpret_cramers_v <- function(v) {
     return("very strong association")
 }
 
+#' Interpret odds ratio into qualitative label
+#' @param or Numeric odds ratio
+#' @return Character interpretation
 interpret_odds_ratio <- function(or) {
     if (or < 1.5) return("small effect")
     if (or < 2.5) return("moderate effect")
@@ -29,6 +37,10 @@ interpret_odds_ratio <- function(or) {
     return("very large effect")
 }
 
+#' Wrap effect size interpretation with parentheses for display
+#' @param effect_size Numeric effect size
+#' @param effect_size_type Character type (e.g., "Cohen's d")
+#' @return Character string like "(small effect)"
 get_effect_interpretation <- function(effect_size, effect_size_type) {
     if (is.na(effect_size) || length(effect_size) == 0) return("(effect size not available)")
     

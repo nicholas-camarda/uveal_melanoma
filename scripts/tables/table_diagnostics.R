@@ -1,5 +1,41 @@
 # Table Diagnostics Utilities
 
+#' Custom order function for table rows
+#'
+#' @param var_name Name of the variable
+#' @param row_type_val Type of row (e.g., "Coefficient", "Factor Label")
+#' @return Numeric value for ordering
+custom_order <- function(var_name, row_type_val) {
+    if (var_name == "(Intercept)") {
+        return(1)
+    } else {
+        base_name <- if (grepl("^[a-zA-Z_]+[A-Z]", var_name)) {
+            sub("^([a-zA-Z_]+?)[A-Z].*", "\\1", var_name)
+        } else {
+            var_name
+        }
+        unique_bases <- unique(raw_model_output_tab$variable_base[raw_model_output_tab$variable_base != "(Intercept)"])
+        base_to_group <- list()
+        group_counter <- 2
+        if (treatment_var %in% unique_bases) {
+            base_to_group[[treatment_var]] <- group_counter
+            group_counter <- group_counter + 1
+        }
+        for (base_var in unique_bases) {
+            if (base_var != treatment_var && !(base_var %in% names(base_to_group))) {
+                base_to_group[[base_var]] <- group_counter
+                group_counter <- group_counter + 1
+            }
+        }
+        base_priority <- base_to_group[[base_name]]
+        if (row_type_val == "Factor Label") {
+            return(base_priority)
+        } else {
+            return(base_priority + 0.5)
+        }
+    }
+}
+
 #' Create comprehensive diagnostics with all required tabs
 #'
 #' @param model_fit Fitted model object
@@ -300,37 +336,6 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
     )
     
     raw_model_output_tab <- rbind(factor_label_rows, raw_model_output_tab)
-    
-    custom_order <- function(var_name, row_type_val) {
-        if (var_name == "(Intercept)") {
-            return(1)
-        } else {
-            base_name <- if (grepl("^[a-zA-Z_]+[A-Z]", var_name)) {
-                sub("^([a-zA-Z_]+?)[A-Z].*", "\\1", var_name)
-            } else {
-                var_name
-            }
-            unique_bases <- unique(raw_model_output_tab$variable_base[raw_model_output_tab$variable_base != "(Intercept)"])
-            base_to_group <- list()
-            group_counter <- 2
-            if (treatment_var %in% unique_bases) {
-                base_to_group[[treatment_var]] <- group_counter
-                group_counter <- group_counter + 1
-            }
-            for (base_var in unique_bases) {
-                if (base_var != treatment_var && !(base_var %in% names(base_to_group))) {
-                    base_to_group[[base_var]] <- group_counter
-                    group_counter <- group_counter + 1
-                }
-            }
-            base_priority <- base_to_group[[base_name]]
-            if (row_type_val == "Factor Label") {
-                return(base_priority)
-            } else {
-                return(base_priority + 0.5)
-            }
-        }
-    }
     
     sort_order <- mapply(custom_order, raw_model_output_tab$variable, raw_model_output_tab$row_type)
     raw_model_output_tab <- raw_model_output_tab[order(sort_order), ]

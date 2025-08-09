@@ -79,19 +79,14 @@ create_forest_plot_diagnostics <- function(subgroup_results, other_map = NULL, e
                 for (i in 1:nrow(effects_data)) {
                     row_data <- effects_data[i, ]
                     
-                    # Enhanced invalid_numeric function to handle string "Inf" values
-                    invalid_numeric <- function(x) { 
-                        is.na(x) || !is.finite(x) || (is.character(x) && x == "Inf")
-                    }
-                    
                     # Check for infinite CIs specifically
                     has_infinite_ci <- (is.character(row_data$ci_upper) && row_data$ci_upper == "Inf") ||
                                      (is.character(row_data$ci_lower) && row_data$ci_lower == "Inf")
                     
                     # Skip rows with NA, non-finite, or infinite values
-                    if (invalid_numeric(row_data$treatment_effect) ||
-                        invalid_numeric(row_data$ci_lower) ||
-                        invalid_numeric(row_data$ci_upper) ||
+                    if (diagnostics_invalid_numeric(row_data$treatment_effect) ||
+                        diagnostics_invalid_numeric(row_data$ci_lower) ||
+                        diagnostics_invalid_numeric(row_data$ci_upper) ||
                         has_infinite_ci) {
                         
                         # Record diagnostics for skipped rows
@@ -267,3 +262,11 @@ create_forest_plot_diagnostics <- function(subgroup_results, other_map = NULL, e
     diagnostics_df <- do.call(rbind, normalized)
     return(diagnostics_df)
 } 
+
+#' Determine whether a numeric value is invalid for diagnostics
+#' Accepts numeric or character "Inf" entries and flags them as invalid
+#' @param x numeric or character
+#' @return TRUE if NA, non-finite, or string "Inf"
+diagnostics_invalid_numeric <- function(x) {
+    is.na(x) || !is.finite(x) || (is.character(x) && x == "Inf")
+}
