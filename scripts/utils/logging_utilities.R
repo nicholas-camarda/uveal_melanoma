@@ -6,73 +6,272 @@
 # LOGGING FUNCTIONS
 # =============================================================================
 
-#' Log a message with timestamp and optional formatting
-#'
-#' @param msg Message to log
-#' @param level Log level ("INFO", "WARN", "ERROR", "PROGRESS", "SECTION")
-#' @param indent Number of spaces to indent (default: 0)
-log_enhanced <- function(msg, level = "INFO", indent = 0) {
-    timestamp <- format(Sys.time(), "%H:%M:%S")
+#' Small formatter for consistent indentation and optional prefixes
+#' @param msg character
+#' @param indent integer number of two-space indents
+#' @param prefix character optional prefix like ">>> "
+#' @return character
+formatted <- function(msg, indent = 0, prefix = "") {
     indent_str <- paste(rep("  ", indent), collapse = "")
+    paste0(indent_str, prefix, msg)
+}
 
-    # Format based on level
-    formatted_msg <- switch(level,
-        "SECTION" = sprintf("\n%s[%s] === %s ===\n", indent_str, timestamp, msg),
-        "PROGRESS" = sprintf("%s[%s] >>> %s", indent_str, timestamp, msg),
-        "INFO" = sprintf("%s[%s] %s", indent_str, timestamp, msg),
-        "WARN" = sprintf("%s[%s] WARNING: %s", indent_str, timestamp, msg),
-        "ERROR" = sprintf("%s[%s] ERROR: %s", indent_str, timestamp, msg),
-        sprintf("%s[%s] %s", indent_str, timestamp, msg) # default
+#' Initialize logging and progress handlers
+#'
+#' Sets up logger (console and optional file) and configures progressr handlers.
+#' Also configures compact contextual tags for console lines.
+#'
+#' @param log_path optional file path for a run log; if NULL, console only
+#' @param level character log threshold (e.g., "INFO", "WARN", "ERROR")
+#' @param progress logical; enable progress bars (default: interactive())
+#' @param quiet_html logical; avoid printing HTML artifacts to console
+#' @param context_in_console logical; prepend compact tags in console
+#' @param context_compact logical; abbreviate tags
+#' @param context_max_width integer; cap tag width in console
+#' @param context_in_file logical; include context fields in JSON file logs
+#' @return invisible(TRUE)
+setup_logging <- function(
+    log_path = NULL,
+    level = "INFO",
+    progress = interactive(),
+    quiet_html = TRUE,
+    context_in_console = TRUE,
+    context_compact = TRUE,
+    context_max_width = 40,
+    context_in_file = TRUE
+) {
+    # Configure HTML quieting (best-effort)
+    if (isTRUE(quiet_html)) {
+        options(gt.html_print = FALSE)
+    }
+
+    # Persist context display prefs in options for layout to read
+    options(.um_context_compact = context_compact, .um_context_max_width = context_max_width)
+
+    # Console layout with compact tags and level; store last level for JSON
+    console_layout <- function(level, msg, namespace = NA, .logcall = NULL, .topcall = NULL, .topenv = NULL) {
+        options(.um_last_level = as.character(level))
+        ts <- format(Sys.time(), '%H:%M:%S')
+        lvl_num <- as.character(level)
+        lvl_map <- c("100" = "DEBUG", "200" = "ERROR", "300" = "WARN", "400" = "INFO")
+        lvl_txt <- if (!is.na(lvl_map[[lvl_num]])) lvl_map[[lvl_num]] else lvl_num
+        if (isTRUE(context_in_console)) {
+            paste0("[", ts, "] [", lvl_txt, "] ", format_log_context(
+                compact = getOption('.um_context_compact', TRUE),
+                max_width = getOption('.um_context_max_width', 40)
+            ), msg)
+        } else {
+            paste0("[", ts, "] [", lvl_txt, "] ", msg)
+        }
+    }
+
+    # Custom JSON layout for file logs including context fields
+    json_file_layout <- function(level, msg, namespace = NA, .logcall = NULL, .topcall = NULL, .topenv = NULL) {
+        ctx <- getOption(".um_log_context", default = list())
+        ts <- format(Sys.time(), "%Y-%m-%dT%H:%M:%OS%z")
+        # Safely extract context
+        getc <- function(x) if (is.null(x) || !nzchar(x)) NA_character_ else as.character(x)
+        entry <- list(
+            timestamp = ts,
+            level = as.character(level),
+            message = as.character(msg),
+            cohort = getc(ctx$cohort),
+            objective = getc(ctx$objective),
+            subobjective = getc(ctx$subobjective)
+        )
+        jsonlite::toJSON(entry, auto_unbox = TRUE)
+    }
+
+    # Idempotence guard: avoid re-initializing to the same configuration
+    prev <- getOption(".um_logger_state", NULL)
+    state <- list(
+        log_path = if (is.null(log_path)) "" else normalizePath(log_path, mustWork = FALSE),
+        level = level,
+        context_in_console = context_in_console,
+        context_in_file = context_in_file
     )
-
-    message(formatted_msg)
-}
-
-#' Log progress through a list of items
-#'
-#' @param current Current item number
-#' @param total Total number of items
-#' @param item_name Name of current item
-#' @param action Action being performed
-log_progress <- function(current, total, item_name = NULL, action = "Processing") {
-    progress_pct <- round(100 * current / total, 1)
-    base_msg <- sprintf("%s (%d/%d - %.1f%%)", action, current, total, progress_pct)
-
-    if (!is.null(item_name)) {
-        full_msg <- sprintf("%s: %s", base_msg, item_name)
-    } else {
-        full_msg <- base_msg
+    if (!is.null(prev) && identical(prev, state)) {
+        # Still update threshold and progress setting, then return
+        logger::log_threshold(level)
+        if (isTRUE(progress)) {
+            progressr::handlers(global = TRUE)
+            options(progressr.enable = TRUE)
+        } else {
+            options(progressr.enable = FALSE)
+        }
+        return(invisible(TRUE))
     }
 
-    log_enhanced(full_msg, level = "PROGRESS")
-}
+    # Apply console layout
+    logger::log_layout(console_layout)
 
-#' Log start of a major analysis section
-#'
-#' @param section_name Name of the analysis section
-#' @param detail_name Optional detail for the section
-log_section_start <- function(section_name, detail_name = NULL) {
-    if (!is.null(detail_name)) {
-        full_name <- sprintf("%s - %s", section_name, detail_name)
+    # Build appender: console only or tee using custom function to format file lines
+    if (!is.null(log_path) && nzchar(log_path)) {
+        dir.create(dirname(log_path), recursive = TRUE, showWarnings = FALSE)
+        # Determine destinations for text and JSON logs
+        ext <- tolower(tools::file_ext(log_path))
+        is_txt <- identical(ext, "txt")
+        if (is_txt) {
+            base_dir <- dirname(log_path)
+            base_name <- tools::file_path_sans_ext(basename(log_path))
+            # Human-readable under txt/
+            txt_dir <- file.path(base_dir, "txt")
+            dir.create(txt_dir, recursive = TRUE, showWarnings = FALSE)
+            text_path <- file.path(txt_dir, paste0(base_name, ".txt"))
+            # JSON lines under json/
+            json_dir <- file.path(base_dir, "json")
+            dir.create(json_dir, recursive = TRUE, showWarnings = FALSE)
+            json_path <- file.path(json_dir, paste0(base_name, ".jsonl"))
+        } else {
+            # Back-compat: non-.txt path receives JSON, plus create sibling human-readable text
+            json_path <- log_path
+            txt_dir <- file.path(dirname(log_path), "txt")
+            dir.create(txt_dir, recursive = TRUE, showWarnings = FALSE)
+            text_path <- file.path(
+                txt_dir,
+                paste0(tools::file_path_sans_ext(basename(log_path)), ".txt")
+            )
+        }
+
+        text_con <- try(file(text_path, open = "a"), silent = TRUE)
+        if (inherits(text_con, "try-error")) text_con <- NULL
+        json_con <- try(file(json_path, open = "a"), silent = TRUE)
+        if (inherits(json_con, "try-error")) json_con <- NULL
+
+        # Custom appender that writes console via current appender, mirrors to text log, and writes JSON
+        appender_dual <- function(line) {
+            # Compose JSON entry using captured level and context
+            ctx <- getOption(".um_log_context", default = list())
+            ts <- format(Sys.time(), "%Y-%m-%dT%H:%M:%OS%z")
+            safe_val <- function(x) if (is.null(x) || !nzchar(x)) NA_character_ else as.character(x)
+            entry <- if (isTRUE(context_in_file)) {
+                list(
+                    timestamp = ts,
+                    level_text = switch(as.character(getOption(".um_last_level", "400")), "100" = "DEBUG", "200" = "ERROR", "300" = "WARN", "400" = "INFO", as.character(getOption(".um_last_level", "INFO"))),
+                    level_num = as.integer(getOption(".um_last_level", 400)),
+                    message = line,
+                    cohort = safe_val(ctx$cohort),
+                    objective = safe_val(ctx$objective),
+                    subobjective = safe_val(ctx$subobjective)
+                )
+            } else {
+                list(
+                    timestamp = ts,
+                    level_text = switch(as.character(getOption(".um_last_level", "400")), "100" = "DEBUG", "200" = "ERROR", "300" = "WARN", "400" = "INFO", as.character(getOption(".um_last_level", "INFO"))),
+                    level_num = as.integer(getOption(".um_last_level", 400)),
+                    message = line
+                )
+            }
+            # Write JSON and text
+            if (!is.null(json_con)) {
+                writeLines(jsonlite::toJSON(entry, auto_unbox = TRUE), con = json_con)
+                flush(json_con)
+            }
+            if (!is.null(text_con)) {
+                writeLines(line, con = text_con)
+                flush(text_con)
+            }
+            # Emit to console
+            cat(line, sep = "\n")
+        }
+        logger::log_appender(appender_dual)
+        # Ensure connections close at exit
+        reg.finalizer(environment(), function(e) {
+            try(close(text_con), silent = TRUE)
+            try(close(json_con), silent = TRUE)
+        }, onexit = TRUE)
     } else {
-        full_name <- section_name
+        logger::log_appender(logger::appender_console)
     }
-    log_enhanced(full_name, level = "SECTION")
+
+    # Configure threshold
+    logger::log_threshold(level)
+
+    # Configure progress handlers
+    if (isTRUE(progress)) {
+        progressr::handlers(global = TRUE)
+        options(progressr.enable = TRUE)
+    } else {
+        options(progressr.enable = FALSE)
+    }
+
+    # Save current logger state for idempotence
+    options(.um_logger_state = state)
+
+    invisible(TRUE)
 }
 
-#' Log completion of a major analysis section with timing
+#' Format compact context tags for console lines
 #'
-#' @param section_name Name of the analysis section
-#' @param start_time Start time from Sys.time()
-log_section_complete <- function(section_name, start_time) {
-    duration <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
-    log_enhanced(sprintf(">>> COMPLETED %s (Duration: %.1f seconds)", section_name, duration), level = "PROGRESS")
+#' Uses values set via set_log_context()/with_log_context().
+#' Returns a string like "[full] [obj1] [OS] " or empty string if no context.
+#'
+#' @param compact logical abbreviate values
+#' @param max_width integer maximum width for the tag block
+format_log_context <- function(compact = TRUE, max_width = 40) {
+    ctx <- getOption(".um_log_context", default = list())
+    if (length(ctx) == 0) return("")
+
+    abbr <- function(key, val) {
+        if (!compact || is.null(val) || !nzchar(val)) return(val)
+        switch(key,
+            cohort = switch(val, uveal_melanoma_full_cohort = "full", uveal_melanoma_restricted_cohort = "restricted", uveal_melanoma_gksrs_only_cohort = "gksrs", val),
+            objective = gsub("^objective_", "obj", val),
+            subobjective = switch(val,
+                c_overall_survival = "OS",
+                d_progression_free_survival = "PFS",
+                e_tumor_height_primary = "TH1",
+                f_tumor_height_sensitivity = "TH2",
+                val
+            ),
+            val
+        )
+    }
+
+    keys <- c("cohort", "objective", "subobjective")
+    parts <- character(0)
+    for (k in keys) {
+        v <- ctx[[k]]
+        if (!is.null(v) && nzchar(v)) {
+            v2 <- abbr(k, v)
+            parts <- c(parts, sprintf("[%s]", v2))
+        }
+    }
+    if (length(parts) == 0) return("")
+    tag_block <- paste0(paste(parts, collapse = " "), " ")
+    if (!is.null(max_width) && nchar(tag_block) > max_width) {
+        tag_block <- paste0(substr(tag_block, 1, max_width - 1), " ")
+    }
+    tag_block
 }
 
-#' Log a function call with its purpose
+#' Set or update global log context
 #'
-#' @param func_name Name of the function being called
-#' @param purpose Description of what the function does
-log_function <- function(func_name, purpose) {
-    log_enhanced(sprintf("Executing %s: %s", func_name, purpose), level = "INFO", indent = 1)
+#' @param cohort objective subobjective character values or NULL to leave unchanged
+set_log_context <- function(cohort = NULL, objective = NULL, subobjective = NULL) {
+    ctx <- getOption(".um_log_context", default = list())
+    if (!is.null(cohort)) ctx$cohort <- cohort
+    if (!is.null(objective)) ctx$objective <- objective
+    if (!is.null(subobjective)) ctx$subobjective <- subobjective
+    options(.um_log_context = ctx)
+    invisible(ctx)
+}
+
+#' Evaluate an expression with a temporary log context
+#'
+#' Restores the previous context on exit.
+with_log_context <- function(cohort = NULL, objective = NULL, subobjective = NULL, expr) {
+    old <- getOption(".um_log_context", default = list())
+    on.exit(options(.um_log_context = old), add = TRUE)
+    set_log_context(cohort = cohort, objective = objective, subobjective = subobjective)
+    result <- force(expr)
+    invisible(result)
+}
+
+#' Emit a prominent phase banner in logs
+#' @param title Character title for the phase
+#' @return invisible(TRUE)
+log_phase <- function(title) {
+    logger::log_info(sprintf("=== %s ===", title))
+    invisible(TRUE)
 }

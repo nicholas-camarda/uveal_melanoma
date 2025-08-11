@@ -10,7 +10,7 @@
 run_objective_2 <- function(data, dataset_name, output_dirs, prefix, other_map = list(), confounders = NULL) {
     step2_start_time <- Sys.time()
     display_name <- tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name)))
-    log_section_start("STEP 2: SAFETY/TOXICITY ANALYSIS", display_name)
+    log_phase(paste("STEP 2: SAFETY/TOXICITY ANALYSIS", display_name, sep = " - "))
 
     # Use provided confounders or fall back to global confounders
     if (is.null(confounders)) {
@@ -18,26 +18,29 @@ run_objective_2 <- function(data, dataset_name, output_dirs, prefix, other_map =
     }
 
     # 2a. Vision changes
-    log_function("analyze_visual_acuity_changes", "Vision changes analysis")
+    logger::log_info(formatted("Executing analyze_visual_acuity_changes: Vision changes analysis", indent = 1))
     vision_changes <- analyze_visual_acuity_changes(data, output_dirs, prefix, other_map)
-    log_enhanced("Vision changes analysis completed", level = "INFO", indent = 1)
+    logger::log_info(formatted("Vision changes analysis completed", indent = 1))
 
     # 2b. Radiation complications
-    log_function("analyze_radiation_complications", "Radiation complications analysis")
+    logger::log_info(formatted("Executing analyze_radiation_complications: Radiation complications analysis", indent = 1))
 
     # Retinopathy
     retinopathy_analysis <- analyze_radiation_complications(data, sequela_type = "retinopathy", confounders, dataset_name, other_map, output_dirs, prefix)
-    log_enhanced("Retinopathy analysis completed", level = "INFO", indent = 1)
+    logger::log_info(formatted("Retinopathy analysis completed", indent = 1))
 
     # Neovascular glaucoma
     nvg_analysis <- analyze_radiation_complications(data, sequela_type = "nvg", confounders, dataset_name, other_map, output_dirs, prefix)
-    log_enhanced("Neovascular glaucoma analysis completed", level = "INFO", indent = 1)
+    logger::log_info(formatted("Neovascular glaucoma analysis completed", indent = 1))
 
     # Serous retinal detachment
     srd_analysis <- analyze_radiation_complications(data, sequela_type = "srd", confounders, dataset_name, other_map, output_dirs, prefix)
-    log_enhanced("Serous retinal detachment analysis completed", level = "INFO", indent = 1)
+    logger::log_info(formatted("Serous retinal detachment analysis completed", indent = 1))
 
-    log_section_complete("STEP 2: SAFETY/TOXICITY ANALYSIS", step2_start_time)
+    logger::log_info(sprintf(">>> COMPLETED %s (Duration: %.1f seconds)",
+        "STEP 2: SAFETY/TOXICITY ANALYSIS",
+        as.numeric(difftime(Sys.time(), step2_start_time, units = "secs"))
+    ))
 
     return(list(
         vision_changes = vision_changes,

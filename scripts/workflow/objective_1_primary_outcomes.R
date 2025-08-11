@@ -21,7 +21,7 @@
 run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map = list(), confounders = NULL) {
     step1_start_time <- Sys.time()
     display_name <- tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name)))
-    log_section_start("STEP 1: PRIMARY OUTCOMES ANALYSIS", display_name)
+    log_phase(paste("STEP 1: PRIMARY OUTCOMES ANALYSIS", display_name, sep = " - "))
 
     # Use provided confounders or fall back to global confounders
     if (is.null(confounders)) {
@@ -29,16 +29,16 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     }
 
     # Display the confounders that will be used for statistical adjustment
-    log_enhanced(
+    logger::log_info(formatted(
         sprintf(
             "Using %d confounders for statistical adjustment: %s",
             length(confounders), paste(confounders, collapse = ", ")
         ),
-        level = "INFO", indent = 1
-    )
+        indent = 1
+    ))
 
     # 1a. Rates of recurrence (post-treatment only)
-    log_function("analyze_binary_outcome_rates", "Local recurrence rates analysis (post-treatment only)")
+    logger::log_info(formatted("Executing analyze_binary_outcome_rates: Local recurrence rates analysis (post-treatment only)", indent = 1))
     recurrence_rates <- analyze_binary_outcome_rates(
         data,
         outcome_var = "recurrence1",
@@ -51,10 +51,10 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         output_dirs = output_dirs,
         prefix = prefix
     )
-    log_enhanced("Local recurrence analysis completed", level = "INFO", indent = 1)
+    logger::log_info(formatted("Local recurrence analysis completed", indent = 1))
 
     # 1b. Rates of metastatic progression (post-treatment only)
-    log_function("analyze_binary_outcome_rates", "Metastatic progression rates analysis (post-treatment only)")
+    logger::log_info(formatted("Executing analyze_binary_outcome_rates: Metastatic progression rates analysis (post-treatment only)", indent = 1))
     mets_rates <- analyze_binary_outcome_rates(
         data,
         outcome_var = "mets_progression",
@@ -67,10 +67,10 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         output_dirs = output_dirs,
         prefix = prefix
     )
-    log_enhanced("Metastatic progression analysis completed", level = "INFO", indent = 1)
+    logger::log_info(formatted("Metastatic progression analysis completed", indent = 1))
 
     # 1c. Overall Survival (post-treatment only)
-    log_function("analyze_time_to_event_outcomes", "Overall survival analysis (Kaplan-Meier & Cox regression)")
+    logger::log_info(formatted("Executing analyze_time_to_event_outcomes: Overall survival analysis (Kaplan-Meier & Cox regression)", indent = 1))
     os_analysis <- analyze_time_to_event_outcomes(
         data,
         time_var = "tt_death_months",
@@ -84,7 +84,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         output_dirs = output_dirs,
         prefix = prefix
     )
-    log_enhanced("Overall survival analysis completed", level = "INFO", indent = 1)
+    logger::log_info(formatted("Overall survival analysis completed", indent = 1))
 
     # Proportional hazards diagnostics (OS)
     try(
@@ -103,7 +103,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     )
 
     # 1d. Progression Free Survival (includes both progression AND death)
-    log_function("analyze_time_to_event_outcomes", "Progression-free survival analysis (progression OR death)")
+    logger::log_info(formatted("Executing analyze_time_to_event_outcomes: Progression-free survival analysis (progression OR death)", indent = 1))
     pfs_analysis <- analyze_time_to_event_outcomes(
         data,
         time_var = "tt_pfs_months",
@@ -117,7 +117,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         output_dirs = output_dirs,
         prefix = prefix
     )
-    log_enhanced("Progression-free survival analysis completed", level = "INFO", indent = 1)
+    logger::log_info(formatted("Progression-free survival analysis completed", indent = 1))
 
     # Proportional hazards diagnostics (PFS)
     try(
@@ -136,25 +136,22 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     )
 
     # 1e. Tumor height changes
-    log_function("analyze_tumor_height_changes", "Primary and sensitivity tumor height analysis")
+    logger::log_info(formatted("Executing analyze_tumor_height_changes: Primary and sensitivity tumor height analysis", indent = 1))
     height_changes <- analyze_tumor_height_changes(data, output_dirs, prefix, confounders, other_map)
-    log_enhanced("Tumor height changes analysis completed", level = "INFO", indent = 1)
+    logger::log_info(formatted("Tumor height changes analysis completed", indent = 1))
 
     # 1f. Subgroup analysis with interaction terms
-    log_function("analyze_treatment_effect_subgroups_height", "Subgroup analysis with interaction terms for tumor height change")
-
-    # Test treatment × subgroup interactions for tumor height change
-    # Run both PRIMARY (without baseline height) and SENSITIVITY (with baseline height) analyses
+    logger::log_info(formatted("Executing analyze_treatment_effect_subgroups_height: Subgroup analysis with interaction terms for tumor height change", indent = 1))
 
     # PRIMARY ANALYSIS: Without baseline height adjustment
     primary_start_time <- Sys.time()
-    log_enhanced("PRIMARY SUBGROUP ANALYSIS (without baseline height adjustment)", level = "PROGRESS", indent = 1)
+    logger::log_info(formatted("PRIMARY SUBGROUP ANALYSIS (without baseline height adjustment)", indent = 1))
     primary_subgroup_results <- list()
     primary_other_maps <- list() # Collect other_map from all variables
 
     for (i in seq_along(subgroup_vars)) {
         subgroup_var <- subgroup_vars[i]
-        log_progress(i, length(subgroup_vars), subgroup_var, "Testing PRIMARY interaction")
+        logger::log_info(formatted(sprintf(">>> Testing PRIMARY interaction (%d/%d): %s", i, length(subgroup_vars), subgroup_var)))
 
         # Test the interaction with confounders but without baseline height
         result <- analyze_treatment_effect_subgroups_height(
@@ -181,24 +178,22 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         # Log the interaction p-value
         if (!is.na(result$interaction_p)) {
             p_status <- if (result$interaction_p < 0.05) "SIGNIFICANT" else "non-significant"
-            log_enhanced(sprintf("PRIMARY Interaction p-value: %.4f (%s)", result$interaction_p, p_status),
-                level = "INFO", indent = 2
-            )
+            logger::log_info(formatted(sprintf("PRIMARY Interaction p-value: %.4f (%s)", result$interaction_p, p_status), indent = 2))
         } else {
-            log_enhanced("PRIMARY Interaction p-value: NA (model issue)", level = "WARN", indent = 2)
+            logger::log_warn(formatted("PRIMARY Interaction p-value: NA (model issue)", indent = 2))
         }
     }
-    log_section_complete("PRIMARY SUBGROUP ANALYSIS", primary_start_time)
+    logger::log_info(formatted(sprintf(">>> COMPLETED %s (Duration: %.1f seconds)", "PRIMARY SUBGROUP ANALYSIS", as.numeric(difftime(Sys.time(), primary_start_time, units = "secs"))), indent = 1))
 
     # SENSITIVITY ANALYSIS: With baseline height adjustment
     sensitivity_start_time <- Sys.time()
-    log_enhanced("SENSITIVITY SUBGROUP ANALYSIS (with baseline height adjustment)", level = "PROGRESS", indent = 1)
+    logger::log_info(formatted("SENSITIVITY SUBGROUP ANALYSIS (with baseline height adjustment)", indent = 1))
     sensitivity_subgroup_results <- list()
     sensitivity_other_maps <- list() # Collect other_map from all variables
 
     for (i in seq_along(subgroup_vars)) {
         subgroup_var <- subgroup_vars[i]
-        log_progress(i, length(subgroup_vars), subgroup_var, "Testing SENSITIVITY interaction")
+        logger::log_info(formatted(sprintf(">>> Testing SENSITIVITY interaction (%d/%d): %s", i, length(subgroup_vars), subgroup_var)))
 
         # Test the interaction with confounders including baseline height
         result <- analyze_treatment_effect_subgroups_height(
@@ -225,17 +220,15 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         # Log the interaction p-value
         if (!is.na(result$interaction_p)) {
             p_status <- if (result$interaction_p < 0.05) "SIGNIFICANT" else "non-significant"
-            log_enhanced(sprintf("SENSITIVITY Interaction p-value: %.4f (%s)", result$interaction_p, p_status),
-                level = "INFO", indent = 2
-            )
+            logger::log_info(formatted(sprintf("SENSITIVITY Interaction p-value: %.4f (%s)", result$interaction_p, p_status), indent = 2))
         } else {
-            log_enhanced("SENSITIVITY Interaction p-value: NA (model issue)", level = "WARN", indent = 2)
+            logger::log_warn(formatted("SENSITIVITY Interaction p-value: NA (model issue)", indent = 2))
         }
     }
-    log_section_complete("SENSITIVITY SUBGROUP ANALYSIS", sensitivity_start_time)
+    logger::log_info(formatted(sprintf(">>> COMPLETED %s (Duration: %.1f seconds)", "SENSITIVITY SUBGROUP ANALYSIS", as.numeric(difftime(Sys.time(), sensitivity_start_time, units = "secs"))), indent = 1))
 
     # Create formatted HTML tables for subgroup analyses
-    log_function("format_subgroup_analysis_tables", "Creating formatted PRIMARY subgroup analysis tables")
+    logger::log_info(formatted("Executing format_subgroup_analysis_tables: Creating formatted PRIMARY subgroup analysis tables", indent = 1))
     format_subgroup_analysis_tables(
         subgroup_results = list(
             subgroup_results = primary_subgroup_results,
@@ -246,7 +239,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         prefix = paste0(prefix, "primary_")
     )
 
-    log_function("format_subgroup_analysis_tables", "Creating formatted SENSITIVITY subgroup analysis tables")
+    logger::log_info(formatted("Executing format_subgroup_analysis_tables: Creating formatted SENSITIVITY subgroup analysis tables", indent = 1))
     format_subgroup_analysis_tables(
         subgroup_results = list(
             subgroup_results = sensitivity_subgroup_results,
@@ -258,7 +251,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     )
 
     # Create forest plots for tumor height subgroup analyses
-    log_function("create_forest_plots_height", "Creating forest plots for tumor height subgroup analyses")
+    logger::log_info(formatted("Executing create_forest_plots_height: Creating forest plots for tumor height subgroup analyses", indent = 1))
 
     # Initialize forest plot diagnostics collector
     diagnostics_list <- list()
@@ -289,7 +282,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     )
     plot(primary_height_forest_plot)
     dev.off()
-    log_enhanced("PRIMARY tumor height forest plot created", level = "INFO", indent = 1)
+    logger::log_info(formatted("PRIMARY tumor height forest plot created", indent = 1))
 
     # Forest plot for SENSITIVITY tumor height subgroup analysis (with baseline height)
     sensitivity_height_forest_plot <- create_single_cohort_forest_plot(
@@ -317,7 +310,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     )
     plot(sensitivity_height_forest_plot)
     dev.off()
-    log_enhanced("SENSITIVITY tumor height forest plot created", level = "INFO", indent = 1)
+    logger::log_info(formatted("SENSITIVITY tumor height forest plot created", indent = 1))
 
     # Save both sets of subgroup analysis results for this dataset
     saveRDS(
@@ -334,7 +327,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     primary_diagnostics_list <- list()
     for (i in seq_along(subgroup_vars)) {
         subgroup_var <- subgroup_vars[i]
-        log_progress(i, length(subgroup_vars), subgroup_var, "Testing PRIMARY interaction")
+        logger::log_info(formatted(sprintf(">>> Testing PRIMARY interaction (%d/%d): %s", i, length(subgroup_vars), subgroup_var)))
         result <- analyze_treatment_effect_subgroups_height(
             data = data,
             subgroup_var = subgroup_var,
@@ -365,13 +358,13 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     }
     consolidated_primary_path <- file.path(output_dirs$obj1_subgroup_primary, paste0(prefix, "primary_tumor_height_diagnostics.xlsx"))
     writexl::write_xlsx(primary_diagnostics_list, consolidated_primary_path)
-    log_enhanced(sprintf("Primary tumor height diagnostics written to %s with %d tabs", consolidated_primary_path, length(primary_diagnostics_list)), level = "INFO", indent = 1)
+    logger::log_info(formatted(sprintf("Primary tumor height diagnostics written to %s with %d tabs", consolidated_primary_path, length(primary_diagnostics_list)), indent = 1))
 
     # SENSITIVITY TUMOR HEIGHT SUBGROUP ANALYSIS CONSOLIDATION
     sensitivity_diagnostics_list <- list()
     for (i in seq_along(subgroup_vars)) {
         subgroup_var <- subgroup_vars[i]
-        log_progress(i, length(subgroup_vars), subgroup_var, "Testing SENSITIVITY interaction")
+        logger::log_info(formatted(sprintf(">>> Testing SENSITIVITY interaction (%d/%d): %s", i, length(subgroup_vars), subgroup_var)))
         result <- analyze_treatment_effect_subgroups_height(
             data = data,
             subgroup_var = subgroup_var,
@@ -400,20 +393,17 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     }
     consolidated_sensitivity_path <- file.path(output_dirs$obj1_subgroup_sensitivity, paste0(prefix, "sensitivity_tumor_height_diagnostics.xlsx"))
     writexl::write_xlsx(sensitivity_diagnostics_list, consolidated_sensitivity_path)
-    log_enhanced(sprintf("Sensitivity tumor height diagnostics written to %s with %d tabs", consolidated_sensitivity_path, length(sensitivity_diagnostics_list)), level = "INFO", indent = 1)
+    logger::log_info(formatted(sprintf("Sensitivity tumor height diagnostics written to %s with %d tabs", consolidated_sensitivity_path, length(sensitivity_diagnostics_list)), indent = 1))
 
     # 1g. PRIMARY OUTCOMES SUBGROUP ANALYSIS
-    log_function("primary_outcomes_subgroup_analysis", "Subgroup analysis for primary clinical outcomes")
+    logger::log_info(formatted("Executing primary_outcomes_subgroup_analysis: Subgroup analysis for primary clinical outcomes", indent = 1))
 
     # Perform subgroup analysis for each primary outcome
     primary_outcomes_start_time <- Sys.time()
-    log_enhanced("PRIMARY OUTCOMES SUBGROUP ANALYSIS", level = "PROGRESS", indent = 1)
-
-    # Note: clinical_outcomes subfolder was removed as redundant with forest plots
-    # Forest plots are saved to obj1_forest_plots directory
+    logger::log_info(formatted("PRIMARY OUTCOMES SUBGROUP ANALYSIS", indent = 1))
 
     # 1g1. Local Recurrence Subgroup Analysis
-    log_enhanced("Analyzing subgroup effects for Local Recurrence", level = "INFO", indent = 1)
+    logger::log_info(formatted("Analyzing subgroup effects for Local Recurrence", indent = 1))
     recurrence_subgroup_analysis <- analyze_treatment_effect_subgroups_binary(
         data = data,
         outcome_var = "recurrence1",
@@ -424,9 +414,6 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     )
     recurrence_subgroup_results <- recurrence_subgroup_analysis$subgroup_results
     recurrence_other_map <- recurrence_subgroup_analysis$other_map
-
-    # Note: Excel file output removed as clinical_outcomes subfolder was removed
-    # Forest plot provides the required subgroup analysis visualization
 
     # Create forest plot for local recurrence
     recurrence_forest_plot <- create_single_cohort_forest_plot(
@@ -447,10 +434,10 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     )
     plot(recurrence_forest_plot)
     dev.off()
-    log_enhanced("Local recurrence subgroup analysis completed", level = "INFO", indent = 1)
+    logger::log_info(formatted("Local recurrence subgroup analysis completed", indent = 1))
 
     # 1g2. Metastatic Progression Subgroup Analysis
-    log_enhanced("Analyzing subgroup effects for Metastatic Progression", level = "INFO", indent = 1)
+    logger::log_info(formatted("Analyzing subgroup effects for Metastatic Progression", indent = 1))
     mets_subgroup_analysis <- analyze_treatment_effect_subgroups_binary(
         data = data,
         outcome_var = "mets_progression",
@@ -461,9 +448,6 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     )
     mets_subgroup_results <- mets_subgroup_analysis$subgroup_results
     mets_other_map <- mets_subgroup_analysis$other_map
-
-    # Note: Excel file output removed as clinical_outcomes subfolder was removed
-    # Forest plot provides the required subgroup analysis visualization
 
     # Create forest plot for metastatic progression
     mets_forest_plot <- create_single_cohort_forest_plot(
@@ -484,10 +468,10 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     )
     plot(mets_forest_plot)
     dev.off()
-    log_enhanced("Metastatic progression subgroup analysis completed", level = "INFO", indent = 1)
+    logger::log_info(formatted("Metastatic progression subgroup analysis completed", indent = 1))
 
     # 1g3. Overall Survival Subgroup Analysis
-    log_enhanced("Analyzing subgroup effects for Overall Survival", level = "INFO", indent = 1)
+    logger::log_info(formatted("Analyzing subgroup effects for Overall Survival", indent = 1))
     os_subgroup_analysis <- analyze_treatment_effect_subgroups_survival(
         data = data,
         time_var = "tt_death_months",
@@ -499,9 +483,6 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     )
     os_subgroup_results <- os_subgroup_analysis$subgroup_results
     os_other_map <- os_subgroup_analysis$other_map
-
-    # Note: Excel file output removed as clinical_outcomes subfolder was removed
-    # Forest plot provides the required subgroup analysis visualization
 
     # Create forest plot for overall survival
     os_forest_plot <- create_single_cohort_forest_plot(
@@ -522,10 +503,10 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     )
     plot(os_forest_plot)
     dev.off()
-    log_enhanced("Overall survival subgroup analysis completed", level = "INFO", indent = 1)
+    logger::log_info(formatted("Overall survival subgroup analysis completed", indent = 1))
 
     # 1g4. Progression-Free Survival Subgroup Analysis
-    log_enhanced("Analyzing subgroup effects for Progression-Free Survival", level = "INFO", indent = 1)
+    logger::log_info(formatted("Analyzing subgroup effects for Progression-Free Survival", indent = 1))
     pfs_subgroup_analysis <- analyze_treatment_effect_subgroups_survival(
         data = data,
         time_var = "tt_pfs_months",
@@ -537,9 +518,6 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     )
     pfs_subgroup_results <- pfs_subgroup_analysis$subgroup_results
     pfs_other_map <- pfs_subgroup_analysis$other_map
-
-    # Note: Excel file output removed as clinical_outcomes subfolder was removed
-    # Forest plot provides the required subgroup analysis visualization
 
     # Create forest plot for progression-free survival
     pfs_forest_plot <- create_single_cohort_forest_plot(
@@ -560,12 +538,9 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     )
     plot(pfs_forest_plot)
     dev.off()
-    log_enhanced("Progression-free survival subgroup analysis completed", level = "INFO", indent = 1)
+    logger::log_info(formatted("Progression-free survival subgroup analysis completed", indent = 1))
 
     # FOREST PLOT DIAGNOSTICS COLLECTION
-    # Add diagnostics for other outcomes to the existing diagnostics_list
-
-    # Collect diagnostics using dedicated function with raw data
     diagnostics_list[["local_recurrence"]] <- create_forest_plot_diagnostics(
         subgroup_results = recurrence_subgroup_results,
         other_map = recurrence_other_map,
@@ -587,9 +562,8 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         effect_measure = "HR"
     )
 
-    # Save forest plot diagnostics (following tumor height pattern)
+    # Save forest plot diagnostics
     consolidated_forest_path <- file.path(output_dirs$obj1_forest_plots, paste0(prefix, "forest_plot_diagnostics.xlsx"))
-    # Drop the redundant interaction_p column from diagnostics export (interaction p is already on header via p_value)
     diagnostics_list_no_interaction <- lapply(diagnostics_list, function(df) {
         if (is.data.frame(df) && ("interaction_p" %in% names(df))) {
             df <- df[, setdiff(names(df), "interaction_p"), drop = FALSE]
@@ -597,24 +571,12 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         df
     })
     writexl::write_xlsx(diagnostics_list_no_interaction, consolidated_forest_path)
-    log_enhanced(sprintf("Forest plot diagnostics written to %s with %d tabs", consolidated_forest_path, length(diagnostics_list)), level = "INFO", indent = 1)
+    logger::log_info(formatted(sprintf("Forest plot diagnostics written to %s with %d tabs", consolidated_forest_path, length(diagnostics_list)), indent = 1))
 
-    # Save primary outcomes subgroup results
-    primary_outcomes_subgroup_results <- list(
-        local_recurrence = recurrence_subgroup_results,
-        metastatic_progression = mets_subgroup_results,
-        overall_survival = os_subgroup_results,
-        progression_free_survival = pfs_subgroup_results
-    )
-
-
-
-    # Note: RDS file output removed as clinical_outcomes subfolder was removed
-    # Results are available in the returned list and forest plot diagnostics
-
-    log_section_complete("PRIMARY OUTCOMES SUBGROUP ANALYSIS", primary_outcomes_start_time)
-
-    log_section_complete("STEP 1: PRIMARY OUTCOMES ANALYSIS", step1_start_time)
+    logger::log_info(sprintf(">>> COMPLETED %s (Duration: %.1f seconds)",
+        "STEP 1: PRIMARY OUTCOMES ANALYSIS",
+        as.numeric(difftime(Sys.time(), step1_start_time, units = "secs"))
+    ))
 
     return(list(
         recurrence_rates = recurrence_rates,

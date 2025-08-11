@@ -83,7 +83,7 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders,
     )
 
     # PRIMARY ANALYSIS: Linear regression WITHOUT initial tumor height adjustment
-    log_enhanced("Fitting PRIMARY linear regression model for tumor height changes (without baseline height adjustment)")
+    logger::log_info("Fitting PRIMARY linear regression model for tumor height changes (without baseline height adjustment)")
 
     # Use the unified table generation system for primary analysis
     primary_result <- generate_regression_table(
@@ -105,7 +105,7 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders,
     primary_height_lm_tbl <- primary_result$table
 
     # SENSITIVITY ANALYSIS: Linear regression WITH initial tumor height adjustment
-    log_enhanced("Fitting SENSITIVITY linear regression model for tumor height changes (with baseline height adjustment)")
+    logger::log_info("Fitting SENSITIVITY linear regression model for tumor height changes (with baseline height adjustment)")
 
     # Use the unified table generation system for sensitivity analysis
     sensitivity_result <- generate_regression_table(

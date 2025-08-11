@@ -66,17 +66,6 @@ The analysis is structured around four prioritized research objectives:
 - **4a.** Metastasis-free survival validation
 - **4b.** Melanoma-specific survival validation
 
-#### GEP Module Architecture (scripts/gep/**)
-- cores/: `gep_evaluation_core_mfs.R`, `gep_evaluation_core_mss.R` — evaluation algorithms only (no plotting/IO)
-- diagnostics/: `gep_data_diagnostics.R` — missingness assessment, competing-risk prep
-- visualization/: `gep_visuals.R` — plots only
-- reporting/: `gep_reporting.R` — reports/Excel/text writers
-- simple/: `gep_simple_validation.R` — expected vs actual summaries, plots, report
-- orchestration/: `gep_evaluation_orchestration.R` — orchestration only; calls cores/visuals/reporting
-- utils/: `gep_model_evaluation_metrics.R` (shared calculators), `gep_variable_checks.R` (variable validation)
-
-All modules are sourced centrally in `scripts/utils/all_helper_functions.R`. Objective 4 orchestrator (`scripts/workflow/objective_4_gep_analysis.R`) invokes the orchestration module which delegates to cores/visuals/reporting.
-
 ---
 
 ## Data Processing Workflow
@@ -359,9 +348,9 @@ Gene expression profile validation analyses using survival model validation meth
 
 #### **4b. Melanoma-Specific Survival Validation**  
 - **Status:** Fully implemented with dual competing-risk models
-- **Method:** Standard survival analysis plus Fine-Gray competing risk models with cumulative incidence functions
+- **Method:** Standard survival analysis plus Fine-Gray competing risk models with cumulative incidence functions. Time-dependent discrimination (Harrell/Uno C-index) and decision curve analysis are performed at 5/7/10 years when event counts meet thresholds; plots are generated only when real data support them (no placeholders).
 - **Implementation:** `analyze_gep_mss_validation()` function in `scripts/workflow/objective_4_gep_analysis.R`
-- **Outputs:** Standard and competing risk validation reports (.xlsx), cumulative incidence curves (.png), validation metrics (.xlsx)
+- **Outputs:** Standard and competing risk validation reports (.xlsx), cumulative incidence curves (.png), discrimination and DCA summaries/plots when available (.xlsx/.png)
 - **Location:** `{cohort}/04_GEP_Validation/b_melanoma_specific_survival/`
 
 #### **Secondary Analyses**
@@ -578,6 +567,37 @@ If **treatment_group** violates the PH assumption:
 - **Objective 3 (PFS-2)**: `{cohort}/03_Repeat_Radiation/b_proportional_hazards_diagnostics/`
 
 ### **Competing Risk Analysis (Objective 4: GEP Validation)**
+
+#### Plain-English: What Objective 4 Does and Why It Matters
+- It checks whether the lab-reported GEP probabilities actually match what happened in your cohort.
+- Two outcomes are assessed: metastasis-free survival (MFS) and melanoma-specific survival (MSS).
+- We evaluate predictions at clinically relevant time points (5, 7, 10 years).
+- For each time point we measure:
+  - Calibration: Are predicted risks numerically close to observed risks? (Nam–D’Agostino-style test, calibration slope, ICI)
+  - Discrimination: Do higher predicted risks occur in patients who experience events sooner? (Harrell/Uno C-index, time-dependent AUC)
+  - Clinical utility: Would using the predictions to decide who to treat or intensify follow-up help patients overall? (Decision curve analysis)
+- We also check whether adding PRAME status meaningfully improves classification (reclassification/NRI where feasible).
+- Missing-data diagnostics quantify how GEP availability might bias results.
+
+#### What You Get (by cohort in `final_data/Analysis/<cohort>/04_GEP_Validation/`)
+- `a_metastasis_free_survival/`
+-  - `full_cohort_mfs_validation_summary.xlsx`: canonical workbook with sheets `Observed_Expected_by_class` (includes an Overall row per timepoint), `Calibration`, `Discrimination` (timepoints labeled 5yr/7yr/10yr)
+-  - `full_cohort_mfs_validation_summary.txt`: human-readable list of per-timepoint O/E, calibration, discrimination, and DCA highlights
+-  - Optional: `*.rds` objects if `GEP_SAVE_RDS=TRUE` (for reproducibility/downstream analysis)
+- `b_melanoma_specific_survival/`
+-  - `full_cohort_mss_validation_summary.xlsx`: harmonized stacked sheets `Observed_Expected_by_class`, `Calibration`, `Discrimination`, `Counts`, `CompetingRisk_CumulativeIncidence`, `CompetingRisk_CauseSpecificHazards`, and `CompetingRisk_CIF_with_CI` (Aalen–Johansen with stratified bootstrap 95% CIs by class)
+-  - `full_cohort_mss_validation_summary.txt`: human-readable list of analyses performed with per-timepoint highlights
+-  - Optional: `*.rds` objects if `GEP_SAVE_RDS=TRUE`
+- `unified_summary/`
+-  - `gep_comprehensive_report.txt` and `gep_comparison_table.xlsx` with side-by-side metrics across outcomes/timepoints
+-  - `gep_combined_calibration.png`, `gep_combined_discrimination.png`, `gep_performance_comparison.png`: generated only if both outcomes (MFS and MSS) are present; otherwise skipped. Individual outcome plots are always saved in their respective folders.
+
+How to read the key metrics:
+- **Calibration slope ≈ 1.0**: predictions are neither too extreme nor too conservative.
+- **ICI closer to 0**: better average agreement between predicted and observed risks.
+- **C-index (Harrell/Uno) > 0.7**: good ability to rank patients by risk.
+- For MSS, class-specific cumulative incidence (CIF) and 95% CIs are computed via Aalen–Johansen with stratified bootstrap.
+- **Decision curves**: net benefit line above “Treat All” and 0 indicates clinical usefulness over a threshold range.
 
 For melanoma-specific survival validation, the analysis employs **dual competing risk approaches** to provide comprehensive assessment of GEP predictive accuracy when patients can die from melanoma or other causes.
 

@@ -49,20 +49,6 @@ create_output_structure <- function(cohort_dir) {
         # Cross-cutting analyses (baseline characteristics go here for each cohort)
         baseline_characteristics = file.path(cohort_dir, "00_General", "baseline_characteristics"),
         treatment_duration = file.path(cohort_dir, "00_General", "treatment_duration")
-
-        # # Maintain backwards compatibility with old names for existing code
-        # recurrence = file.path(cohort_dir, "01_Efficacy", "a_recurrence"),
-        # mets = file.path(cohort_dir, "01_Efficacy", "b_metastatic_progression"),
-        # os = file.path(cohort_dir, "01_Efficacy", "c_overall_survival"),
-        # pfs = file.path(cohort_dir, "01_Efficacy", "d_progression_free_survival"),
-        # height_primary = file.path(cohort_dir, "01_Efficacy", "e_tumor_height_primary"),
-        # height_sensitivity = file.path(cohort_dir, "01_Efficacy", "f_tumor_height_sensitivity"),
-        # subgroup_primary = file.path(cohort_dir, "01_Efficacy", "g_subgroup_analysis", "tumor_height_primary"),
-        # subgroup_sensitivity = file.path(cohort_dir, "01_Efficacy", "g_subgroup_analysis", "tumor_height_sensitivity"),
-        # vision = file.path(cohort_dir, "02_Safety", "a_vision_changes"),
-        # retinopathy = file.path(cohort_dir, "02_Safety", "b_retinopathy"),
-        # nvg = file.path(cohort_dir, "02_Safety", "c_neovascular_glaucoma"),
-        # srg = file.path(cohort_dir, "02_Safety", "d_serous_retinal_detachment")
     )
 
     # Create all directories
@@ -71,12 +57,74 @@ create_output_structure <- function(cohort_dir) {
         if (!dir.exists(dir_path)) {
             dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
             if (exists("USE_LOGS") && USE_LOGS) {
-                log_enhanced(sprintf("Created directory: %s", dir_path), level = "INFO")
+                logger::log_info(sprintf("Created directory: %s", dir_path))
             }
         }
     }
 
     return(dirs)
+}
+
+#' Organize Objective 4 outputs into correct subfolders
+#'
+#' This function scans the `04_GEP_Validation` directory and moves files into
+#' the correct outcome-specific subfolders based on filename patterns.
+#'
+#' @param obj4_base_dir Path to the cohort's `04_GEP_Validation` directory
+#' @param prefix File prefix used for the cohort (e.g., "full_cohort_")
+#' @return Invisibly returns a data.frame of moved files
+organize_obj4_outputs <- function(obj4_base_dir, prefix) {
+    if (!dir.exists(obj4_base_dir)) return(invisible(NULL))
+    mfs_dir <- file.path(obj4_base_dir, "a_metastasis_free_survival")
+    mss_dir <- file.path(obj4_base_dir, "b_melanoma_specific_survival")
+    if (!dir.exists(mfs_dir)) dir.create(mfs_dir, recursive = TRUE, showWarnings = FALSE)
+    if (!dir.exists(mss_dir)) dir.create(mss_dir, recursive = TRUE, showWarnings = FALSE)
+
+    files <- list.files(obj4_base_dir, full.names = TRUE)
+    moved <- data.frame(from = character(), to = character(), stringsAsFactors = FALSE)
+
+    move_if <- function(patterns, target_dir) {
+        idx <- which(grepl(paste(patterns, collapse = "|"), basename(files), ignore.case = TRUE))
+        if (length(idx) > 0) {
+            for (i in idx) {
+                src <- files[i]
+                dst <- file.path(target_dir, basename(src))
+                if (!file.exists(dst)) {
+                    file.rename(src, dst)
+                    moved <<- rbind(moved, data.frame(from = src, to = dst, stringsAsFactors = FALSE))
+                }
+            }
+        }
+    }
+
+    # Route MFS artifacts
+    move_if(c(
+        paste0("^", prefix, "mfs_"),
+        paste0("^", prefix, "MFS_"),
+        "_MFS_",
+        "mfs_validation",
+        "simple_mfs_validation",
+        "observed_expected_summary\\.xlsx$",
+        "calibration_summary\\.xlsx$",
+        "discrimination_summary\\.xlsx$",
+        "gep_validation_distribution\\.xlsx$"
+    ), mfs_dir)
+
+    # Route MSS artifacts
+    move_if(c(
+        paste0("^", prefix, "mss_"),
+        paste0("^", prefix, "MSS_"),
+        "_MSS_",
+        "mss_validation",
+        "simple_mss_validation",
+        "mss_validation_summary\\.xlsx$",
+        "mss_standard_validation_results\\.rds$",
+        "mss_competing_risk_results\\.rds$",
+        "mss_validation_report\\.rds$"
+    ), mss_dir)
+
+    # Leave unified_summary and other combined assets at the base
+    invisible(moved)
 }
 
 #' Merge baseline characteristics tables from full and restricted cohorts
@@ -92,7 +140,7 @@ create_output_structure <- function(cohort_dir) {
 #' @examples
 #' merge_cohort_tables(full_data, restricted_data, "final_data/Analysis/merged_tables/")
 merge_cohort_tables <- function(full_cohort_data, restricted_cohort_data, output_path = NULL) {
-    log_enhanced("=== STARTING TABLE MERGING: Full and Restricted Cohorts ===", level = "INFO")
+    logger::log_info("=== STARTING TABLE MERGING: Full and Restricted Cohorts ===")
 
     # Set default output path if not provided
     if (is.null(output_path)) {
@@ -103,10 +151,10 @@ merge_cohort_tables <- function(full_cohort_data, restricted_cohort_data, output
     # Create output directory
     if (!dir.exists(output_path)) {
         dir.create(output_path, recursive = TRUE, showWarnings = FALSE)
-        log_enhanced(sprintf("Created merged tables directory: %s", output_path))
+        logger::log_info(sprintf("Created merged tables directory: %s", output_path))
     }
 
-    log_enhanced(sprintf("Merging tables will be saved to: %s", output_path))
+            logger::log_info(sprintf("Merging tables will be saved to: %s", output_path))
 
     # Use globally defined variables for baseline characteristics summary
     vars_to_summarize <- BASELINE_VARIABLES_TO_SUMMARIZE
@@ -188,18 +236,18 @@ merge_cohort_tables <- function(full_cohort_data, restricted_cohort_data, output
                     path = file.path(output_path, "merged_baseline_characteristics.xlsx")
                 )
 
-            log_enhanced("Saved merged baseline characteristics table (Excel and HTML)")
+            logger::log_info("Saved merged baseline characteristics table (Excel and HTML)")
         },
         error = function(e) {
-            log_enhanced(sprintf("Error merging baseline tables: %s", e$message))
-            log_enhanced("Skipping baseline table merge", level = "INFO")
+            logger::log_error(sprintf("Error merging baseline tables: %s", e$message))
+            logger::log_info("Skipping baseline table merge")
         }
     )
 
     # Summary message
-    log_enhanced("=== COMPLETED TABLE MERGING ===", level = "INFO")
-    log_enhanced(sprintf("Merged baseline characteristics table saved to: %s", output_path))
-    log_enhanced("Files created: merged_baseline_characteristics.xlsx and merged_baseline_characteristics.html", level = "INFO")
+    logger::log_info("=== COMPLETED TABLE MERGING ===")
+    logger::log_info(sprintf("Merged baseline characteristics table saved to: %s", output_path))
+    logger::log_info("Files created: merged_baseline_characteristics.xlsx and merged_baseline_characteristics.html")
 
     return(invisible(NULL))
 }
@@ -216,13 +264,13 @@ merge_cohort_tables <- function(full_cohort_data, restricted_cohort_data, output
 #' @examples
 #' create_all_combined_forest_plots("final_data", c("full", "restricted"))
 create_all_combined_forest_plots <- function(base_dir, cohort_names = c("full", "restricted")) {
-    log_enhanced("Creating all combined forest plots and summary tables", level = "INFO")
+    logger::log_info("Creating all combined forest plots and summary tables")
 
     # Create output directory for combined plots
     combined_output_dir <- file.path(base_dir, "Analysis", "combined_cohorts")
     if (!dir.exists(combined_output_dir)) {
         dir.create(combined_output_dir, recursive = TRUE, showWarnings = FALSE)
-        log_enhanced(sprintf("Created combined output directory: %s", combined_output_dir), level = "INFO", indent = 1)
+        logger::log_info(formatted(sprintf("Created combined output directory: %s", combined_output_dir), indent = 1))
     }
 
     # Track results
@@ -242,7 +290,7 @@ create_all_combined_forest_plots <- function(base_dir, cohort_names = c("full", 
 
         tryCatch(
             {
-                log_enhanced(sprintf("Processing combined plots for %s", outcome_name), level = "INFO", indent = 1)
+                logger::log_info(formatted(sprintf("Processing combined plots for %s", outcome_name), indent = 1))
 
                 # Load subgroup results from both cohorts
                 full_results <- NULL
@@ -259,12 +307,12 @@ create_all_combined_forest_plots <- function(base_dir, cohort_names = c("full", 
 
                     if (file.exists(full_file)) {
                         full_results <- readRDS(full_file)
-                        log_enhanced(sprintf("Loaded full cohort results for %s", outcome_name), level = "INFO", indent = 2)
+                        logger::log_info(formatted(sprintf("Loaded full cohort results for %s", outcome_name), indent = 2))
                     }
 
                     if (file.exists(restricted_file)) {
                         restricted_results <- readRDS(restricted_file)
-                        log_enhanced(sprintf("Loaded restricted cohort results for %s", outcome_name), level = "INFO", indent = 2)
+                        logger::log_info(formatted(sprintf("Loaded restricted cohort results for %s", outcome_name), indent = 2))
                     }
                 }
 
@@ -290,7 +338,7 @@ create_all_combined_forest_plots <- function(base_dir, cohort_names = c("full", 
                     plot(combined_plot)
                     dev.off()
 
-                    log_enhanced(sprintf("Combined forest plot saved: %s", plot_path), level = "INFO", indent = 2)
+                    logger::log_info(formatted(sprintf("Combined forest plot saved: %s", plot_path), indent = 2))
 
                     results[[outcome_key]] <- list(
                         plot = combined_plot,
@@ -298,7 +346,7 @@ create_all_combined_forest_plots <- function(base_dir, cohort_names = c("full", 
                         status = "success"
                     )
                 } else {
-                    log_enhanced(sprintf("Skipping %s - missing subgroup results", outcome_name), level = "WARN", indent = 2)
+                    logger::log_warn(formatted(sprintf("Skipping %s - missing subgroup results", outcome_name), indent = 2))
                     results[[outcome_key]] <- list(
                         status = "skipped",
                         reason = "missing_data"
@@ -306,7 +354,7 @@ create_all_combined_forest_plots <- function(base_dir, cohort_names = c("full", 
                 }
             },
             error = function(e) {
-                log_enhanced(sprintf("Error creating combined plot for %s: %s", outcome_name, e$message), level = "ERROR", indent = 2)
+                logger::log_error(formatted(sprintf("Error creating combined plot for %s: %s", outcome_name, e$message), indent = 2))
                 results[[outcome_key]] <- list(
                     status = "error",
                     error = e$message
@@ -319,7 +367,7 @@ create_all_combined_forest_plots <- function(base_dir, cohort_names = c("full", 
     successful_plots <- sum(sapply(results, function(x) x$status == "success"))
     total_plots <- length(results)
 
-    log_enhanced(sprintf("Combined forest plots completed: %d/%d successful", successful_plots, total_plots), level = "INFO")
+    logger::log_info(formatted(sprintf("Combined forest plots completed: %d/%d successful", successful_plots, total_plots)))
 
     return(results)
 }

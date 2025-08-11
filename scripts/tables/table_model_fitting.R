@@ -40,10 +40,10 @@ fit_regression_model <- function(data, formula, model_type, time_var = NULL, eve
                 }
 
                 if (length(perfect_separation_vars) > 0) {
-                    log_enhanced(sprintf(
+                    logger::log_warn(sprintf(
                         "Perfect separation detected in variables: %s. Fitting model with warnings.",
                         paste(perfect_separation_vars, collapse = ", ")
-                    ), level = "WARN")
+                    ))
                 }
 
                 # Use more robust fitting for logistic regression
@@ -54,7 +54,7 @@ fit_regression_model <- function(data, formula, model_type, time_var = NULL, eve
 
                 # Check for convergence issues
                 if (!model$converged) {
-                    log_enhanced("Warning: Logistic regression did not converge, but proceeding with results", level = "WARN")
+                    logger::log_warn("Warning: Logistic regression did not converge, but proceeding with results")
                 }
 
                 # Add perfect separation info to model
@@ -93,36 +93,36 @@ fit_regression_model <- function(data, formula, model_type, time_var = NULL, eve
                 }
 
                 if (length(perfect_separation_vars) > 0) {
-                    log_enhanced(sprintf(
+                    logger::log_warn(sprintf(
                         "Perfect separation detected in Cox model variables: %s. Fitting model with warnings.",
                         paste(perfect_separation_vars, collapse = ", ")
-                    ), level = "WARN")
+                    ))
                 }
 
                 # Validate time and event variables before creating survival object
                 if (is.null(time_var) || is.null(event_var)) {
-                    log_enhanced("ERROR: time_var or event_var is NULL for Cox model", level = "ERROR")
+                    logger::log_error("ERROR: time_var or event_var is NULL for Cox model")
                     return(NULL)
                 }
 
                 if (!time_var %in% names(data)) {
-                    log_enhanced(sprintf("ERROR: time_var '%s' not found in data", time_var), level = "ERROR")
+                    logger::log_error(sprintf("ERROR: time_var '%s' not found in data", time_var))
                     return(NULL)
                 }
 
                 if (!event_var %in% names(data)) {
-                    log_enhanced(sprintf("ERROR: event_var '%s' not found in data", event_var), level = "ERROR")
+                    logger::log_error(sprintf("ERROR: event_var '%s' not found in data", event_var))
                     return(NULL)
                 }
 
                 # Check for valid data in time and event variables
                 if (all(is.na(data[[time_var]])) || length(data[[time_var]]) == 0) {
-                    log_enhanced(sprintf("ERROR: time_var '%s' contains no valid data", time_var), level = "ERROR")
+                    logger::log_error(sprintf("ERROR: time_var '%s' contains no valid data", time_var))
                     return(NULL)
                 }
 
                 if (all(is.na(data[[event_var]])) || length(data[[event_var]]) == 0) {
-                    log_enhanced(sprintf("ERROR: event_var '%s' contains no valid data", event_var), level = "ERROR")
+                    logger::log_error(sprintf("ERROR: event_var '%s' contains no valid data", event_var))
                     return(NULL)
                 }
 
@@ -132,7 +132,7 @@ fit_regression_model <- function(data, formula, model_type, time_var = NULL, eve
                         Surv(data[[time_var]], data[[event_var]])
                     },
                     error = function(e) {
-                        log_enhanced(sprintf("ERROR: Failed to create survival object: %s", e$message), level = "ERROR")
+                        logger::log_error(sprintf("ERROR: Failed to create survival object: %s", e$message))
                         return(NULL)
                     }
                 )
@@ -142,24 +142,24 @@ fit_regression_model <- function(data, formula, model_type, time_var = NULL, eve
                 }
 
                 # Update formula to use survival object
-                log_enhanced(sprintf("Creating survival formula with surv_obj of class: %s", class(surv_obj)[1]), level = "INFO")
+                logger::log_info(sprintf("Creating survival formula with surv_obj of class: %s", class(surv_obj)[1]))
                 surv_formula <- update(formula, surv_obj ~ .)
-                log_enhanced(sprintf("Survival formula created: %s", deparse(surv_formula)), level = "INFO")
+                logger::log_info(sprintf("Survival formula created: %s", paste(deparse(surv_formula, width.cutoff = 500L), collapse = " ")))
 
                 # Fit Cox model with error handling
                 cox_model <- tryCatch(
                     {
-                        log_enhanced("Attempting to fit Cox model...", level = "INFO")
+                        logger::log_info("Attempting to fit Cox model...")
                         # Add surv_obj to the data frame so coxph can find it
                         data_with_surv <- data
                         data_with_surv$surv_obj <- surv_obj
                         result <- coxph(surv_formula, data = data_with_surv, model = TRUE)
-                        log_enhanced("Cox model fitted successfully", level = "INFO")
+                        logger::log_info("Cox model fitted successfully")
                         result
                     },
                     error = function(e) {
-                        log_enhanced(sprintf("Cox model fitting error: %s", e$message), level = "ERROR")
-                        log_enhanced(sprintf("Error occurred at: %s", e$call), level = "ERROR")
+                        logger::log_error(sprintf("Cox model fitting error: %s", e$message))
+                        logger::log_error(sprintf("Error occurred at: %s", e$call))
                         return(NULL)
                     }
                 )
@@ -177,7 +177,7 @@ fit_regression_model <- function(data, formula, model_type, time_var = NULL, eve
             }
         },
         error = function(e) {
-            log_enhanced(sprintf("Model fitting error: %s", e$message), level = "ERROR")
+            logger::log_error(sprintf("Model fitting error: %s", e$message))
             return(NULL)
         }
     )

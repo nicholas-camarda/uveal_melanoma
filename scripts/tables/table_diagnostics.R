@@ -27,7 +27,7 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
                 )
         },
         error = function(e) {
-            log_enhanced(sprintf("Warning: Could not create temporary table for CI extraction: %s", e$message), level = "WARN")
+            logger::log_warn(sprintf("Warning: Could not create temporary table for CI extraction: %s", e$message))
             NULL
         }
     )
@@ -60,7 +60,7 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
                 suppressWarnings(confint(model_fit))
             },
             error = function(e) {
-                log_enhanced(sprintf("Warning: Could not compute confidence intervals: %s", e$message), level = "WARN")
+                logger::log_warn(sprintf("Warning: Could not compute confidence intervals: %s", e$message))
                 matrix(NA,
                     nrow = length(coefs), ncol = 2,
                     dimnames = list(names(coefs), c("2.5 %", "97.5 %"))
@@ -70,7 +70,7 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
     }
 
     if (all(is.na(conf_int))) {
-        log_enhanced("Warning: All confidence intervals are NA - this indicates severe model convergence issues", level = "WARN")
+        logger::log_warn("Warning: All confidence intervals are NA - this indicates severe model convergence issues")
     }
 
     model_summary_tab <- data.frame(
@@ -203,10 +203,10 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
     }
     if (length(available_coefs) < n_coefs) {
         missing_coefs <- setdiff(names(coefs), rownames(conf_int))
-        log_enhanced(sprintf(
+        logger::log_warn(sprintf(
             "Warning: Missing confidence intervals for coefficients: %s",
             paste(missing_coefs, collapse = ", ")
-        ), level = "WARN")
+        ))
     }
 
     n_coefs <- length(coefs)
@@ -220,7 +220,7 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
                 p_value_col <- which(col_names %in% c("Pr(>|z|)", "Pr(>|t|)", "Pr(>F)"))
                 if (length(p_value_col) == 0) {
                     p_value_col <- ncol(model_summary$coefficients)
-                    log_enhanced(sprintf("Warning: Could not find p-value column, using last column (%d)", p_value_col), level = "WARN")
+                    logger::log_warn(sprintf("Warning: Could not find p-value column, using last column (%d)", p_value_col))
                 } else {
                     p_value_col <- p_value_col[1]
                 }
@@ -229,7 +229,7 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
             p_values_vector
         },
         error = function(e) {
-            log_enhanced(sprintf("Error extracting p-values: %s", e$message), level = "WARN")
+            logger::log_warn(sprintf("Error extracting p-values: %s", e$message))
             rep(NA, n_coefs)
         }
     )
@@ -365,24 +365,23 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
     excluded_variables <- c()
     if (nrow(excluded_rows_tab) > 0) {
         excluded_variables <- unique(excluded_rows_tab$variable[!is.na(excluded_rows_tab$variable)])
-        log_enhanced(
+        logger::log_info(
             sprintf(
                 "Found %d variables in excluded rows: %s",
                 length(excluded_variables), paste(excluded_variables, collapse = ", ")
-            ),
-            level = "DEBUG"
+            )
         )
         for (var_name in excluded_variables) {
             var_rows <- which(raw_model_output_tab$variable == var_name)
             if (length(var_rows) > 0) {
                 raw_model_output_tab$inclusion_status[var_rows] <- "Filtered"
                 raw_model_output_tab$filtering_reason[var_rows] <- "Extreme estimate or convergence issue"
-                log_enhanced(sprintf("Marked variable %s as Filtered", var_name), level = "DEBUG")
+                logger::log_info(sprintf("Marked variable %s as Filtered", var_name))
             }
         }
     }
 
-    log_enhanced("DEBUG: Starting diagnostic filtering logic using sophisticated detection", level = "DEBUG")
+    logger::log_info("DEBUG: Starting diagnostic filtering logic using sophisticated detection")
 
     coeff_rows <- raw_model_output_tab$row_type == "Coefficient"
     if (any(coeff_rows)) {
@@ -407,17 +406,17 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
             extreme_full_indices <- coeff_indices[diagnostic_extreme_result$extreme_indices]
             raw_model_output_tab$inclusion_status[extreme_full_indices] <- "Filtered"
             raw_model_output_tab$filtering_reason[extreme_full_indices] <- diagnostic_extreme_result$exclusion_reasons
-            log_enhanced(sprintf(
+            logger::log_info(sprintf(
                 "Marked %d variables as Filtered using sophisticated detection",
                 length(extreme_full_indices)
-            ), level = "DEBUG")
+            ))
             for (i in seq_along(extreme_full_indices)) {
                 idx <- extreme_full_indices[i]
-                log_enhanced(sprintf(
+                logger::log_info(sprintf(
                     "DEBUG: Row %d (%s) filtered: %s",
                     idx, raw_model_output_tab$variable[idx],
                     diagnostic_extreme_result$exclusion_reasons[i]
-                ), level = "DEBUG")
+                ))
             }
         }
     }
@@ -431,7 +430,7 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
     raw_model_output_tab$filtering_reason[na_estimate_mask] <- "NA estimate (convergence issue)"
 
     if (!is.null(filtered_variables) && length(filtered_variables) > 0) {
-        log_enhanced(sprintf("DEBUG: Marking %d variables as filtered based on table output", length(filtered_variables)), level = "DEBUG")
+        logger::log_info(sprintf("DEBUG: Marking %d variables as filtered based on table output", length(filtered_variables)))
 
         for (filtered_var in filtered_variables) {
             var_rows <- grep(paste0("^", filtered_var), raw_model_output_tab$variable)
@@ -450,14 +449,14 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
                             extreme_term_index <- which(extreme_diagnostics$extreme_terms == row_variable)
                             if (length(extreme_term_index) > 0) {
                                 row_reason <- extreme_diagnostics$exclusion_reasons[extreme_term_index[1]]
-                                log_enhanced(sprintf("DEBUG: Found table-level reason for %s: %s", row_variable, row_reason), level = "DEBUG")
+                                logger::log_info(sprintf("DEBUG: Found table-level reason for %s: %s", row_variable, row_reason))
                             } else {
                                 if (grepl("^", filtered_var, row_variable)) {
                                     row_reason <- sprintf("Variable '%s' filtered due to extreme estimates or convergence issues", filtered_var)
                                 } else {
                                     row_reason <- sprintf("Variable '%s' filtered - all coefficients had extreme estimates or convergence issues", filtered_var)
                                 }
-                                log_enhanced(sprintf("DEBUG: Generated specific reason for %s: %s", row_variable, row_reason), level = "DEBUG")
+                                logger::log_info(sprintf("DEBUG: Generated specific reason for %s: %s", row_variable, row_reason))
                             }
                         } else {
                             if (grepl("^", filtered_var, row_variable)) {
@@ -465,12 +464,12 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
                             } else {
                                 row_reason <- sprintf("Variable '%s' filtered - all coefficients had extreme estimates or convergence issues", filtered_var)
                             }
-                            log_enhanced(sprintf("DEBUG: Generated specific reason for %s: %s", row_variable, row_reason), level = "DEBUG")
+                            logger::log_info(sprintf("DEBUG: Generated specific reason for %s: %s", row_variable, row_reason))
                         }
                     }
                     raw_model_output_tab$filtering_reason[row_idx] <- row_reason
                 }
-                log_enhanced(sprintf("DEBUG: Marked variable %s as filtered with individual reasons for each term", filtered_var), level = "DEBUG")
+                logger::log_info(sprintf("DEBUG: Marked variable %s as filtered with individual reasons for each term", filtered_var))
             }
         }
     }
@@ -582,17 +581,17 @@ remove_orphaned_variables <- function(table, model_fit) {
             extreme_original_indices <- valid_rows[extreme_result$extreme_indices]
             orphaned_vars <- unique(table_data$variable[extreme_original_indices])
             if (length(orphaned_vars) > 0) {
-                log_enhanced(sprintf(
+                logger::log_info(sprintf(
                     "Removing variables with extreme estimates detected by centralized function: %s",
                     paste(orphaned_vars, collapse = ", ")
-                ), level = "INFO")
+                ))
                 table$table_body <- table_data[!table_data$variable %in% orphaned_vars, ]
             }
         } else {
-            log_enhanced("No variables with extreme estimates found by centralized function.", level = "INFO")
+            logger::log_info("No variables with extreme estimates found by centralized function.")
         }
     } else {
-        log_enhanced("No valid numeric estimates to check for extreme values.", level = "INFO")
+        logger::log_info("No valid numeric estimates to check for extreme values.")
     }
     return(table)
 }

@@ -8,10 +8,11 @@
 #'
 #' @param mfs_results Data frame of MFS class-level expected/actual rates
 #' @param mss_results Data frame of MSS class-level expected/actual rates
-#' @param output_dir Directory path to save images
+#' @param mfs_output_dir Directory path to save the MFS image
+#' @param mss_output_dir Directory path to save the MSS image
 #' @param prefix Filename prefix for saved files
 #' @return Invisibly returns NULL after writing files
-create_simple_gep_plots <- function(mfs_results, mss_results, output_dir, prefix) {
+create_simple_gep_plots <- function(mfs_results, mss_results, mfs_output_dir, mss_output_dir, prefix) {
     mfs_plot <- ggplot(mfs_results, aes(x = gep_class_simple)) +
         geom_point(aes(y = expected_rate, color = "Expected"), size = 3) +
         geom_point(aes(y = actual_rate, color = "Actual"), size = 3) +
@@ -34,7 +35,7 @@ create_simple_gep_plots <- function(mfs_results, mss_results, output_dir, prefix
             panel.background = element_rect(fill = "white")
         ) +
         scale_color_manual(values = c("Expected" = "blue", "Actual" = "red"))
-    ggsave(file.path(output_dir, paste0(prefix, "simple_mfs_validation.png")),
+    ggsave(file.path(mfs_output_dir, paste0(prefix, "simple_mfs_validation.png")),
         mfs_plot,
         width = 8, height = 6, dpi = 300, bg = "white"
     )
@@ -61,7 +62,7 @@ create_simple_gep_plots <- function(mfs_results, mss_results, output_dir, prefix
             panel.background = element_rect(fill = "white")
         ) +
         scale_color_manual(values = c("Expected" = "blue", "Actual" = "red"))
-    ggsave(file.path(output_dir, paste0(prefix, "simple_mss_validation.png")),
+    ggsave(file.path(mss_output_dir, paste0(prefix, "simple_mss_validation.png")),
         mss_plot,
         width = 8, height = 6, dpi = 300, bg = "white"
     )
@@ -148,13 +149,20 @@ create_simple_gep_report <- function(mfs_results, mss_results, overall_summary, 
 #' save summary tables and plots, and return the key data frames.
 #'
 #' @param data Data frame with required GEP predictions and outcomes
-#' @param output_dir Directory to save outputs
+#' @param output_dirs List of output directories (expects elements `obj4_mfs` and `obj4_mss`)
 #' @param prefix Filename prefix for saved files
 #' @return A list with `mfs_results`, `mss_results`, and `overall_summary`
-simple_gep_validation <- function(data, output_dir, prefix) {
-    log_enhanced("Starting SIMPLE GEP validation (Project Goals)", level = "INFO")
-    if (!dir.exists(output_dir)) {
-        dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+simple_gep_validation <- function(data, output_dirs, prefix) {
+    logger::log_info("Starting SIMPLE GEP validation (Project Goals)")
+
+    # Resolve directories
+    mfs_dir <- output_dirs$obj4_mfs
+    mss_dir <- output_dirs$obj4_mss
+    gep_base_dir <- dirname(mfs_dir)
+    unified_dir <- file.path(gep_base_dir, "unified_summary")
+
+    for (d in c(mfs_dir, mss_dir, unified_dir)) {
+        if (!dir.exists(d)) dir.create(d, recursive = TRUE, showWarnings = FALSE)
     }
 
     analysis_data <- data %>%
@@ -164,7 +172,7 @@ simple_gep_validation <- function(data, output_dir, prefix) {
             biopsy1_gep_mfs >= 0 & biopsy1_gep_mfs <= 1,
             biopsy1_gep_mss >= 0 & biopsy1_gep_mss <= 1
         )
-    log_enhanced(sprintf("Analysis dataset: %d patients with valid GEP predictions", nrow(analysis_data)), level = "INFO")
+    logger::log_info(sprintf("Analysis dataset: %d patients with valid GEP predictions", nrow(analysis_data)))
 
     mfs_data <- analysis_data %>%
         filter(!is.na(tt_mets_months), !is.na(mets_event)) %>%
@@ -208,7 +216,7 @@ simple_gep_validation <- function(data, output_dir, prefix) {
             percent_difference = (difference / expected_rate) * 100
         )
 
-    log_enhanced("Creating simple validation summary", level = "INFO")
+    logger::log_info("Creating simple validation summary")
     overall_summary <- data.frame(
         outcome = c("MFS", "MSS"),
         total_patients = c(nrow(mfs_data), nrow(mss_data)),
@@ -234,12 +242,12 @@ simple_gep_validation <- function(data, output_dir, prefix) {
         "MFS_By_Class" = mfs_results,
         "MSS_By_Class" = mss_results,
         "Overall_Summary" = overall_summary
-    ), file.path(output_dir, paste0(prefix, "simple_gep_validation.xlsx")))
+    ), file.path(unified_dir, paste0(prefix, "simple_gep_validation.xlsx")))
 
-    create_simple_gep_plots(mfs_results, mss_results, output_dir, prefix)
-    create_simple_gep_report(mfs_results, mss_results, overall_summary, output_dir, prefix)
+    create_simple_gep_plots(mfs_results, mss_results, mfs_dir, mss_dir, prefix)
+    create_simple_gep_report(mfs_results, mss_results, overall_summary, unified_dir, prefix)
 
-    log_enhanced("Simple GEP validation completed", level = "INFO")
+    logger::log_info("Simple GEP validation completed")
     return(list(
         mfs_results = mfs_results,
         mss_results = mss_results,

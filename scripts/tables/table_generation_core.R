@@ -127,7 +127,7 @@ detect_model_type <- function(model_fit) {
 generate_regression_table <- function(data, outcome_var, predictor_vars, confounders, model_type, effect_measure, analysis_name, dataset_name, output_dir, prefix, time_var = NULL, event_var = NULL, other_map = NULL, full_data = NULL, treatment_var = "treatment_group") {
     if (is.null(full_data)) full_data <- data
 
-    log_enhanced(sprintf("Generating regression table for %s", analysis_name), level = "INFO")
+            logger::log_info(sprintf("Generating regression table for %s", analysis_name))
 
     # Build model formula
     formula <- build_model_formula(outcome_var, predictor_vars, confounders, model_type)
@@ -136,7 +136,7 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
     model_fit <- fit_regression_model(data, formula, model_type, time_var, event_var)
 
     if (is.null(model_fit)) {
-        log_enhanced("Model fitting failed - returning NULL result", level = "ERROR")
+        logger::log_error("Model fitting failed - returning NULL result")
         return(list(
             table = NULL,
             diagnostics = NULL,
@@ -147,10 +147,10 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
 
     # Check for perfect separation and handle gracefully
     if (!is.null(model_fit$perfect_separation_vars) && length(model_fit$perfect_separation_vars) > 0) {
-        log_enhanced(sprintf(
+        logger::log_warn(sprintf(
             "Perfect separation detected in variables: %s. Model fitted but these variables may have unreliable estimates.",
             paste(model_fit$perfect_separation_vars, collapse = ", ")
-        ), level = "WARN")
+        ))
     }
 
     # Create gtsummary table only if model fitting succeeded
@@ -239,13 +239,13 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
                 )
             },
             error = function(e) {
-                log_enhanced(sprintf("Failed to save diagnostics file: %s", e$message), level = "ERROR")
+                logger::log_error(sprintf("Failed to save diagnostics file: %s", e$message))
                 NULL
             }
         )
     }
 
-    log_enhanced(sprintf("Regression table generation completed for %s", analysis_name), level = "INFO")
+    logger::log_info(sprintf("Regression table generation completed for %s", analysis_name))
 
     return(list(
         table = filtered_table_result,

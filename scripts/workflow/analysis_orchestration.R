@@ -19,7 +19,7 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
 
     # Clean dataset name for display
     display_name <- tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name)))
-    log_section_start("STATISTICAL ANALYSIS", display_name)
+    log_phase(paste("STATISTICAL ANALYSIS", display_name, sep = " - "))
 
     # Check dependencies before running analysis objectives
     if (any(objectives_to_run %in% c(1, 2, 3, 4))) {
@@ -39,10 +39,10 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
         }
 
         if (length(missing_files) > 0 && (0 %in% objectives_to_run)) {
-            log_enhanced(sprintf(
+            logger::log_warn(formatted(sprintf(
                 "WARNING: Required files missing for dataset '%s': %s\nObjective 0 will create these files.",
                 dataset_name, paste(basename(missing_files), collapse = ", ")
-            ), level = "WARN")
+            )))
         }
     }
 
@@ -58,12 +58,12 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
         stop(sprintf("NAMING VALIDATION FAILED for dataset: %s", dataset_name))
     }
 
-    log_enhanced(sprintf("All outputs organized by objectives under: %s", cohort_base_dir), level = "INFO", indent = 1)
+    logger::log_info(formatted(sprintf("All outputs organized by objectives under: %s", cohort_base_dir), indent = 1))
 
     # Load analytic dataset
-    log_function("readRDS", paste("Loading analytic dataset:", dataset_name))
+    logger::log_info(formatted(paste("Executing readRDS:", paste("Loading analytic dataset:", dataset_name)), indent = 1))
     data <- readRDS(file.path(PROCESSED_DATA_DIR, paste0(dataset_name, ".rds")))
-    log_enhanced(sprintf("Successfully loaded %d patients for analysis", nrow(data)), level = "INFO", indent = 1)
+    logger::log_info(formatted(sprintf("Successfully loaded %d patients for analysis", nrow(data)), indent = 1))
 
     # Load cohort-specific other_map information using unified function
     other_map <- get_cohort_specific_other_map(dataset_name, PROCESSED_DATA_DIR)
@@ -74,17 +74,17 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
         validated_confounders_by_cohort <- readRDS(validated_confounders_file)
         cohort_confounders <- validated_confounders_by_cohort[[dataset_name]]
         if (is.null(cohort_confounders)) {
-            log_enhanced(sprintf("No validated confounders found for cohort %s, using original confounders", dataset_name), level = "WARN")
+            logger::log_warn(formatted(sprintf("No validated confounders found for cohort %s, using original confounders", dataset_name)))
             cohort_confounders <- confounders
         } else {
-            log_enhanced(sprintf(
+            logger::log_info(formatted(sprintf(
                 "Loaded %d validated confounders for cohort %s: %s",
                 length(cohort_confounders), dataset_name,
                 paste(cohort_confounders, collapse = ", ")
-            ), level = "INFO")
+            )))
         }
     } else {
-        log_enhanced("No validated confounders file found, using original confounders", level = "WARN")
+        logger::log_warn(formatted("No validated confounders file found, using original confounders"))
         cohort_confounders <- confounders
     }
 
@@ -92,32 +92,35 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
     results <- list()
 
     if (0 %in% objectives_to_run) {
-        log_enhanced("Running Objective 0: Data Processing", level = "INFO")
+        logger::log_info("Running Objective 0: Data Processing")
         # Objective 0 uses global variables, so we don't need to pass any arguments
         results$objective_0 <- run_objective_0()
     }
 
     if (1 %in% objectives_to_run) {
-        log_enhanced("Running Objective 1: Primary Outcomes", level = "INFO")
+        logger::log_info("Running Objective 1: Primary Outcomes")
         results$objective_1 <- run_objective_1(data, dataset_name, output_dirs, prefix, other_map, confounders = cohort_confounders)
     }
 
     if (2 %in% objectives_to_run) {
-        log_enhanced("Running Objective 2: Safety/Toxicity", level = "INFO")
+        logger::log_info("Running Objective 2: Safety/Toxicity")
         results$objective_2 <- run_objective_2(data, dataset_name, output_dirs, prefix, other_map, confounders = cohort_confounders)
     }
 
     if (3 %in% objectives_to_run) {
-        log_enhanced("Running Objective 3: Repeat Radiation Efficacy", level = "INFO")
+        logger::log_info("Running Objective 3: Repeat Radiation Efficacy")
         results$objective_3 <- run_objective_3(data, dataset_name, output_dirs, prefix, other_map, confounders = cohort_confounders)
     }
 
     if (4 %in% objectives_to_run) {
-        log_enhanced("Running Objective 4: GEP Validation", level = "INFO")
+        logger::log_info("Running Objective 4: GEP Validation")
         results$objective_4 <- run_objective_4(data, dataset_name, output_dirs, prefix, other_map, confounders = cohort_confounders)
     }
 
-    log_section_complete("STATISTICAL ANALYSIS", analysis_start_time)
+    logger::log_info(sprintf(">>> COMPLETED %s (Duration: %.1f seconds)",
+        "STATISTICAL ANALYSIS",
+        as.numeric(difftime(Sys.time(), analysis_start_time, units = "secs"))
+    ))
 
     return(results)
 }
@@ -133,7 +136,7 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
 #' @return The results object returned by \code{run_my_analysis()} for the specified objective.
 #' @export
 run_specific_objective <- function(dataset_name, objective_number) {
-    log_enhanced(sprintf("Running only Objective %d for dataset: %s", objective_number, dataset_name), level = "INFO")
+    logger::log_info(formatted(sprintf("Running only Objective %d for dataset: %s", objective_number, dataset_name)))
 
     # Check dependencies for analysis objectives (1-4)
     if (objective_number %in% c(1, 2, 3, 4)) {
@@ -163,15 +166,15 @@ run_specific_objective <- function(dataset_name, objective_number) {
 #' @export
 merge_baseline_tables <- function() {
     # Merge baseline tables from all cohorts
-    log_enhanced("Merging baseline tables from all cohorts", level = "INFO")
-    log_enhanced("=== STARTING TABLE MERGING: Full and Restricted Cohorts ===", level = "INFO")
+    logger::log_info("Merging baseline tables from all cohorts")
+    log_phase("STARTING TABLE MERGING: Full and Restricted Cohorts")
 
     # Create merged tables directory
     if (!dir.exists(MERGED_TABLES_DIR)) {
         dir.create(MERGED_TABLES_DIR, recursive = TRUE, showWarnings = FALSE)
     }
 
-    log_enhanced(sprintf("Merging tables will be saved to: %s", MERGED_TABLES_DIR), level = "INFO")
+    logger::log_info(formatted(sprintf("Merging tables will be saved to: %s", MERGED_TABLES_DIR)))
 
     # Load both datasets for merging
     full_data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
@@ -179,9 +182,9 @@ merge_baseline_tables <- function() {
 
     # Create merged baseline characteristics table using the correct function
     merge_cohort_tables(full_data, restricted_data, MERGED_TABLES_DIR)
-    log_enhanced("=== COMPLETED TABLE MERGING ===", level = "INFO")
-    log_enhanced(sprintf("Merged baseline characteristics table saved to: %s", MERGED_TABLES_DIR), level = "INFO")
-    log_enhanced("Files created: merged_baseline_characteristics.xlsx and merged_baseline_characteristics.html", level = "INFO")
+    logger::log_info("=== COMPLETED TABLE MERGING ===")
+    logger::log_info(formatted(sprintf("Merged baseline characteristics table saved to: %s", MERGED_TABLES_DIR)))
+    logger::log_info("Files created: merged_baseline_characteristics.xlsx and merged_baseline_characteristics.html")
 }
 
 #' Main execution and merging of baseline tables
@@ -192,38 +195,47 @@ merge_baseline_tables <- function() {
 #' @export
 main_execution <- function() {
     main_start_time <- Sys.time()
-    log_section_start("MAIN EXECUTION PHASE")
+    log_phase("MAIN EXECUTION PHASE")
 
     # Define datasets to analyze
     # this should be generated from the list_available_datasets function and named appropriately so that run_my_analysis can be called with the correct dataset name
     datasets_to_analyze_temp <- tools::file_path_sans_ext(list_available_datasets())
     datasets_to_analyze <- datasets_to_analyze_temp[!str_detect(datasets_to_analyze_temp, "other_map")]
 
-    # Run analysis for each dataset
-    for (i in seq_along(datasets_to_analyze)) {
-        dataset_name <- datasets_to_analyze[i]
-        log_enhanced(sprintf(">>> Dataset %d/%d: %s", i, length(datasets_to_analyze), dataset_name), level = "PROGRESS")
+    # Run analysis for each dataset with progress tracking
+    progressr::with_progress({
+        p <- progressr::progressor(steps = length(datasets_to_analyze))
+        for (i in seq_along(datasets_to_analyze)) {
+            dataset_name <- datasets_to_analyze[i]
+            logger::log_info(formatted(sprintf(">>> Dataset %d/%d: %s", i, length(datasets_to_analyze), dataset_name)))
 
-        tryCatch(
-            {
-                results <- run_my_analysis(dataset_name)
-                log_enhanced(sprintf(">>> Dataset %d/%d completed: %s", i, length(datasets_to_analyze), dataset_name), level = "PROGRESS")
-            },
-            error = function(e) {
-                log_enhanced(sprintf("ERROR in dataset %s: %s", dataset_name, e$message), level = "ERROR")
-            }
-        )
-    }
+            tryCatch(
+                {
+                    results <- run_my_analysis(dataset_name)
+                    logger::log_info(formatted(sprintf(">>> Dataset %d/%d completed: %s", i, length(datasets_to_analyze), dataset_name)))
+                },
+                error = function(e) {
+                    logger::log_error(formatted(sprintf("ERROR in dataset %s: %s", dataset_name, e$message)))
+                }
+            )
+
+            p(message = sprintf("Completed %s", dataset_name))
+        }
+    })
 
     # Merge baseline tables from all cohorts
     merge_baseline_tables()
 
-    log_enhanced("===  ===", level = "INFO")
-    log_enhanced(">>> ALL ANALYSES COMPLETED SUCCESSFULLY!", level = "SUCCESS")
-    log_enhanced(sprintf(">>> Total execution time: %.1f minutes", as.numeric(difftime(Sys.time(), main_start_time, units = "mins"))), level = "SUCCESS")
-    log_enhanced(sprintf(">>> Datasets analyzed: %d", length(datasets_to_analyze)), level = "SUCCESS")
-    log_enhanced("Check the logs above for detailed progress and any warnings.", level = "INFO")
-    log_enhanced("Each cohort has its own complete set of analyses for easy comparison!", level = "INFO")
+    
+    # Map custom SUCCESS level to INFO with success prefix
+    logger::log_info(">>> ALL ANALYSES COMPLETED SUCCESSFULLY!")
+    logger::log_info(formatted(sprintf(">>> Total execution time: %.1f minutes", as.numeric(difftime(Sys.time(), main_start_time, units = "mins")))))
+    logger::log_info(formatted(sprintf(">>> Datasets analyzed: %d", length(datasets_to_analyze))))
+    logger::log_info("Check the logs above for detailed progress and any warnings.")
+    logger::log_info("Each cohort has its own complete set of analyses for easy comparison!")
 
-    log_section_complete("MAIN EXECUTION PHASE", main_start_time)
+    logger::log_info(sprintf(">>> COMPLETED %s (Duration: %.1f seconds)",
+        "MAIN EXECUTION PHASE",
+        as.numeric(difftime(Sys.time(), main_start_time, units = "secs"))
+    ))
 }

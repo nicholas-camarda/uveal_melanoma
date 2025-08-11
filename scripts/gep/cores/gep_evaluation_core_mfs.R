@@ -10,7 +10,7 @@
 #' @param timepoint Numeric. Time point in years for analysis
 #' @return List with results_by_class, overall statistics, and chi-square test results
 calculate_observed_expected_mfs <- function(data, timepoint) {
-    log_enhanced(sprintf("Calculating O/E ratios for %d-year MFS", timepoint), level = "INFO", indent = 2)
+    logger::log_info(formatted(sprintf("Calculating O/E ratios for %d-year MFS", timepoint), indent = 2))
 
     # Convert timepoint to months for comparison
     timepoint_months <- timepoint * 12
@@ -58,16 +58,29 @@ calculate_observed_expected_mfs <- function(data, timepoint) {
             mean_expected_survival = round(mean_expected_survival, 3)
         )
 
-        log_enhanced(sprintf(
+        logger::log_info(formatted(sprintf(
             "%s: O=%d, E=%.1f, O/E=%.3f (95%% CI: %.3f-%.3f)",
             gep_class, observed_events, expected_events, oe_ratio,
             poisson_ci_lower, poisson_ci_upper
-        ), level = "INFO", indent = 3)
+        ), indent = 3))
     }
 
     # Overall chi-square goodness of fit test
     observed_total <- sum(sapply(results_by_class, function(x) x$observed))
     expected_total <- sum(sapply(results_by_class, function(x) x$expected))
+
+    # Recompute overall expected events on full analysis set (unrounded) to scale Poisson CI
+    expected_var <- paste0("expected_mfs_", timepoint, "yr")
+    analysis_data <- data %>% filter(!is.na(.data[[expected_var]]), !is.na(tt_mets_months), !is.na(mets_event))
+    expected_total_raw <- nrow(analysis_data) * (1 - mean(analysis_data[[expected_var]], na.rm = TRUE))
+
+    overall_ci_lower <- NA
+    overall_ci_upper <- NA
+    if (!is.na(expected_total_raw) && expected_total_raw > 0) {
+        overall_poisson <- poisson.test(observed_total)
+        overall_ci_lower <- overall_poisson$conf.int[1] / expected_total_raw
+        overall_ci_upper <- overall_poisson$conf.int[2] / expected_total_raw
+    }
 
     # Chi-square test comparing observed vs expected across all classes
     observed_vec <- sapply(results_by_class, function(x) x$observed)
@@ -89,6 +102,8 @@ calculate_observed_expected_mfs <- function(data, timepoint) {
         overall_observed = observed_total,
         overall_expected = round(expected_total, 2),
         overall_oe_ratio = if (expected_total > 0) round(observed_total / expected_total, 3) else NA,
+        overall_poisson_ci_lower = round(overall_ci_lower, 3),
+        overall_poisson_ci_upper = round(overall_ci_upper, 3),
         chisq_statistic = round(chisq_stat, 3),
         chisq_p_value = round(chisq_p, 4)
     ))
@@ -111,7 +126,7 @@ calculate_observed_expected_mfs <- function(data, timepoint) {
 #'   `nam_dagostino_p`, `ici`, `calibration_slope`, `calibration_intercept`,
 #'   and `group_results`.
 perform_calibration_mfs <- function(data, timepoint, bootstrap_iterations) {
-    log_enhanced(sprintf("Performing calibration assessment for %d-year MFS", timepoint), level = "INFO", indent = 2)
+    logger::log_info(formatted(sprintf("Performing calibration assessment for %d-year MFS", timepoint), indent = 2))
 
     # Prepare data for calibration analysis
     timepoint_months <- timepoint * 12
@@ -129,7 +144,7 @@ perform_calibration_mfs <- function(data, timepoint, bootstrap_iterations) {
         )
 
     if (nrow(cal_data) < GEP_MIN_SAMPLE_SIZE) {
-        log_enhanced("Insufficient data for calibration analysis", level = "WARN", indent = 3)
+        logger::log_warn(formatted("Insufficient data for calibration analysis", indent = 3))
         return(list(
             n = nrow(cal_data),
             status = "insufficient_data",
@@ -222,7 +237,7 @@ perform_calibration_mfs <- function(data, timepoint, bootstrap_iterations) {
                 ici <- mean(abs(loess_data$predicted_risk - loess_pred), na.rm = TRUE)
             },
             error = function(e) {
-                log_enhanced("Error calculating ICI, using simpler approach", level = "WARN", indent = 3)
+                logger::log_warn(formatted("Error calculating ICI, using simpler approach", indent = 3))
                 # Simpler ICI calculation
                 observed_rate <- sum(cal_data$observed_event == 1 & cal_data$observed_time <= timepoint_months) / nrow(cal_data)
                 mean_predicted_rate <- mean(cal_data$predicted_risk)
@@ -279,7 +294,7 @@ perform_calibration_mfs <- function(data, timepoint, bootstrap_iterations) {
                 calibration_intercept <- 0 # In Cox models, no intercept
             },
             error = function(e) {
-                log_enhanced("Error in bootstrap calibration, using simple estimates", level = "WARN", indent = 3)
+                logger::log_warn(formatted("Error in bootstrap calibration, using simple estimates", indent = 3))
                 calibration_slope <- 1 # Perfect calibration assumption
                 calibration_intercept <- 0
             }
@@ -289,10 +304,10 @@ perform_calibration_mfs <- function(data, timepoint, bootstrap_iterations) {
         calibration_intercept <- 0
     }
 
-    log_enhanced(sprintf(
+    logger::log_info(formatted(sprintf(
         "Calibration metrics: Nam-D'Agostino p=%.4f, ICI=%.4f, Slope=%.3f",
         nam_dagostino_p, ici, calibration_slope
-    ), level = "INFO", indent = 3)
+    ), indent = 3))
 
     return(list(
         n = nrow(cal_data),
@@ -320,13 +335,13 @@ perform_calibration_mfs <- function(data, timepoint, bootstrap_iterations) {
 #'   `harrell_c`, `uno_c`, `auc_timepoint`, optional CIs, and bookkeeping
 #'   fields such as `timepoint_months`.
 perform_discrimination_mfs <- function(data, timepoint) {
-    log_enhanced(sprintf("Performing discrimination analysis for %d-year MFS", timepoint), level = "INFO", indent = 2)
+    logger::log_info(formatted(sprintf("Performing discrimination analysis for %d-year MFS", timepoint), indent = 2))
 
     # Prepare data
     timepoint_months <- timepoint * 12
 
     # Log time-specific analysis details
-    log_enhanced(sprintf("Time-specific analysis: censoring at %d months (%d years)", timepoint_months, timepoint), level = "INFO", indent = 3)
+    logger::log_info(formatted(sprintf("Time-specific analysis: censoring at %d months (%d years)", timepoint_months, timepoint), indent = 3))
     expected_var <- paste0("expected_mfs_", timepoint, "yr")
 
     disc_data <- data %>%
@@ -339,7 +354,7 @@ perform_discrimination_mfs <- function(data, timepoint) {
         )
 
     if (nrow(disc_data) < GEP_MIN_SAMPLE_SIZE) {
-        log_enhanced("Insufficient data for discrimination analysis", level = "WARN", indent = 3)
+        logger::log_warn(formatted("Insufficient data for discrimination analysis", indent = 3))
         return(list(
             n = nrow(disc_data),
             status = "insufficient_data",
@@ -383,7 +398,7 @@ perform_discrimination_mfs <- function(data, timepoint) {
             }
         },
         error = function(e) {
-            log_enhanced("Error calculating Harrell's C-index", level = "WARN", indent = 3)
+            logger::log_warn(formatted("Error calculating Harrell's C-index", indent = 3))
             harrell_c <- NA
             harrell_ci_lower <- NA
             harrell_ci_upper <- NA
@@ -413,7 +428,7 @@ perform_discrimination_mfs <- function(data, timepoint) {
             }
         },
         error = function(e) {
-            log_enhanced("Error calculating Uno's C-index", level = "WARN", indent = 3)
+            logger::log_warn(formatted("Error calculating Uno's C-index", indent = 3))
         }
     )
 
@@ -478,7 +493,7 @@ perform_discrimination_mfs <- function(data, timepoint) {
             }
         },
         error = function(e) {
-            log_enhanced("Error calculating time-specific AUC", level = "WARN", indent = 3)
+            logger::log_warn(formatted("Error calculating time-specific AUC", indent = 3))
         }
     )
 
@@ -501,13 +516,13 @@ perform_discrimination_mfs <- function(data, timepoint) {
     events_at_timepoint <- sum(disc_data$observed_event == 1 & disc_data$observed_time <= timepoint_months)
     total_at_timepoint <- nrow(disc_data)
 
-    log_enhanced(sprintf("Timepoint %d years: %d events out of %d patients", timepoint, events_at_timepoint, total_at_timepoint), level = "INFO", indent = 3)
-    log_enhanced(sprintf(
+    logger::log_info(formatted(sprintf("Timepoint %d years: %d events out of %d patients", timepoint, events_at_timepoint, total_at_timepoint), indent = 3))
+    logger::log_info(formatted(sprintf(
         "Discrimination metrics: Harrell C=%.3f, Uno C=%s, AUC=%s",
         ifelse(is.na(harrell_c), NA, harrell_c),
         ifelse(is.na(uno_c), "NA", sprintf("%.3f", uno_c)),
         ifelse(is.na(auc_timepoint), "NA", sprintf("%.3f", auc_timepoint))
-    ), level = "INFO", indent = 3)
+    ), indent = 3))
 
     return(list(
         n = nrow(disc_data),
@@ -540,7 +555,7 @@ perform_discrimination_mfs <- function(data, timepoint) {
 #'   `optimal_threshold`, `optimal_net_benefit`, `threshold_range_min`,
 #'   `threshold_range_max`, `area_between_curves`, and `dca_curve_data`.
 perform_decision_curve_analysis_mfs <- function(data, timepoint) {
-    log_enhanced(sprintf("Performing decision curve analysis for %d-year MFS", timepoint), level = "INFO", indent = 2)
+    logger::log_info(formatted(sprintf("Performing decision curve analysis for %d-year MFS", timepoint), indent = 2))
 
     # Prepare data
     timepoint_months <- timepoint * 12
@@ -556,7 +571,7 @@ perform_decision_curve_analysis_mfs <- function(data, timepoint) {
         )
 
     if (nrow(dca_data) < GEP_MIN_SAMPLE_SIZE) {
-        log_enhanced("Insufficient data for decision curve analysis", level = "WARN", indent = 3)
+        logger::log_warn(formatted("Insufficient data for decision curve analysis", indent = 3))
         return(list(
             n = nrow(dca_data),
             status = "insufficient_data"
@@ -617,10 +632,10 @@ perform_decision_curve_analysis_mfs <- function(data, timepoint) {
         }
     )
 
-    log_enhanced(sprintf(
+    logger::log_info(formatted(sprintf(
         "DCA optimal threshold: %.2f%% (Net benefit: %.4f)",
         optimal_threshold * 100, optimal_net_benefit
-    ), level = "INFO", indent = 3)
+    ), indent = 3))
 
     return(list(
         n = nrow(dca_data),
@@ -646,7 +661,7 @@ perform_decision_curve_analysis_mfs <- function(data, timepoint) {
 #' @return A list containing dataset-level PRAME availability details and
 #'   per-timepoint NRI results.
 perform_prame_augmented_analysis_mfs <- function(data, timepoints) {
-    log_enhanced("Performing PRAME-augmented analysis with NRI calculation", level = "INFO", indent = 1)
+    logger::log_info(formatted("Performing PRAME-augmented analysis with NRI calculation", indent = 1))
 
     prame_data <- data %>%
         dplyr::filter(
@@ -659,7 +674,7 @@ perform_prame_augmented_analysis_mfs <- function(data, timepoints) {
         )
 
     if (nrow(prame_data) < GEP_MIN_BOOTSTRAP_SAMPLE) {
-        log_enhanced(sprintf("Insufficient PRAME data for analysis (n=%d)", nrow(prame_data)), level = "WARN", indent = 2)
+        logger::log_warn(formatted(sprintf("Insufficient PRAME data for analysis (n=%d)", nrow(prame_data)), indent = 2))
         return(list(
             n = nrow(prame_data),
             status = "insufficient_data",
@@ -667,17 +682,17 @@ perform_prame_augmented_analysis_mfs <- function(data, timepoints) {
         ))
     }
 
-    log_enhanced(sprintf("PRAME analysis using %d patients", nrow(prame_data)), level = "INFO", indent = 2)
+    logger::log_info(formatted(sprintf("PRAME analysis using %d patients", nrow(prame_data)), indent = 2))
     prame_dist <- table(prame_data$prame_status)
-    log_enhanced(sprintf(
+    logger::log_info(formatted(sprintf(
         "PRAME distribution: Positive=%d, Negative=%d",
         prame_dist["Positive"], prame_dist["Negative"]
-    ), level = "INFO", indent = 2)
+    ), indent = 2))
 
     nri_results <- list()
 
     for (timepoint in timepoints) {
-        log_enhanced(sprintf("Calculating NRI for %d-year MFS", timepoint), level = "INFO", indent = 2)
+        logger::log_info(formatted(sprintf("Calculating NRI for %d-year MFS", timepoint), indent = 2))
 
         timepoint_months <- timepoint * 12
         tp_key <- paste0("yr", timepoint)
@@ -735,10 +750,10 @@ perform_prame_augmented_analysis_mfs <- function(data, timepoints) {
                 mcnemar_p <- 1
             }
         } else {
-            log_enhanced(sprintf(
+            logger::log_warn(formatted(sprintf(
                 "Insufficient events (%d) or non-events (%d) for NRI calculation",
                 n_events, n_nonevents
-            ), level = "WARN", indent = 3)
+            ), indent = 3))
             nri_events <- NA
             nri_nonevents <- NA
             nri_total <- NA
@@ -790,10 +805,10 @@ perform_prame_augmented_analysis_mfs <- function(data, timepoints) {
         )
 
         if (!is.na(nri_total)) {
-            log_enhanced(sprintf(
+            logger::log_info(formatted(sprintf(
                 "NRI = %.3f (Events: %.3f, Non-events: %.3f), IDI = %.4f",
                 nri_total, nri_events, nri_nonevents, idi
-            ), level = "INFO", indent = 3)
+            ), indent = 3))
         }
     }
 

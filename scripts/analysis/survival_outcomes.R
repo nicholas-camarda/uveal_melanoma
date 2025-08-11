@@ -288,7 +288,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
 #' @param prefix Character string used as a file prefix for output files
 #' @return List with elements: pfs2_data (data frame), survival_analysis (list), summary_table (gtsummary object)
 analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, other_map = list(), output_dirs = NULL, prefix = NULL) {
-    log_enhanced("Starting PFS-2 analysis for recurrent patients")
+    logger::log_info("Starting PFS-2 analysis for recurrent patients")
 
     # Filter to patients with valid PFS-2 data (variables now created in data processing)
     pfs2_data <- data %>%
@@ -298,10 +298,10 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, other_ma
             !is.na(recurrence1_treatment_clean)
         )
 
-    log_enhanced(sprintf("Found %d patients with valid PFS-2 data", nrow(pfs2_data)))
+    logger::log_info(sprintf("Found %d patients with valid PFS-2 data", nrow(pfs2_data)))
 
     if (nrow(pfs2_data) == 0) {
-        log_enhanced("No patients with valid PFS-2 data found")
+        logger::log_info("No patients with valid PFS-2 data found")
         return(list(
             pfs2_data = NULL,
             survival_analysis = NULL,
@@ -311,15 +311,15 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, other_ma
 
     # Show treatment distribution
     treatment_counts <- table(pfs2_data$recurrence1_treatment_clean)
-    log_enhanced("Treatment distribution:")
+    logger::log_info("Treatment distribution:")
     print(treatment_counts)
 
-    log_enhanced(sprintf("Final PFS-2 analysis dataset: %d patients", nrow(pfs2_data)))
-    log_enhanced(sprintf("PFS-2 events (2nd recurrence): %d", sum(pfs2_data$pfs2_event)))
+    logger::log_info(sprintf("Final PFS-2 analysis dataset: %d patients", nrow(pfs2_data)))
+    logger::log_info(sprintf("PFS-2 events (2nd recurrence): %d", sum(pfs2_data$pfs2_event)))
 
     # Check if we have enough patients and events for analysis
     if (nrow(pfs2_data) < 10) {
-        log_enhanced("Insufficient patients for PFS-2 analysis")
+        logger::log_info("Insufficient patients for PFS-2 analysis")
         return(list(
             pfs2_data = pfs2_data,
             survival_analysis = NULL,
@@ -331,9 +331,9 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, other_ma
     total_events <- sum(pfs2_data$pfs2_event)
 
     if (total_events < 5) {
-        log_enhanced("ERROR: Insufficient events for PFS-2 survival analysis")
-        log_enhanced(sprintf("Total events: %d (minimum 5 required)", total_events))
-        log_enhanced("Skipping survival analysis due to insufficient data")
+        logger::log_error("ERROR: Insufficient events for PFS-2 survival analysis")
+        logger::log_info(sprintf("Total events: %d (minimum 5 required)", total_events))
+        logger::log_info("Skipping survival analysis due to insufficient data")
 
         pfs2_survival <- list(
             fit = NULL,
@@ -345,7 +345,7 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, other_ma
     } else {
         # Use existing analyze_time_to_event_outcomes function with dynamic legend labels
         # Perfect separation handling is already implemented in fit_regression_model()
-        log_enhanced("Performing PFS-2 survival analysis")
+        logger::log_info("Performing PFS-2 survival analysis")
         pfs2_survival <- analyze_time_to_event_outcomes(
             data = pfs2_data,
             time_var = "tt_pfs2_months",
@@ -362,7 +362,7 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, other_ma
         )
     }
 
-    log_enhanced("PFS-2 analysis completed")
+    logger::log_info("PFS-2 analysis completed")
 
     # Generate proportional hazards diagnostics for PFS-2 (Objective 3)
     ph_diag_result <- NULL
@@ -400,11 +400,11 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, other_ma
 #' @param dataset_name Name of the dataset for labeling
 #' @return List containing schoenfeld_test, individual_tests, plots, summary
 test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Survival", output_dir = NULL, file_prefix = "", dataset_name = NULL) {
-    log_enhanced(sprintf("Testing proportional hazards assumption for %s", outcome_name), level = "INFO")
+    logger::log_info(sprintf("Testing proportional hazards assumption for %s", outcome_name))
 
     # Check if model is valid
     if (is.null(cox_model) || !inherits(cox_model, "coxph")) {
-        log_enhanced("Invalid Cox model provided - skipping PH assumption testing", level = "WARN")
+        logger::log_warn("Invalid Cox model provided - skipping PH assumption testing")
         return(NULL)
     }
 
@@ -422,7 +422,7 @@ test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Surv
     tryCatch(
         {
             # Perform Schoenfeld residuals test
-            log_enhanced("Computing Schoenfeld residuals and correlation tests", level = "INFO", indent = 1)
+            logger::log_info(formatted("Computing Schoenfeld residuals and correlation tests", indent = 1))
             schoenfeld_test <- survival::cox.zph(cox_model)
 
             # Extract variable names and test statistics
@@ -469,37 +469,35 @@ test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Surv
                 path = file.path(output_dir, paste0(file_prefix, "proportional_hazards_tests.xlsx"))
             )
 
-            log_enhanced(
+            logger::log_info(formatted(
                 sprintf(
                     "PH assumption tests saved to: %s",
                     file.path(output_dir, paste0(file_prefix, "proportional_hazards_tests.xlsx"))
                 ),
-                level = "INFO", indent = 1
-            )
+                indent = 1
+            ))
 
             # Log key findings
             violations <- ph_summary_with_global[ph_summary_with_global$PH_Assumption == "VIOLATED", ]
             if (nrow(violations) > 0) {
-                log_enhanced(sprintf("PH ASSUMPTION VIOLATIONS DETECTED for %d variable(s):", nrow(violations)),
-                    level = "WARN", indent = 1
-                )
+                logger::log_warn(formatted(sprintf("PH ASSUMPTION VIOLATIONS DETECTED for %d variable(s):", nrow(violations)), indent = 1))
                 for (i in seq_len(nrow(violations))) {
-                    log_enhanced(
+                    logger::log_warn(formatted(
                         sprintf(
                             "- %s: p = %.4f (%s)",
                             violations$Variable[i],
                             violations$P_Value[i],
                             violations$Interpretation[i]
                         ),
-                        level = "WARN", indent = 2
-                    )
+                        indent = 2
+                    ))
                 }
             } else {
-                log_enhanced("No PH assumption violations detected", level = "INFO", indent = 1)
+                logger::log_info(formatted("No PH assumption violations detected", indent = 1))
             }
 
             # Create diagnostic plots
-            log_enhanced("Creating Schoenfeld residual diagnostic plots", level = "INFO", indent = 1)
+            logger::log_info(formatted("Creating Schoenfeld residual diagnostic plots", indent = 1))
 
             # Individual plots for each variable
             individual_plots <- list()
@@ -509,7 +507,7 @@ test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Surv
                 var_name <- var_names[i]
                 if (var_name == "GLOBAL") next # Skip global test for individual plots
 
-                log_enhanced(sprintf("Creating plot for variable: %s", var_name), level = "INFO", indent = 2)
+                logger::log_info(formatted(sprintf("Creating plot for variable: %s", var_name), indent = 2))
 
                 # Create individual plot
                 plot_filename <- file.path(output_dir, paste0(file_prefix, "schoenfeld_", gsub("[^A-Za-z0-9]", "_", var_name), ".png"))
@@ -554,7 +552,7 @@ test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Surv
             }
 
             # Create combined plot showing all variables
-            log_enhanced("Creating combined diagnostic plot", level = "INFO", indent = 1)
+            logger::log_info(formatted("Creating combined diagnostic plot", indent = 1))
             combined_plot_filename <- file.path(output_dir, paste0(file_prefix, "schoenfeld_combined.png"))
 
             # Calculate grid dimensions
@@ -602,9 +600,7 @@ test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Surv
 
             dev.off()
 
-            log_enhanced(sprintf("Combined diagnostic plot saved: %s", combined_plot_filename),
-                level = "INFO", indent = 1
-            )
+            logger::log_info(formatted(sprintf("Combined diagnostic plot saved: %s", combined_plot_filename), indent = 1))
 
             # Create summary text file with interpretation
             summary_filename <- file.path(output_dir, paste0(file_prefix, "proportional_hazards_summary.txt"))
@@ -668,11 +664,9 @@ test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Surv
             cat(paste(basename(unlist(individual_plots)), collapse = ", "), file = summary_filename, append = TRUE)
             cat("\n", file = summary_filename, append = TRUE)
 
-            log_enhanced(sprintf("Summary interpretation saved: %s", summary_filename),
-                level = "INFO", indent = 1
-            )
+            logger::log_info(formatted(sprintf("Summary interpretation saved: %s", summary_filename), indent = 1))
 
-            log_enhanced("Proportional hazards assumption testing completed", level = "INFO")
+            logger::log_info("Proportional hazards assumption testing completed")
 
             return(list(
                 schoenfeld_test = schoenfeld_test,
@@ -686,7 +680,7 @@ test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Surv
             ))
         },
         error = function(e) {
-            log_enhanced(sprintf("Error in PH assumption testing: %s", e$message), level = "ERROR")
+            logger::log_error(sprintf("Error in PH assumption testing: %s", e$message))
             return(NULL)
         }
     )

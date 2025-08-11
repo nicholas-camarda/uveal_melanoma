@@ -9,12 +9,12 @@
 #' @param dataset_name Optional dataset name for other_map
 #' @return List of results per subgroup
 analyze_treatment_effect_subgroups_binary <- function(data, outcome_var, subgroup_vars, confounders = NULL, outcome_name = "Binary Outcome", dataset_name = NULL) {
-    log_enhanced(sprintf("Performing subgroup analysis for %s", outcome_name), level = "INFO")
+    logger::log_info(sprintf("Performing subgroup analysis for %s", outcome_name))
     subgroup_results <- list()
     cohort_other_map <- list()
     if (!is.null(dataset_name)) cohort_other_map <- tryCatch(get_cohort_specific_other_map(dataset_name), error = function(e) list())
     for (subgroup_var in subgroup_vars) {
-        log_enhanced(sprintf("Testing interaction for: %s", subgroup_var), level = "INFO")
+        logger::log_info(sprintf("Testing interaction for: %s", subgroup_var))
         res <- tryCatch(
             {
                 processed <- process_subgroup_data(data, subgroup_var, confounders, FALSE)

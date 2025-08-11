@@ -17,7 +17,7 @@
 #' @return Data frame with all factors converted to unordered
 enforce_unordered_factors <- function(data, verbose = FALSE) {
     if (verbose) {
-        log_enhanced("Enforcing unordered factors for modeling", level = "INFO")
+        logger::log_info("Enforcing unordered factors for modeling")
     }
 
     factor_vars <- names(data)[sapply(data, is.factor)]
@@ -36,18 +36,18 @@ enforce_unordered_factors <- function(data, verbose = FALSE) {
 
             converted_count <- converted_count + 1
             if (verbose) {
-                log_enhanced(sprintf(
+                logger::log_info(sprintf(
                     "  Converted ordered factor '%s' to unordered (levels: %s)",
                     var, paste(current_levels, collapse = ", ")
-                ), level = "INFO")
+                ))
             }
         }
     }
 
     if (verbose && converted_count > 0) {
-        log_enhanced(sprintf("✓ Converted %d ordered factors to unordered for modeling", converted_count), level = "INFO")
+        logger::log_info(sprintf("✓ Converted %d ordered factors to unordered for modeling", converted_count))
     } else if (verbose) {
-        log_enhanced("✓ No ordered factors found - all factors already unordered", level = "INFO")
+        logger::log_info("✓ No ordered factors found - all factors already unordered")
     }
 
     return(data)

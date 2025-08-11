@@ -7,7 +7,7 @@
 #' @param data Data frame to validate (typically the full cohort)
 #' @return List with validation_passed (TRUE/FALSE) and detailed_results (list)
 validate_gep_variables_with_report <- function(data) {
-    log_enhanced("Starting GEP variable validation checks", level = "INFO", indent = 1)
+    logger::log_info(formatted("Starting GEP variable validation checks", indent = 1))
     validation_passed <- TRUE
     detailed_results <- list()
     required_gep_vars <- c(

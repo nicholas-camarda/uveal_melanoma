@@ -7,7 +7,7 @@
 #'
 #' @return A list with three tibbles: full, restricted, and gksrs-only cohorts
 apply_criteria <- function(data) {
-    log_enhanced(sprintf("Applying inclusion/exclusion criteria to full cohort to generate restricted and GKSRS-only cohorts"), level = "INFO")
+    logger::log_info("Applying inclusion/exclusion criteria to full cohort to generate restricted and GKSRS-only cohorts")
 
     full_cohort <- data %>%
         filter(!is.na(consort_group)) %>%
@@ -15,8 +15,8 @@ apply_criteria <- function(data) {
         filter(!(id %in% SPECIFIC_PATIENTS_TO_EXCLUDE) | is.na(id)) %>%
         mutate(cohort = "All Patients")
 
-    log_enhanced(sprintf("Removed %d patients from full cohort based on NA values in consort_group, treatment_group, or id", nrow(data) - nrow(full_cohort)), level = "INFO")
-    log_enhanced(sprintf("IDs of patients removed: %s", paste(SPECIFIC_PATIENTS_TO_EXCLUDE, collapse = ", ")), level = "INFO")
+    logger::log_info(sprintf("Removed %d patients from full cohort based on NA values in consort_group, treatment_group, or id", nrow(data) - nrow(full_cohort)))
+    logger::log_info(sprintf("IDs of patients removed: %s", paste(SPECIFIC_PATIENTS_TO_EXCLUDE, collapse = ", ")))
 
     restricted_cohort <- full_cohort %>%
         filter(consort_group == "eligible_both") %>%
@@ -32,9 +32,9 @@ apply_criteria <- function(data) {
         uveal_melanoma_gksrs_only_cohort = gksrs_only_cohort
     )
 
-    log_enhanced(sprintf("Created %d cohorts", length(factored_filtered_data)), level = "INFO")
+    logger::log_info(sprintf("Created %d cohorts", length(factored_filtered_data)))
     for (cohort in names(factored_filtered_data)) {
-        log_enhanced(sprintf("Cohort '%s': %d patients", cohort, nrow(factored_filtered_data[[cohort]])), level = "INFO")
+        logger::log_info(sprintf("Cohort '%s': %d patients", cohort, nrow(factored_filtered_data[[cohort]])))
     }
 
     generate_validation_report(factored_filtered_data)
@@ -49,7 +49,7 @@ apply_criteria <- function(data) {
 #'
 #' @return A list with elements `data` (factored data) and `other_map` placeholder
 prepare_factor_levels <- function(data) {
-    log_enhanced("Preparing factor levels for variables", level = "INFO")
+    logger::log_info("Preparing factor levels for variables")
 
     data <- data %>%
         mutate(
@@ -100,7 +100,7 @@ prepare_factor_levels <- function(data) {
         )
 
     if (VERBOSE) {
-        log_enhanced("\nNew factor levels:", level = "INFO")
+        logger::log_info("\nNew factor levels:")
         factor_vars <- names(data)[sapply(data, is.factor)]
         for (var in factor_vars) {
             message(sprintf("##### %s:", var))
@@ -108,7 +108,7 @@ prepare_factor_levels <- function(data) {
         }
     }
 
-    log_enhanced("Creating all subgroup variables for analysis", level = "INFO")
+    logger::log_info("Creating all subgroup variables for analysis")
     data <- create_binned_continuous_variables(data)
 
     data <- enforce_unordered_factors(data, verbose = VERBOSE)
@@ -121,10 +121,10 @@ prepare_factor_levels <- function(data) {
 #' @param cohort_data Named list of data frames for each cohort
 #' @return None; writes files to disk
 save_cohorts <- function(cohort_data) {
-    log_enhanced(sprintf("Saving processed data in %s", PROCESSED_DATA_DIR), level = "INFO")
+    logger::log_info(sprintf("Saving processed data in %s", PROCESSED_DATA_DIR))
 
     for (cohort_name in names(cohort_data)) {
-        log_enhanced(sprintf("Saving cohort: %s", cohort_name), level = "INFO")
+        logger::log_info(sprintf("Saving cohort: %s", cohort_name))
         write_xlsx(cohort_data[[cohort_name]], file.path(PROCESSED_DATA_DIR, paste0(cohort_name, ".xlsx")))
         saveRDS(cohort_data[[cohort_name]], file.path(PROCESSED_DATA_DIR, paste0(cohort_name, ".rds")))
     }

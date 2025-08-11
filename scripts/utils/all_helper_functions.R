@@ -81,6 +81,10 @@ use("forestploter") # Forest plots
 use("grid") # grid::unit(), viewport helpers
 use("cowplot") # Combining ggplots
 
+# Logging and progress
+use("logger")
+use("progressr")
+
 # Testing
 use("usethis") # For creating test files
 use("testthat") # For testing
@@ -229,9 +233,9 @@ setup_cohort_outputs <- function(dataset_name, cohort_dir_name = NULL) {
     output_dirs <- create_output_structure(cohort_base_dir)
 
     # Log the setup
-    log_enhanced(sprintf("Created output structure for %s", dataset_name), level = "INFO")
-    log_enhanced(sprintf("Prefix: %s", prefix), level = "INFO", indent = 1)
-    log_enhanced(sprintf("Base directory: %s", cohort_base_dir), level = "INFO", indent = 1)
+            logger::log_info(sprintf("Created output structure for %s", dataset_name))
+            logger::log_info(formatted(sprintf("Prefix: %s", prefix), indent = 1))
+            logger::log_info(formatted(sprintf("Base directory: %s", cohort_base_dir), indent = 1))
 
     return(list(
         prefix = prefix,
@@ -274,11 +278,11 @@ validate_naming_consistency <- function(dataset_name, prefix, cohort_dir_name) {
     cohort_dir_consistent <- cohort_dir_name == cohort_dir_expected
 
     if (!prefix_consistent) {
-        log_enhanced(sprintf("PREFIX INCONSISTENCY: Expected '%s', got '%s'", prefix_expected, prefix), level = "ERROR")
+        logger::log_error(sprintf("PREFIX INCONSISTENCY: Expected '%s', got '%s'", prefix_expected, prefix))
     }
 
     if (!cohort_dir_consistent) {
-        log_enhanced(sprintf("COHORT DIR INCONSISTENCY: Expected '%s', got '%s'", cohort_dir_expected, cohort_dir_name), level = "ERROR")
+        logger::log_error(sprintf("COHORT DIR INCONSISTENCY: Expected '%s', got '%s'", cohort_dir_expected, cohort_dir_name))
     }
 
     return(prefix_consistent && cohort_dir_consistent)

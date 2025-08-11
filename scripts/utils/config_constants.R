@@ -375,9 +375,14 @@ PLOT_UNITS <- "in" # units
 # - GEP_RISK_CUTOFFS: Risk stratification categories for NRI analysis
 # - GEP_DCA_THRESHOLD_*: Decision curve analysis thresholds
 
+# Save RDS files for reproducibility
+GEP_SAVE_RDS <- TRUE
+
 # Core GEP validation settings
 GEP_VALIDATION_TIMEPOINTS <- c(5, 7, 10) # years for validation analysis
-GEP_BOOTSTRAP_ITERATIONS <- 200 # bootstrap samples for optimism correction
+GEP_BOOTSTRAP_ITERATIONS_TEST <- 200
+GEP_BOOTSTRAP_ITERATIONS_PROD <- 1000
+GEP_BOOTSTRAP_ITERATIONS <- if (nzchar(Sys.getenv("TESTTHAT")) || nzchar(Sys.getenv("CI"))) GEP_BOOTSTRAP_ITERATIONS_TEST else GEP_BOOTSTRAP_ITERATIONS_PROD
 
 # PRAME augmentation constants
 GEP_PRAME_ADJUSTMENT_FACTOR <- 1.3 # 30% increase in risk for PRAME positive patients
@@ -409,7 +414,7 @@ GEP_LOESS_SPAN <- 0.3 # Smoothing parameter for loess calibration curves
 GEP_MIN_SAMPLE_SIZE <- 20 # Minimum sample size for any analysis
 GEP_MIN_EVENTS_COMPETING_RISK <- 5 # Minimum events for competing risk analysis
 GEP_MIN_BOOTSTRAP_SAMPLE <- 30 # Minimum sample size for bootstrap analysis
-GEP_MAX_BOOTSTRAP_ITERATIONS <- 100 # Maximum bootstrap iterations for speed
+GEP_MAX_BOOTSTRAP_ITERATIONS <- 1000 # Maximum bootstrap iterations for production runs
 GEP_MISSING_DATA_THRESHOLD <- 10 # Minimum patients needed for missing data analysis
 GEP_RECOMMENDED_VALIDATION_SAMPLE <- 100 # Recommended minimum for robust validation
 GEP_RECOMMENDED_TESTING_SAMPLE <- 30 # Recommended minimum for testing set

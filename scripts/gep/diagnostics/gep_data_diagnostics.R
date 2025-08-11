@@ -12,7 +12,7 @@
 #'   `outcome_by_missing`, `imputation_analysis`, and
 #'   `informative_missingness_detected`.
 assess_gep_missing_data <- function(data) {
-    log_enhanced("Assessing GEP missing data patterns and informative missingness", level = "INFO", indent = 1)
+    logger::log_info(formatted("Assessing GEP missing data patterns and informative missingness", indent = 1))
 
     # Create missing data indicator variables
     missing_data <- data %>%
@@ -35,12 +35,12 @@ assess_gep_missing_data <- function(data) {
         count(missing_gep_group) %>%
         mutate(percentage = round(100 * n / sum(n), 1))
 
-    log_enhanced("GEP data availability patterns:", level = "INFO", indent = 2)
+    logger::log_info(formatted("GEP data availability patterns:", indent = 2))
     for (i in seq_len(nrow(missing_pattern_summary))) {
         pattern <- missing_pattern_summary$missing_gep_group[i]
         n <- missing_pattern_summary$n[i]
         pct <- missing_pattern_summary$percentage[i]
-        log_enhanced(sprintf("%s: %d patients (%.1f%%)", pattern, n, pct), level = "INFO", indent = 3)
+        logger::log_info(formatted(sprintf("%s: %d patients (%.1f%%)", pattern, n, pct), indent = 3))
     }
 
     # Baseline characteristics comparison between GEP-tested vs missing
@@ -119,7 +119,7 @@ assess_gep_missing_data <- function(data) {
                 )
             },
             error = function(e) {
-                log_enhanced("Error in baseline characteristics comparison", level = "WARN", indent = 2)
+                logger::log_warn(formatted("Error in baseline characteristics comparison", indent = 2))
                 baseline_comparison <- NULL
             }
         )
@@ -129,12 +129,12 @@ assess_gep_missing_data <- function(data) {
     if (!is.null(baseline_comparison) && !is.null(baseline_comparison$n_significant)) {
         n_sig <- baseline_comparison$n_significant
         if (is.na(n_sig)) n_sig <- 0
-        log_enhanced(sprintf(
+        logger::log_info(formatted(sprintf(
             "Baseline comparison: %d/%d variables show significant differences (p<0.05)",
             n_sig, length(baseline_comparison$group_tests)
-        ), level = "INFO", indent = 2)
+        ), indent = 2))
     } else {
-        log_enhanced("Baseline comparison: No significant differences detected (insufficient data)", level = "INFO", indent = 2)
+        logger::log_info(formatted("Baseline comparison: No significant differences detected (insufficient data)", indent = 2))
     }
 
     # Outcome differences by missing data pattern
@@ -159,19 +159,19 @@ assess_gep_missing_data <- function(data) {
                         significant = pchisq(logrank_test$chisq, df = length(logrank_test$n) - 1, lower.tail = FALSE) < 0.05
                     )
 
-                    log_enhanced(
+                    logger::log_info(formatted(
                         sprintf(
                             "Survival differs by missing pattern: p=%.4f (%s)",
                             outcome_by_missing$logrank_p,
                             ifelse(outcome_by_missing$significant, "significant", "not significant")
                         ),
-                        level = "INFO", indent = 2
-                    )
+                        indent = 2
+                    ))
                 }
             }
         },
         error = function(e) {
-            log_enhanced("Error in outcome analysis by missing pattern", level = "WARN", indent = 2)
+            logger::log_warn(formatted("Error in outcome analysis by missing pattern", indent = 2))
         }
     )
 
@@ -180,7 +180,7 @@ assess_gep_missing_data <- function(data) {
     if (nrow(missing_data %>% filter(has_gep)) >= GEP_MIN_BOOTSTRAP_SAMPLE) {
         tryCatch(
             {
-                log_enhanced("Performing simplified multiple imputation sensitivity analysis", level = "INFO", indent = 2)
+                logger::log_info(formatted("Performing simplified multiple imputation sensitivity analysis", indent = 2))
 
                 imputable_data <- missing_data %>%
                     filter(
@@ -206,16 +206,16 @@ assess_gep_missing_data <- function(data) {
                         method = "tumor_size_based"
                     )
 
-                    log_enhanced(sprintf(
+                    logger::log_info(formatted(sprintf(
                         "Imputation analysis: %d patients imputed (%d Class 1A, %d Class 2)",
                         imputation_analysis$n_imputable,
                         imputation_analysis$imputed_class_1a,
                         imputation_analysis$imputed_class_2
-                    ), level = "INFO", indent = 3)
+                    ), indent = 3))
                 }
             },
             error = function(e) {
-                log_enhanced("Error in multiple imputation analysis", level = "WARN", indent = 2)
+                logger::log_warn(formatted("Error in multiple imputation analysis", indent = 2))
             }
         )
     }
@@ -245,14 +245,14 @@ assess_gep_missing_data <- function(data) {
 #' @return A data frame with indicators: `melanoma_death_event`,
 #'   `competing_death_event`, `tt_death_years`, and validation summaries.
 prepare_mss_competing_risk_data <- function(data) {
-    log_enhanced("Preparing data for MSS competing risk analysis", level = "DEBUG")
+    logger::log_debug("Preparing data for MSS competing risk analysis")
 
     # Check for cause of death variables
     cause_of_death_vars <- c("cause_of_death", "death_cause", "mortality_cause")
     available_cause_vars <- intersect(cause_of_death_vars, names(data))
 
     if (length(available_cause_vars) == 0) {
-        log_enhanced("No cause of death variables found, using all deaths as melanoma-specific", level = "WARN")
+        logger::log_warn("No cause of death variables found, using all deaths as melanoma-specific")
         # If no cause of death data, treat all deaths as melanoma-specific
         analysis_data <- data %>%
             filter(
@@ -273,7 +273,7 @@ prepare_mss_competing_risk_data <- function(data) {
     } else {
         # Use available cause of death variable
         cause_var <- available_cause_vars[1]
-        log_enhanced(sprintf("Using cause of death variable: %s", cause_var), level = "INFO")
+        logger::log_info(sprintf("Using cause of death variable: %s", cause_var))
 
         analysis_data <- data %>%
             filter(
@@ -302,12 +302,12 @@ prepare_mss_competing_risk_data <- function(data) {
             )
     }
 
-    log_enhanced(sprintf("MSS analysis dataset: %d patients", nrow(analysis_data)), level = "INFO")
-    log_enhanced(sprintf(
+    logger::log_info(sprintf("MSS analysis dataset: %d patients", nrow(analysis_data)))
+    logger::log_info(sprintf(
         "Melanoma deaths: %d, Competing deaths: %d",
         sum(analysis_data$melanoma_death_event),
         sum(analysis_data$competing_death_event)
-    ), level = "INFO")
+    ))
 
     return(analysis_data)
 }

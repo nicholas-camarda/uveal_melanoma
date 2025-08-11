@@ -78,7 +78,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, other_map =
     )
 
     # Linear regression model
-    log_enhanced("Fitting linear regression model for vision changes")
+    logger::log_info("Fitting linear regression model for vision changes")
 
     # Use the unified table generation system for linear regression
     # Use the same standardized confounders as all other analyses
@@ -138,11 +138,11 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
 
     # For SRD, filter to only radiation-induced cases as per objectives
     if (sequela_type == "srd") {
-        log_enhanced("Filtering SRD to only radiation-induced causes")
+        logger::log_info("Filtering SRD to only radiation-induced causes")
         original_n <- nrow(data)
         # Check what values exist in srd_cause
         if ("srd_cause" %in% names(data)) {
-            log_enhanced("Available srd_cause values:")
+            logger::log_info("Available srd_cause values:")
             print(table(data$srd_cause, useNA = "ifany"))
         }
 
@@ -154,7 +154,7 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
                     # Keep patients with radiation-induced SRD (exclude mass-induced)
                     (srd == "Y" & srd_cause == "Radiation")
             )
-        log_enhanced(sprintf("Data filtered for radiation-induced SRD: %d -> %d patients", original_n, nrow(data)))
+        logger::log_info(sprintf("Data filtered for radiation-induced SRD: %d -> %d patients", original_n, nrow(data)))
     }
 
     # Ensure consistent factor contrasts for modeling
@@ -169,7 +169,7 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
         ))
     }
 
-    log_enhanced(sprintf("Analyzing %s rates (binary outcome)", toupper(sequela_type)))
+    logger::log_info(sprintf("Analyzing %s rates (binary outcome)", toupper(sequela_type)))
 
     # Convert to binary if needed and ensure it's numeric for glm
     data <- data %>%
@@ -284,7 +284,7 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
         safety_diagnostics <- regression_result$diagnostics
         regression_table <- regression_result$table # Get the regression table
     } else {
-        log_enhanced(sprintf("Insufficient events for regression modeling (%d events)", sum(data[[outcome_var]] == "Y", na.rm = TRUE)))
+        logger::log_warn(sprintf("Insufficient events for regression modeling (%d events)", sum(data[[outcome_var]] == "Y", na.rm = TRUE)))
     }
 
     # Note: Diagnostics are now handled by the unified table generation system

@@ -111,12 +111,12 @@ filter_extreme_estimates_from_table <- function(tbl_data, extreme_terms, variabl
     rows_to_remove <- which(tbl_data$term %in% extreme_terms)
 
     # DEBUG: Print filtering info
-    log_enhanced(sprintf(
+    logger::log_info(sprintf(
         "DEBUG: Filtering for %s - found %d extreme terms, %d matching rows in table",
         analysis_name, length(extreme_terms), length(rows_to_remove)
-    ), level = "DEBUG")
+    ))
     if (length(extreme_terms) > 0) {
-        log_enhanced(sprintf("DEBUG: Available terms in table: %s", paste(unique(tbl_data$term), collapse = ", ")), level = "DEBUG")
+        logger::log_info(sprintf("DEBUG: Available terms in table: %s", paste(unique(tbl_data$term), collapse = ", ")))
     }
 
     if (length(rows_to_remove) > 0) {
@@ -142,10 +142,10 @@ filter_extreme_estimates_from_table <- function(tbl_data, extreme_terms, variabl
 
             # If removing extreme estimates would leave NO rows for this variable, keep its extreme estimates
             if (length(remaining_rows) == 0) {
-                log_enhanced(sprintf(
+                logger::log_warn(sprintf(
                     "Keeping extreme estimates for %s in %s to avoid empty variable (would leave no levels)",
                     var, analysis_name
-                ), level = "WARN")
+                ))
                 sparse_table_warning <- TRUE
                 # Remove these rows from the list of rows to remove
                 final_rows_to_remove <- setdiff(final_rows_to_remove, var_extreme_rows)
@@ -155,20 +155,20 @@ filter_extreme_estimates_from_table <- function(tbl_data, extreme_terms, variabl
         # Remove the rows that are safe to remove
         if (length(final_rows_to_remove) > 0) {
             tbl_data_filtered <- tbl_data[-final_rows_to_remove, ]
-            log_enhanced(sprintf(
+            logger::log_info(sprintf(
                 "Removed %d extreme estimates from %s table output",
                 length(final_rows_to_remove), analysis_name
-            ), level = "INFO")
+            ))
             return(list(
                 tbl_data_filtered = tbl_data_filtered,
                 rows_removed = length(final_rows_to_remove),
                 sparse_table_warning = sparse_table_warning
             ))
         } else {
-            log_enhanced(sprintf(
+            logger::log_info(sprintf(
                 "No rows safe to remove in %s after checking for empty variables",
                 analysis_name
-            ), level = "INFO")
+            ))
             return(list(
                 tbl_data_filtered = tbl_data,
                 rows_removed = 0,
@@ -226,14 +226,14 @@ apply_extreme_estimate_filtering <- function(tbl, model_fit, effect_measure = "O
         extreme_terms <- tbl_data$term[extreme_detection$extreme_indices]
 
         # DEBUG: Print what was detected
-        log_enhanced(sprintf("DEBUG: Table-based extreme detection for %s found %d extreme estimates", analysis_name, length(extreme_detection$extreme_indices)), level = "DEBUG")
+        logger::log_info(sprintf("DEBUG: Table-based extreme detection for %s found %d extreme estimates", analysis_name, length(extreme_detection$extreme_indices)))
         if (length(extreme_detection$extreme_indices) > 0) {
             for (i in seq_along(extreme_detection$extreme_indices)) {
                 idx <- extreme_detection$extreme_indices[i]
-                log_enhanced(sprintf(
+                logger::log_info(sprintf(
                     "DEBUG: Table extreme estimate %d: estimate=%.2e, CI=(%.2e, %.2e), reason=%s",
                     i, table_estimates[idx], table_ci_lower[idx], table_ci_upper[idx], extreme_detection$exclusion_reasons[i]
-                ), level = "DEBUG")
+                ))
             }
         }
 

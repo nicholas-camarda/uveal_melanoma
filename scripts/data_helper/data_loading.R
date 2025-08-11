@@ -15,7 +15,7 @@
 #' @examples
 #' fix_event_date_consistency(data, "recurrence1", "recurrence1_date")
 fix_event_date_consistency <- function(data, event_var, date_var, event_yes = "Y", event_no = "N") {
-    log_enhanced(sprintf("Checking consistency between %s and %s", event_var, date_var), level = "INFO")
+    logger::log_info(sprintf("Checking consistency between %s and %s", event_var, date_var))
 
     n_event_should_be_yes <- sum(!is.na(data[[date_var]]) & data[[event_var]] != event_yes, na.rm = TRUE)
     n_date_should_be_na <- sum(data[[event_var]] == event_yes & is.na(data[[date_var]]), na.rm = TRUE)
@@ -31,25 +31,25 @@ fix_event_date_consistency <- function(data, event_var, date_var, event_yes = "Y
         )
 
     if (VERBOSE) {
-        log_enhanced(sprintf("Found %d events with dates", sum(!is.na(data[[date_var]]))), level = "INFO")
-        log_enhanced(sprintf("Found %d events marked as '%s'", sum(data[[event_var]] == event_yes, na.rm = TRUE), event_yes), level = "INFO")
-        log_enhanced(sprintf(
+        logger::log_info(sprintf("Found %d events with dates", sum(!is.na(data[[date_var]]))))
+        logger::log_info(sprintf("Found %d events marked as '%s'", sum(data[[event_var]] == event_yes, na.rm = TRUE), event_yes))
+        logger::log_info(sprintf(
             "Event/date consistency check for '%s' and '%s':", event_var, date_var
-        ), level = "INFO")
-        log_enhanced(sprintf(
+        ))
+        logger::log_info(sprintf(
             "  - Number of records with a non-missing %s: %d", date_var, sum(!is.na(data[[date_var]]))
-        ), level = "INFO")
-        log_enhanced(sprintf(
+        ))
+        logger::log_info(sprintf(
             "  - Number of records with %s marked as '%s': %d", event_var, event_yes, sum(data[[event_var]] == event_yes, na.rm = TRUE)
-        ), level = "INFO")
-        log_enhanced(sprintf(
+        ))
+        logger::log_info(sprintf(
             "  - Fixed %d records where %s was not '%s' but %s was present (set event to '%s')",
             n_event_should_be_yes, event_var, event_yes, date_var, event_yes
-        ), level = "INFO")
-        log_enhanced(sprintf(
+        ))
+        logger::log_info(sprintf(
             "  - Fixed %d records where %s was '%s' but %s was missing (set date to NA)",
             n_date_should_be_na, event_var, event_yes, date_var
-        ), level = "INFO")
+        ))
     }
 
     return(data)
@@ -72,8 +72,8 @@ fix_event_date_consistency <- function(data, event_var, date_var, event_yes = "Y
 #' @examples
 #' load_and_clean_data()
 load_and_clean_data <- function(filename) {
-    log_enhanced(sprintf("Loading data from directory: %s", RAW_DATA_DIR), level = "INFO")
-    log_enhanced(sprintf("Loading data from file: %s", filename), level = "INFO")
+    logger::log_info(sprintf("Loading data from directory: %s", RAW_DATA_DIR))
+    logger::log_info(sprintf("Loading data from file: %s", filename))
     raw_data <- read_excel(
         file.path(RAW_DATA_DIR, filename),
         sheet = 1
@@ -114,17 +114,17 @@ load_and_clean_data <- function(filename) {
             )
         )
 
-    log_enhanced("eligible_both: initial_tumor_diameter <= 20mm, initial_tumor_height <= 10mm, optic_nerve == 'N'", level = "INFO")
-    log_enhanced("gksrs_only: initial_tumor_diameter > 20mm, initial_tumor_height > 10mm, optic_nerve == 'Y'", level = "INFO")
-    log_enhanced("other: catch-all for any other cases", level = "INFO")
+    logger::log_info("eligible_both: initial_tumor_diameter <= 20mm, initial_tumor_height <= 10mm, optic_nerve == 'N'")
+    logger::log_info("gksrs_only: initial_tumor_diameter > 20mm, initial_tumor_height > 10mm, optic_nerve == 'Y'")
+    logger::log_info("other: catch-all for any other cases")
     message("\n")
-    log_enhanced(sprintf("Found %d patients in full cohort", nrow(cleaned_data)), level = "INFO")
-    log_enhanced(sprintf("Found %d patients in restricted cohort", nrow(cleaned_data %>% filter(consort_group == "eligible_both"))), level = "INFO")
-    log_enhanced(sprintf("Found %d patients in GKSRS-only cohort", nrow(cleaned_data %>% filter(consort_group == "gksrs_only"))), level = "INFO")
-    log_enhanced(sprintf("Found %d patients in other cohort", nrow(cleaned_data %>% filter(consort_group == "other"))), level = "INFO")
+    logger::log_info(sprintf("Found %d patients in full cohort", nrow(cleaned_data)))
+    logger::log_info(sprintf("Found %d patients in restricted cohort", nrow(cleaned_data %>% filter(consort_group == "eligible_both"))))
+    logger::log_info(sprintf("Found %d patients in GKSRS-only cohort", nrow(cleaned_data %>% filter(consort_group == "gksrs_only"))))
+    logger::log_info(sprintf("Found %d patients in other cohort", nrow(cleaned_data %>% filter(consort_group == "other"))))
     print(cleaned_data %>% filter(consort_group == "other") %>% select(id, initial_tumor_diameter, initial_tumor_height, optic_nerve))
     message("\n")
-    log_enhanced("NOTE: NOT splitting into cohorts yet!", level = "INFO")
+    logger::log_info("NOTE: NOT splitting into cohorts yet!")
     message("\n")
 
     cleaned_data <- fix_event_date_consistency(cleaned_data, "initial_gk", "initial_gk_date")
@@ -161,7 +161,7 @@ load_and_clean_data <- function(filename) {
             )
         )
 
-    log_enhanced(sprintf("Loaded %d rows of raw data", nrow(cleaned_data_final)), level = "INFO")
+    logger::log_info(sprintf("Loaded %d rows of raw data", nrow(cleaned_data_final)))
 
     return(cleaned_data_final)
 }

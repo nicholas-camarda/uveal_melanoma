@@ -575,7 +575,7 @@ generate_derived_variables_documentation <- function(include_timestamp = FALSE) 
     # Export to Excel
     result_file <- export_derived_variables_to_excel(output_file, include_timestamp = FALSE)
 
-    log_enhanced(sprintf("Derived variables documentation generated: %s", result_file), level = "INFO")
+    logger::log_info(sprintf("Derived variables documentation generated: %s", result_file))
 
     return(result_file)
 }

@@ -22,7 +22,7 @@ create_gtsummary_table <- function(model_fit, effect_measure, analysis_name, oth
     if (is.null(outcome_type)) {
         model_type <- detect_model_type(model_fit)
         outcome_type <- model_type_to_outcome_type(model_type)
-        log_enhanced(sprintf("Detected outcome type '%s' from model type '%s'", outcome_type, model_type), level = "DEBUG")
+        logger::log_info(sprintf("Detected outcome type '%s' from model type '%s'", outcome_type, model_type))
     }
 
     # Get all variable labels and filter to only include variables in the model
@@ -53,7 +53,7 @@ create_gtsummary_table <- function(model_fit, effect_measure, analysis_name, oth
                 )
         },
         error = function(e) {
-            log_enhanced(sprintf("Error creating gtsummary table: %s", e$message), level = "ERROR")
+            logger::log_error(sprintf("Error creating gtsummary table: %s", e$message))
             # Return a simple table with just the model summary
             model_fit %>%
                 tbl_regression(
@@ -101,10 +101,10 @@ create_gtsummary_table <- function(model_fit, effect_measure, analysis_name, oth
 
     # Filter out extreme estimates
     if (length(extreme_result$extreme_indices) > 0) {
-        log_enhanced(sprintf(
+        logger::log_info(sprintf(
             "Filtering %d extreme estimates from table for %s",
             length(extreme_result$extreme_indices), analysis_name
-        ), level = "INFO")
+        ))
 
         # Get the extreme terms to remove
         extreme_terms <- table_data$term[extreme_result$extreme_indices]
@@ -120,10 +120,10 @@ create_gtsummary_table <- function(model_fit, effect_measure, analysis_name, oth
         # Update the table with filtered data
         table$table_body <- filter_result$tbl_data_filtered
 
-        log_enhanced(sprintf(
+        logger::log_info(sprintf(
             "Removed %d rows with extreme estimates from table",
             filter_result$rows_removed
-        ), level = "INFO")
+        ))
     }
 
     # Remove variables that now only have reference levels (no coefficients)
@@ -155,10 +155,10 @@ create_gtsummary_table <- function(model_fit, effect_measure, analysis_name, oth
 
         if (nrow(valid_level_rows) == 0) {
             variables_to_remove <- c(variables_to_remove, var)
-            log_enhanced(sprintf(
+            logger::log_info(sprintf(
                 "Removing variable '%s' - no valid levels remain after filtering (total_levels = %d, valid_levels = %d)",
                 var, nrow(level_rows), nrow(valid_level_rows)
-            ), level = "INFO")
+            ))
         }
     }
 
@@ -327,7 +327,7 @@ add_factor_label_pvalues_to_table <- function(
     treatment_var = "treatment_group",
     model_fit = NULL) {
     # Log the start of the function for debugging
-    log_enhanced("Starting add_factor_label_pvalues_to_table", level = "DEBUG")
+    logger::log_info("Starting add_factor_label_pvalues_to_table")
 
     # Extract the table body for manipulation
     table_data <- table$table_body
@@ -344,9 +344,8 @@ add_factor_label_pvalues_to_table <- function(
     }
 
     # Log which variables will be tested for overall significance
-    log_enhanced(
-        sprintf("Variables to test for overall significance: %s", paste(variables, collapse = ", ")),
-        level = "DEBUG"
+    logger::log_info(
+        sprintf("Variables to test for overall significance: %s", paste(variables, collapse = ", "))
     )
 
     # Initialize a list to store p-values for each variable
@@ -356,14 +355,13 @@ add_factor_label_pvalues_to_table <- function(
     if (is.null(outcome_type) && !is.null(model_fit)) {
         model_type <- detect_model_type(model_fit)
         outcome_type <- model_type_to_outcome_type(model_type)
-        log_enhanced(
-            sprintf("Detected outcome type '%s' from model type '%s'", outcome_type, model_type),
-            level = "DEBUG"
+        logger::log_info(
+            sprintf("Detected outcome type '%s' from model type '%s'", outcome_type, model_type)
         )
     } else if (is.null(outcome_type)) {
         # Default to "binary" if outcome_type is still NULL
         outcome_type <- "binary"
-        log_enhanced("No model provided, using default outcome type 'binary'", level = "DEBUG")
+        logger::log_info("No model provided, using default outcome type 'binary'")
     }
 
     # Loop through each variable to calculate the overall p-value

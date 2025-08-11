@@ -12,7 +12,7 @@
 #' list_available_datasets()
 list_available_datasets <- function() {
     datasets <- list.files(PROCESSED_DATA_DIR, pattern = "\\.rds$")
-    log_enhanced(sprintf("Found %d datasets to analyze", length(datasets)))
+    logger::log_info(sprintf("Found %d datasets to analyze", length(datasets)))
     print(datasets)
     return(gsub("\\.rds$", "", datasets))
 }
@@ -32,12 +32,12 @@ list_available_datasets <- function() {
 handle_rare_categories <- function(data, vars, threshold = 5) {
     other_map <- list()
     if (VERBOSE) {
-        log_enhanced(sprintf("\nChecking for rare categories (threshold: %d):", threshold))
+        logger::log_info(sprintf("\nChecking for rare categories (threshold: %d):", threshold))
     }
 
     for (var in vars) {
         if (var %in% names(data) && is.factor(data[[var]])) {
-            log_enhanced(sprintf("Checking for rare categories in %s", var))
+            logger::log_info(sprintf("Checking for rare categories in %s", var))
 
             # 1) Forced collapsing based on centralized config (always to 'Other')
             if (exists("FORCED_OTHER_BY_VARIABLE") && var %in% names(FORCED_OTHER_BY_VARIABLE)) {
@@ -46,7 +46,7 @@ handle_rare_categories <- function(data, vars, threshold = 5) {
                 forced_levels_present <- intersect(forced_levels, levels(data[[var]]))
                 if (length(forced_levels_present) > 0) {
                     if (VERBOSE) {
-                        log_enhanced(sprintf("Forcing collapse of specified levels in %s into 'Other': %s", var, paste(forced_levels_present, collapse = ", ")))
+                        logger::log_info(sprintf("Forcing collapse of specified levels in %s into 'Other': %s", var, paste(forced_levels_present, collapse = ", ")))
                     }
                     # Ensure 'Other' exists in levels to avoid unknown-level warnings when refactoring
                     collapsed <- fct_collapse(data[[var]], Other = forced_levels_present) %>%
@@ -75,9 +75,9 @@ handle_rare_categories <- function(data, vars, threshold = 5) {
 
                     if (final_valid_levels >= 2) {
                         if (VERBOSE) {
-                            log_enhanced(sprintf("\nCollapsing %d rare categories in %s into 'Other':", length(rare_cats), var))
+                            logger::log_info(sprintf("\nCollapsing %d rare categories in %s into 'Other':", length(rare_cats), var))
                             for (cat in rare_cats) {
-                                log_enhanced(sprintf("- %s (n=%d)", cat, cat_counts[cat]))
+                                logger::log_info(sprintf("- %s (n=%d)", cat, cat_counts[cat]))
                             }
                         }
 
@@ -92,13 +92,13 @@ handle_rare_categories <- function(data, vars, threshold = 5) {
                         other_map[[var]] <- unique(c(other_map[[var]], rare_cats))
 
                         if (VERBOSE) {
-                            log_enhanced(sprintf("After collapse - %s levels: %s", var, paste(levels(data[[var]]), collapse = ", ")))
-                            log_enhanced(sprintf("After collapse - %s counts: %s", var, paste(names(table(data[[var]])), "=", table(data[[var]]), collapse = ", ")))
+                            logger::log_info(sprintf("After collapse - %s levels: %s", var, paste(levels(data[[var]]), collapse = ", ")))
+                            logger::log_info(sprintf("After collapse - %s counts: %s", var, paste(names(table(data[[var]])), "=", table(data[[var]]), collapse = ", ")))
                         }
                     } else {
                         if (VERBOSE) {
-                            log_enhanced(sprintf("\nSkipping collapse for %s: would result in insufficient valid levels", var))
-                            log_enhanced(sprintf(
+                            logger::log_info(sprintf("\nSkipping collapse for %s: would result in insufficient valid levels", var))
+                            logger::log_info(sprintf(
                                 "Valid categories: %d, Rare total: %d (threshold: %d)",
                                 length(valid_cats), total_rare_count, threshold
                             ))
@@ -106,7 +106,7 @@ handle_rare_categories <- function(data, vars, threshold = 5) {
                     }
                 } else {
                     if (VERBOSE) {
-                        log_enhanced(sprintf(
+                        logger::log_info(sprintf(
                             "\nSkipping collapse for %s: only 1 rare category (%s, n=%d) - not creating 'Other'",
                             var, rare_cats[1], cat_counts[rare_cats[1]]
                         ))
@@ -146,8 +146,8 @@ generate_valid_confounders <- function(data, confounders, threshold = THRESHOLD_
     valid_confounders <- confounders[keep_cfs]
     # Check if any confounders were removed
     if (verbose && length(confounders) != length(valid_confounders)) {
-        log_enhanced("Removed confounders with only 1 level or <THRESHOLD_RARITY counts:")
-        log_enhanced(paste(setdiff(confounders, valid_confounders), collapse = ", "))
+        logger::log_info("Removed confounders with only 1 level or <THRESHOLD_RARITY counts:")
+        logger::log_info(paste(setdiff(confounders, valid_confounders), collapse = ", "))
     }
     return(valid_confounders)
 }
@@ -191,30 +191,30 @@ bin_continuous <- function(vec, bins = 2, custom_breaks = NULL, varname = NULL, 
 #' summarize_data(data)
 summarize_data <- function(data, verbose = TRUE) {
     if (verbose) {
-        log_enhanced("\nData Summary:")
-        log_enhanced(sprintf("Total patients: %d", nrow(data)))
+        logger::log_info("\nData Summary:")
+        logger::log_info(sprintf("Total patients: %d", nrow(data)))
 
-        log_enhanced("\nTreatment Groups:")
+        logger::log_info("\nTreatment Groups:")
         print(table(data$treatment_group))
 
-        log_enhanced("\nCohort Distribution:")
+        logger::log_info("\nCohort Distribution:")
         print(table(data$cohort))
 
-        log_enhanced("\nTumor Characteristics:")
-        log_enhanced(sprintf("Location: %s", paste(unique(data$location), collapse = ", ")))
-        log_enhanced(sprintf("Optic Nerve Involvement: %s", paste(unique(data$optic_nerve), collapse = ", ")))
-        log_enhanced(sprintf("Initial Stage: %s", paste(unique(data$initial_overall_stage), collapse = ", ")))
+        logger::log_info("\nTumor Characteristics:")
+        logger::log_info(sprintf("Location: %s", paste(unique(data$location), collapse = ", ")))
+        logger::log_info(sprintf("Optic Nerve Involvement: %s", paste(unique(data$optic_nerve), collapse = ", ")))
+        logger::log_info(sprintf("Initial Stage: %s", paste(unique(data$initial_overall_stage), collapse = ", ")))
 
-        log_enhanced("\nGene Expression Profile:")
+        logger::log_info("\nGene Expression Profile:")
         print(table(data$biopsy1_gep))
 
-        log_enhanced("\nOutcomes:")
-        log_enhanced(sprintf("Recurrence: %d patients", sum(data$recurrence_event)))
-        log_enhanced(sprintf("Metastasis: %d patients", sum(data$mets_event)))
-        log_enhanced(sprintf("Death: %d patients", sum(data$death_event)))
+        logger::log_info("\nOutcomes:")
+        logger::log_info(sprintf("Recurrence: %d patients", sum(data$recurrence_event)))
+        logger::log_info(sprintf("Metastasis: %d patients", sum(data$mets_event)))
+        logger::log_info(sprintf("Death: %d patients", sum(data$death_event)))
 
-        log_enhanced("\nFollow-up:")
-        log_enhanced(sprintf("Median follow-up: %.1f years", median(data$follow_up_years, na.rm = TRUE)))
+        logger::log_info("\nFollow-up:")
+        logger::log_info(sprintf("Median follow-up: %.1f years", median(data$follow_up_years, na.rm = TRUE)))
     }
 }
 
@@ -614,14 +614,14 @@ get_cohort_specific_other_map <- function(dataset_name, processed_data_dir = "fi
         combined_other_map <- readRDS(other_map_file)
         if (dataset_name %in% names(combined_other_map)) {
             cohort_other_map <- combined_other_map[[dataset_name]]
-            log_enhanced(sprintf("Loaded cohort-specific other_map for %s with %d variables", dataset_name, length(cohort_other_map)), level = "INFO")
+            logger::log_info(sprintf("Loaded cohort-specific other_map for %s with %d variables", dataset_name, length(cohort_other_map)))
             return(cohort_other_map)
         } else {
-            log_enhanced(sprintf("Dataset %s not found in combined other_map, using empty list", dataset_name), level = "INFO")
+            logger::log_info(sprintf("Dataset %s not found in combined other_map, using empty list", dataset_name))
             return(list())
         }
     } else {
-        log_enhanced(sprintf("No combined other_map.rds found at %s, using empty list", other_map_file), level = "INFO")
+        logger::log_info(sprintf("No combined other_map.rds found at %s, using empty list", other_map_file))
         return(list())
     }
 }

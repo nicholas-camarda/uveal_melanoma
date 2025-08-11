@@ -9,7 +9,7 @@
 #' @examples
 #' create_derived_variables(cleaned_data)
 create_derived_variables <- function(data) {
-    log_enhanced("Creating derived variables", level = "INFO")
+    logger::log_info("Creating derived variables")
 
     data <- data %>%
         mutate(
@@ -197,7 +197,7 @@ create_derived_variables <- function(data) {
 #' @param data Data frame
 #' @return Data frame with binned continuous variables added
 create_binned_continuous_variables <- function(data) {
-    log_enhanced("Creating subgroup variables for analysis", level = "INFO")
+    logger::log_info("Creating subgroup variables for analysis")
 
     data <- data %>%
         mutate(

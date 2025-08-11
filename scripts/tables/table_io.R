@@ -48,7 +48,7 @@ save_table_outputs <- function(table_result, raw_output, model_fit, analysis_nam
         }
 
         if (!table_has_content) {
-            log_enhanced("Skipping HTML table generation - no meaningful content due to extreme estimates or model issues", level = "WARN")
+            logger::log_warn("Skipping HTML table generation - no meaningful content due to extreme estimates or model issues")
             diagnostic_html_path <- file.path(output_dir, paste0(base_filename, "_NO_CONTENT_DIAGNOSTIC.html"))
             diagnostic_content <- paste0(
                 "<html><body>",
@@ -60,7 +60,7 @@ save_table_outputs <- function(table_result, raw_output, model_fit, analysis_nam
                 "</body></html>"
             )
             writeLines(diagnostic_content, diagnostic_html_path)
-            log_enhanced(sprintf("Diagnostic HTML file saved to %s", diagnostic_html_path), level = "INFO")
+            logger::log_info(sprintf("Diagnostic HTML file saved to %s", diagnostic_html_path))
         } else {
             tryCatch(
                 {
@@ -100,18 +100,18 @@ save_table_outputs <- function(table_result, raw_output, model_fit, analysis_nam
                             }
                         }
                     }
-                    log_enhanced(sprintf("HTML table saved to %s", html_path), level = "INFO")
+                    logger::log_info(sprintf("HTML table saved to %s", html_path))
                 },
                 error = function(e) {
                     error_msg <- if (is.list(e) && !is.null(e$message)) e$message else as.character(e)
                     cat("DEBUG: Error in HTML table generation:", error_msg, "\n")
-                    log_enhanced(sprintf("Failed to save HTML table: %s", error_msg), level = "ERROR")
+                    logger::log_error(sprintf("Failed to save HTML table: %s", error_msg))
                 }
             )
         }
     } else {
         cat("DEBUG: Table result is NULL, skipping HTML generation\n")
-        log_enhanced("No HTML table to save - model fitting failed", level = "INFO")
+        logger::log_info("No HTML table to save - model fitting failed")
     }
 
     diagnostics_path <- file.path(output_dir, diagnostics_filename)
@@ -160,14 +160,14 @@ save_table_outputs <- function(table_result, raw_output, model_fit, analysis_nam
                     writeData(wb, "Filtering_summary", diagnostics$filtering_summary)
                 }
                 saveWorkbook(wb, diagnostics_path, overwrite = TRUE)
-                log_enhanced(sprintf("Comprehensive diagnostics saved to %s", diagnostics_path), level = "INFO")
+                logger::log_info(sprintf("Comprehensive diagnostics saved to %s", diagnostics_path))
             },
             error = function(e) {
-                log_enhanced(sprintf("Failed to save diagnostics: %s", e$message), level = "ERROR")
+                logger::log_error(sprintf("Failed to save diagnostics: %s", e$message))
             }
         )
     } else {
-        log_enhanced("No diagnostics to save", level = "WARN")
+        logger::log_warn("No diagnostics to save")
     }
 
     return(list(

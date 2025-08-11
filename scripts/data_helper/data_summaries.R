@@ -16,14 +16,14 @@ calculate_treatment_duration_metrics <- function(data) {
         )
 
     if (VERBOSE) {
-        log_enhanced("Checking for problematic follow-up times:", level = "INFO")
+        logger::log_info("Checking for problematic follow-up times:")
         problematic_cases <- data %>%
             filter(is.na(total_followup_days) | total_followup_days < 0) %>%
             select(id, treatment_group, treatment_date, last_known_alive_date, total_followup_days)
         if (nrow(problematic_cases) > 0) {
             print(problematic_cases)
         } else {
-            log_enhanced("No problematic follow-up times found", level = "INFO")
+            logger::log_info("No problematic follow-up times found")
         }
     }
 
@@ -49,7 +49,7 @@ calculate_treatment_duration_metrics <- function(data) {
         ) %>%
         mutate(interval_label = sprintf("%d years", interval_end))
 
-    log_enhanced("\nTreatment duration summary:", level = "INFO")
+    logger::log_info("\nTreatment duration summary:")
     summary_stats <- data %>%
         group_by(treatment_group) %>%
         summarise(
@@ -73,14 +73,14 @@ calculate_treatment_duration_metrics <- function(data) {
 #' @param output_dirs Optional list of output directories
 #' @return A named list of lists of tables per cohort
 create_summary_tables <- function(data_list, output_dirs = NULL) {
-    log_enhanced("Creating summary tables", level = "INFO")
-    log_enhanced(sprintf("output_dirs parameter: %s", ifelse(is.null(output_dirs), "NULL", "not NULL")), level = "INFO")
+    logger::log_info("Creating summary tables")
+    logger::log_info(sprintf("output_dirs parameter: %s", ifelse(is.null(output_dirs), "NULL", "not NULL")))
     if (!is.null(output_dirs)) {
-        log_enhanced(sprintf("output_dirs names: %s", paste(names(output_dirs), collapse = ", ")), level = "INFO")
+        logger::log_info(sprintf("output_dirs names: %s", paste(names(output_dirs), collapse = ", ")))
     }
 
     vars_to_summarize <- BASELINE_VARIABLES_TO_SUMMARIZE
-    log_enhanced(sprintf("Summarizing %d variables", length(vars_to_summarize)), level = "INFO")
+    logger::log_info(sprintf("Summarizing %d variables", length(vars_to_summarize)))
 
     tables <- lapply(names(data_list), function(cohort_name) {
         message(sprintf("\nCreating table for cohort: %s", cohort_name))
@@ -102,32 +102,32 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
         if (!is.null(output_dirs) && !is.null(output_dirs[[cohort_dir_key]])) {
             treatment_duration_dir <- output_dirs[[cohort_dir_key]]$treatment_duration
             baseline_output_dir <- output_dirs[[cohort_dir_key]]$baseline_characteristics
-            log_enhanced(sprintf(
+            logger::log_info(sprintf(
                 "Using cohort-specific directories for %s (mapped to %s): treatment_duration=%s, baseline=%s",
                 cohort_name, cohort_dir_key, treatment_duration_dir, baseline_output_dir
-            ), level = "INFO")
+            ))
         } else {
             treatment_duration_dir <- file.path("final_data/Analysis", "General", "treatment_duration")
             baseline_output_dir <- file.path("final_data/Analysis", "General", "baseline_characteristics")
-            log_enhanced(sprintf(
+            logger::log_warn(sprintf(
                 "Using fallback directories for %s (mapped to %s): treatment_duration=%s, baseline=%s",
                 cohort_name, cohort_dir_key, treatment_duration_dir, baseline_output_dir
-            ), level = "WARN")
+            ))
         }
 
         dir.create(treatment_duration_dir, showWarnings = FALSE, recursive = TRUE)
         dir.create(baseline_output_dir, showWarnings = FALSE, recursive = TRUE)
 
-        log_enhanced("Calculating treatment duration metrics", level = "INFO")
+        logger::log_info("Calculating treatment duration metrics")
         duration_metrics <- calculate_treatment_duration_metrics(data)
 
         write.csv(duration_metrics$interval_metrics, file.path(treatment_duration_dir, paste0(prefix, "treatment_duration_metrics.csv")), row.names = FALSE)
         write.csv(duration_metrics$summary_stats, file.path(treatment_duration_dir, paste0(prefix, "treatment_duration_summary.csv")), row.names = FALSE)
 
-        log_enhanced("Preparing variables for table", level = "INFO")
+        logger::log_info("Preparing variables for table")
         data <- data %>% select(all_of(vars_to_summarize), treatment_group)
 
-        log_enhanced("Checking variable levels for statistical testing", level = "INFO")
+        logger::log_info("Checking variable levels for statistical testing")
         vars_with_insufficient_levels <- c()
         for (var in vars_to_summarize) {
             if (var %in% names(data)) {
@@ -135,24 +135,24 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
                     level_counts <- table(data[[var]], useNA = "no")
                     valid_levels <- sum(level_counts > 0)
                     if (valid_levels < 2) {
-                        log_enhanced(sprintf("Variable '%s' has insufficient levels for statistical testing (%d levels). Will display but skip p-value. Counts: %s", var, valid_levels, paste(names(level_counts), "=", level_counts, collapse = ", ")), level = "INFO")
+                        logger::log_info(sprintf("Variable '%s' has insufficient levels for statistical testing (%d levels). Will display but skip p-value. Counts: %s", var, valid_levels, paste(names(level_counts), "=", level_counts, collapse = ", ")))
                         vars_with_insufficient_levels <- c(vars_with_insufficient_levels, var)
                     }
                 }
             } else {
-                log_enhanced(sprintf("Variable '%s' not found in data, excluding from summary table", var), level = "WARNING")
+                logger::log_warn(sprintf("Variable '%s' not found in data, excluding from summary table", var))
             }
         }
 
         available_vars <- intersect(vars_to_summarize, names(data))
-        log_enhanced(sprintf("Displaying %d baseline variables (%d have insufficient levels for testing)", length(available_vars), length(vars_with_insufficient_levels)), level = "INFO")
+        logger::log_info(sprintf("Displaying %d baseline variables (%d have insufficient levels for testing)", length(available_vars), length(vars_with_insufficient_levels)))
         if (length(vars_with_insufficient_levels) > 0) {
-            log_enhanced(sprintf("Variables with insufficient levels for p-values: %s", paste(vars_with_insufficient_levels, collapse = ", ")), level = "INFO")
+            logger::log_info(sprintf("Variables with insufficient levels for p-values: %s", paste(vars_with_insufficient_levels, collapse = ", ")))
         }
 
         data <- data %>% select(all_of(available_vars), treatment_group)
 
-        log_enhanced("Creating summary table", level = "INFO")
+        logger::log_info("Creating summary table")
         tbl <- data %>%
             tbl_summary(
                 by = treatment_group,
@@ -172,7 +172,7 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
             ) %>%
             add_overall()
 
-        log_enhanced("Adding statistical tests (will skip variables with insufficient levels)", level = "INFO")
+        logger::log_info("Adding statistical tests (will skip variables with insufficient levels)")
         # Build test list that skips vars with <2 levels using "no"
         test_list <- list(all_categorical() ~ "fisher.test")
         if (length(vars_with_insufficient_levels) > 0) {
@@ -183,7 +183,7 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
                 tbl %>% add_p(test = test_list, test.args = list(all_categorical() ~ list(simulate.p.value = TRUE)))
             },
             error = function(e) {
-                log_enhanced(sprintf("Some statistical tests failed (expected for variables with <2 levels): %s", e$message), level = "INFO")
+                logger::log_info(sprintf("Some statistical tests failed (expected for variables with <2 levels): %s", e$message))
                 tbl
             }
         )
@@ -198,7 +198,7 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
                 as_gt(tbl)
             },
             error = function(e) {
-                log_enhanced(sprintf("Error converting to gt: %s", e$message), level = "ERROR")
+                logger::log_error(sprintf("Error converting to gt: %s", e$message))
                 NULL
             }
         )

@@ -13,10 +13,10 @@
 #' @return List containing all analysis results, model objects, and output file paths for each analysis type
 run_objective_0 <- function() {
     if (RECREATE_ANALYTIC_DATASETS) {
-        log_section_start("DATA PREPROCESSING PHASE")
+        log_phase("DATA PREPROCESSING PHASE")
         data_start_time <- Sys.time()
 
-        log_enhanced("RECREATE_ANALYTIC_DATASETS = TRUE: Creating new analytic datasets", level = "INFO")
+        logger::log_info("RECREATE_ANALYTIC_DATASETS = TRUE: Creating new analytic datasets")
 
         # Create cohort-specific output structures BEFORE creating analytic datasets
         # This ensures summary tables are saved to the correct cohort-specific directories
@@ -49,7 +49,7 @@ run_objective_0 <- function() {
         }
 
         # Create analytic datasets using the comprehensive function
-        log_function("create_analytic_dataset", "Creating analytic datasets with full processing pipeline")
+        logger::log_info(formatted("Executing create_analytic_dataset: Creating analytic datasets with full processing pipeline", indent = 1))
         analytic_result <- create_analytic_dataset(output_dirs = temp_output_dirs_by_cohort)
 
         # Extract the results
@@ -57,11 +57,14 @@ run_objective_0 <- function() {
         other_map <- analytic_result$other_map
         summary_tables <- analytic_result$summary_tables
 
-        log_section_complete("DATA PREPROCESSING PHASE", data_start_time)
+        logger::log_info(sprintf(">>> COMPLETED %s (Duration: %.1f seconds)",
+            "DATA PREPROCESSING PHASE",
+            as.numeric(difftime(Sys.time(), data_start_time, units = "secs"))
+        ))
     } else {
-        log_section_start("DATA LOADING PHASE")
-        log_enhanced("RECREATE_ANALYTIC_DATASETS = FALSE: Skipping analytic dataset creation", level = "INFO")
-        log_enhanced("Using existing datasets from final_data/Analytic Dataset/", level = "INFO")
-        log_enhanced("Set RECREATE_ANALYTIC_DATASETS = TRUE if you need to reprocess raw data", level = "INFO")
+        log_phase("DATA LOADING PHASE")
+        logger::log_info("RECREATE_ANALYTIC_DATASETS = FALSE: Skipping analytic dataset creation")
+        logger::log_info("Using existing datasets from final_data/Analytic Dataset/")
+        logger::log_info("Set RECREATE_ANALYTIC_DATASETS = TRUE if you need to reprocess raw data")
     }
 }

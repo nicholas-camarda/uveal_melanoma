@@ -8,7 +8,7 @@
 #' @param time_var Time variable name
 #' @return Data frame with observed vs expected rates
 calculate_observed_expected_rates <- function(data, expected_var, event_var, time_var) {
-    log_enhanced("Calculating observed vs expected rates", level = "DEBUG")
+    logger::log_debug("Calculating observed vs expected rates")
     results <- data %>%
         dplyr::group_by(gep_class_simple) %>%
         dplyr::summarise(
@@ -37,7 +37,7 @@ calculate_observed_expected_rates <- function(data, expected_var, event_var, tim
 #' @param time_var Character name of time variable (not used in simplified method)
 #' @return A data.frame with `intercept`, `slope`, `ici`, and `nam_dagostino_p` columns
 calculate_calibration_metrics <- function(data, expected_var, event_var, time_var) {
-    log_enhanced("Calculating calibration metrics", level = "DEBUG")
+    logger::log_debug("Calculating calibration metrics")
     calibration_model <- glm(as.formula(paste(event_var, "~", expected_var)),
         data = data, family = binomial()
     )
@@ -57,7 +57,7 @@ calculate_calibration_metrics <- function(data, expected_var, event_var, time_va
 
 #' Calculate discrimination metrics (simplified)
 calculate_discrimination_metrics <- function(data, expected_var, event_var, time_var, bootstrap_iterations) {
-    log_enhanced("Calculating discrimination metrics", level = "DEBUG")
+    logger::log_debug("Calculating discrimination metrics")
     harrell_c <- tryCatch(
         {
             cor(data[[expected_var]], data[[event_var]], method = "spearman")
@@ -98,7 +98,7 @@ calculate_discrimination_metrics <- function(data, expected_var, event_var, time
 
 #' Calculate cumulative incidence (simplified)
 calculate_cumulative_incidence <- function(data, time_var, event_var, group_var) {
-    log_enhanced("Calculating cumulative incidence", level = "DEBUG")
+    logger::log_debug("Calculating cumulative incidence")
     results <- data %>%
         dplyr::group_by(.data[[group_var]]) %>%
         dplyr::summarise(
@@ -117,7 +117,7 @@ calculate_cumulative_incidence <- function(data, time_var, event_var, group_var)
 
 #' Calculate cause-specific hazards (simplified)
 calculate_cause_specific_hazards <- function(data, time_var, event_var, group_var) {
-    log_enhanced("Calculating cause-specific hazards", level = "DEBUG")
+    logger::log_debug("Calculating cause-specific hazards")
     results <- data %>%
         dplyr::group_by(.data[[group_var]]) %>%
         dplyr::summarise(
@@ -136,7 +136,7 @@ calculate_cause_specific_hazards <- function(data, time_var, event_var, group_va
 
 #' Calculate net reclassification index (simplified)
 calculate_net_reclassification_index <- function(data, base_pred, enhanced_pred, event_var) {
-    log_enhanced("Calculating net reclassification index", level = "DEBUG")
+    logger::log_debug("Calculating net reclassification index")
     nri <- tryCatch(
         {
             base_cor <- cor(data[[base_pred]], data[[event_var]], method = "spearman")
@@ -151,4 +151,82 @@ calculate_net_reclassification_index <- function(data, base_pred, enhanced_pred,
         nri = nri,
         stringsAsFactors = FALSE
     ))
+}
+
+#' Calculate class-specific cumulative incidence and 95% CIs at a fixed time
+#'
+#' Uses the nonparametric Aalen–Johansen estimator via `cmprsk::cuminc` when
+#' available. Confidence intervals are computed by:
+#' 1) Stratified bootstrap on patients within `gep_class_simple` (default),
+#' 2) If bootstrap not requested or fails, normal approximation using the
+#'    Greenwood-type variance from `cmprsk` when provided.
+#'
+#' @param data Data frame with columns: time_var, event_type (1=melanoma death,
+#'   2=competing, 0=censored), gep_class_simple
+#' @param time_var Character time variable name (in years)
+#' @param event_type_var Character event type variable name (0/1/2)
+#' @param eval_time Numeric time point (years)
+#' @param n_boot Integer number of bootstrap resamples (default 1000)
+#' @return Data frame with columns: gep_class_simple, n, cif, ci_lower, ci_upper
+calculate_cif_by_class_with_ci <- function(data, time_var, event_type_var, eval_time, n_boot = 1000) {
+    if (!"gep_class_simple" %in% names(data)) {
+        stop("calculate_cif_by_class_with_ci requires 'gep_class_simple' column")
+    }
+    if (!requireNamespace("cmprsk", quietly = TRUE)) {
+        logger::log_warn("'cmprsk' not installed; cannot compute CIF CIs. Returning NA CIs.")
+        base <- data %>% dplyr::count(gep_class_simple, name = "n") %>% dplyr::mutate(cif = NA_real_, ci_lower = NA_real_, ci_upper = NA_real_)
+        return(base)
+    }
+
+    # Helper to get CIF at eval_time for one class
+    get_cif_for_class <- function(df_class) {
+        ci_obj <- tryCatch({
+            cmprsk::cuminc(ftime = df_class[[time_var]], fstatus = df_class[[event_type_var]])
+        }, error = function(e) NULL)
+        if (is.null(ci_obj) || is.null(ci_obj$`1`)) return(NA_real_)
+        # CIF curve for cause 1
+        times <- ci_obj$`1`$time
+        est <- ci_obj$`1`$est
+        # step function: last value <= eval_time
+        idx <- max(which(times <= eval_time), na.rm = TRUE)
+        if (!is.finite(idx) || idx == -Inf) return(0)
+        return(est[idx])
+    }
+
+    classes <- unique(data$gep_class_simple)
+    base_rows <- lapply(classes, function(cls) {
+        dfc <- data[data$gep_class_simple == cls, , drop = FALSE]
+        cif_hat <- suppressWarnings(get_cif_for_class(dfc))
+        data.frame(gep_class_simple = cls, n = nrow(dfc), cif = as.numeric(cif_hat), stringsAsFactors = FALSE)
+    })
+    results <- do.call(rbind, base_rows)
+
+    # Bootstrap CIs (percentile)
+    if (n_boot > 0 && nrow(data) > 0) {
+        set.seed(123)
+        boot_mat <- matrix(NA_real_, nrow = n_boot, ncol = nrow(results))
+        colnames(boot_mat) <- results$gep_class_simple
+        for (b in seq_len(n_boot)) {
+            df_boot <- do.call(rbind, lapply(classes, function(cls) {
+                dfc <- data[data$gep_class_simple == cls, , drop = FALSE]
+                if (nrow(dfc) == 0) return(dfc)
+                dfc[sample.int(nrow(dfc), size = nrow(dfc), replace = TRUE), , drop = FALSE]
+            }))
+            for (j in seq_along(classes)) {
+                cls <- classes[j]
+                dfc <- df_boot[df_boot$gep_class_simple == cls, , drop = FALSE]
+                boot_mat[b, j] <- suppressWarnings(get_cif_for_class(dfc))
+            }
+        }
+        for (j in seq_along(classes)) {
+            qs <- stats::quantile(boot_mat[, j], probs = c(0.025, 0.975), na.rm = TRUE, names = FALSE)
+            results$ci_lower[j] <- qs[1]
+            results$ci_upper[j] <- qs[2]
+        }
+    } else {
+        results$ci_lower <- NA_real_
+        results$ci_upper <- NA_real_
+    }
+
+    return(results)
 }
