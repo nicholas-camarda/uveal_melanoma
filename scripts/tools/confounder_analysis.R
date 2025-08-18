@@ -2,10 +2,10 @@
 # This script identifies variables that differ across treatment groups and updates the confounders list
 # CRITICAL: Uses processed data with collapsed categories to match actual analysis pipeline
 
-source("scripts/utils/all_helper_functions.R")
+source("scripts/utils/load_all.R")
 
 # Source configuration
-# No need to source all_helper_functions.R - it will be sourced by the calling script
+# No need to source load_all.R - it will be sourced by the calling script
 
 #' Interpret Cohen's d into qualitative label
 #' @param d Numeric effect size

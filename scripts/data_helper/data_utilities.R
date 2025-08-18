@@ -4,17 +4,28 @@
 
 #' List available datasets
 #'
-#' Lists all datasets in the processed data directory that have an .rds extension.
+#' Lists all cohort datasets in the processed data directory that follow the
+#' naming convention "uveal_melanoma_*_cohort.rds". Ignores non-cohort artifacts
+#' like other_map.rds or tool outputs.
 #'
 #' @return A character vector of dataset names.
 #'
 #' @examples
 #' list_available_datasets()
 list_available_datasets <- function() {
-    datasets <- list.files(PROCESSED_DATA_DIR, pattern = "\\.rds$")
-    logger::log_info(sprintf("Found %d datasets to analyze", length(datasets)))
-    print(datasets)
-    return(gsub("\\.rds$", "", datasets))
+    # Only include cohort RDS files
+    all_rds <- list.files(PROCESSED_DATA_DIR, pattern = "\\.rds$")
+    cohort_rds <- grep("^uveal_melanoma_.*_cohort\\.rds$", all_rds, value = TRUE)
+
+    # Optionally log ignored non-cohort artifacts when verbose
+    ignored <- setdiff(all_rds, cohort_rds)
+    logger::log_info(sprintf("Found %d datasets to analyze", length(cohort_rds)))
+    if (length(ignored) > 0) {
+        logger::log_debug(formatted(sprintf("Ignoring non-cohort RDS files: %s", paste(ignored, collapse = ", "))))
+    }
+
+    print(cohort_rds)
+    return(gsub("\\.rds$", "", cohort_rds))
 }
 
 #' Handle rare categories in factor variables
@@ -69,54 +80,27 @@ handle_rare_categories <- function(data, vars, threshold = 5) {
             if (length(rare_cats) > 0) {
                 # Only create/inflate "Other" if at least 2 rare categories to collapse
                 if (length(rare_cats) >= 2) {
-                    total_rare_count <- sum(cat_counts[rare_cats])
-                    would_have_valid_other <- total_rare_count >= threshold
-                    final_valid_levels <- length(valid_cats) + (if (would_have_valid_other && !("Other" %in% names(cat_counts))) 1 else 0)
-
-                    if (final_valid_levels >= 2) {
-                        if (VERBOSE) {
-                            logger::log_info(sprintf("\nCollapsing %d rare categories in %s into 'Other':", length(rare_cats), var))
-                            for (cat in rare_cats) {
-                                logger::log_info(sprintf("- %s (n=%d)", cat, cat_counts[cat]))
-                            }
-                        }
-
-                        collapsed <- fct_collapse(data[[var]], Other = rare_cats) %>%
-                            fct_drop()
-                        if ("Other" %in% levels(collapsed)) {
-                            collapsed <- fct_relevel(collapsed, "Other", after = Inf)
-                        }
-                        data[[var]] <- factor(collapsed)
-
-                        # Track which categories were collapsed into Other (append to any forced ones)
-                        other_map[[var]] <- unique(c(other_map[[var]], rare_cats))
-
-                        if (VERBOSE) {
-                            logger::log_info(sprintf("After collapse - %s levels: %s", var, paste(levels(data[[var]]), collapse = ", ")))
-                            logger::log_info(sprintf("After collapse - %s counts: %s", var, paste(names(table(data[[var]])), "=", table(data[[var]]), collapse = ", ")))
-                        }
-                    } else {
-                        if (VERBOSE) {
-                            logger::log_info(sprintf("\nSkipping collapse for %s: would result in insufficient valid levels", var))
-                            logger::log_info(sprintf(
-                                "Valid categories: %d, Rare total: %d (threshold: %d)",
-                                length(valid_cats), total_rare_count, threshold
-                            ))
-                        }
+                    collapsed <- fct_collapse(data[[var]], Other = rare_cats) %>%
+                        fct_drop()
+                    if ("Other" %in% levels(collapsed)) {
+                        collapsed <- fct_relevel(collapsed, "Other", after = Inf)
+                    }
+                    data[[var]] <- factor(collapsed)
+                    other_map[[var]] <- unique(c(other_map[[var]], rare_cats))
+                    if (VERBOSE) {
+                        logger::log_info(sprintf("Collapsed rare categories into 'Other' for %s: %s", var, paste(rare_cats, collapse = ", ")))
                     }
                 } else {
                     if (VERBOSE) {
-                        logger::log_info(sprintf(
-                            "\nSkipping collapse for %s: only 1 rare category (%s, n=%d) - not creating 'Other'",
-                            var, rare_cats[1], cat_counts[rare_cats[1]]
-                        ))
+                        logger::log_info(sprintf("Skipping 'Other' creation for %s (only 1 rare category)", var))
                     }
+                    # Keep categories as-is when only one rare category (no subsetting to avoid length mismatch)
+                    data[[var]] <- factor(data[[var]])
                 }
             }
         }
     }
 
-    # Return both the modified data and the mapping of 'Other' categories
     return(list(data = data, other_map = other_map))
 }
 
@@ -608,20 +592,41 @@ calculate_variable_overall_significance <- function(data, variable_name, outcome
 #' @return List containing other_map information for the specific cohort
 #' @examples
 #' other_map <- get_cohort_specific_other_map("uveal_melanoma_full_cohort")
-get_cohort_specific_other_map <- function(dataset_name, processed_data_dir = "final_data/Analytic Dataset") {
+get_cohort_specific_other_map <- function(dataset_name, processed_data_dir = PROCESSED_DATA_DIR) {
     other_map_file <- file.path(processed_data_dir, "other_map.rds")
-    if (file.exists(other_map_file)) {
-        combined_other_map <- readRDS(other_map_file)
-        if (dataset_name %in% names(combined_other_map)) {
-            cohort_other_map <- combined_other_map[[dataset_name]]
-            logger::log_info(sprintf("Loaded cohort-specific other_map for %s with %d variables", dataset_name, length(cohort_other_map)))
-            return(cohort_other_map)
-        } else {
-            logger::log_info(sprintf("Dataset %s not found in combined other_map, using empty list", dataset_name))
-            return(list())
-        }
-    } else {
+    if (!file.exists(other_map_file)) {
         logger::log_info(sprintf("No combined other_map.rds found at %s, using empty list", other_map_file))
+        return(list())
+    }
+
+    fi <- tryCatch(file.info(other_map_file), error = function(e) NULL)
+    if (is.null(fi) || is.na(fi$size) || fi$size <= 0) {
+        logger::log_warn(sprintf("Combined other_map.rds at %s is empty or unreadable; using empty list", other_map_file))
+        return(list())
+    }
+
+    combined_other_map <- tryCatch(readRDS(other_map_file), error = function(e) NULL)
+    if (is.null(combined_other_map) || (!is.list(combined_other_map))) {
+        logger::log_warn(sprintf("Combined other_map.rds at %s could not be parsed as a named list; using empty list", other_map_file))
+        return(list())
+    }
+
+    if (dataset_name %in% names(combined_other_map)) {
+        cohort_other_map <- combined_other_map[[dataset_name]]
+        logger::log_info(sprintf("Loaded cohort-specific other_map for %s with %d variables", dataset_name, length(cohort_other_map)))
+        # Explicit per-cohort log of collapsed levels, if available
+        if (length(cohort_other_map) > 0) {
+            vars_logged <- utils::head(names(cohort_other_map), 10)
+            logger::log_info(sprintf(
+                "Collapsed categories recorded for variables (first %d): %s",
+                length(vars_logged), paste(vars_logged, collapse = ", ")
+            ))
+        } else {
+            logger::log_info(sprintf("No collapsed categories recorded for %s", dataset_name))
+        }
+        return(cohort_other_map)
+    } else {
+        logger::log_info(sprintf("Dataset %s not found in combined other_map, using empty list", dataset_name))
         return(list())
     }
 }

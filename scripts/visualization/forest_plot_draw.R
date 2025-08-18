@@ -99,6 +99,10 @@ create_single_cohort_forest_plot <- function(subgroup_results,
         favours_labels <- paste0("Favours ", treatment_labels)
     }
 
+    # Resolve treatment colors via centralized palette (if two labels provided)
+    treatment_levels <- as.character(treatment_labels)
+    treatment_colors <- tryCatch(get_treatment_palette(treatment_levels), error = function(e) NULL)
+
     # Create the formatted data for forestploter
     plot_data <- create_forest_plot_data(subgroup_results, variable_order, treatment_labels, effect_measure, other_map)
 

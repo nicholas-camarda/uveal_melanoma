@@ -37,7 +37,7 @@ apply_criteria <- function(data) {
         logger::log_info(sprintf("Cohort '%s': %d patients", cohort, nrow(factored_filtered_data[[cohort]])))
     }
 
-    generate_validation_report(factored_filtered_data)
+    # Data validation step now happens outside apply criteria
     return(factored_filtered_data)
 }
 
@@ -52,12 +52,6 @@ prepare_factor_levels <- function(data) {
     logger::log_info("Preparing factor levels for variables")
 
     data <- data %>%
-        mutate(
-            biopsy1_gep = case_when(
-                biopsy1_gep == "DISCORDANT CASTLE RESULTS: Class 1A, PRAME not reported" ~ "Class_1A_PRAME_discordant",
-                TRUE ~ biopsy1_gep
-            )
-        ) %>%
         mutate(
             recurrence1 = factor(recurrence1, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
             mets_progression = factor(mets_progression, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
@@ -75,29 +69,87 @@ prepare_factor_levels <- function(data) {
                 labels = c("Very Low", "Low", "Low-Medium", "Medium", "Medium-High", "High", "Unknown"),
                 ordered = FALSE
             ),
-            srf = factor(srf, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
-            op = factor(op, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
-            symptoms = factor(symptoms, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
-            vision_loss_blurred_vision = factor(vision_loss_blurred_vision, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
-            visual_field_defect = factor(visual_field_defect, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
-            flashes_photopsia = factor(flashes_photopsia, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
-            floaters = factor(floaters, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
-            pain = factor(pain, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
+            # Force both Yes/No levels even if only one present in the data to stabilize tables
+            srf = factor(as.character(srf), levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
+            op = factor(as.character(op), levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
+            symptoms = factor(as.character(symptoms), levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
+            vision_loss_blurred_vision = factor(as.character(vision_loss_blurred_vision), levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
+            visual_field_defect = factor(as.character(visual_field_defect), levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
+            flashes_photopsia = factor(as.character(flashes_photopsia), levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
+            floaters = factor(as.character(floaters), levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
+            pain = factor(as.character(pain), levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
             initial_overall_stage = factor(initial_overall_stage, levels = c("1", "2A", "2B", "3A", "3B", "3C", "4"), ordered = FALSE),
             initial_stage_binary = factor(ifelse(initial_overall_stage == "4", "Stage IV", "Stage I-III"),
                 levels = c("Stage I-III", "Stage IV"), ordered = FALSE
             ),
-            biopsy1_gep = factor(biopsy1_gep,
+            biopsy1_gep = case_when(
+                biopsy1_gep == "DISCORDANT CASTLE RESULTS: Class 1A, PRAME not reported" ~ "Class_1A_PRAME_discordant",
+                TRUE ~ biopsy1_gep
+            ),
+            biopsy1_gep_raw = factor(biopsy1_gep,
                 levels = c(
                     "Class_1A_PRAME_negative", "Class_1A_PRAME_positive", "Class_1A_PRAME_not_reported",
                     "Class_1B_PRAME_negative", "Class_1B_PRAME_positive",
                     "Class_2_PRAME_negative", "Class_2_PRAME_positive", "Class_2_PRAME_Unknown", "Class_2_PRAME_not_reported",
-                    "Failed", "Unknown", "Class_1A_PRAME_discordant"
+                    "Failed", "Unknown", "Class_1A_PRAME_discordant", "Other", "No"
                 ), ordered = FALSE
             ),
-            gep_class_simple = factor(gep_class_simple, levels = c("Class 1A", "Class 1B", "Class 2"), ordered = FALSE),
+            biopsy1_gep_display = case_when(
+                biopsy1_gep_raw == "Class_1A_PRAME_negative" ~ "Class 1A PRAME Negative",
+                biopsy1_gep_raw == "Class_1A_PRAME_positive" ~ "Class 1A PRAME Positive",
+                biopsy1_gep_raw == "Class_1A_PRAME_not_reported" ~ "Class 1A PRAME Not Reported",
+                biopsy1_gep_raw == "Class_1B_PRAME_negative" ~ "Class 1B PRAME Negative",
+                biopsy1_gep_raw == "Class_1B_PRAME_positive" ~ "Class 1B PRAME Positive",
+                biopsy1_gep_raw == "Class_2_PRAME_negative" ~ "Class 2 PRAME Negative",
+                biopsy1_gep_raw == "Class_2_PRAME_positive" ~ "Class 2 PRAME Positive",
+                biopsy1_gep_raw == "Class_2_PRAME_Unknown" ~ "Class 2 PRAME Unknown",
+                biopsy1_gep_raw == "Class_2_PRAME_not_reported" ~ "Class 2 PRAME Not Reported",
+                biopsy1_gep_raw == "Failed" ~ "Failed",
+                biopsy1_gep_raw == "Unknown" ~ "Unknown",
+                biopsy1_gep_raw == "Class_1A_PRAME_discordant" ~ "Class 1A PRAME Discordant",
+                biopsy1_gep_raw == "Other" ~ "Other",
+                biopsy1_gep_raw == "No" ~ "No",
+                TRUE ~ NA_character_
+            ),
+            biopsy1_gep = factor(
+                case_when(
+                    biopsy1_gep_raw %in% c("Class_1A_PRAME_negative", "Class_1B_PRAME_negative") ~ "Class 1 PRAME Negative",
+                    biopsy1_gep_raw %in% c("Class_1A_PRAME_positive", "Class_1B_PRAME_positive") ~ "Class 1 PRAME Positive",
+                    biopsy1_gep_raw == "Class_2_PRAME_negative" ~ "Class 2 PRAME Negative",
+                    biopsy1_gep_raw == "Class_2_PRAME_positive" ~ "Class 2 PRAME Positive",
+                    biopsy1_gep_raw == "No" ~ "No",
+                    TRUE ~ NA_character_
+                ),
+                levels = c("Class 1 PRAME Negative", "Class 1 PRAME Positive", "Class 2 PRAME Negative", "Class 2 PRAME Positive", "No"),
+                ordered = FALSE
+            ),
+            # Simple GEP class is now binary: Class 1 vs Class 2
+            gep_class_simple = factor(
+                case_when(
+                    grepl("Class_1", biopsy1_gep_raw, fixed = TRUE) ~ "Class 1",
+                    grepl("Class_2", biopsy1_gep_raw, fixed = TRUE) ~ "Class 2",
+                    biopsy1_gep_raw == "No" ~ "No",
+                    TRUE ~ NA_character_
+                ),
+                levels = c("Class 1", "Class 2", "No"), ordered = FALSE
+            ),
             prame_status = factor(prame_status, levels = c("Negative", "Positive", "Unknown", "Not Available"), ordered = FALSE)
         )
+
+    # Create collapsed T-stage variable (T1..T4) if needed
+    data <- data %>% mutate(
+        initial_t_stage_simple = factor(
+            case_when(
+                grepl("^T1", initial_t_stage, ignore.case = TRUE) ~ "T1",
+                grepl("^T2", initial_t_stage, ignore.case = TRUE) ~ "T2",
+                grepl("^T3", initial_t_stage, ignore.case = TRUE) ~ "T3",
+                grepl("^T4", initial_t_stage, ignore.case = TRUE) ~ "T4",
+                TRUE ~ as.character(initial_t_stage)
+            ),
+            levels = c("T1", "T2", "T3", "T4"), ordered = FALSE # DO NOT USE ORDERED IT FUCKS UP THE MODEL
+        )
+    )
+    
 
     if (VERBOSE) {
         logger::log_info("\nNew factor levels:")

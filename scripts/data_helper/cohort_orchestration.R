@@ -20,9 +20,20 @@ create_analytic_dataset <- function(output_dirs = NULL) {
 
     logger::log_info("Applying inclusion/exclusion criteria")
     factored_filtered_data <- apply_criteria(factored_data)
+
+    logger::log_info("Validating cohorts")
+    # This is here because data needs to be validated before it is saved
+    generate_validation_report(factored_filtered_data)
+
     logger::log_info(sprintf("Created %d cohorts", length(factored_filtered_data)))
     for (cohort in names(factored_filtered_data)) {
         logger::log_info(formatted(sprintf("Cohort '%s': %d patients", cohort, nrow(factored_filtered_data[[cohort]]))))
+    }
+
+    # Save pre-collapsed snapshots for baseline characteristics (raw factor levels)
+    logger::log_info("Saving pre-collapsed cohort snapshots for baseline characteristics")
+    for (cohort_name in names(factored_filtered_data)) {
+        saveRDS(factored_filtered_data[[cohort_name]], file.path(PROCESSED_DATA_DIR, paste0(cohort_name, "_derived_precollapse.rds")))
     }
 
     logger::log_info("Collapsing rare categories")
@@ -61,38 +72,15 @@ create_analytic_dataset <- function(output_dirs = NULL) {
     }
 
     logger::log_info("Validating confounders for each cohort")
-    validated_confounders_by_cohort <- list()
-    for (cohort_name in names(factored_filtered_data)) {
-        logger::log_info(formatted(sprintf("Validating confounders for cohort: %s", cohort_name)))
-        if (exists("confounders") && !is.null(confounders) && length(confounders) > 0) {
-            valid_confounders <- generate_valid_confounders(factored_filtered_data[[cohort_name]], confounders)
-            if (length(valid_confounders) != length(confounders)) {
-                logger::log_warn(sprintf(
-                    "Removed %d invalid confounders for cohort %s: %s",
-                    length(confounders) - length(valid_confounders), cohort_name,
-                    paste(setdiff(confounders, valid_confounders), collapse = ", ")
-                ))
-            }
-            validated_confounders_by_cohort[[cohort_name]] <- valid_confounders
-            logger::log_info(formatted(sprintf("Validated confounders for cohort %s: %s", cohort_name, paste(valid_confounders, collapse = ", "))))
-        } else {
-            validated_confounders_by_cohort[[cohort_name]] <- character(0)
-            logger::log_info(formatted(sprintf("No confounders to validate for cohort %s", cohort_name)))
-        }
-    }
-
-    saveRDS(validated_confounders_by_cohort, file.path(PROCESSED_DATA_DIR, "validated_confounders_by_cohort.rds"))
-    logger::log_info("Saved validated confounders for all cohorts")
+    # Previously validated and saved per-cohort confounders; now use configured confounders directly
+    # to avoid introducing new artifacts/folders.
 
     saveRDS(other_map, file.path(PROCESSED_DATA_DIR, "other_map.rds"))
     logger::log_info("Saved combined other_map information for all cohorts")
 
-    generate_validation_report(factored_filtered_data)
-
     return(list(
         analytic_data = factored_filtered_data,
         summary_tables = summary_tables,
-        other_map = other_map,
-        validated_confounders_by_cohort = validated_confounders_by_cohort
+        other_map = other_map
     ))
 }

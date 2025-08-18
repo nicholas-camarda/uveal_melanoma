@@ -34,10 +34,15 @@ create_simple_gep_plots <- function(mfs_results, mss_results, mfs_output_dir, ms
             plot.background = element_rect(fill = "white"),
             panel.background = element_rect(fill = "white")
         ) +
-        scale_color_manual(values = c("Expected" = "blue", "Actual" = "red"))
+        scale_color_manual(values = {
+            pal <- get_qualitative_palette(2)
+            names(pal) <- c("Expected", "Actual")
+            pal
+        })
+    
     ggsave(file.path(mfs_output_dir, paste0(prefix, "simple_mfs_validation.png")),
         mfs_plot,
-        width = 8, height = 6, dpi = 300, bg = "white"
+        width = SMALL_PLOT_WIDTH, height = SMALL_PLOT_HEIGHT, dpi = PLOT_DPI, bg = "white"
     )
 
     mss_plot <- ggplot(mss_results, aes(x = gep_class_simple)) +
@@ -61,10 +66,15 @@ create_simple_gep_plots <- function(mfs_results, mss_results, mfs_output_dir, ms
             plot.background = element_rect(fill = "white"),
             panel.background = element_rect(fill = "white")
         ) +
-        scale_color_manual(values = c("Expected" = "blue", "Actual" = "red"))
+        scale_color_manual(values = {
+            pal <- get_qualitative_palette(2)
+            names(pal) <- c("Expected", "Actual")
+            pal
+        })
+    
     ggsave(file.path(mss_output_dir, paste0(prefix, "simple_mss_validation.png")),
         mss_plot,
-        width = 8, height = 6, dpi = 300, bg = "white"
+        width = SMALL_PLOT_WIDTH, height = SMALL_PLOT_HEIGHT, dpi = PLOT_DPI, bg = "white"
     )
 }
 

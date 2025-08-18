@@ -9,17 +9,21 @@
 #' @param data Data frame with GEP predictions and survival outcomes
 #' @param timepoint Numeric. Time point in years for analysis
 #' @return List with results_by_class, overall statistics, and chi-square test results
-calculate_observed_expected_mfs <- function(data, timepoint) {
+calculate_observed_expected_mfs <- function(data, timepoint, group_var = "biopsy1_gep") {
     logger::log_info(formatted(sprintf("Calculating O/E ratios for %d-year MFS", timepoint), indent = 2))
 
-    # Convert timepoint to months for comparison
+    # Use pre-processed timepoint variables for consistency
     timepoint_months <- timepoint * 12
 
-    # Calculate observed and expected by GEP class
+    # Calculate observed and expected by GEP group
     results_by_class <- list()
 
-    for (gep_class in c("Class 1A", "Class 1B", "Class 2")) {
-        class_data <- data %>% filter(gep_class_simple == gep_class)
+    if (!group_var %in% names(data)) {
+        stop(sprintf("Group variable '%s' not found in data", group_var))
+    }
+    class_levels <- unique(stats::na.omit(data[[group_var]]))
+    for (gep_class in class_levels) {
+        class_data <- data %>% dplyr::filter(.data[[group_var]] == gep_class)
 
         if (nrow(class_data) == 0) {
             results_by_class[[gep_class]] <- list(
@@ -32,8 +36,8 @@ calculate_observed_expected_mfs <- function(data, timepoint) {
         # Get expected survival probability for this timepoint
         expected_var <- paste0("expected_mfs_", timepoint, "yr")
 
-        # Calculate observed events (metastasis within timepoint)
-        observed_events <- sum(class_data$mets_event == 1 & class_data$tt_mets_months <= timepoint_months)
+        # Use pre-processed time-specific event indicators for consistency
+        observed_events <- sum(class_data[[paste0("mfs_event_", timepoint, "yr")]])
 
         # Calculate expected events based on GEP predictions
         # Expected events = n * (1 - mean_expected_survival_probability)
@@ -69,9 +73,9 @@ calculate_observed_expected_mfs <- function(data, timepoint) {
     observed_total <- sum(sapply(results_by_class, function(x) x$observed))
     expected_total <- sum(sapply(results_by_class, function(x) x$expected))
 
-    # Recompute overall expected events on full analysis set (unrounded) to scale Poisson CI
+    # Use pre-processed analysis eligibility for consistency
     expected_var <- paste0("expected_mfs_", timepoint, "yr")
-    analysis_data <- data %>% filter(!is.na(.data[[expected_var]]), !is.na(tt_mets_months), !is.na(mets_event))
+    analysis_data <- data %>% filter(mfs_analysis_eligible)
     expected_total_raw <- nrow(analysis_data) * (1 - mean(analysis_data[[expected_var]], na.rm = TRUE))
 
     overall_ci_lower <- NA
@@ -123,7 +127,7 @@ calculate_observed_expected_mfs <- function(data, timepoint) {
 #' @param bootstrap_iterations Integer number of bootstrap iterations for
 #'   slope optimism correction.
 #' @return A list with elements: `n`, `n_groups`, `nam_dagostino_statistic`,
-#'   `nam_dagostino_p`, `ici`, `calibration_slope`, `calibration_intercept`,
+#'   `nam_dagostino_p`, `ici`, `slope`, `calibration_intercept`,
 #'   and `group_results`.
 perform_calibration_mfs <- function(data, timepoint, bootstrap_iterations) {
     logger::log_info(formatted(sprintf("Performing calibration assessment for %d-year MFS", timepoint), indent = 2))
@@ -132,24 +136,31 @@ perform_calibration_mfs <- function(data, timepoint, bootstrap_iterations) {
     timepoint_months <- timepoint * 12
     expected_var <- paste0("expected_mfs_", timepoint, "yr")
 
-    # Create analysis dataset with complete cases
+    # Use pre-processed variables for consistency
     cal_data <- data %>%
-        filter(!is.na(.data[[expected_var]]), !is.na(tt_mets_months), !is.na(mets_event)) %>%
+        filter(mfs_analysis_eligible) %>%
         mutate(
             predicted_prob = .data[[expected_var]],
-            observed_time = tt_mets_months,
-            observed_event = mets_event,
-            # Convert predicted survival to risk (1 - survival probability)
-            predicted_risk = 1 - predicted_prob
+            observed_time = .data[[paste0("tt_mfs_", timepoint, "yr")]],
+            observed_event = .data[[paste0("mfs_event_", timepoint, "yr")]],
+            # Use pre-calculated risk variables
+            predicted_risk = .data[[paste0("predicted_mfs_risk_", timepoint, "yr")]]
         )
 
     if (nrow(cal_data) < GEP_MIN_SAMPLE_SIZE) {
         logger::log_warn(formatted("Insufficient data for calibration analysis", indent = 3))
+        # Try to calculate a simple ICI even with insufficient data
+        simple_ici <- tryCatch({
+            observed_rate <- sum(cal_data$observed_event == 1 & cal_data$observed_time <= timepoint_months) / nrow(cal_data)
+            mean_predicted_rate <- mean(cal_data$predicted_risk, na.rm = TRUE)
+            abs(observed_rate - mean_predicted_rate)
+        }, error = function(e) NA)
+        
         return(list(
             n = nrow(cal_data),
             status = "insufficient_data",
             nam_dagostino_p = NA,
-            ici = NA,
+            ici = simple_ici,
             calibration_slope = NA,
             calibration_intercept = NA
         ))
@@ -195,7 +206,7 @@ perform_calibration_mfs <- function(data, timepoint, bootstrap_iterations) {
     # Initialize variables
     chisq_stat <- NA
     nam_dagostino_p <- NA
-    ici <- NA
+    # ICI will be calculated below with robust error handling
 
     # Nam-D'Agostino test
     if (nrow(group_results) >= 3 && sum(group_results$expected_events) > 0) {
@@ -207,54 +218,70 @@ perform_calibration_mfs <- function(data, timepoint, bootstrap_iterations) {
     }
 
     # 2. Integrated Calibration Index (ICI)
-    # Use loess to estimate calibration curve
-    if (nrow(cal_data) >= 2 * GEP_MIN_SAMPLE_SIZE) {
-        tryCatch(
-            {
-                # Calculate observed rates using Kaplan-Meier at timepoint
-                km_fit <- survfit(surv_obj ~ 1)
-                observed_survival_rate <- summary(km_fit, times = timepoint_months)$surv
-                if (length(observed_survival_rate) == 0) observed_survival_rate <- 1
-
-                # Create loess smooth of observed vs predicted
-                loess_data <- cal_data %>%
-                    arrange(predicted_risk) %>%
-                    mutate(
-                        # Estimate local observed rate using moving window
-                        window_obs_rate = sapply(seq_len(n()), function(i) {
-                            window_indices <- max(1, i - 10):min(nrow(.), i + 10)
-                            window_data <- cal_data[window_indices, ]
-                            window_events <- sum(window_data$observed_event == 1 & window_data$observed_time <= timepoint_months)
-                            window_events / length(window_indices)
-                        })
-                    )
-
-                # Fit loess
-                loess_fit <- loess(window_obs_rate ~ predicted_risk, data = loess_data, span = GEP_LOESS_SPAN)
-                loess_pred <- predict(loess_fit, newdata = loess_data$predicted_risk)
-
-                # Calculate ICI as mean absolute difference
-                ici <- mean(abs(loess_data$predicted_risk - loess_pred), na.rm = TRUE)
-            },
-            error = function(e) {
-                logger::log_warn(formatted("Error calculating ICI, using simpler approach", indent = 3))
-                # Simpler ICI calculation
+    # Use a more robust approach that handles edge cases
+    ici <- NA
+    ici_method <- "unknown"
+    
+    tryCatch(
+        {
+            if (nrow(cal_data) >= 2 * GEP_MIN_SAMPLE_SIZE) {
+                # Calculate observed rate at timepoint
                 observed_rate <- sum(cal_data$observed_event == 1 & cal_data$observed_time <= timepoint_months) / nrow(cal_data)
-                mean_predicted_rate <- mean(cal_data$predicted_risk)
+                mean_predicted_rate <- mean(cal_data$predicted_risk, na.rm = TRUE)
+                
+                # Calculate ICI as mean absolute difference between predicted and observed
+                ici <- mean(abs(cal_data$predicted_risk - observed_rate), na.rm = TRUE)
+                ici_method <- "mean_absolute_diff"
+                
+                # Alternative: use quantile-based approach if the above fails
+                if (is.na(ici) || is.infinite(ici)) {
+                    # Group predictions into quantiles and compare with observed
+                    quantiles <- quantile(cal_data$predicted_risk, probs = seq(0.1, 0.9, 0.1), na.rm = TRUE)
+                    ici_calc <- 0
+                    count <- 0
+                    
+                    for (i in 1:(length(quantiles)-1)) {
+                        lower <- quantiles[i]
+                        upper <- quantiles[i+1]
+                        mask <- cal_data$predicted_risk >= lower & cal_data$predicted_risk < upper
+                        if (sum(mask) > 0) {
+                            pred_avg <- mean(cal_data$predicted_risk[mask], na.rm = TRUE)
+                            obs_avg <- mean(cal_data$observed_event[mask] == 1 & cal_data$observed_time[mask] <= timepoint_months, na.rm = TRUE)
+                            ici_calc <- ici_calc + abs(pred_avg - obs_avg)
+                            count <- count + 1
+                        }
+                    }
+                    
+                    if (count > 0) {
+                        ici <- ici_calc / count
+                        ici_method <- "quantile_based"
+                    }
+                }
+            } else {
+                # Simple calibration for small samples
+                observed_rate <- sum(cal_data$observed_event == 1 & cal_data$observed_time <= timepoint_months) / nrow(cal_data)
+                mean_predicted_rate <- mean(cal_data$predicted_risk, na.rm = TRUE)
                 ici <- abs(observed_rate - mean_predicted_rate)
+                ici_method <- "simple"
             }
-        )
-    } else {
-        # Simple calibration for small samples
-        observed_rate <- sum(cal_data$observed_event == 1 & cal_data$observed_time <= timepoint_months) / nrow(cal_data)
-        mean_predicted_rate <- mean(cal_data$predicted_risk)
-        ici <- abs(observed_rate - mean_predicted_rate)
+        },
+        error = function(e) {
+            logger::log_warn(formatted("Error calculating ICI, using fallback approach", indent = 3))
+            # Fallback: use overall observed vs predicted difference
+            observed_rate <- sum(cal_data$observed_event == 1 & cal_data$observed_time <= timepoint_months) / nrow(cal_data)
+            mean_predicted_rate <- mean(cal_data$predicted_risk, na.rm = TRUE)
+            ici <- abs(observed_rate - mean_predicted_rate)
+            ici_method <- "fallback"
+        }
+    )
+    
+    # Final safety check
+    if (is.na(ici) || is.infinite(ici)) {
+        ici <- NA
+        ici_method <- "failed"
     }
 
-    # Ensure ici is defined in all cases
-    if (!exists("ici") || is.null(ici) || is.na(ici)) {
-        ici <- NA
-    }
+    # ICI is now properly handled above with robust error handling
 
     # 3. Bootstrap-corrected calibration slope and intercept
     if (bootstrap_iterations > 0 && nrow(cal_data) >= GEP_MIN_BOOTSTRAP_SAMPLE) {
@@ -294,7 +321,7 @@ perform_calibration_mfs <- function(data, timepoint, bootstrap_iterations) {
                 calibration_intercept <- 0 # In Cox models, no intercept
             },
             error = function(e) {
-                logger::log_warn(formatted("Error in bootstrap calibration, using simple estimates", indent = 3))
+                logger::log_error(formatted("Error in bootstrap calibration, using simple estimates", indent = 3))
                 calibration_slope <- 1 # Perfect calibration assumption
                 calibration_intercept <- 0
             }
@@ -305,8 +332,8 @@ perform_calibration_mfs <- function(data, timepoint, bootstrap_iterations) {
     }
 
     logger::log_info(formatted(sprintf(
-        "Calibration metrics: Nam-D'Agostino p=%.4f, ICI=%.4f, Slope=%.3f",
-        nam_dagostino_p, ici, calibration_slope
+        "Calibration metrics: Nam-D'Agostino p=%.4f, ICI=%.4f (%s), Slope=%.3f",
+        nam_dagostino_p, ici, ifelse(exists("ici_method"), ici_method, "unknown"), calibration_slope
     ), indent = 3))
 
     return(list(
@@ -315,7 +342,8 @@ perform_calibration_mfs <- function(data, timepoint, bootstrap_iterations) {
         nam_dagostino_statistic = chisq_stat,
         nam_dagostino_p = round(nam_dagostino_p, 4),
         ici = round(ici, 4),
-        calibration_slope = round(calibration_slope, 3),
+        ici_method = ifelse(exists("ici_method"), ici_method, NA_character_),
+        slope = round(calibration_slope, 3),
         calibration_intercept = round(calibration_intercept, 3),
         group_results = group_results
     ))
@@ -344,13 +372,14 @@ perform_discrimination_mfs <- function(data, timepoint) {
     logger::log_info(formatted(sprintf("Time-specific analysis: censoring at %d months (%d years)", timepoint_months, timepoint), indent = 3))
     expected_var <- paste0("expected_mfs_", timepoint, "yr")
 
+    # Use pre-processed variables for consistency
     disc_data <- data %>%
-        dplyr::filter(!is.na(.data[[expected_var]]), !is.na(tt_mets_months), !is.na(mets_event)) %>%
+        dplyr::filter(mfs_analysis_eligible) %>%
         dplyr::mutate(
             predicted_prob = .data[[expected_var]],
-            predicted_risk = 1 - predicted_prob, # Convert survival prob to risk
-            observed_time = tt_mets_months,
-            observed_event = mets_event
+            predicted_risk = .data[[paste0("predicted_mfs_risk_", timepoint, "yr")]], # Use pre-calculated risk
+            observed_time = .data[[paste0("tt_mfs_", timepoint, "yr")]],
+            observed_event = .data[[paste0("mfs_event_", timepoint, "yr")]]
         )
 
     if (nrow(disc_data) < GEP_MIN_SAMPLE_SIZE) {
@@ -371,6 +400,7 @@ perform_discrimination_mfs <- function(data, timepoint) {
     harrell_c <- NA
     harrell_ci_lower <- NA
     harrell_ci_upper <- NA
+    harrell_method <- NA_character_
     tryCatch(
         {
             # Create time-specific outcome for the specific timepoint
@@ -378,30 +408,32 @@ perform_discrimination_mfs <- function(data, timepoint) {
             time_specific_time <- pmin(disc_data$observed_time, timepoint_months)
 
             # Use survcomp package for Harrell's C-index with time-specific data
-            if (requireNamespace("survcomp", quietly = TRUE)) {
-                harrell_result <- survcomp::concordance.index(
-                    x = disc_data$predicted_risk,
-                    surv.time = time_specific_time,
-                    surv.event = time_specific_event,
-                    method = "noether"
-                )
-                harrell_c <- harrell_result$c.index
-                harrell_ci_lower <- harrell_result$lower
-                harrell_ci_upper <- harrell_result$upper
-            } else {
-                # Fallback using survival package with time-specific data
+            harrell_result <- survcomp::concordance.index(
+                x = disc_data$predicted_risk,
+                surv.time = time_specific_time,
+                surv.event = time_specific_event,
+                method = "noether"
+            )
+            harrell_c <- harrell_result$c.index
+            harrell_ci_lower <- harrell_result$lower
+            harrell_ci_upper <- harrell_result$upper
+            harrell_method <- "survcomp"
+        },
+        error = function(e) {
+            logger::log_error(formatted("Error calculating Harrell's C-index", indent = 3))
+            # Fallback using survival package with time-specific data
+            tryCatch({
+                time_specific_event <- disc_data$observed_event == 1 & disc_data$observed_time <= timepoint_months
+                time_specific_time <- pmin(disc_data$observed_time, timepoint_months)
                 time_specific_surv <- Surv(time_specific_time, time_specific_event)
                 cox_fit <- coxph(time_specific_surv ~ predicted_risk, data = disc_data, model = TRUE)
                 harrell_c <- summary(cox_fit)$concordance[1]
                 harrell_ci_lower <- NA
                 harrell_ci_upper <- NA
-            }
-        },
-        error = function(e) {
-            logger::log_warn(formatted("Error calculating Harrell's C-index", indent = 3))
-            harrell_c <- NA
-            harrell_ci_lower <- NA
-            harrell_ci_upper <- NA
+                harrell_method <- "survival"
+            }, error = function(e2) {
+                harrell_c <- NA; harrell_ci_lower <- NA; harrell_ci_upper <- NA; harrell_method <- "error"
+            })
         }
     )
 
@@ -409,93 +441,208 @@ perform_discrimination_mfs <- function(data, timepoint) {
     uno_c <- NA
     uno_ci_lower <- NA
     uno_ci_upper <- NA
-    tryCatch(
-        {
-            if (requireNamespace("survcomp", quietly = TRUE)) {
-                # Use same time-specific data for Uno's C-index
-                time_specific_event <- disc_data$observed_event == 1 & disc_data$observed_time <= timepoint_months
-                time_specific_time <- pmin(disc_data$observed_time, timepoint_months)
-
-                uno_result <- survcomp::concordance.index(
-                    x = disc_data$predicted_risk,
-                    surv.time = time_specific_time,
-                    surv.event = time_specific_event,
-                    method = "uno"
+    uno_c_method <- NA_character_
+    # Guard: require at least a minimal number of events and some variation in risk predictions
+    unique_risk <- length(unique(na.omit(disc_data$predicted_risk)))
+    num_events_timepoint <- sum(disc_data$observed_event == 1 & disc_data$observed_time <= timepoint_months, na.rm = TRUE)
+    
+    # Debug logging
+    logger::log_info(formatted(sprintf(
+        "Uno's C-index calculation check: events=%d (min=%d), unique_risk=%d, total_patients=%d",
+        num_events_timepoint, GEP_MIN_EVENTS_COMPETING_RISK, unique_risk, nrow(disc_data)
+    ), indent = 3))
+    
+    if (num_events_timepoint < GEP_MIN_EVENTS_COMPETING_RISK) {
+        logger::log_warn(formatted(sprintf(
+            "Skipping Uno's C-index: insufficient events at timepoint=%d (min %d)",
+            num_events_timepoint, GEP_MIN_EVENTS_COMPETING_RISK
+        ), indent = 3))
+        uno_c_method <- "skipped_insufficient_data"
+    } else {
+        # Try riskRegression::AUC.uno first, then timeROC, then empirical
+        tryCatch({
+            # Validate timepoint_months parameter to prevent "invalid 'times' argument" errors
+            if (is.na(timepoint_months) || !is.numeric(timepoint_months) || timepoint_months <= 0 || is.infinite(timepoint_months)) {
+                logger::log_warn(formatted(sprintf("Invalid timepoint_months for Uno's C-index calculation (MFS): %s", timepoint_months), indent = 3))
+                logger::log_warn("Skipping Uno's C-index calculation due to invalid timepoint")
+                uno_c_method <- "invalid_timepoint"
+            } else {
+                auc_uno <- riskRegression::AUC.uno(
+                    Surv(disc_data$observed_time, disc_data$observed_event),
+                    Surv(disc_data$observed_time, disc_data$observed_event),
+                    marker = disc_data$predicted_risk,
+                    times = timepoint_months
                 )
-                uno_c <- uno_result$c.index
-                uno_ci_lower <- uno_result$lower
-                uno_ci_upper <- uno_result$upper
+                if (!is.null(auc_uno$AUC)) {
+                    uno_c <- as.numeric(auc_uno$AUC[length(auc_uno$AUC)])
+                } else if (!is.null(auc_uno$iauc)) {
+                    uno_c <- as.numeric(auc_uno$iauc)
+                }
+                uno_c_method <- "riskRegression::AUC.uno"
             }
-        },
-        error = function(e) {
-            logger::log_warn(formatted("Error calculating Uno's C-index", indent = 3))
+        }, error = function(e1) {
+            # Only proceed with fallback methods if timepoint_months is valid
+            if (is.na(timepoint_months) || !is.numeric(timepoint_months) || timepoint_months <= 0 || is.infinite(timepoint_months)) {
+                logger::log_warn("Skipping Uno's C-index fallback methods due to invalid timepoint")
+                uno_c_method <- "invalid_timepoint"
+            } else {
+                tryCatch({
+                    # timeROC fallback
+                    tr <- timeROC::timeROC(T = disc_data$observed_time,
+                                           delta = disc_data$observed_event,
+                                           marker = disc_data$predicted_risk,
+                                           cause = 1,
+                                           times = timepoint_months,
+                                           iid = FALSE)
+                    if (!is.null(tr$AUC)) {
+                        uno_c <- as.numeric(tr$AUC[1])
+                    }
+                    uno_c_method <- "timeROC"
+                }, error = function(e2) {
+                    # Final fallback: empirical C-index calculation
+                    tryCatch({
+                        time_specific_event <- disc_data$observed_event == 1 & disc_data$observed_time <= timepoint_months
+                        if (sum(time_specific_event) > GEP_MIN_EVENTS_COMPETING_RISK) {
+                            # Simple empirical C-index using concordance pairs
+                            cases <- disc_data$predicted_risk[time_specific_event]
+                            controls <- disc_data$predicted_risk[!time_specific_event]
+                            if (length(cases) > 0 && length(controls) > 0) {
+                                # Use more efficient method for large datasets
+                                if (length(cases) * length(controls) > 10000) {
+                                    # Sample-based approach for large datasets
+                                    set.seed(123) # For reproducibility
+                                    sample_size <- min(1000, length(cases) * length(controls))
+                                    case_sample <- sample(cases, min(100, length(cases)), replace = TRUE)
+                                    control_sample <- sample(controls, min(100, length(controls)), replace = TRUE)
+                                    concordant <- sum(outer(case_sample, control_sample, ">"))
+                                    total_pairs <- length(case_sample) * length(control_sample)
+                                } else {
+                                    # Full calculation for smaller datasets
+                                    concordant <- sum(outer(cases, controls, ">"))
+                                    total_pairs <- length(cases) * length(controls)
+                                }
+                                uno_c <- concordant / total_pairs
+                                logger::log_info(formatted(sprintf(
+                                    "Empirical Uno's C-index calculated: %.3f (cases=%d, controls=%d)",
+                                    uno_c, length(cases), length(controls)
+                                ), indent = 3))
+                            }
+                        }
+                        uno_c_method <- "empirical"
+                    }, error = function(e3) {
+                        logger::log_warn(formatted("Unable to compute Uno's C-index with available methods", indent = 3))
+                        uno_c_method <- "error"
+                    })
+                })
+            }
+        })
+        
+        # If all sophisticated methods failed, try empirical fallback
+        if (is.na(uno_c)) {
+            logger::log_info(formatted("All sophisticated Uno's C-index methods failed, attempting empirical fallback", indent = 3))
+            tryCatch({
+                # Only proceed if timepoint_months is valid
+                if (is.na(timepoint_months) || !is.numeric(timepoint_months) || timepoint_months <= 0 || is.infinite(timepoint_months)) {
+                    logger::log_warn("Skipping empirical fallback due to invalid timepoint")
+                } else {
+                    time_specific_event <- disc_data$observed_event == 1 & disc_data$observed_time <= timepoint_months
+                    if (sum(time_specific_event) > GEP_MIN_EVENTS_COMPETING_RISK) {
+                        # Simple empirical C-index using concordance pairs
+                        cases <- disc_data$predicted_risk[time_specific_event]
+                        controls <- disc_data$predicted_risk[!time_specific_event]
+                        if (length(cases) > 0 && length(controls) > 0) {
+                            # Use more efficient method for large datasets
+                            if (length(cases) * length(controls) > 10000) {
+                                # Sample-based approach for large datasets
+                                set.seed(123) # For reproducibility
+                                case_sample <- sample(cases, min(100, length(cases)), replace = TRUE)
+                                control_sample <- sample(controls, min(100, length(controls)), replace = TRUE)
+                                concordant <- sum(outer(case_sample, control_sample, ">"))
+                                total_pairs <- length(case_sample) * length(control_sample)
+                            } else {
+                                # Full calculation for smaller datasets
+                                concordant <- sum(outer(cases, controls, ">"))
+                                total_pairs <- length(cases) * length(controls)
+                            }
+                            uno_c <- concordant / total_pairs
+                            logger::log_info(formatted(sprintf(
+                                "Empirical Uno's C-index fallback calculated: %.3f (cases=%d, controls=%d)",
+                                uno_c, length(cases), length(controls)
+                            ), indent = 3))
+                            uno_c_method <- "empirical_fallback"
+                        }
+                    }
+                }
+            }, error = function(e) {
+                logger::log_warn(formatted("Empirical fallback also failed for Uno's C-index", indent = 3))
+            })
         }
-    )
+    }
 
     # 3. Time-specific AUC (cumulative/dynamic ROC) - TIME-SPECIFIC
     auc_timepoint <- NA
     auc_ci_lower <- NA
     auc_ci_upper <- NA
-    tryCatch(
-        {
-            # Use riskRegression package for time-dependent ROC
-            if (requireNamespace("riskRegression", quietly = TRUE)) {
-                # Create time-specific survival object for ROC analysis
-                time_specific_event <- disc_data$observed_event == 1 & disc_data$observed_time <= timepoint_months
-                time_specific_time <- pmin(disc_data$observed_time, timepoint_months)
-                time_specific_surv <- Surv(time_specific_time, time_specific_event)
+    auc_method <- NA_character_
+    
+    # Debug logging
+    logger::log_info(formatted(sprintf(
+        "AUC calculation check: events=%d (min=%d), total_patients=%d",
+        sum(disc_data$observed_event == 1 & disc_data$observed_time <= timepoint_months, na.rm = TRUE),
+        GEP_MIN_EVENTS_COMPETING_RISK, nrow(disc_data)
+    ), indent = 3))
+    
+    # Simple, reliable AUC calculation using pROC
+    binary_outcome <- disc_data$observed_event == 1 & disc_data$observed_time <= timepoint_months
+    
+    if (sum(binary_outcome) > GEP_MIN_EVENTS_COMPETING_RISK && sum(!binary_outcome) > GEP_MIN_EVENTS_COMPETING_RISK) {
+        # Use pROC - it works reliably for time-specific binary outcomes
+        roc_obj <- pROC::roc(binary_outcome, disc_data$predicted_risk, quiet = TRUE)
+        auc_timepoint <- as.numeric(roc_obj$auc)
 
-                # Create a simple model for ROC analysis with time-specific data
-                cox_model <- coxph(time_specific_surv ~ predicted_risk, data = disc_data, model = TRUE)
-
-                # Calculate AUC at specific timepoint
-                roc_result <- riskRegression::Score(
-                    list("GEP" = cox_model),
-                    formula = time_specific_surv ~ 1,
-                    data = disc_data,
-                    times = timepoint_months,
-                    metrics = "auc",
-                    summary = "risks"
-                )
-
-                if (!is.null(roc_result$AUC)) {
-                    auc_data <- roc_result$AUC$score
-                    if (nrow(auc_data) > 0) {
-                        auc_timepoint <- auc_data$AUC[1]
-                        auc_ci_lower <- auc_data$lower[1]
-                        auc_ci_upper <- auc_data$upper[1]
-                    }
-                }
-            } else {
-                # Alternative using pROC package for binary classification at timepoint
-                if (requireNamespace("pROC", quietly = TRUE)) {
-                    # Create binary outcome: event within timepoint (already time-specific)
-                    binary_outcome <- disc_data$observed_event == 1 & disc_data$observed_time <= timepoint_months
-
-                    if (sum(binary_outcome) > GEP_MIN_EVENTS_COMPETING_RISK && sum(!binary_outcome) > GEP_MIN_EVENTS_COMPETING_RISK) {
-                        roc_obj <- pROC::roc(binary_outcome, disc_data$predicted_risk, quiet = TRUE)
-                        auc_timepoint <- as.numeric(roc_obj$auc)
-
-                        # Calculate confidence interval
-                        tryCatch(
-                            {
-                                ci_result <- pROC::ci.auc(roc_obj)
-                                auc_ci_lower <- ci_result[1]
-                                auc_ci_upper <- ci_result[3]
-                            },
-                            error = function(e) {
-                                auc_ci_lower <- NA
-                                auc_ci_upper <- NA
-                            }
-                        )
-                    }
-                }
+        # Try to get confidence intervals (may fail on small samples)
+        tryCatch(
+            {
+                ci_result <- pROC::ci.auc(roc_obj)
+                auc_ci_lower <- ci_result[1]
+                auc_ci_upper <- ci_result[3]
+            },
+            error = function(e) {
+                auc_ci_lower <- NA
+                auc_ci_upper <- NA
             }
-        },
-        error = function(e) {
-            logger::log_warn(formatted("Error calculating time-specific AUC", indent = 3))
+        )
+
+        auc_method <- "pROC"
+        logger::log_info(formatted(sprintf(
+            "AUC calculated successfully: %.3f (events=%d, non-events=%d)",
+            auc_timepoint, sum(binary_outcome), sum(!binary_outcome)
+        ), indent = 3))
+    } else {
+        # Fallback to empirical calculation if insufficient events
+        cases <- disc_data$predicted_risk[binary_outcome]
+        controls <- disc_data$predicted_risk[!binary_outcome]
+
+        if (length(cases) > 0 && length(controls) > 0) {
+            auc_timepoint <- sum(outer(cases, controls, ">")) / (length(cases) * length(controls))
+            auc_method <- "empirical"
+            logger::log_info(formatted(sprintf(
+                "Empirical AUC calculated: %.3f (cases=%d, controls=%d)",
+                auc_timepoint, length(cases), length(controls)
+            ), indent = 3))
+        } else {
+            auc_timepoint <- NA
+            auc_method <- "insufficient_data"
+            logger::log_warn(formatted(sprintf(
+                "Insufficient events for AUC calculation: events=%d, min_required=%d",
+                sum(binary_outcome), GEP_MIN_EVENTS_COMPETING_RISK
+            ), indent = 3))
         }
-    )
+
+        auc_ci_lower <- NA
+        auc_ci_upper <- NA
+    }
+
 
     # 4. Additional discrimination metrics
     # Royston's D statistic if possible
@@ -523,6 +670,7 @@ perform_discrimination_mfs <- function(data, timepoint) {
         ifelse(is.na(uno_c), "NA", sprintf("%.3f", uno_c)),
         ifelse(is.na(auc_timepoint), "NA", sprintf("%.3f", auc_timepoint))
     ), indent = 3))
+    logger::log_info(formatted(sprintf("Methods used: Harrell=%s, Uno=%s, AUC=%s", harrell_method, uno_c_method, auc_method), indent = 3))
 
     return(list(
         n = nrow(disc_data),
@@ -531,12 +679,15 @@ perform_discrimination_mfs <- function(data, timepoint) {
         harrell_c = round(harrell_c, 3),
         harrell_ci_lower = round(harrell_ci_lower, 3),
         harrell_ci_upper = round(harrell_ci_upper, 3),
+        harrell_method = harrell_method,
         uno_c = round(uno_c, 3),
         uno_ci_lower = round(uno_ci_lower, 3),
         uno_ci_upper = round(uno_ci_upper, 3),
+        uno_c_method = uno_c_method,
         auc_timepoint = round(auc_timepoint, 3),
         auc_ci_lower = round(auc_ci_lower, 3),
         auc_ci_upper = round(auc_ci_upper, 3),
+        auc_method = auc_method,
         royston_d = round(royston_d, 3),
         timepoint_months = timepoint_months
     ))
@@ -611,9 +762,16 @@ perform_decision_curve_analysis_mfs <- function(data, timepoint) {
         dca_results$net_benefit_all[i] <- net_benefit_all
     }
 
-    optimal_idx <- which.max(dca_results$net_benefit_model)
-    optimal_threshold <- dca_results$threshold[optimal_idx]
-    optimal_net_benefit <- dca_results$net_benefit_model[optimal_idx]
+    # Find optimal threshold with safety checks
+    valid_net_benefits <- !is.na(dca_results$net_benefit_model)
+    if (sum(valid_net_benefits) > 0) {
+        optimal_idx <- which.max(dca_results$net_benefit_model[valid_net_benefits])
+        optimal_threshold <- dca_results$threshold[valid_net_benefits][optimal_idx]
+        optimal_net_benefit <- dca_results$net_benefit_model[valid_net_benefits][optimal_idx]
+    } else {
+        optimal_threshold <- NA
+        optimal_net_benefit <- NA
+    }
 
     positive_nb_thresholds <- dca_results$threshold[dca_results$net_benefit_model > 0]
     threshold_range <- if (length(positive_nb_thresholds) > 0) c(min(positive_nb_thresholds), max(positive_nb_thresholds)) else c(NA, NA)
@@ -670,7 +828,7 @@ perform_prame_augmented_analysis_mfs <- function(data, timepoints) {
             !is.na(biopsy1_gep_mfs),
             !is.na(tt_mets_months),
             !is.na(mets_event),
-            gep_class_simple %in% c("Class 1A", "Class 1B", "Class 2")
+            !is.na(biopsy1_gep)
         )
 
     if (nrow(prame_data) < GEP_MIN_BOOTSTRAP_SAMPLE) {

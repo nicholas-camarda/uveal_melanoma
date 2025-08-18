@@ -9,8 +9,10 @@
 #' @param outcome_label Character string for the outcome being analyzed
 #' @param output_dirs List of output directories organized by analysis type
 #' @param prefix Character string used as a file prefix for output files
+#' @param group1_name Character string for the first group (coded as 0 in RMST)
+#' @param group2_name Character string for the second group (coded as 1 in RMST)
 #' @return ggplot object
-plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dirs, prefix) {
+plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dirs, prefix, group1_name = "Group 1", group2_name = "Group 2") {
     # Pre-filter to exclude failed RMST analyses before creating plot data
     # This addresses the root cause rather than filtering NA values after they're created
     plot_data <- rmst_results %>%
@@ -18,11 +20,13 @@ plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dir
         mutate(
             Significant = RMST_P_Value < 0.05,
             Log_P_Value = -log10(RMST_P_Value),
-            # RMST_Difference is GKSRS - Plaque (positive = GKSRS better, negative = GKSRS worse)
+            # RMST_Difference direction depends on group comparison
+            # For binary: positive = second group advantage, negative = first group advantage
+            # For multi-group: positive = others advantage, negative = first group advantage
             Direction = case_when(
                 !Significant ~ "Not significant",
-                RMST_Difference > 0 ~ "GKSRS advantage",
-                RMST_Difference < 0 ~ "GKSRS disadvantage",
+                RMST_Difference > 0 ~ sprintf("%s advantage", group2_name),
+                RMST_Difference < 0 ~ sprintf("%s advantage", group1_name),
                 TRUE ~ "Not significant"
             ),
             Significance_Level = case_when(
@@ -32,6 +36,12 @@ plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dir
                 TRUE ~ "Not significant"
             )
         )
+    
+    # Check if we have any valid RMST data to plot
+    if (nrow(plot_data) == 0) {
+        logger::log_info(sprintf("Skipping RMST plot for %s: no valid RMST data (non-binary grouping or all analyses failed)", outcome_label))
+        return(NULL)
+    }
 
     # Create the plot
     p <- ggplot(plot_data, aes(x = Time_Point_Years, y = RMST_P_Value)) +
@@ -81,7 +91,7 @@ plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dir
             subtitle = "Restricted Mean Survival Time Analysis at Different Time Points",
             x = "Analysis Time Point",
             y = "P-value",
-            caption = "Dashed line: p = 0.05 | Dotted line: p = 0.01\nRMST difference: + = GKSRS advantage, - = GKSRS disadvantage (vs Plaque)"
+            caption = sprintf("Dashed line: p = 0.05 | Dotted line: p = 0.01\nRMST difference: + = %s advantage, - = %s advantage", group2_name, group1_name)
         ) +
         theme_minimal() +
         theme(
@@ -132,7 +142,7 @@ plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dir
     }
 
     # Generate filename with validation
-    filename <- paste0(prefix, gsub("[^A-Za-z0-9]", "_", outcome_label), "_rmst_pvalue_progression.png")
+    filename <- paste0(prefix, make_filename_safe(outcome_label), "_rmst_pvalue_progression.png")
     if (is.null(filename) || filename == "" || is.na(filename)) {
         warning("Generated filename is empty or invalid")
         return(p)

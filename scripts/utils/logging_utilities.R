@@ -41,7 +41,7 @@ setup_logging <- function(
     context_in_file = TRUE
 ) {
     # Configure HTML quieting (best-effort)
-    if (isTRUE(quiet_html)) {
+    if ((quiet_html)) {
         options(gt.html_print = FALSE)
     }
 
@@ -55,7 +55,7 @@ setup_logging <- function(
         lvl_num <- as.character(level)
         lvl_map <- c("100" = "DEBUG", "200" = "ERROR", "300" = "WARN", "400" = "INFO")
         lvl_txt <- if (!is.na(lvl_map[[lvl_num]])) lvl_map[[lvl_num]] else lvl_num
-        if (isTRUE(context_in_console)) {
+        if ((context_in_console)) {
             paste0("[", ts, "] [", lvl_txt, "] ", format_log_context(
                 compact = getOption('.um_context_compact', TRUE),
                 max_width = getOption('.um_context_max_width', 40)
@@ -93,7 +93,7 @@ setup_logging <- function(
     if (!is.null(prev) && identical(prev, state)) {
         # Still update threshold and progress setting, then return
         logger::log_threshold(level)
-        if (isTRUE(progress)) {
+        if ((progress)) {
             progressr::handlers(global = TRUE)
             options(progressr.enable = TRUE)
         } else {
@@ -144,7 +144,7 @@ setup_logging <- function(
             ctx <- getOption(".um_log_context", default = list())
             ts <- format(Sys.time(), "%Y-%m-%dT%H:%M:%OS%z")
             safe_val <- function(x) if (is.null(x) || !nzchar(x)) NA_character_ else as.character(x)
-            entry <- if (isTRUE(context_in_file)) {
+            entry <- if ((context_in_file)) {
                 list(
                     timestamp = ts,
                     level_text = switch(as.character(getOption(".um_last_level", "400")), "100" = "DEBUG", "200" = "ERROR", "300" = "WARN", "400" = "INFO", as.character(getOption(".um_last_level", "INFO"))),
@@ -188,7 +188,7 @@ setup_logging <- function(
     logger::log_threshold(level)
 
     # Configure progress handlers
-    if (isTRUE(progress)) {
+    if ((progress)) {
         progressr::handlers(global = TRUE)
         options(progressr.enable = TRUE)
     } else {

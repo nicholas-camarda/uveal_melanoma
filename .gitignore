@@ -21,4 +21,8 @@ final_data/*
 # Ignore old, test results, and logs
 logs/*
 old_results/*
+
+
+# Ignore test-generated data and directories
 test_output/*
+tests/*

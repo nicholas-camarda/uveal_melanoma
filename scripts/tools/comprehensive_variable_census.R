@@ -36,7 +36,7 @@ create_comprehensive_variable_census <- function(
 
     # Load current dataset to get actual variable information
     cat("Loading current dataset...\n")
-    source("scripts/utils/all_helper_functions.R")
+    source("scripts/utils/load_all.R")
     current_data <- readRDS("final_data/Analytic Dataset/uveal_melanoma_full_cohort.rds")
 
     # Create current dataset variable information

@@ -30,23 +30,23 @@ options(contrasts = c("contr.treatment", "contr.poly"))
 # - RAW_DATA_DIR: Original Excel files from clinical database
 # - PROCESSED_DATA_DIR: Cleaned and processed analytic datasets
 # - OUTPUT_DIR: All analysis results, tables, plots, and diagnostics
-DATA_DIR <- "final_data"
-RAW_DATA_DIR <- file.path(DATA_DIR, "Original Files")
-PROCESSED_DATA_DIR <- file.path(DATA_DIR, "Analytic Dataset")
-OUTPUT_DIR <- file.path(DATA_DIR, "Analysis")
+DATA_DIR <- here("final_data")
+RAW_DATA_DIR <- here(DATA_DIR, "Original Files")
+PROCESSED_DATA_DIR <- here(DATA_DIR, "Analytic Dataset")
+OUTPUT_DIR <- here(DATA_DIR, "Analysis")
 
 # =============================================================================
 # TOOL PATHS AND CONFIGURATION
 # =============================================================================
-TOOLS_OUTPUT_DIR <- file.path(PROCESSED_DATA_DIR, "tools_output")
-DATA_DICTIONARY_PATH <- file.path(RAW_DATA_DIR, "Data Dictionary.xlsx")
+TOOLS_OUTPUT_DIR <- here(PROCESSED_DATA_DIR, "tools_output")
+DATA_DICTIONARY_PATH <- here(RAW_DATA_DIR, "Data Dictionary.xlsx")
 
 # =============================================================================
 # LOGGING AND OUTPUT PATHS
 # =============================================================================
-LOGS_DIR <- "logs"
-MERGED_TABLES_DIR <- file.path(OUTPUT_DIR, "merged_tables")
-TEST_OUTPUT_DIR <- "test_output"
+LOGS_DIR <- here("logs")
+MERGED_TABLES_DIR <- here(OUTPUT_DIR, "merged_tables")
+TEST_OUTPUT_DIR <- here("test_output")
 
 # =============================================================================
 # DATA PROCESSING CONSTANTS
@@ -128,7 +128,7 @@ confounders <- c(
     "age_at_diagnosis", "sex", "location"
     # "internal_reflectivity",
     # "srf", "flashes_photopsia", "floaters",
-    # "initial_overall_stage_modified", "initial_t_stage",
+    # "initial_overall_stage", "initial_t_stage",
     # "optic_nerve"
 )
 
@@ -143,7 +143,7 @@ confounders <- c(
 subgroup_vars <- c(
     "age_at_diagnosis", "sex", "location", "initial_t_stage",
     "initial_tumor_height", "initial_tumor_diameter",
-    "initial_overall_stage_modified", "biopsy1_gep", "optic_nerve"
+    "initial_overall_stage", "biopsy1_gep", "optic_nerve"
 )
 
 # Define which subgroup variables are continuous and need binning
@@ -175,7 +175,7 @@ STAGES_TO_EXCLUDE_FROM_MODIFIED <- c("3B", "3C", "4")
 # Centralized forced-to-Other configuration for factor variables (code-level)
 # Any levels listed here will always be collapsed into 'Other' for the given variable, regardless of counts
 FORCED_OTHER_BY_VARIABLE <- list(
-    initial_overall_stage_modified = STAGES_TO_EXCLUDE_FROM_MODIFIED
+    initial_overall_stage = STAGES_TO_EXCLUDE_FROM_MODIFIED
 )
 
 # =============================================================================
@@ -248,7 +248,7 @@ STANDARD_TABLE_LABELS <- list(
     initial_tumor_height = "Initial Tumor Height (mm)",
     initial_tumor_diameter = "Initial Tumor Diameter (mm)",
     initial_overall_stage = "Overall Stage",
-    initial_overall_stage_modified = "Initial Overall Stage (Modified)",
+    # initial_overall_stage_modified = "Initial Overall Stage (Modified)",
     initial_t_stage = "Initial T-Stage",
     initial_n_stage = "N Stage",
     initial_m_stage = "M Stage",
@@ -271,7 +271,7 @@ STANDARD_TABLE_LABELS <- list(
 
     # Tumor features
     internal_reflectivity = "Internal Reflectivity",
-    optic_nerve = "Optic Nerve Involvement",
+    optic_nerve = "Optic Nerve Abutment",
 
     # Staging
     n_stage = "N Stage",
@@ -300,8 +300,25 @@ STANDARD_TABLE_LABELS <- list(
     total_years = "Total Follow-up (Years)",
 
     # Treatment outcomes
-    recurrence1_treatment_clean = "Local Recurrence (Treatment Clean)"
+    recurrence1_treatment_clean = "Local Recurrence Treatment (Cleaned)"
 )
+
+# Display-level factor labels (raw -> display)
+# Edit here to control how levels appear in tables/figures without changing the data
+STANDARD_LEVEL_LABELS <- list(
+    ethnicity = c(
+        "Eastern_European" = "Eastern European",
+        "Middle_Eastern" = "Middle Eastern"
+    )
+    # Add more mappings as needed, e.g.:
+    # , eye = c("Left" = "OS", "Right" = "OD")
+    # , prame_status = c("Not Available" = "Not Available", "Unknown" = "Unknown",
+    #                   "Negative" = "PRAME Negative", "Positive" = "PRAME Positive")
+)
+
+# Automatically replace underscores with spaces for any levels not explicitly mapped above
+# Set to FALSE to disable global cleanup
+AUTO_CLEAN_LEVELS <- TRUE
 
 # Evidence-based T-stage cutoffs for continuous variable binning
 T_STAGE_HEIGHT_CUTOFFS <- c(3.0, 6.0, 9.0, 12.0, 15.0) # Creates ranges: ≤3.0, 3.1-6.0, 6.1-9.0, 9.1-12.0, 12.1-15.0, >15.0
@@ -321,7 +338,9 @@ BASELINE_VARIABLES_TO_SUMMARIZE <- c(
 
     # Eye and tumor characteristics
     "eye", "location", "initial_tumor_height", "initial_tumor_diameter",
-    "initial_overall_stage", "initial_overall_stage_modified", "initial_t_stage", "initial_n_stage", "initial_m_stage", "unstaged",
+    "initial_overall_stage", # this is the original variable
+    # "initial_overall_stage_modified", # this is the modified variable
+    "initial_t_stage", "initial_n_stage", "initial_m_stage", "unstaged",
 
     # Clinical features
     "initial_vision", "srf", "op", "symptoms", "vision_loss_blurred_vision",
@@ -360,10 +379,28 @@ FOREST_PLOT_WIDTH <- 10 # inches (reasonable width)
 FOREST_PLOT_HEIGHT <- 12 # inches (increased height for all subgroup levels)
 SURVIVAL_PLOT_WIDTH <- 10 # inches
 SURVIVAL_PLOT_HEIGHT <- 8 # inches
+PFS2_PLOT_HEIGHT <- 9 # inches (PFS-2 needs a bit more vertical space for risk table text)
+# KM x-axis cap (months) to match legacy visual range and avoid empty tails
+SURVIVAL_XAXIS_MAX_MONTHS <- 216
+# Dynamic sizing for KM plots based on number of strata (groups)
+KM_BASE_HEIGHT <- SURVIVAL_PLOT_HEIGHT       # base height for ~2 strata
+KM_HEIGHT_PER_STRATUM <- 0.5                 # extra inches per stratum beyond 2
+KM_MAX_HEIGHT <- 13                          # upper bound to avoid overly tall figures
 RMST_PLOT_WIDTH <- 10 # inches
 RMST_PLOT_HEIGHT <- 6 # inches
 PLOT_DPI <- 300 # resolution
 PLOT_UNITS <- "in" # units
+
+# Default plot dimensions for generic figures
+DEFAULT_PLOT_WIDTH <- 10 # inches
+DEFAULT_PLOT_HEIGHT <- 8 # inches
+
+# Small plot dimensions for compact figures (e.g., calibration mini-panels)
+SMALL_PLOT_WIDTH <- 8  # inches
+SMALL_PLOT_HEIGHT <- 6 # inches
+
+# Centralized survival summary timepoints (years) used for KM summaries and RMST
+SURVIVAL_SUMMARY_TIMEPOINTS_YEARS <- c(1, 3, 5, 10, 15)
 
 # =============================================================================
 # GEP VALIDATION CONFIGURATION (OBJECTIVE 4)
@@ -375,14 +412,12 @@ PLOT_UNITS <- "in" # units
 # - GEP_RISK_CUTOFFS: Risk stratification categories for NRI analysis
 # - GEP_DCA_THRESHOLD_*: Decision curve analysis thresholds
 
-# Save RDS files for reproducibility
-GEP_SAVE_RDS <- TRUE
+# Save RDS files for reproducibility (disable by default to avoid unused outputs)
+GEP_SAVE_RDS <- FALSE
 
 # Core GEP validation settings
 GEP_VALIDATION_TIMEPOINTS <- c(5, 7, 10) # years for validation analysis
-GEP_BOOTSTRAP_ITERATIONS_TEST <- 200
-GEP_BOOTSTRAP_ITERATIONS_PROD <- 1000
-GEP_BOOTSTRAP_ITERATIONS <- if (nzchar(Sys.getenv("TESTTHAT")) || nzchar(Sys.getenv("CI"))) GEP_BOOTSTRAP_ITERATIONS_TEST else GEP_BOOTSTRAP_ITERATIONS_PROD
+GEP_BOOTSTRAP_ITERATIONS <- 500
 
 # PRAME augmentation constants
 GEP_PRAME_ADJUSTMENT_FACTOR <- 1.3 # 30% increase in risk for PRAME positive patients

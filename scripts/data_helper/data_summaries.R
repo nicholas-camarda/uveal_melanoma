@@ -86,6 +86,22 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
         message(sprintf("\nCreating table for cohort: %s", cohort_name))
         data <- data_list[[cohort_name]]
 
+        # Baseline tables should reflect raw factor levels present in the derived data (pre-collapse)
+        # If the derived (pre-collapsed) dataset is available alongside the collapsed one, prefer it for baseline only.
+        # Otherwise, proceed with current data but expand factor levels using the original levels if captured in other_map.
+        try({
+            pre_collapsed_path <- file.path(PROCESSED_DATA_DIR, paste0(cohort_name, "_derived_precollapse.rds"))
+            if (file.exists(pre_collapsed_path)) {
+                data_pre <- readRDS(pre_collapsed_path)
+                # Align columns to those in current data
+                common_cols <- intersect(names(data_pre), names(data))
+                if (length(common_cols) > 0) {
+                    data[common_cols] <- data_pre[common_cols]
+                    logger::log_info(sprintf("Using pre-collapsed factor levels for baseline table: %s", cohort_name))
+                }
+            }
+        }, silent = TRUE)
+
         prefix <- case_when(
             grepl("full", cohort_name) ~ "full_cohort_",
             grepl("restricted", cohort_name) ~ "restricted_cohort_",
@@ -107,8 +123,8 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
                 cohort_name, cohort_dir_key, treatment_duration_dir, baseline_output_dir
             ))
         } else {
-            treatment_duration_dir <- file.path("final_data/Analysis", "General", "treatment_duration")
-            baseline_output_dir <- file.path("final_data/Analysis", "General", "baseline_characteristics")
+            treatment_duration_dir <- file.path(DATA_DIR, "Analysis", "General", "treatment_duration")
+            baseline_output_dir <- file.path(DATA_DIR, "Analysis", "General", "baseline_characteristics")
             logger::log_warn(sprintf(
                 "Using fallback directories for %s (mapped to %s): treatment_duration=%s, baseline=%s",
                 cohort_name, cohort_dir_key, treatment_duration_dir, baseline_output_dir
@@ -125,6 +141,8 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
         write.csv(duration_metrics$summary_stats, file.path(treatment_duration_dir, paste0(prefix, "treatment_duration_summary.csv")), row.names = FALSE)
 
         logger::log_info("Preparing variables for table")
+        vars_to_summarize <- BASELINE_VARIABLES_TO_SUMMARIZE
+
         data <- data %>% select(all_of(vars_to_summarize), treatment_group)
 
         logger::log_info("Checking variable levels for statistical testing")
@@ -151,6 +169,33 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
         }
 
         data <- data %>% select(all_of(available_vars), treatment_group)
+
+        # Apply centralized level display labels
+        if (exists("STANDARD_LEVEL_LABELS", inherits = TRUE)) {
+            label_maps <- get("STANDARD_LEVEL_LABELS", inherits = TRUE)
+            for (var in names(label_maps)) {
+                if (var %in% names(data)) {
+                    map <- label_maps[[var]]
+                    if (is.factor(data[[var]]) || is.character(data[[var]])) {
+                        lv <- levels(factor(data[[var]]))
+                        # Build mapping vector that preserves unmapped levels
+                        rename_vec <- setNames(lv, lv)
+                        for (k in names(map)) rename_vec[k] <- map[[k]]
+                        data[[var]] <- factor(rename_vec[as.character(data[[var]])], levels = unique(rename_vec))
+                    }
+                }
+            }
+        }
+
+        # Optional global cleanup: replace underscores with spaces for display-only
+        if (exists("AUTO_CLEAN_LEVELS", inherits = TRUE) && get("AUTO_CLEAN_LEVELS", inherits = TRUE)) {
+            for (v in names(data)) {
+                if (is.factor(data[[v]])) {
+                    lvl <- levels(data[[v]])
+                    levels(data[[v]]) <- gsub("_", " ", lvl)
+                }
+            }
+        }
 
         logger::log_info("Creating summary table")
         tbl <- data %>%

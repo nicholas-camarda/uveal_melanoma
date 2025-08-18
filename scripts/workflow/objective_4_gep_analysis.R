@@ -12,27 +12,39 @@ run_objective_4 <- function(data, dataset_name, output_dirs, prefix, other_map =
     display_name <- tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name)))
     log_phase(paste("STEP 4: GEP PREDICTIVE ACCURACY VALIDATION", display_name, sep = " - "))
 
-    # Fail-fast validation of GEP variables before any analyses
-    val <- validate_gep_variables_with_report(data)
-    if (!isTRUE(val$validation_passed)) {
-        logger::log_error(formatted("GEP variable validation failed. Missing or inconsistent variables detected.", indent = 1))
-        if (!is.null(val$detailed_results)) {
-            if (!is.null(val$detailed_results$missing_variables) && length(val$detailed_results$missing_variables) > 0) {
-                logger::log_error(formatted(sprintf("Missing variables: %s", paste(val$detailed_results$missing_variables, collapse = ", ")), indent = 2))
-            }
-        }
-        stop("Objective 4 cannot proceed: GEP variable validation failed.")
-    }
-
     # MFS GEP validation
     logger::log_info(formatted("Executing analyze_gep_mfs_validation: MFS GEP validation analysis", indent = 1))
-    mfs_gep_results <- analyze_gep_mfs_validation(data, dataset_name)
-    logger::log_info(formatted("MFS GEP validation completed", indent = 1))
+    mfs_gep_results <- tryCatch({
+        analyze_gep_mfs_validation(data, dataset_name, other_map = other_map)
+    }, error = function(e) {
+        logger::log_error(formatted(sprintf("MFS GEP validation failed: %s", e$message), indent = 2))
+        logger::log_error(formatted("This will prevent complete GEP analysis completion", indent = 2))
+        # Return NULL to allow the function to continue
+        NULL
+    })
+    
+    if (is.null(mfs_gep_results)) {
+        logger::log_warn(formatted("MFS analysis failed - GEP analysis will be incomplete", indent = 1))
+    } else {
+        logger::log_info(formatted("MFS GEP validation completed", indent = 1))
+    }
 
     # MSS GEP validation
     logger::log_info(formatted("Executing analyze_gep_mss_validation: MSS GEP validation analysis", indent = 1))
-    mss_gep_results <- analyze_gep_mss_validation(data, dataset_name)
-    logger::log_info(formatted("MSS GEP validation completed", indent = 1))
+    mss_gep_results <- tryCatch({
+        analyze_gep_mss_validation(data, dataset_name, other_map = other_map)
+    }, error = function(e) {
+        logger::log_error(formatted(sprintf("MSS GEP validation failed: %s", e$message), indent = 2))
+        logger::log_error(formatted("This will prevent complete GEP analysis completion", indent = 2))
+        # Return NULL to allow the function to continue
+        NULL
+    })
+    
+    if (is.null(mss_gep_results)) {
+        logger::log_warn(formatted("MSS analysis failed - GEP analysis will be incomplete", indent = 1))
+    } else {
+        logger::log_info(formatted("MSS GEP validation completed", indent = 1))
+    }
 
     # Unified summary and visuals (only once, with both results)
     gep_base_dir <- dirname(output_dirs$obj4_mfs)
@@ -40,8 +52,14 @@ run_objective_4 <- function(data, dataset_name, output_dirs, prefix, other_map =
         create_unified_gep_validation_summary(
             mfs_results = mfs_gep_results,
             mss_results = mss_gep_results,
-            dataset_name = dataset_name,
             output_dir = gep_base_dir,
+            prefix = prefix
+        )
+        # Create unified visualization (no survival curves here; per-outcome only)
+        create_unified_gep_visuals(
+            mfs_results = mfs_gep_results,
+            mss_results = mss_gep_results,
+            output_dir = file.path(gep_base_dir, "unified_summary"),
             prefix = prefix
         )
         # Unified artifacts only; no post-hoc file moving

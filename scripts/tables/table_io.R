@@ -23,29 +23,52 @@ save_table_outputs <- function(table_result, raw_output, model_fit, analysis_nam
     }
 
     # Generate file names
-    base_filename <- paste0(prefix, analysis_name)
+    # Normalize analysis_name for filesystem safety and consistency
+    safe_analysis_name <- tryCatch(
+        {
+            make_filename_safe(analysis_name)
+        },
+        error = function(e) analysis_name
+    )
+    base_filename <- paste0(prefix, safe_analysis_name)
     html_filename <- paste0(base_filename, "_", tolower(class(model_fit)[1]), ".html")
     diagnostics_filename <- paste0(base_filename, "_diagnostics.xlsx")
 
     # Save HTML table (only if table_result is not NULL)
     html_path <- file.path(output_dir, html_filename)
+    diagnostics_path <- file.path(output_dir, diagnostics_filename)
     cat("DEBUG: generate_regression_table - HTML table generation\n")
     cat("  Table result is NULL:", is.null(table_result), "\n")
     cat("  HTML path:", html_path, "\n")
+    cat("  Diagnostics path:", diagnostics_path, "\n")
+    logger::log_info(sprintf(
+        "DEBUG: save_table_outputs setup — analysis_name='%s' (safe='%s'), base_filename='%s', html_path='%s', diagnostics_path='%s'",
+        analysis_name, safe_analysis_name, base_filename, html_path, diagnostics_path
+    ))
 
     if (!is.null(table_result)) {
         cat("DEBUG: Table result is not NULL, proceeding with modification\n")
 
         # Check if the table has meaningful content before proceeding
         table_has_content <- FALSE
+        table_has_content_source <- "unknown"
         if (!is.null(diagnostics) && !is.null(diagnostics$filtering_summary)) {
             table_has_content <- diagnostics$filtering_summary$table_has_meaningful_content
+            table_has_content_source <- "diagnostics.filtering_summary"
         } else {
             table_data <- table_result$table_body
             if (!is.null(table_data) && nrow(table_data) > 0) {
                 table_has_content <- any(!is.na(suppressWarnings(as.numeric(table_data$estimate))))
+                table_has_content_source <- "table_body.estimates_fallback"
             }
         }
+
+        # Track row counts at each step to identify where content is lost
+        initial_rows <- nrow(table_result$table_body)
+        logger::log_info(sprintf(
+            "DEBUG: Pre-save checks — initial_rows=%d, table_has_content=%s (source=%s)",
+            initial_rows, as.character(table_has_content), table_has_content_source
+        ))
 
         if (!table_has_content) {
             logger::log_warn("Skipping HTML table generation - no meaningful content due to extreme estimates or model issues")
@@ -74,7 +97,16 @@ save_table_outputs <- function(table_result, raw_output, model_fit, analysis_nam
                     cat("DEBUG: After modify_gt_table_pvalues\n")
                     cat("  Modified table class:", class(modified_table), "\n")
 
+                    # Track row counts after modification
+                    modified_rows <- nrow(modified_table$table_body)
+                    logger::log_info(sprintf("DEBUG: Modified table has %d rows", modified_rows))
+
                     gt_table <- modified_table %>% as_gt()
+
+                    # Track row counts after gt conversion
+                    gt_rows <- nrow(gt_table$table_body)
+                    logger::log_info(sprintf("DEBUG: GT table has %d rows", gt_rows))
+
                     gt_table <- gt_table %>% gtsave(html_path)
 
                     if (!is.null(diagnostics) && !is.null(diagnostics$filtering_summary)) {
@@ -114,7 +146,7 @@ save_table_outputs <- function(table_result, raw_output, model_fit, analysis_nam
         logger::log_info("No HTML table to save - model fitting failed")
     }
 
-    diagnostics_path <- file.path(output_dir, diagnostics_filename)
+    # diagnostics_path computed above
     if (!is.null(diagnostics)) {
         tryCatch(
             {
@@ -158,6 +190,10 @@ save_table_outputs <- function(table_result, raw_output, model_fit, analysis_nam
                 if (!is.null(diagnostics$filtering_summary)) {
                     addWorksheet(wb, "Filtering_summary")
                     writeData(wb, "Filtering_summary", diagnostics$filtering_summary)
+                }
+                if (!is.null(diagnostics$reference_levels)) {
+                    addWorksheet(wb, "Reference_Levels")
+                    writeData(wb, "Reference_Levels", diagnostics$reference_levels)
                 }
                 saveWorkbook(wb, diagnostics_path, overwrite = TRUE)
                 logger::log_info(sprintf("Comprehensive diagnostics saved to %s", diagnostics_path))

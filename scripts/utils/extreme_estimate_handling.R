@@ -1,74 +1,153 @@
 # Extreme Estimate Handling Utilities
 # Author: Nicholas Camarda
 # Date: 7/26/2025
-# Description: Centralized functions for detecting and filtering extreme regression estimates
+# Description: Consolidated function for processing extreme regression estimates
 #              across all analysis types (binary, survival, continuous outcomes)
 
-#' Detect extreme regression estimates using comprehensive criteria
+#' Process extreme regression estimates in a unified workflow
 #'
-#' Identifies problematic regression estimates that should be excluded from tables
-#' based on multiple criteria including infinite CIs, perfect separation, near-perfect
-#' separation, and extremely wide CIs.
+#' Consolidated function that detects and filters extreme estimates from regression tables.
+#' Replaces the previous three-function approach (detect, filter, apply) with a single
+#' streamlined process that eliminates redundancy while maintaining all functionality.
 #'
-#' @param estimate Numeric vector of effect estimates (OR, HR, etc.)
-#' @param ci_lower Numeric vector of lower CI bounds
-#' @param ci_upper Numeric vector of upper CI bounds
-#' @param effect_measure Character string indicating measure type ("OR", "HR", etc.)
-#' @param is_exponentiated Logical indicating if values are on exponentiated scale (TRUE) or log scale (FALSE)
-#' @return List with extreme_indices (rows to exclude) and reasons for exclusion
-detect_extreme_regression_estimates <- function(estimate, ci_lower, ci_upper, effect_measure = "HR", is_exponentiated = TRUE) {
+#' @param tbl gtsummary table object
+#' @param model_fit Fitted model object (glm, coxph, etc.)
+#' @param effect_measure Character string for effect measure type ("OR", "HR", "MD", etc.)
+#' @param variables_to_check Character vector of variables to check for sparse tables
+#' @param analysis_name Character string for logging
+#' @return List with filtered table, diagnostics, and filtering summary
+process_extreme_estimates <- function(tbl, model_fit, effect_measure = "OR", variables_to_check = NULL, analysis_name = "analysis") {
+    # Extract table data
+    tbl_data <- tbl$table_body
+    
+    # Initialize completely_removed_variables
+    completely_removed_variables <- c()
+    
+    # DEBUG: Check initial table state
+    logger::log_info(sprintf("DEBUG: process_extreme_estimates for %s - initial table has %d rows", analysis_name, nrow(tbl_data)))
+    if (nrow(tbl_data) > 0) {
+        logger::log_info(sprintf("DEBUG: Initial table variables: %s", paste(unique(tbl_data$variable), collapse = ", ")))
+    }
+
+    # If no variables specified, use all unique variables in the table
+    if (is.null(variables_to_check)) {
+        variables_to_check <- unique(tbl_data$variable)
+    }
+
+    # Extract reference level information for all variables
+    reference_levels_info <- data.frame(
+        variable = character(),
+        reference_level = character(),
+        stringsAsFactors = FALSE
+    )
+    
+    for (var in unique(tbl_data$variable)) {
+        var_rows <- tbl_data[tbl_data$variable == var, ]
+        level_rows <- var_rows[var_rows$row_type == "level", ]
+        
+        # Find reference level (rows with empty estimates)
+        reference_rows <- level_rows[is.na(level_rows$estimate) | level_rows$estimate == "" | level_rows$estimate == "-", ]
+        
+        if (nrow(reference_rows) > 0) {
+            reference_level <- paste(reference_rows$term, collapse = ", ")
+        } else if (nrow(level_rows) == 0) {
+            # Continuous variable
+            reference_level <- "(continuous)"
+        } else {
+            # No clear reference level found
+            reference_level <- "(unknown)"
+        }
+        
+        reference_levels_info <- rbind(reference_levels_info, data.frame(
+            variable = var,
+            reference_level = reference_level,
+            stringsAsFactors = FALSE
+        ))
+    }
+
+    # Check if the table has confidence interval columns
+    if (!("conf.low" %in% colnames(tbl_data) && "conf.high" %in% colnames(tbl_data))) {
+        # No confidence interval columns in table, return original table with warning
+        return(list(
+            tbl_filtered = tbl,
+            diagnostics = list(
+                extreme_terms = character(0),
+                rows_removed = 0,
+                sparse_table_warning = FALSE,
+                confint_error = TRUE,
+                reference_levels_info = reference_levels_info,
+                completely_removed_variables = completely_removed_variables
+            )
+        ))
+    }
+
+    # Use the table's confidence intervals for extreme detection
+    table_ci_lower <- tbl_data$conf.low
+    table_ci_upper <- tbl_data$conf.high
+    table_estimates <- tbl_data$estimate
+    table_row_types <- tbl_data$row_type
+
+    # DETERMINISTIC APPROACH: Use effect_measure to determine scale
+    # Exponentiated measures: OR, HR (always positive when exponentiated)
+    # Raw scale measures: MD, beta, estimate (can be negative)
+    is_exponentiated <- effect_measure %in% c("OR", "HR")
+
+    # DETECT EXTREME ESTIMATES
     extreme_indices <- c()
     exclusion_reasons <- c()
 
-    for (i in seq_along(estimate)) {
+    for (i in seq_along(table_estimates)) {
         reason <- NULL
+        
+        # Skip Factor Label rows - these contain interaction p-values and should never be filtered
+        if (!is.null(table_row_types) && length(table_row_types) >= i && table_row_types[i] == "Factor Label") {
+            next
+        }
 
         if (toupper(effect_measure) %in% c("HR", "OR", "RR", "MD", "BETA", "ESTIMATE", "LOG-ODDS", "LOG-HAZARD")) {
             # 1. Infinite CIs (always extreme regardless of scale)
-            if (is.infinite(ci_upper[i]) || is.infinite(ci_lower[i])) {
-                reason <- sprintf("Infinite CI detected: (%.2f, %.2f)", ci_lower[i], ci_upper[i])
+            if (is.infinite(table_ci_upper[i]) || is.infinite(table_ci_lower[i])) {
+                reason <- sprintf("Infinite CI detected: (%.2f, %.2f)", table_ci_lower[i], table_ci_upper[i])
             }
             # 2. Handle based on whether values are exponentiated or on log scale
             else if (is_exponentiated) {
                 # EXPONENTIATED SCALE (OR/HR values, always positive, around 1)
                 # Perfect separation: CI = (0,0) - shouldn't happen on ratio scale
-                if (!is.na(ci_lower[i]) && !is.na(ci_upper[i]) && ci_lower[i] == ci_upper[i] && ci_lower[i] == 0) {
+                if (!is.na(table_ci_lower[i]) && !is.na(table_ci_upper[i]) && table_ci_lower[i] == table_ci_upper[i] && table_ci_lower[i] == 0) {
                     reason <- "Perfect separation detected: CI = (0,0)"
                 }
-                # Extremely wide CIs on exponentiated scale - use appropriate threshold
-                else if (!is.na(ci_lower[i]) && !is.na(ci_upper[i]) &&
-                    (ci_upper[i] - ci_lower[i]) > EXPONENTIATED_CI_THRESHOLD) {
+                # Extremely wide CIs on exponentiated scale
+                else if (!is.na(table_ci_lower[i]) && !is.na(table_ci_upper[i]) &&
+                    (table_ci_upper[i] - table_ci_lower[i]) > EXPONENTIATED_CI_THRESHOLD) {
                     reason <- sprintf(
                         "Extremely wide CI detected (exponentiated): (%.2f, %.2f) - width = %.2f",
-                        ci_lower[i], ci_upper[i], ci_upper[i] - ci_lower[i]
+                        table_ci_lower[i], table_ci_upper[i], table_ci_upper[i] - table_ci_lower[i]
                     )
                 }
                 # Very small lower CI (near-perfect separation on ratio scale)
-                # For exponentiated OR/HR, check if lower bound is very close to 0
-                else if (!is.na(ci_lower[i]) && ci_lower[i] < NEAR_PERFECT_SEPARATION_THRESHOLD) {
-                    reason <- sprintf("Near-perfect separation detected: CI lower bound = %.8f", ci_lower[i])
+                else if (!is.na(table_ci_lower[i]) && table_ci_lower[i] < NEAR_PERFECT_SEPARATION_THRESHOLD) {
+                    reason <- sprintf("Near-perfect separation detected: CI lower bound = %.8f", table_ci_lower[i])
                 }
             } else {
                 # LOG SCALE (log-odds/log-hazard values, can be negative, around 0)
-                # Perfect separation: extremely large absolute values
-                if (!is.na(ci_lower[i]) && !is.na(ci_upper[i])) {
-                    # Check for extremely wide CIs on log scale using appropriate threshold
-                    ci_width <- ci_upper[i] - ci_lower[i]
+                if (!is.na(table_ci_lower[i]) && !is.na(table_ci_upper[i])) {
+                    # Check for extremely wide CIs on log scale
+                    ci_width <- table_ci_upper[i] - table_ci_lower[i]
                     if (ci_width > LOG_SCALE_CI_THRESHOLD) {
                         reason <- sprintf(
                             "Extremely wide CI detected (log scale): (%.2f, %.2f) - width = %.2f",
-                            ci_lower[i], ci_upper[i], ci_width
+                            table_ci_lower[i], table_ci_upper[i], ci_width
                         )
                     }
                     # Check for extremely large absolute values (perfect separation)
-                    else if (abs(estimate[i]) > 10) {
-                        reason <- sprintf("Perfect separation detected (log scale): estimate = %.2f", estimate[i])
+                    else if (abs(table_estimates[i]) > 10) {
+                        reason <- sprintf("Perfect separation detected (log scale): estimate = %.2f", table_estimates[i])
                     }
                     # Check for near-perfect separation: very large absolute estimates with tight CIs
-                    else if (abs(estimate[i]) > 5 && ci_width < LOG_SCALE_NEAR_PERFECT_SEPARATION_THRESHOLD) {
+                    else if (abs(table_estimates[i]) > 5 && ci_width < LOG_SCALE_NEAR_PERFECT_SEPARATION_THRESHOLD) {
                         reason <- sprintf(
                             "Near-perfect separation detected (log scale): estimate = %.2f, CI = (%.2f, %.2f)",
-                            estimate[i], ci_lower[i], ci_upper[i]
+                            table_estimates[i], table_ci_lower[i], table_ci_upper[i]
                         )
                     }
                 }
@@ -82,28 +161,34 @@ detect_extreme_regression_estimates <- function(estimate, ci_lower, ci_upper, ef
         }
     }
 
-    return(list(
-        extreme_indices = extreme_indices,
-        exclusion_reasons = exclusion_reasons
-    ))
-}
+    # Get term names from table
+    extreme_terms <- tbl_data$term[extreme_indices]
 
-#' Filter extreme estimates from regression table data
-#'
-#' Applies extreme estimate filtering to tbl_regression output, ensuring
-#' that only reliable estimates are included in final tables.
-#'
-#' @param tbl_data Data frame from tbl_regression$table_body
-#' @param extreme_terms Character vector of extreme term names to remove
-#' @param variables_to_check Character vector of variable names to check for sparse tables
-#' @param analysis_name Character string for logging (e.g., "srd", "retinopathy")
-#' @return List with filtered table data and diagnostics
-filter_extreme_estimates_from_table <- function(tbl_data, extreme_terms, variables_to_check, analysis_name = "analysis") {
+    # DEBUG: Print what was detected
+    logger::log_info(sprintf("DEBUG: Extreme detection for %s found %d extreme estimates", analysis_name, length(extreme_indices)))
+    if (length(extreme_indices) > 0) {
+        for (i in seq_along(extreme_indices)) {
+            idx <- extreme_indices[i]
+            logger::log_info(sprintf(
+                "DEBUG: Row %d (%s) filtered: %s",
+                idx, tbl_data$term[idx], exclusion_reasons[i]
+            ))
+        }
+    }
+
+    # FILTER EXTREME ESTIMATES
     if (length(extreme_terms) == 0) {
         return(list(
-            tbl_data_filtered = tbl_data,
-            rows_removed = 0,
-            sparse_table_warning = FALSE
+            tbl_filtered = tbl,
+            diagnostics = list(
+                extreme_terms = character(0),
+                exclusion_reasons = character(0),
+                rows_removed = 0,
+                sparse_table_warning = FALSE,
+                confint_error = FALSE,
+                reference_levels_info = reference_levels_info,
+                completely_removed_variables = completely_removed_variables
+            )
         ))
     }
 
@@ -115,9 +200,6 @@ filter_extreme_estimates_from_table <- function(tbl_data, extreme_terms, variabl
         "DEBUG: Filtering for %s - found %d extreme terms, %d matching rows in table",
         analysis_name, length(extreme_terms), length(rows_to_remove)
     ))
-    if (length(extreme_terms) > 0) {
-        logger::log_info(sprintf("DEBUG: Available terms in table: %s", paste(unique(tbl_data$term), collapse = ", ")))
-    }
 
     if (length(rows_to_remove) > 0) {
         # Track which rows to actually remove (some may be kept to avoid empty variables)
@@ -140,15 +222,29 @@ filter_extreme_estimates_from_table <- function(tbl_data, extreme_terms, variabl
             var_extreme_rows <- extreme_rows_by_var[[var]]
             remaining_rows <- var_rows[!var_rows %in% var_extreme_rows]
 
-            # If removing extreme estimates would leave NO rows for this variable, keep its extreme estimates
-            if (length(remaining_rows) == 0) {
-                logger::log_warn(sprintf(
-                    "Keeping extreme estimates for %s in %s to avoid empty variable (would leave no levels)",
+            # Check if remaining rows are all reference levels (empty estimates)
+            if (length(remaining_rows) > 0) {
+                remaining_data <- tbl_data[remaining_rows, ]
+                all_reference_levels <- all(is.na(remaining_data$estimate) | remaining_data$estimate == "" | remaining_data$estimate == "-")
+                
+                if (all_reference_levels) {
+                    logger::log_info(sprintf(
+                        "Removing entire variable '%s' in %s - only reference levels remain after filtering extreme estimates",
+                        var, analysis_name
+                    ))
+                    # Add ALL rows for this variable to the removal list
+                    final_rows_to_remove <- c(final_rows_to_remove, var_rows)
+                    completely_removed_variables <- c(completely_removed_variables, var)
+                }
+            } else {
+                # If removing extreme estimates would leave NO rows for this variable, remove the entire variable
+                logger::log_info(sprintf(
+                    "Removing entire variable '%s' in %s - no valid levels remain after filtering extreme estimates",
                     var, analysis_name
                 ))
-                sparse_table_warning <- TRUE
-                # Remove these rows from the list of rows to remove
-                final_rows_to_remove <- setdiff(final_rows_to_remove, var_extreme_rows)
+                # Add ALL rows for this variable to the removal list
+                final_rows_to_remove <- c(final_rows_to_remove, var_rows)
+                completely_removed_variables <- c(completely_removed_variables, var)
             }
         }
 
@@ -159,119 +255,82 @@ filter_extreme_estimates_from_table <- function(tbl_data, extreme_terms, variabl
                 "Removed %d extreme estimates from %s table output",
                 length(final_rows_to_remove), analysis_name
             ))
+            
+            # Update table with filtered data
+            tbl_filtered <- tbl
+            tbl_filtered$table_body <- tbl_data_filtered
+            
+            # DEBUG: Show final table state
+            logger::log_info(sprintf("DEBUG: After filtering, table has %d rows", nrow(tbl_data_filtered)))
+            if (nrow(tbl_data_filtered) > 0) {
+                logger::log_info(sprintf("DEBUG: Remaining terms: %s", paste(tbl_data_filtered$term, collapse = ", ")))
+            }
+
+            logger::log_info(sprintf("DEBUG: process_extreme_estimates returning completely_removed_variables: %s", 
+                paste(completely_removed_variables, collapse = ", ")))
             return(list(
-                tbl_data_filtered = tbl_data_filtered,
-                rows_removed = length(final_rows_to_remove),
-                sparse_table_warning = sparse_table_warning
+                tbl_filtered = tbl_filtered,
+                diagnostics = list(
+                    extreme_terms = extreme_terms,
+                    exclusion_reasons = exclusion_reasons,
+                    rows_removed = length(final_rows_to_remove),
+                    sparse_table_warning = sparse_table_warning,
+                    confint_error = FALSE,
+                    reference_levels_info = reference_levels_info,
+                    completely_removed_variables = completely_removed_variables
+                )
             ))
         } else {
             logger::log_info(sprintf(
                 "No rows safe to remove in %s after checking for empty variables",
                 analysis_name
             ))
-            return(list(
-                tbl_data_filtered = tbl_data,
+                    return(list(
+            tbl_filtered = tbl,
+            diagnostics = list(
+                extreme_terms = extreme_terms,
+                exclusion_reasons = exclusion_reasons,
                 rows_removed = 0,
-                sparse_table_warning = TRUE
-            ))
+                sparse_table_warning = TRUE,
+                confint_error = FALSE,
+                reference_levels_info = reference_levels_info,
+                completely_removed_variables = completely_removed_variables
+            )
+        ))
         }
     }
 
     return(list(
-        tbl_data_filtered = tbl_data,
-        rows_removed = 0,
-        sparse_table_warning = FALSE
+        tbl_filtered = tbl,
+        diagnostics = list(
+            extreme_terms = extreme_terms,
+            exclusion_reasons = exclusion_reasons,
+            rows_removed = 0,
+            sparse_table_warning = FALSE,
+            confint_error = FALSE,
+            reference_levels_info = reference_levels_info,
+            completely_removed_variables = completely_removed_variables
+        )
     ))
 }
 
+# DEPRECATED FUNCTIONS - These are kept for backward compatibility but will be removed
+# in the next phase of simplification. Use process_extreme_estimates instead.
 
+#' @deprecated Use process_extreme_estimates instead
+detect_extreme_regression_estimates <- function(estimate, ci_lower, ci_upper, effect_measure = "HR", is_exponentiated = TRUE, row_types = NULL) {
+    .Deprecated("process_extreme_estimates", package = "extreme_estimate_handling")
+    stop("This function is deprecated. Use process_extreme_estimates instead.")
+}
 
-#' Apply extreme estimate filtering to a regression table
-#'
-#' Complete workflow for detecting and filtering extreme estimates from
-#' regression tables, including diagnostics collection.
-#'
-#' @param tbl gtsummary table object
-#' @param model_fit Fitted model object (glm, coxph, etc.)
-#' @param effect_measure Character string for effect measure type
-#' @param variables_to_check Character vector of variables to check for sparse tables
-#' @param analysis_name Character string for logging
-#' @return List with filtered table, diagnostics, and filtering summary
+#' @deprecated Use process_extreme_estimates instead
+filter_extreme_estimates_from_table <- function(tbl_data, extreme_terms, variables_to_check, analysis_name = "analysis") {
+    .Deprecated("process_extreme_estimates", package = "extreme_estimate_handling")
+    stop("This function is deprecated. Use process_extreme_estimates instead.")
+}
+
+#' @deprecated Use process_extreme_estimates instead
 apply_extreme_estimate_filtering <- function(tbl, model_fit, effect_measure = "OR", variables_to_check = NULL, analysis_name = "analysis") {
-    # Extract table data
-    tbl_data <- tbl$table_body
-
-    # If no variables specified, use all unique variables in the table
-    if (is.null(variables_to_check)) {
-        variables_to_check <- unique(tbl_data$variable)
-    }
-
-    # ALWAYS use table-based detection to ensure all infinite CIs are caught
-    # Check if the table has confidence interval columns
-    if ("conf.low" %in% colnames(tbl_data) && "conf.high" %in% colnames(tbl_data)) {
-        # Use the table's confidence intervals for extreme detection
-        table_ci_lower <- tbl_data$conf.low
-        table_ci_upper <- tbl_data$conf.high
-        table_estimates <- tbl_data$estimate
-
-        # Detect extreme estimates from table data
-        # DETERMINISTIC APPROACH: Use effect_measure to determine scale instead of fragile value detection
-        # Exponentiated measures: OR, HR (always positive when exponentiated)
-        # Raw scale measures: MD, beta, estimate (can be negative)
-        is_table_exponentiated <- effect_measure %in% c("OR", "HR")
-
-        extreme_detection <- detect_extreme_regression_estimates(table_estimates, table_ci_lower, table_ci_upper, effect_measure, is_exponentiated = is_table_exponentiated)
-
-        # Get term names from table
-        extreme_terms <- tbl_data$term[extreme_detection$extreme_indices]
-
-        # DEBUG: Print what was detected
-        logger::log_info(sprintf("DEBUG: Table-based extreme detection for %s found %d extreme estimates", analysis_name, length(extreme_detection$extreme_indices)))
-        if (length(extreme_detection$extreme_indices) > 0) {
-            for (i in seq_along(extreme_detection$extreme_indices)) {
-                idx <- extreme_detection$extreme_indices[i]
-                logger::log_info(sprintf(
-                    "DEBUG: Table extreme estimate %d: estimate=%.2e, CI=(%.2e, %.2e), reason=%s",
-                    i, table_estimates[idx], table_ci_lower[idx], table_ci_upper[idx], extreme_detection$exclusion_reasons[i]
-                ))
-            }
-        }
-
-        # Filter table
-        filtering_result <- filter_extreme_estimates_from_table(
-            tbl_data = tbl_data,
-            extreme_terms = extreme_terms,
-            variables_to_check = variables_to_check,
-            analysis_name = analysis_name
-        )
-
-        # Update table with filtered data
-        tbl_filtered <- tbl
-        tbl_filtered$table_body <- filtering_result$tbl_data_filtered
-
-        # Prepare diagnostics
-        diagnostics <- list(
-            extreme_terms = extreme_terms,
-            exclusion_reasons = extreme_detection$exclusion_reasons,
-            rows_removed = filtering_result$rows_removed,
-            sparse_table_warning = filtering_result$sparse_table_warning,
-            confint_error = FALSE
-        )
-
-        return(list(
-            tbl_filtered = tbl_filtered,
-            diagnostics = diagnostics
-        ))
-    } else {
-        # No confidence interval columns in table, return original table with warning
-        return(list(
-            tbl_filtered = tbl,
-            diagnostics = list(
-                extreme_terms = character(0),
-                rows_removed = 0,
-                sparse_table_warning = FALSE,
-                confint_error = TRUE
-            )
-        ))
-    }
+    .Deprecated("process_extreme_estimates", package = "extreme_estimate_handling")
+    stop("This function is deprecated. Use process_extreme_estimates instead.")
 }

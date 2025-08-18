@@ -121,13 +121,10 @@ detect_model_type <- function(model_fit) {
 #' @param time_var Character string for time variable (Cox models)
 #' @param event_var Character string for event variable (Cox models)
 #' @param other_map List containing mapping of what categories were collapsed into "Other"
-#' @param full_data The full analytic dataset to use for p-value calculation (default = data)
 #' @param treatment_var Name of the treatment variable in the model (default: "treatment_group")
 #' @return List containing table result and diagnostics
-generate_regression_table <- function(data, outcome_var, predictor_vars, confounders, model_type, effect_measure, analysis_name, dataset_name, output_dir, prefix, time_var = NULL, event_var = NULL, other_map = NULL, full_data = NULL, treatment_var = "treatment_group") {
-    if (is.null(full_data)) full_data <- data
-
-            logger::log_info(sprintf("Generating regression table for %s", analysis_name))
+generate_regression_table <- function(data, outcome_var, predictor_vars, confounders, model_type, effect_measure, analysis_name, dataset_name, output_dir, prefix, time_var = NULL, event_var = NULL, other_map = NULL, treatment_var = "treatment_group") {
+    logger::log_info(sprintf("Generating regression table for %s", analysis_name))
 
     # Build model formula
     formula <- build_model_formula(outcome_var, predictor_vars, confounders, model_type)
@@ -160,6 +157,13 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
             model_fit, effect_measure, analysis_name, other_map,
             data, outcome_var, confounders, outcome_type
         )
+        
+        # DEBUG: Check table creation result
+        if (!is.null(table_result)) {
+            logger::log_info(sprintf("DEBUG: create_gtsummary_table for %s created table with %d rows", analysis_name, nrow(table_result$table_body)))
+        } else {
+            logger::log_info(sprintf("DEBUG: create_gtsummary_table for %s returned NULL", analysis_name))
+        }
 
         # Get list of variables that were completely removed from the table
         filtered_variables <- get_filtered_variables_from_table(table_result, model_fit)
@@ -171,7 +175,7 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
     # Apply extreme estimate filtering and create diagnostics only if model fitting succeeded
     if (!is.null(model_fit) && !is.null(table_result)) {
         # Apply extreme estimate filtering to get detailed diagnostics
-        extreme_filtering_result <- apply_extreme_estimate_filtering(table_result, model_fit, effect_measure,
+        extreme_filtering_result <- process_extreme_estimates(table_result, model_fit, effect_measure,
             variables_to_check = unique(c(predictor_vars, confounders)),
             analysis_name
         )
@@ -182,12 +186,20 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
         # Create comprehensive diagnostics with all required tabs
         # Extract the actual filtered variables from the extreme filtering result
         filtered_variables <- extreme_filtering_result$diagnostics$extreme_terms
+        
+        # Add completely removed variables to the diagnostics
+        completely_removed_vars <- extreme_filtering_result$diagnostics$completely_removed_variables
+        if (!is.null(completely_removed_vars) && length(completely_removed_vars) > 0) {
+            logger::log_info(sprintf("DEBUG: Completely removed variables: %s", paste(completely_removed_vars, collapse = ", ")))
+        }
 
         diagnostics <- create_comprehensive_diagnostics(model_fit, data, outcome_var,
             predictor_vars, confounders, analysis_name,
             dataset_name, filtered_variables, other_map,
             extreme_filtering_result$diagnostics,
-            treatment_var = treatment_var
+            treatment_var = treatment_var,
+            effect_measure = effect_measure,
+            table_result = filtered_table_result
         )
 
         # Create raw_output from diagnostics for save_table_outputs

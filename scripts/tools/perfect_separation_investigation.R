@@ -3,7 +3,7 @@
 # Perfect Separation Investigation Tool
 # Purpose: Analyze event counts and perfect separation issues in real analysis data
 
-source("scripts/utils/all_helper_functions.R")
+source("scripts/utils/load_all.R")
 
 # Load the real analysis data
 cat("Loading analysis data...\n")

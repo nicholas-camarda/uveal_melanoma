@@ -45,6 +45,7 @@ create_output_structure <- function(cohort_dir) {
         # OBJECTIVE 4: GEP Predictive Accuracy
         obj4_mfs = file.path(cohort_dir, "04_GEP_Validation", "a_metastasis_free_survival"),
         obj4_mss = file.path(cohort_dir, "04_GEP_Validation", "b_melanoma_specific_survival"),
+        obj4_ph_diagnostics = file.path(cohort_dir, "04_GEP_Validation", "c_proportional_hazards_diagnostics"),
 
         # Cross-cutting analyses (baseline characteristics go here for each cohort)
         baseline_characteristics = file.path(cohort_dir, "00_General", "baseline_characteristics"),
@@ -57,74 +58,13 @@ create_output_structure <- function(cohort_dir) {
         if (!dir.exists(dir_path)) {
             dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
             if (exists("USE_LOGS") && USE_LOGS) {
-                logger::log_info(sprintf("Created directory: %s", dir_path))
+                logger::log_debug(formatted(sprintf("Created directory: %s", dir_path)))
             }
         }
     }
+
 
     return(dirs)
-}
-
-#' Organize Objective 4 outputs into correct subfolders
-#'
-#' This function scans the `04_GEP_Validation` directory and moves files into
-#' the correct outcome-specific subfolders based on filename patterns.
-#'
-#' @param obj4_base_dir Path to the cohort's `04_GEP_Validation` directory
-#' @param prefix File prefix used for the cohort (e.g., "full_cohort_")
-#' @return Invisibly returns a data.frame of moved files
-organize_obj4_outputs <- function(obj4_base_dir, prefix) {
-    if (!dir.exists(obj4_base_dir)) return(invisible(NULL))
-    mfs_dir <- file.path(obj4_base_dir, "a_metastasis_free_survival")
-    mss_dir <- file.path(obj4_base_dir, "b_melanoma_specific_survival")
-    if (!dir.exists(mfs_dir)) dir.create(mfs_dir, recursive = TRUE, showWarnings = FALSE)
-    if (!dir.exists(mss_dir)) dir.create(mss_dir, recursive = TRUE, showWarnings = FALSE)
-
-    files <- list.files(obj4_base_dir, full.names = TRUE)
-    moved <- data.frame(from = character(), to = character(), stringsAsFactors = FALSE)
-
-    move_if <- function(patterns, target_dir) {
-        idx <- which(grepl(paste(patterns, collapse = "|"), basename(files), ignore.case = TRUE))
-        if (length(idx) > 0) {
-            for (i in idx) {
-                src <- files[i]
-                dst <- file.path(target_dir, basename(src))
-                if (!file.exists(dst)) {
-                    file.rename(src, dst)
-                    moved <<- rbind(moved, data.frame(from = src, to = dst, stringsAsFactors = FALSE))
-                }
-            }
-        }
-    }
-
-    # Route MFS artifacts
-    move_if(c(
-        paste0("^", prefix, "mfs_"),
-        paste0("^", prefix, "MFS_"),
-        "_MFS_",
-        "mfs_validation",
-        "simple_mfs_validation",
-        "observed_expected_summary\\.xlsx$",
-        "calibration_summary\\.xlsx$",
-        "discrimination_summary\\.xlsx$",
-        "gep_validation_distribution\\.xlsx$"
-    ), mfs_dir)
-
-    # Route MSS artifacts
-    move_if(c(
-        paste0("^", prefix, "mss_"),
-        paste0("^", prefix, "MSS_"),
-        "_MSS_",
-        "mss_validation",
-        "simple_mss_validation",
-        "mss_validation_summary\\.xlsx$",
-        "mss_standard_validation_results\\.rds$",
-        "mss_competing_risk_results\\.rds$",
-        "mss_validation_report\\.rds$"
-    ), mss_dir)
-
-    # Leave unified_summary and other combined assets at the base
-    invisible(moved)
 }
 
 #' Merge baseline characteristics tables from full and restricted cohorts
@@ -145,7 +85,7 @@ merge_cohort_tables <- function(full_cohort_data, restricted_cohort_data, output
     # Set default output path if not provided
     if (is.null(output_path)) {
         # MERGED_TABLES_DIR
-        output_path <- file.path("final_data", "Analysis", "merged_tables")
+        output_path <- MERGED_TABLES_DIR
     }
 
     # Create output directory
@@ -165,12 +105,13 @@ merge_cohort_tables <- function(full_cohort_data, restricted_cohort_data, output
     tryCatch(
         {
             # Create baseline table for full cohort
+            full_available <- intersect(vars_to_summarize, names(full_cohort_data))
             full_baseline <- full_cohort_data %>%
-                select(all_of(vars_to_summarize), treatment_group) %>%
+                select(any_of(c(full_available, "treatment_group"))) %>%
                 tbl_summary(
                     by = treatment_group,
                     missing = "no",
-                    label = variable_labels,
+                    label = variable_labels[intersect(names(variable_labels), full_available)],
                     statistic = list(
                         all_continuous() ~ "{mean} ({sd})",
                         all_categorical() ~ "{n} ({p}%)"
@@ -191,12 +132,13 @@ merge_cohort_tables <- function(full_cohort_data, restricted_cohort_data, output
                 )
 
             # Create baseline table for restricted cohort
+            restricted_available <- intersect(vars_to_summarize, names(restricted_cohort_data))
             restricted_baseline <- restricted_cohort_data %>%
-                select(all_of(vars_to_summarize), treatment_group) %>%
+                select(any_of(c(restricted_available, "treatment_group"))) %>%
                 tbl_summary(
                     by = treatment_group,
                     missing = "no",
-                    label = variable_labels,
+                    label = variable_labels[intersect(names(variable_labels), restricted_available)],
                     statistic = list(
                         all_continuous() ~ "{mean} ({sd})",
                         all_categorical() ~ "{n} ({p}%)"
@@ -463,3 +405,5 @@ write_analysis_diagnostics_excel <- function(diagnostics, file_path) {
         stop("diagnostics must be a data.frame or a named list of data.frames")
     }
 }
+
+## Note: subdirectory creation for GEP visuals is centralized above; plotting code should not mkdir

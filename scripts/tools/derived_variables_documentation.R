@@ -3,7 +3,7 @@
 # Description: Comprehensive documentation of all derived variables created during data processing
 # This script generates documentation for all derived variables and exports to Excel
 
-source("scripts/utils/all_helper_functions.R")
+source("scripts/utils/load_all.R")
 
 # =============================================================================
 # DERIVED VARIABLE DOCUMENTATION
@@ -273,7 +273,7 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
     # ===== GEP VALIDATION VARIABLES (OBJECTIVE 4) =====
     gep_class_simple = list(
         description = "Simplified GEP classification for analysis",
-        calculation = "case_when(str_detect(biopsy1_gep, 'Class_1A') ~ 'Class 1A', str_detect(biopsy1_gep, 'Class_1B') ~ 'Class 1B', str_detect(biopsy1_gep, 'Class_2') ~ 'Class 2', TRUE ~ NA)",
+        calculation = "case_when(str_detect(biopsy1_gep_raw, 'Class_1') ~ 'Class 1', str_detect(biopsy1_gep_raw, 'Class_2') ~ 'Class 2', str_detect(biopsy1_gep_raw, 'No') ~ 'No', TRUE ~ NA)",
         purpose = "Primary GEP variable for survival analysis and validation",
         data_type = "character",
         units = "categorical"
@@ -337,14 +337,14 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         units = "categorical"
     ),
 
-    # ===== MODIFIED STAGE VARIABLE =====
-    initial_overall_stage_modified = list(
-        description = "Modified overall stage excluding stages with insufficient numbers",
-        calculation = "case_when(initial_overall_stage %in% STAGES_TO_EXCLUDE_FROM_MODIFIED ~ NA, TRUE ~ as.character(initial_overall_stage))",
-        purpose = "Stage variable for analysis (excludes stages 3B, 3C, 4 due to small numbers)",
-        data_type = "factor",
-        units = "categorical"
-    )
+    # # ===== MODIFIED STAGE VARIABLE =====
+    # initial_overall_stage_modified = list(
+    #     description = "Modified overall stage excluding stages with insufficient numbers",
+    #     calculation = "case_when(initial_overall_stage %in% STAGES_TO_EXCLUDE_FROM_MODIFIED ~ NA, TRUE ~ as.character(initial_overall_stage))",
+    #     purpose = "Stage variable for analysis (excludes stages 3B, 3C, 4 due to small numbers)",
+    #     data_type = "factor",
+    #     units = "categorical"
+    # )
 )
 
 # =============================================================================

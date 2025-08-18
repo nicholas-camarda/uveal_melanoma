@@ -66,65 +66,11 @@ create_gtsummary_table <- function(model_fit, effect_measure, analysis_name, oth
         }
     )
 
-    # Post-process the table to remove variables with only reference levels
-    table <- remove_orphaned_variables(table, model_fit)
-
     # Apply extreme estimate filtering to the table
     table_data <- table$table_body
 
-    # Detect extreme estimates in the table data
-    # Note: Main table uses exponentiate = (effect_measure %in% c("OR", "HR")), so check accordingly
-    is_main_table_exponentiated <- (effect_measure %in% c("OR", "HR"))
-
-    # Only run detection on rows with valid estimates (not NA)
-    valid_rows <- !is.na(as.numeric(table_data$estimate)) &
-        !is.na(as.numeric(table_data$conf.low)) &
-        !is.na(as.numeric(table_data$conf.high))
-
-    if (any(valid_rows)) {
-        extreme_result <- detect_extreme_regression_estimates(
-            estimate = as.numeric(table_data$estimate[valid_rows]),
-            ci_lower = as.numeric(table_data$conf.low[valid_rows]),
-            ci_upper = as.numeric(table_data$conf.high[valid_rows]),
-            effect_measure = effect_measure,
-            is_exponentiated = is_main_table_exponentiated
-        )
-
-        # Map back to original table indices
-        if (length(extreme_result$extreme_indices) > 0) {
-            valid_indices <- which(valid_rows)
-            extreme_result$extreme_indices <- valid_indices[extreme_result$extreme_indices]
-        }
-    } else {
-        extreme_result <- list(extreme_indices = integer(0), exclusion_reasons = character(0))
-    }
-
-    # Filter out extreme estimates
-    if (length(extreme_result$extreme_indices) > 0) {
-        logger::log_info(sprintf(
-            "Filtering %d extreme estimates from table for %s",
-            length(extreme_result$extreme_indices), analysis_name
-        ))
-
-        # Get the extreme terms to remove
-        extreme_terms <- table_data$term[extreme_result$extreme_indices]
-
-        # Apply filtering
-        filter_result <- filter_extreme_estimates_from_table(
-            tbl_data = table_data,
-            extreme_terms = extreme_terms,
-            variables_to_check = unique(table_data$variable),
-            analysis_name = analysis_name
-        )
-
-        # Update the table with filtered data
-        table$table_body <- filter_result$tbl_data_filtered
-
-        logger::log_info(sprintf(
-            "Removed %d rows with extreme estimates from table",
-            filter_result$rows_removed
-        ))
-    }
+    # NOTE: Extreme estimate filtering is now handled by process_extreme_estimates
+    # This eliminates redundant filtering and simplifies the pipeline
 
     # Remove variables that now only have reference levels (no coefficients)
     table_data_updated <- table$table_body

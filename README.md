@@ -10,14 +10,14 @@ This project provides a complete pipeline for processing, cleaning, and analyzin
 
 ## Quick Start
 
-1. Clone the repository and install the required R packages (see `scripts/utils/all_helper_functions.R` for package list).
-2. Review `all_helper_functions.R` to set important constants at runtime.
+1. Clone the repository and install the required R packages (see `scripts/load_all.R` for package list).
+2. Review `scripts/load_all.R` to set important constants at runtime.
 3. (Optional) Review `scripts/utils/config_constants.R` for more detailed constants used throughout the analysis.
 4. Open an R session in the project root and run:
 
 ```r
 # Load all helper functions
-source("scripts/utils/all_helper_functions.R")    
+source("scripts/load_all.R")    
 
 # Run analysis for all cohorts and all objectives
 main_execution()
@@ -222,7 +222,7 @@ project_working_directory/
 │   │   ├── forest_plot_draw.R              # Plot drawing
 │   │   └── forest_plot_formatting.R        # Theming/formatting
 │   ├── utils/
-│   │   ├── all_helper_functions.R          # Central loader/sourcing
+│   ├── load_all.R                          # Central loader/sourcing
 │   │   ├── config_constants.R              # Global configuration
 │   │   ├── extreme_estimate_handling.R     # Extreme estimate filtering
 │   │   ├── forest_plot_diagnostics.R       # Forest diagnostics
@@ -250,15 +250,15 @@ project_working_directory/
 All primary efficacy analyses have been implemented with comprehensive outputs through the new workflow system:
 
 #### **1a. Local Recurrence**
-- **Method:** Time-to-event analysis with Cox regression
+- **Method:** Binary outcome analysis with logistic regression
 - **Implementation:** `analyze_binary_outcome_rates()` function in `scripts/workflow/objective_1_primary_outcomes.R`
-- **Outputs:** Event rates (.xlsx), Cox models (.html), survival curves (.png)
+- **Outputs:** Event rates (.xlsx), logistic regression models (.html)
 - **Location:** `{cohort}/01_Efficacy/a_recurrence/`
 
 #### **1b. Metastatic Progression** 
-- **Method:** Time-to-event analysis with Cox regression
+- **Method:** Binary outcome analysis with logistic regression
 - **Implementation:** `analyze_binary_outcome_rates()` function in `scripts/workflow/objective_1_primary_outcomes.R`
-- **Outputs:** Event rates (.xlsx), Cox models (.html), survival curves (.png)
+- **Outputs:** Event rates (.xlsx), logistic regression models (.html)
 - **Location:** `{cohort}/01_Efficacy/b_metastatic_progression/`
 
 #### **1c. Overall Survival**
@@ -458,7 +458,7 @@ Set analysis settings globally to improve reproducibility:
 ### **🔄 Centralized Helper Functions**
 All libraries and utilities loaded through a single source:
 
-- **File:** `scripts/utils/all_helper_functions.R`
+- **File:** `scripts/load_all.R`
 - **Features:** Automatic library loading, centralized script sourcing, directory creation, validation functions
 - **Benefits:** Consistent environment setup, reduced redundancy, centralized error handling
 
@@ -482,7 +482,7 @@ Comprehensive logging and monitoring:
 
 ### **Restricted Mean Survival Time (RMST) Analysis**
 
-All survival endpoints include comprehensive RMST analysis:
+All survival endpoints include comprehensive RMST analysis. RMST is used because hazard ratios from Cox regression only tell us about relative risk, not the actual magnitude of survival benefit in clinically meaningful time units (months/years). RMST quantifies the average survival time difference between treatments, making results more interpretable for clinicians and patients.
 
 #### **RMST Outputs Generated:**
 1. **📈 Survival Rate Tables:** 1, 3, 5, 10, and 15-year survival probabilities by treatment
@@ -573,7 +573,7 @@ If **treatment_group** violates the PH assumption:
 - Two outcomes are assessed: metastasis-free survival (MFS) and melanoma-specific survival (MSS).
 - We evaluate predictions at clinically relevant time points (5, 7, 10 years).
 - For each time point we measure:
-  - Calibration: Are predicted risks numerically close to observed risks? (Nam–D’Agostino-style test, calibration slope, ICI)
+  - Calibration: Are predicted risks numerically close to observed risks? (Nam-D’Agostino-style test, calibration slope, ICI)
   - Discrimination: Do higher predicted risks occur in patients who experience events sooner? (Harrell/Uno C-index, time-dependent AUC)
   - Clinical utility: Would using the predictions to decide who to treat or intensify follow-up help patients overall? (Decision curve analysis)
 - We also check whether adding PRAME status meaningfully improves classification (reclassification/NRI where feasible).
@@ -585,18 +585,55 @@ If **treatment_group** violates the PH assumption:
 -  - `full_cohort_mfs_validation_summary.txt`: human-readable list of per-timepoint O/E, calibration, discrimination, and DCA highlights
 -  - Optional: `*.rds` objects if `GEP_SAVE_RDS=TRUE` (for reproducibility/downstream analysis)
 - `b_melanoma_specific_survival/`
--  - `full_cohort_mss_validation_summary.xlsx`: harmonized stacked sheets `Observed_Expected_by_class`, `Calibration`, `Discrimination`, `Counts`, `CompetingRisk_CumulativeIncidence`, `CompetingRisk_CauseSpecificHazards`, and `CompetingRisk_CIF_with_CI` (Aalen–Johansen with stratified bootstrap 95% CIs by class)
+-  - `full_cohort_mss_validation_summary.xlsx`: harmonized stacked sheets `Observed_Expected_by_class`, `Calibration`, `Discrimination`, `Counts`, `CompRisk_CIF` (cumulative incidence), `CompRisk_CSC` (cause-specific Cox), `CompetingRisk_FineGray` (Fine-Gray), and `CompRisk_CIF_with_CI` (Aalen-Johansen with stratified bootstrap 95% CIs by class)
 -  - `full_cohort_mss_validation_summary.txt`: human-readable list of analyses performed with per-timepoint highlights
 -  - Optional: `*.rds` objects if `GEP_SAVE_RDS=TRUE`
 - `unified_summary/`
--  - `gep_comprehensive_report.txt` and `gep_comparison_table.xlsx` with side-by-side metrics across outcomes/timepoints
--  - `gep_combined_calibration.png`, `gep_combined_discrimination.png`, `gep_performance_comparison.png`: generated only if both outcomes (MFS and MSS) are present; otherwise skipped. Individual outcome plots are always saved in their respective folders.
+  - `full_cohort_gep_comprehensive_report.txt`: integrated analysis summary
+  - `full_cohort_gep_comparison_table.xlsx`: side-by-side MFS vs MSS metrics
+  - `full_cohort_mfs_survival_curves.png`: Kaplan-Meier curves by GEP class with log-rank test
+  - `full_cohort_mss_cumulative_incidence_curves.png`: competing risk CIFs by GEP class
+  - **MFS Survival Curves**: Kaplan-Meier plots showing metastasis-free survival probability over time, stratified by GEP class (Class 1 vs Class 2; 4-class PRAME used where applicable for O/E and tables). Includes log-rank test p-value to assess statistical differences between classes.
+  - **MSS Cumulative Incidence Curves**: Plots showing the cumulative probability of melanoma-specific death over time by GEP class, accounting for competing risks (other causes of death). Visualizes the absolute risk differences between GEP classes.
+- Optional: `*.rds` objects if `GEP_SAVE_RDS=TRUE` (for reproducibility/downstream analysis)
+
+#### **Statistical Disambiguation: Why Different Plot Types for MFS vs MSS?**
+
+The choice of plot type is based on the **nature of the events** being analyzed:
+
+**MFS (Metastasis-Free Survival) = Standard Survival Analysis**
+- **Event**: Metastasis (first occurrence)
+- **Censoring**: Death without metastasis, loss to follow-up, end of study
+- **Analysis**: **Kaplan-Meier (KM) curves** are appropriate because:
+  - We have a single, well-defined event (metastasis)
+  - Other events (like non-metastatic death) are treated as censoring
+  - We want to know "What's the probability of staying metastasis-free over time?"
+
+**MSS (Melanoma-Specific Survival) = Competing Risks Analysis**
+- **Event**: Melanoma death
+- **Competing Event**: Non-melanoma death (e.g., heart attack, car accident)
+- **Analysis**: **Cumulative Incidence Functions (CIF)** are appropriate because:
+  - We have two types of events that can happen
+  - Non-melanoma death "competes" with melanoma death
+  - We want to know "What's the probability of dying from melanoma specifically?"
+
+**Why Not the Other Way Around?**
+
+**MFS with CIF**: Doesn't make sense because metastasis is a single event type. There's no "competing metastasis" - you either get it or you don't.
+
+**MSS with KM**: Would be wrong because it would treat non-melanoma deaths as censoring, which would overestimate melanoma-specific survival. If someone dies of a heart attack, that's not "censoring" - it's a competing event that prevents them from dying of melanoma.
+
+**In the Data:**
+- **MFS**: 16 metastasis events out of 86 patients → KM curves show metastasis-free survival probability
+- **MSS**: 15 melanoma deaths, 0 competing deaths → CIF shows cumulative probability of melanoma death
+
+The analysis types are chosen based on the **nature of the events**, not arbitrarily. This setup is statistically correct and follows survival analysis best practices.
 
 How to read the key metrics:
 - **Calibration slope ≈ 1.0**: predictions are neither too extreme nor too conservative.
 - **ICI closer to 0**: better average agreement between predicted and observed risks.
 - **C-index (Harrell/Uno) > 0.7**: good ability to rank patients by risk.
-- For MSS, class-specific cumulative incidence (CIF) and 95% CIs are computed via Aalen–Johansen with stratified bootstrap.
+- For MSS, class-specific cumulative incidence (CIF) and 95% CIs are computed via Aalen-Johansen with stratified bootstrap.
 - **Decision curves**: net benefit line above “Treat All” and 0 indicates clinical usefulness over a threshold range.
 
 For melanoma-specific survival validation, the analysis employs **dual competing risk approaches** to provide comprehensive assessment of GEP predictive accuracy when patients can die from melanoma or other causes.
@@ -629,7 +666,7 @@ The cause-specific HR is typically larger because it conditions on survival, whi
 #### **Implementation Details**
 
 **Data Preparation:**
-- **Status coding:** 0 = alive, 1 = melanoma death, 2 = other-cause death
+- **Status coding:** 0 = censored (alive or lost to follow-up), 1 = melanoma death, 2 = competing death (other causes)
 - **Time variable:** Years from treatment to death or last follow-up
 - **Validation approach:** Both models tested against GEP predictions using Brier scores and IPA metrics
 
@@ -672,7 +709,7 @@ testthat, usethis
 ```
 
 ### **Installation**
-Running `scripts/utils/all_helper_functions.R` in an R session should install the required packages automatically, but if you want to install them yourself first, run: 
+Running `scripts/load_all.R` in an R session should install the required packages automatically, but if you want to install them yourself first, run: 
 ```r
 install.packages(c(
   "tidyverse", "readxl", "writexl", "lubridate", "gtsummary", "janitor", "openxlsx",

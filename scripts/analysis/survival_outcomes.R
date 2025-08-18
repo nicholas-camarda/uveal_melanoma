@@ -53,24 +53,17 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     surv_fit <- survival::survfit(surv_formula, data = new_data)
     surv_fit$call$formula <- surv_formula
 
-    # Set up time axis breaks (in months)
-    max_time <- max(new_data[[time_var]], na.rm = TRUE)
-    x_breaks <- seq(0, ceiling(max_time / 12) * 12, by = 12)
+    # Set up time axis breaks (in months) with legacy cap to avoid extreme tails
+    raw_max_time <- max(new_data[[time_var]], na.rm = TRUE)
+    max_time <- min(raw_max_time, SURVIVAL_XAXIS_MAX_MONTHS)
+    base_by <- if (max_time <= 60) 6 else 12
+    x_breaks <- seq(0, ceiling(max_time / base_by) * base_by, by = base_by)
 
-    # Set legend labels and color palette
+    # Set legend labels and color palette (centralized)
     if (is.null(legend_labels)) {
         legend_labels <- levels(factor(new_data[[group_var]]))
     }
-    n_groups <- length(legend_labels)
-    color_palette <- if (n_groups == 2) {
-        c("#BC3C29FF", "#0072B5FF")
-    } else if (n_groups == 3) {
-        c("#BC3C29FF", "#0072B5FF", "#E18727FF")
-    } else if (n_groups == 4) {
-        c("#BC3C29FF", "#0072B5FF", "#E18727FF", "#20854EFF")
-    } else {
-        RColorBrewer::brewer.pal(min(n_groups, 8), "Set1")
-    }
+    color_palette <- get_palette_by_variable(group_var, legend_labels)
 
     # Generate Kaplan-Meier plot with risk table
     surv_plot <- survminer::ggsurvplot(
@@ -86,7 +79,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         ylab = ylab,
         risk.table.height = 0.10,
         ggtheme = theme_minimal(),
-        break.time.by = 12,
+        break.time.by = base_by,
         xlim = c(0, max(x_breaks)),
         ylim = c(0, 1),
         legend.labs = legend_labels,
@@ -103,78 +96,191 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             name = paste0(ylab, " (%)")
         )
     surv_plot$table <- surv_plot$table + theme_minimal()
+    
+    # Save KM plot if output_dirs are provided
+    if (!is.null(output_dirs)) {
+        output_dir <- if (grepl("Overall Survival", ylab)) {
+            output_dirs$obj1_os
+        } else if (grepl("Progression-Free Survival", ylab)) {
+            output_dirs$obj1_pfs
+        } else if (grepl("PFS-2", ylab)) {
+            output_dirs$obj3_pfs2
+        } else if (grepl("Metastasis-Free Survival", ylab)) {
+            output_dirs$obj4_mfs
+        } else {
+            output_dirs$baseline_characteristics
+        }
+        km_path <- file.path(output_dir, paste0(prefix, make_filename_safe(ylab), "_km.png"))
+        # Combine main plot and risk table vertically so the saved image includes both
+        combined_km <- cowplot::plot_grid(
+            surv_plot$plot,
+            surv_plot$table,
+            ncol = 1,
+            align = "v",
+            rel_heights = c(0.86, 0.14)
+        )
+        # Dynamic height scaling: base on number of strata in the KM fit
+        n_groups <- tryCatch(
+            {
+                length(surv_plot$plot$data$strata %||% levels(new_data[[group_var]]))
+            },
+            error = function(e) length(levels(new_data[[group_var]]))
+        )
+        # Calculate dynamic height based on number of strata
+        extra_groups <- max(0, n_groups - 2)
+        dynamic_height <- KM_BASE_HEIGHT + extra_groups * KM_HEIGHT_PER_STRATUM
+        # Prefer taller PFS-2 default if applicable, but cap at KM_MAX_HEIGHT
+        base_pref <- if (grepl("PFS-2", ylab)) max(PFS2_PLOT_HEIGHT, SURVIVAL_PLOT_HEIGHT) else SURVIVAL_PLOT_HEIGHT
+        plot_height <- min(KM_MAX_HEIGHT, max(base_pref, dynamic_height))
+        # Save the combined plot with dynamic height
+        ggplot2::ggsave(km_path, combined_km, width = SURVIVAL_PLOT_WIDTH, height = plot_height, dpi = PLOT_DPI, bg = "white")
+        logger::log_info(sprintf("KM plot (with risk table) saved: %s", km_path))
+    }
 
     # Define time points (in months) for summary and RMST
-    time_points <- c(1, 3, 5, 10, 15) * 12
+    time_points <- SURVIVAL_SUMMARY_TIMEPOINTS_YEARS * 12
+    
+    # Add debugging and error handling for the summary call
+    logger::log_info(sprintf("DEBUG: Time points for summary: %s", paste(time_points, collapse = ", ")))
+    logger::log_info(sprintf("DEBUG: Max time in data: %.2f", max(new_data[[time_var]], na.rm = TRUE)))
+    logger::log_info(sprintf("DEBUG: Min time in data: %.2f", min(new_data[[time_var]], na.rm = TRUE)))
+    
+    # Filter time points to only include those within the data range to prevent "invalid 'times' argument" error
+    max_data_time <- max(new_data[[time_var]], na.rm = TRUE)
+    valid_time_points <- time_points[time_points <= max_data_time]
+    
+    if (length(valid_time_points) == 0) {
+        logger::log_warn("No valid time points for summary - all requested times exceed data range")
+        valid_time_points <- c(max_data_time)  # Use max data time as fallback
+    }
+    
+    logger::log_info(sprintf("DEBUG: Valid time points for summary: %s", paste(valid_time_points, collapse = ", ")))
 
-    # Summarize survival at key time points
-    surv_summary <- summary(surv_fit, times = time_points)
-    surv_rates <- as.data.frame(surv_summary[c("strata", "time", "surv", "lower", "upper")]) %>%
-        dplyr::mutate(
-            Treatment_Group = sub(".*=", "", strata),
-            Time_Years = round(time / 12, 1)
-        ) %>%
-        dplyr::mutate(
-            across(c(surv, lower, upper), ~ round(100 * ., 1), .names = "{.col}_pct")
-        ) %>%
-        dplyr::select(Treatment_Group, Time_Years, surv_pct, lower_pct, upper_pct)
-
-    # Initialize RMST results table
-    rmst_results <- data.frame(
-        Time_Point_Years = numeric(),
-        Time_Point_Months = numeric(),
-        RMST_Plaque = numeric(),
-        RMST_GKSRS = numeric(),
-        RMST_Difference = numeric(),
-        RMST_P_Value = numeric(),
-        Analysis_Type = character(),
-        stringsAsFactors = FALSE
-    )
-
-    # Calculate RMST for each time point
-    for (time_point in time_points) {
-        time_years <- round(time_point / 12, 1)
-        rmst_result <- tryCatch(
-            {
-                # Binary treatment: 1 = GKSRS, 0 = Plaque
-                treatment_binary <- ifelse(new_data[[group_var]] == "GKSRS", 1, 0)
-                rmst2(
-                    time = new_data[[time_var]],
-                    status = new_data[[event_var]],
-                    arm = treatment_binary,
-                    tau = time_point
-                )
-            },
-            error = function(e) NULL
+    # Summarize survival at key time points with error handling
+    surv_summary <- tryCatch({
+        summary(surv_fit, times = valid_time_points)
+    }, error = function(e) {
+        logger::log_error(sprintf("ERROR in surv_fit summary: %s", e$message))
+        logger::log_error("This is likely the source of the 'invalid times argument' error")
+        # Return NULL to prevent further errors
+        NULL
+    })
+    
+    if (is.null(surv_summary)) {
+        logger::log_warn("Survival summary failed - skipping summary statistics and RMST analysis")
+        surv_rates <- data.frame(
+            Treatment_Group = character(),
+            Time_Years = numeric(),
+            surv_pct = numeric(),
+            lower_pct = numeric(),
+            upper_pct = numeric(),
+            stringsAsFactors = FALSE
         )
-        if (!is.null(rmst_result)) {
-            rmst_results <- rbind(
-                rmst_results,
-                data.frame(
-                    Time_Point_Years = time_years,
-                    Time_Point_Months = time_point,
-                    RMST_Plaque = round(rmst_result$RMST.arm0$rmst[1], 2),
-                    RMST_GKSRS = round(rmst_result$RMST.arm1$rmst[1], 2),
-                    RMST_Difference = round(rmst_result$unadjusted.result[1, 1], 2),
-                    RMST_P_Value = round(rmst_result$unadjusted.result[1, 4], 4),
-                    Analysis_Type = paste0("Mean survival up to ", time_years, " years"),
-                    stringsAsFactors = FALSE
-                )
+        rmst_results <- data.frame(
+            Time_Point_Years = numeric(),
+            Time_Point_Months = numeric(),
+            RMST_Group1 = numeric(),
+            RMST_Group2 = numeric(),
+            RMST_Difference = numeric(),
+            RMST_P_Value = numeric(),
+            Analysis_Type = character(),
+            stringsAsFactors = FALSE
+        )
+    } else {
+        surv_rates <- as.data.frame(surv_summary[c("strata", "time", "surv", "lower", "upper")]) %>%
+            dplyr::mutate(
+                Treatment_Group = sub(".*=", "", strata),
+                Time_Years = round(time / 12, 1)
+            ) %>%
+            dplyr::mutate(
+                across(c(surv, lower, upper), ~ round(100 * ., 1), .names = "{.col}_pct")
+            ) %>%
+            dplyr::select(Treatment_Group, Time_Years, surv_pct, lower_pct, upper_pct)
+
+        # Initialize RMST results table
+        rmst_results <- data.frame(
+            Time_Point_Years = numeric(),
+            Time_Point_Months = numeric(),
+            RMST_Group1 = numeric(),
+            RMST_Group2 = numeric(),
+            RMST_Difference = numeric(),
+            RMST_P_Value = numeric(),
+            Analysis_Type = character(),
+            stringsAsFactors = FALSE
+        )
+
+        # Calculate RMST for each time point
+        logger::log_info(sprintf("DEBUG: Starting RMST analysis for %d time points", length(valid_time_points)))
+        for (time_point in valid_time_points) {
+            time_years <- round(time_point / 12, 1)
+            logger::log_info(sprintf("DEBUG: Processing RMST for %s years (%.1f months)", time_years, time_point))
+            rmst_result <- tryCatch(
+                {
+                    # Handle RMST for any number of groups (binary or multi-group)
+                    unique_groups <- unique(new_data[[group_var]])
+                    logger::log_info(sprintf("DEBUG: Unique groups for RMST: %s", paste(unique_groups, collapse = ", ")))
+                    
+                    if (length(unique_groups) == 2) {
+                        # Binary comparison: use 0/1 coding
+                        group_binary <- ifelse(new_data[[group_var]] == unique_groups[2], 1, 0)
+                        logger::log_info(sprintf("DEBUG: Running RMST for binary comparison: %s vs %s", unique_groups[1], unique_groups[2]))
+                        
+                        rmst2(
+                            time = new_data[[time_var]],
+                            status = new_data[[event_var]],
+                            arm = group_binary,
+                            tau = time_point
+                        )
+                    } else {
+                        # Non-binary groups: skip RMST analysis entirely and log informative message
+                        logger::log_info(sprintf("DEBUG: Skipping RMST analysis - non-binary grouping detected (%d groups: %s). RMST analysis requires exactly 2 groups.", 
+                                               length(unique_groups), paste(unique_groups, collapse = ", ")))
+                        NULL
+                    }
+                },
+                error = function(e) {
+                    logger::log_error(sprintf("ERROR in RMST calculation for %.1f years: %s", time_years, e$message))
+                    NULL
+                }
             )
-        } else {
-            rmst_results <- rbind(
-                rmst_results,
-                data.frame(
-                    Time_Point_Years = time_years,
-                    Time_Point_Months = time_point,
-                    RMST_Plaque = NA,
-                    RMST_GKSRS = NA,
-                    RMST_Difference = NA,
-                    RMST_P_Value = NA,
-                    Analysis_Type = "Analysis failed",
-                    stringsAsFactors = FALSE
+            if (!is.null(rmst_result)) {
+                rmst_results <- rbind(
+                    rmst_results,
+                    data.frame(
+                        Time_Point_Years = time_years,
+                        Time_Point_Months = time_point,
+                        RMST_Group1 = round(rmst_result$RMST.arm0$rmst[1], 2),
+                        RMST_Group2 = round(rmst_result$RMST.arm1$rmst[1], 2),
+                        RMST_Difference = round(rmst_result$unadjusted.result[1, 1], 2),
+                        RMST_P_Value = round(rmst_result$unadjusted.result[1, 4], 4),
+                        Analysis_Type = paste0("Mean survival up to ", time_years, " years"),
+                        stringsAsFactors = FALSE
+                    )
                 )
-            )
+            } else {
+                # Check if we skipped RMST due to non-binary grouping
+                unique_groups <- unique(new_data[[group_var]])
+                analysis_type_msg <- if (length(unique_groups) < 2) {
+                    "Not applicable (insufficient groups)"
+                } else if (length(unique_groups) > 2) {
+                    "Not applicable (non-binary grouping)"
+                } else {
+                    "Analysis failed"
+                }
+                rmst_results <- rbind(
+                    rmst_results,
+                    data.frame(
+                        Time_Point_Years = time_years,
+                        Time_Point_Months = time_point,
+                        RMST_Group1 = NA,
+                        RMST_Group2 = NA,
+                        RMST_Difference = NA,
+                        RMST_P_Value = NA,
+                        Analysis_Type = analysis_type_msg,
+                        stringsAsFactors = FALSE
+                    )
+                )
+            }
         }
     }
 
@@ -217,14 +323,25 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
 
     # Write outputs to Excel files if output_dirs provided
     if (!is.null(output_dirs)) {
-        output_dir <- if (grepl("Overall Survival", ylab)) {
-            output_dirs$obj1_os
-        } else if (grepl("Progression-Free Survival", ylab)) {
-            output_dirs$obj1_pfs
-        } else if (grepl("PFS-2", ylab)) {
-            output_dirs$obj3_pfs2
-        } else {
-            output_dirs$baseline_characteristics
+        # Default fallback directory
+        output_dir <- output_dirs$baseline_characteristics
+        if (grepl("Overall Survival", ylab) && !is.null(output_dirs$obj1_os)) {
+            output_dir <- output_dirs$obj1_os
+        } else if (grepl("Progression-Free Survival", ylab) && !is.null(output_dirs$obj1_pfs)) {
+            output_dir <- output_dirs$obj1_pfs
+        } else if (grepl("PFS-2", ylab) && !is.null(output_dirs$obj3_pfs2)) {
+            output_dir <- output_dirs$obj3_pfs2
+        } else if (grepl("Metastasis-Free Survival", ylab)) {
+            # For MFS, prefer obj4_mfs when available; otherwise, gracefully fall back
+            if (!is.null(output_dirs$obj4_mfs)) {
+                output_dir <- output_dirs$obj4_mfs
+            } else if (!is.null(output_dirs$obj1_pfs)) {
+                # Secondary fallback to primary outcomes directory if present
+                output_dir <- output_dirs$obj1_pfs
+            } else {
+                # Keep baseline_characteristics as final fallback
+                logger::log_warn("Output directory for MFS not provided; using baseline_characteristics as fallback")
+            }
         }
         writexl::write_xlsx(
             surv_rates,
@@ -234,30 +351,42 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             surv_rates_wide_with_rmst,
             path = file.path(output_dir, paste0(prefix, make_filename_safe(ylab), "_survival_rates_wide.xlsx"))
         )
-        writexl::write_xlsx(
-            rmst_results,
-            path = file.path(output_dir, paste0(prefix, make_filename_safe(ylab), "_rmst_analysis.xlsx"))
-        )
+        # Only save RMST file if there's actual RMST data (not just "Not applicable" rows)
+        rmst_has_data <- any(!is.na(rmst_results$RMST_P_Value) & !grepl("Not applicable", rmst_results$Analysis_Type))
+        if (rmst_has_data) {
+            writexl::write_xlsx(
+                rmst_results,
+                path = file.path(output_dir, paste0(prefix, make_filename_safe(ylab), "_rmst_analysis.xlsx"))
+            )
+            logger::log_info(sprintf("RMST analysis file saved: %s", paste0(prefix, make_filename_safe(ylab), "_rmst_analysis.xlsx")))
+        } else {
+            logger::log_info(sprintf("Skipping RMST file creation - no valid RMST data available for %s", ylab))
+        }
     }
 
     # Run Cox regression and generate regression table
-    cox_result <- generate_regression_table(
-        data = new_data,
-        outcome_var = event_var,
-        predictor_vars = group_var,
-        confounders = confounders_to_use,
-        model_type = "cox",
-        effect_measure = "HR",
-        analysis_name = paste0(ylab, "_cox"),
-        dataset_name = dataset_name,
-        output_dir = if (!is.null(output_dirs)) output_dir else "test_output",
-        prefix = prefix,
-        time_var = time_var,
-        event_var = event_var,
-        other_map = other_map,
-        full_data = fix_event_data,
-        treatment_var = group_var
-    )
+    logger::log_info(sprintf("DEBUG: About to call generate_regression_table for %s", paste0(ylab, "_cox")))
+    cox_result <- tryCatch({
+        generate_regression_table(
+            data = new_data,
+            outcome_var = event_var,
+            predictor_vars = group_var,
+            confounders = confounders_to_use,
+            model_type = "cox",
+            effect_measure = "HR",
+            analysis_name = paste0(ylab, "_cox"),
+            dataset_name = dataset_name,
+            output_dir = if (!is.null(output_dirs)) output_dir else "test_output",
+            prefix = prefix,
+            time_var = time_var,
+            event_var = event_var,
+            other_map = other_map,
+            treatment_var = group_var
+        )
+    }, error = function(e) {
+        logger::log_error(sprintf("ERROR in generate_regression_table: %s", e$message))
+        return(NULL)
+    })
 
     # Return all results as a list
     list(
@@ -266,7 +395,24 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         survival_rates = surv_rates,
         survival_rates_wide = surv_rates_wide_with_rmst,
         rmst_analysis = rmst_results,
-        rmst_plot = plot_rmst_pvalue_progression(rmst_results, ylab, output_dirs, prefix),
+        rmst_plot = tryCatch({
+            # Only generate RMST plot if there's valid RMST data
+            rmst_has_data <- any(!is.na(rmst_results$RMST_P_Value) & !grepl("Not applicable", rmst_results$Analysis_Type))
+            if (rmst_has_data) {
+                # Get group names for RMST plot
+                unique_groups <- levels(new_data[[group_var]])
+                group1_name <- unique_groups[1]
+                group2_name <- unique_groups[2]
+                
+                plot_rmst_pvalue_progression(rmst_results, ylab, output_dirs, prefix, group1_name, group2_name)
+            } else {
+                logger::log_info(sprintf("Skipping RMST plot generation - no valid RMST data available for %s", ylab))
+                NULL
+            }
+        }, error = function(e) {
+            logger::log_warn(sprintf("RMST plot generation failed: %s", e$message))
+            NULL
+        }),
         cox_model = cox_result$model,
         cox_table = cox_result$table,
         ph_diagnostics = NULL,
@@ -512,7 +658,7 @@ test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Surv
                 # Create individual plot
                 plot_filename <- file.path(output_dir, paste0(file_prefix, "schoenfeld_", gsub("[^A-Za-z0-9]", "_", var_name), ".png"))
 
-                png(plot_filename, width = 10, height = 7, units = "in", res = 300)
+                png(plot_filename, width = DEFAULT_PLOT_WIDTH, height = SMALL_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI)
 
                 # Set margins to provide more space at top for title
                 par(mar = c(5, 4, 6, 2))
@@ -560,7 +706,7 @@ test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Surv
             n_cols <- min(3, n_plots) # Max 3 columns
             n_rows <- ceiling(n_plots / n_cols)
 
-            png(combined_plot_filename, width = 4 * n_cols, height = 4 * n_rows + 1.5, units = "in", res = 300)
+            png(combined_plot_filename, width = SMALL_PLOT_WIDTH * n_cols, height = SMALL_PLOT_HEIGHT * n_rows + 1.5, units = PLOT_UNITS, res = PLOT_DPI)
             par(mfrow = c(n_rows, n_cols), mar = c(4, 4, 2, 2), oma = c(0, 0, 6, 0))
 
             for (i in seq_along(var_names)) {

@@ -80,12 +80,15 @@ use("cardx") # Extended statistical functions for gtsummary
 use("forestploter") # Forest plots
 use("grid") # grid::unit(), viewport helpers
 use("cowplot") # Combining ggplots
+use("ggsurvfit") # For cumulative incidence plots
+use("tidycmprsk") # For cumulative incidence plots
 
 # Logging and progress
 use("logger")
 use("progressr")
 
 # Testing
+use("here") # For finding project root
 use("usethis") # For creating test files
 use("testthat") # For testing
 # usethis::use_testthat(3) # Set testthat edition to 3 for improved error messages
@@ -98,6 +101,7 @@ use("pec") # Prediction-error curves & validation metrics
 use("survcomp") # Survival model comparison and validation (Bioconductor)
 use("riskRegression") # Risk regression & competing risks
 use("cmprsk") # Competing-risk analysis (Fine-Gray models)
+use("timeROC") # Time-dependent ROC analysis
 use("pROC") # ROC analysis
 use("rmda") # Risk-model decision analysis
 use("VIM") # Visualization & imputation of missing values
@@ -108,86 +112,95 @@ use("mice") # Multiple imputation by chained equations
 ######################################################################
 
 # Source the split configuration and utility files
-source("scripts/utils/config_constants.R")
-source("scripts/utils/logging_utilities.R")
-source("scripts/utils/validation_utilities.R")
-source("scripts/utils/model_utilities.R")
-
-# Source the extreme estimate handling utilities
-source("scripts/utils/extreme_estimate_handling.R")
+source(here("scripts", "utils", "config_constants.R"))
+source(here("scripts", "utils", "logging_utilities.R"))
+source(here("scripts", "utils", "validation_utilities.R"))
+source(here("scripts", "utils", "model_utilities.R"))
+source(here("scripts", "utils", "color_palettes.R"))
+ 
+ # Source the extreme estimate handling utilities
+source(here("scripts", "utils", "extreme_estimate_handling.R"))
 
 # Source the table generation utilities (modularized)
-source("scripts/tables/table_generation_core.R")
-source("scripts/tables/table_model_fitting.R")
-source("scripts/tables/table_formatting.R")
-source("scripts/tables/table_diagnostics.R")
-source("scripts/tables/table_io.R")
+source(here("scripts", "tables", "table_generation_core.R"))
+source(here("scripts", "tables", "table_model_fitting.R"))
+source(here("scripts", "tables", "table_formatting.R"))
+source(here("scripts", "tables", "table_diagnostics.R"))
+source(here("scripts", "tables", "table_io.R"))
 
 # Source the data processing modules (modularized)
-source("scripts/data_helper/data_loading.R")
-source("scripts/data_helper/data_derivation.R")
-source("scripts/data_helper/cohort_creation.R")
-source("scripts/data_helper/data_summaries.R")
-source("scripts/data_helper/cohort_orchestration.R")
+source(here("scripts", "data_helper", "data_loading.R"))
+source(here("scripts", "data_helper", "data_derivation.R"))
+source(here("scripts", "data_helper", "cohort_creation.R"))
+source(here("scripts", "data_helper", "data_summaries.R"))
+source(here("scripts", "data_helper", "cohort_orchestration.R"))
 
 # Source the utility and helper scripts
-source("scripts/data_helper/data_utilities.R")
-source("scripts/utils/output_utilities.R")
+source(here("scripts", "data_helper", "data_utilities.R"))
+source(here("scripts", "utils", "output_utilities.R"))
 
 # Source the main analysis function scripts
-source("scripts/analysis/tumor_height_analysis.R")
-source("scripts/analysis/vision_safety_analysis.R")
+source(here("scripts", "analysis", "tumor_height_analysis.R"))
+source(here("scripts", "analysis", "vision_safety_analysis.R"))
 # Source modular statistical analysis (override monolith definitions)
-source("scripts/analysis/binary_outcomes.R")
-source("scripts/analysis/survival_outcomes.R")
-source("scripts/analysis/rmst_visualization.R")
+source(here("scripts", "analysis", "binary_outcomes.R"))
+source(here("scripts", "analysis", "survival_outcomes.R"))
+source(here("scripts", "analysis", "rmst_visualization.R"))
 
 # Source modular subgroup analysis (override monolith definitions)
-source("scripts/subgroup/subgroup_data_prep.R")
-source("scripts/subgroup/subgroup_survival.R")
-source("scripts/subgroup/subgroup_binary.R")
-source("scripts/subgroup/subgroup_height.R")
-source("scripts/subgroup/subgroup_formatting.R")
+source(here("scripts", "subgroup", "subgroup_data_prep.R"))
+source(here("scripts", "subgroup", "subgroup_survival.R"))
+source(here("scripts", "subgroup", "subgroup_binary.R"))
+source(here("scripts", "subgroup", "subgroup_height.R"))
+source(here("scripts", "subgroup", "subgroup_formatting.R"))
 
 # Source GEP evaluation modules
-source("scripts/gep/utils/gep_model_evaluation_metrics.R")
-source("scripts/gep/cores/gep_evaluation_core_mfs.R")
-source("scripts/gep/cores/gep_evaluation_core_mss.R")
-source("scripts/gep/diagnostics/gep_data_diagnostics.R")
-source("scripts/gep/visualization/gep_visuals.R")
-source("scripts/gep/reporting/gep_reporting.R")
-source("scripts/gep/simple/gep_simple_validation.R")
-source("scripts/gep/orchestration/gep_evaluation_orchestration.R")
-source("scripts/gep/utils/gep_variable_checks.R")
+source(here("scripts", "gep", "utils", "gep_model_evaluation_metrics.R"))
+source(here("scripts", "gep", "cores", "gep_evaluation_core_mfs.R"))
+source(here("scripts", "gep", "cores", "gep_evaluation_core_mss.R"))
+source(here("scripts", "gep", "visualization", "gep_visuals.R"))
+
+# Source the GEP reporting script
+source(here("scripts", "gep", "reporting", "gep_reporting_core.R"))
+source(here("scripts", "gep", "reporting", "gep_table_creation.R"))
+source(here("scripts", "gep", "reporting", "gep_summary_generation.R"))
+source(here("scripts", "gep", "reporting", "gep_clinical_interpretation.R"))
+source(here("scripts", "gep", "reporting", "gep_output_consolidation.R"))
+# Source the GEP simple validation script
+source(here("scripts", "gep", "reporting", "gep_simple_validation.R"))
+# Source the GEP evaluation orchestration script
+source(here("scripts", "gep", "orchestration", "gep_evaluation_orchestration.R"))
 
 # Source the forest plot script (commented out to use modular version)
-# source("scripts/visualization/forest_plot.R")
+# source(here("scripts", "visualization", "forest_plot.R"))
 # Source modular forest plot (override monolith definitions)
-source("scripts/visualization/forest_plot_data.R")
-source("scripts/visualization/forest_plot_draw.R")
-source("scripts/visualization/forest_plot_formatting.R")
+source(here("scripts", "visualization", "forest_plot_data.R"))
+source(here("scripts", "visualization", "forest_plot_draw.R"))
+source(here("scripts", "visualization", "forest_plot_formatting.R"))
 
 # Source the forest plot diagnostics script
-source("scripts/utils/forest_plot_diagnostics.R")
+source(here("scripts", "utils", "forest_plot_diagnostics.R"))
 
 # Workflow scripts
-source("scripts/workflow/analysis_orchestration.R")
+source(here("scripts", "workflow", "analysis_orchestration.R"))
 
 # Objective scripts
-source("scripts/workflow/objective_0_data_processing.R")
-source("scripts/workflow/objective_1_primary_outcomes.R")
-source("scripts/workflow/objective_2_safety_toxicity.R")
-source("scripts/workflow/objective_3_repeat_radiation.R")
-source("scripts/workflow/objective_4_gep_analysis.R")
+source(here("scripts", "workflow", "objective_0_data_processing.R"))
+source(here("scripts", "workflow", "objective_1_primary_outcomes.R"))
+source(here("scripts", "workflow", "objective_2_safety_toxicity.R"))
+source(here("scripts", "workflow", "objective_3_repeat_radiation.R"))
+source(here("scripts", "workflow", "objective_4_gep_analysis.R"))
 
 ######################################################################
 ############### CREATE NECESSARY DIRECTORIES ##########################
 ######################################################################
 
+# Set seed for reproducibility
+set.seed(123)
+
 # Create necessary directories now that libraries are loaded
 dir.create(PROCESSED_DATA_DIR, showWarnings = FALSE, recursive = TRUE)
 dir.create(OUTPUT_DIR, showWarnings = FALSE, recursive = TRUE)
-
 
 ######################################################################
 ############### CENTRALIZED OUTPUT DIRECTORY MANAGEMENT ###############
@@ -227,7 +240,7 @@ setup_cohort_outputs <- function(dataset_name, cohort_dir_name = NULL) {
     }
 
     # Create cohort base directory
-    cohort_base_dir <- file.path("final_data/Analysis", cohort_dir_name)
+    cohort_base_dir <- file.path(DATA_DIR, "Analysis", cohort_dir_name)
 
     # Create the complete directory structure
     output_dirs <- create_output_structure(cohort_base_dir)
@@ -314,9 +327,15 @@ make_filename_safe <- function(label) {
     return(safe_name)
 }
 
+# Required packages for GEP analysis
+required_packages <- c(
+    "survival", "survminer", "cmprsk", "riskRegression", "survcomp", "timeROC", "pROC",
+    "dplyr", "ggplot2", "gridExtra", "writexl", "readxl", "knitr", "kableExtra",
+    "gt", "gtsummary", "broom", "car", "lmtest", "sandwich", "MASS", "pscl",
+    "logistf", "mice", "VIM", "naniar", "corrplot", "RColorBrewer", "scales",
+    "stringr", "forcats", "tidyr", "purrr", "readr", "tibble", "magrittr",
+    "rmarkdown", "DT", "plotly", "shiny", "shinydashboard", "flexdashboard"
+)
 
-
-# Set default prefix if not exists
-if (!exists("prefix")) {
-    prefix <- "test_"
-}
+# Source the GEP data diagnostics script
+source(here("scripts", "data_helper", "gep_missing_data_analysis.R"))

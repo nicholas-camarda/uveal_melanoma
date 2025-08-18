@@ -1,0 +1,358 @@
+# GEP Core Reporting Functions
+# Core reporting functions and main orchestration for GEP validation results
+
+#' Save All MFS Validation Results
+#'
+#' Persist MFS validation artifacts to disk, including comprehensive summaries (xlsx), RDS
+#' objects, and consolidated outputs.
+#'
+#' @param validation_results Named list of per-timepoint MFS results
+#' @param missing_data_analysis Missing-data diagnostics results
+#' @param prame_analysis PRAME-augmented analysis results (may be NULL)
+#' @param output_dir Directory path to save artifacts
+#' @param prefix Filename prefix for saved files
+#' @return Invisibly returns NULL after writing files
+save_mfs_validation_results <- function(validation_results, missing_data_analysis, prame_analysis, output_dir, prefix) {
+    logger::log_info(formatted("Saving MFS validation results", indent = 1))
+    tryCatch(
+        {
+            # Build unified workbook sheets (canonical output)
+            oe_summary <- data.frame()
+            for (tp_key in names(validation_results)) {
+                result <- validation_results[[tp_key]]
+                if (!is.null(result$observed_expected)) {
+                    oe_data <- result$observed_expected
+                    # Per-class rows
+                    for (class in names(oe_data$results_by_class)) {
+                        class_result <- oe_data$results_by_class[[class]]
+                        oe_summary <- rbind(oe_summary, data.frame(
+                            Timepoint = tp_key,
+                            GEP_Class = class,
+                            N = class_result$n,
+                            Observed = class_result$observed,
+                            Expected = class_result$expected,
+                            OE_Ratio = class_result$oe_ratio,
+                            CI_Lower = class_result$poisson_ci_lower,
+                            CI_Upper = class_result$poisson_ci_upper,
+                            stringsAsFactors = FALSE
+                        ))
+                    }
+                    # Overall row per timepoint
+                    oe_summary <- rbind(oe_summary, data.frame(
+                        Timepoint = tp_key,
+                        GEP_Class = "Overall",
+                        N = sum(vapply(oe_data$results_by_class, function(x) x$n, numeric(1))),
+                        Observed = oe_data$overall_observed,
+                        Expected = oe_data$overall_expected,
+                        OE_Ratio = oe_data$overall_oe_ratio,
+                        CI_Lower = oe_data$overall_poisson_ci_lower,
+                        CI_Upper = oe_data$overall_poisson_ci_upper,
+                        stringsAsFactors = FALSE
+                    ))
+                }
+            }
+
+            cal_summary <- data.frame()
+            for (tp_key in names(validation_results)) {
+                result <- validation_results[[tp_key]]
+                if (!is.null(result$calibration)) {
+                    cal_data <- result$calibration
+                    cal_summary <- rbind(cal_summary, data.frame(
+                        Timepoint = tp_key,
+                        N = cal_data$n,
+                        Nam_D_Agostino_p = cal_data$nam_dagostino_p,
+                        ICI = cal_data$ici,
+                        Slope = cal_data$calibration_slope,
+                        stringsAsFactors = FALSE
+                    ))
+                }
+            }
+
+            disc_summary <- data.frame()
+            for (tp_key in names(validation_results)) {
+                result <- validation_results[[tp_key]]
+                if (!is.null(result$discrimination)) {
+                    disc_data <- result$discrimination
+                    disc_summary <- rbind(disc_summary, data.frame(
+                        Timepoint = tp_key,
+                        N = disc_data$n,
+                        Events = disc_data$events,
+                        Harrell_C = disc_data$harrell_c,
+                        Uno_C = disc_data$uno_c,
+                        AUC = disc_data$auc_timepoint,
+                        stringsAsFactors = FALSE
+                    ))
+                }
+            }
+
+            unified_sheets <- list()
+            if (nrow(oe_summary) > 0) unified_sheets[["Observed_Expected_by_class"]] <- oe_summary
+            if (nrow(cal_summary) > 0) unified_sheets[["Calibration"]] <- cal_summary
+            if (nrow(disc_summary) > 0) unified_sheets[["Discrimination"]] <- disc_summary
+            if (length(unified_sheets) > 0) {
+                writexl::write_xlsx(unified_sheets, file.path(output_dir, paste0(prefix, "mfs_validation_summary.xlsx")))
+            }
+        },
+        error = function(e) {
+            logger::log_warn(formatted("Error saving summary tables", indent = 2))
+        }
+    )
+    # Optional: persist R objects for reproducibility or downstream analyses
+    if (GEP_SAVE_RDS) {
+        saveRDS(validation_results, file.path(output_dir, paste0(prefix, "mfs_validation_results.rds")))
+        saveRDS(missing_data_analysis, file.path(output_dir, paste0(prefix, "missing_data_analysis.rds")))
+        saveRDS(prame_analysis, file.path(output_dir, paste0(prefix, "prame_analysis.rds")))
+    }
+
+    # Create comprehensive, interpretable summary instead of repetitive per-timepoint approach
+    # Pass a safe dataset_name (NULL uses internal default handling)
+    comprehensive_summary <- create_comprehensive_gep_summary(
+        validation_results = validation_results,
+        outcome_type = "MFS",
+        prame_analysis = prame_analysis,
+        missing_data_analysis = missing_data_analysis,
+        dataset_name = NULL
+    )
+    
+    # Save comprehensive summary (but don't save to text file to avoid redundancy)
+    # REMOVED: Text file generation to eliminate redundancy
+    # writeLines(comprehensive_summary, file.path(output_dir, paste0(prefix, "mfs_validation_summary.txt")))
+    
+    # Create consolidated tables to replace redundant visualizations
+    consolidated_tables <- create_consolidated_gep_tables(
+        validation_results = validation_results,
+        outcome_type = "MFS",
+        output_dir = output_dir,
+        prefix = prefix
+    )
+    
+    logger::log_info("MFS validation results saved successfully")
+    logger::log_info(sprintf("Consolidated tables created: %s", paste(names(consolidated_tables), collapse = ", ")))
+    
+    # REMOVED: Simplified outputs directory creation to eliminate redundancy
+    # simplified_dir <- file.path(output_dir, "simplified_outputs")
+    # if (!dir.exists(simplified_dir)) {
+    #     dir.create(simplified_dir, recursive = TRUE, showWarnings = FALSE)
+    # }
+    
+    # REMOVED: Duplicate consolidated summary saving to eliminate redundancy
+    # simplified_summary_path <- file.path(simplified_dir, paste0(prefix, "mfs_consolidated_summary.txt"))
+    # writeLines(consolidated_tables$text_summary, simplified_summary_path)
+    # logger::log_info(formatted("Simplified MFS summary saved: %s", simplified_summary_path), indent = 2)
+}
+
+#' Save MSS validation results
+#'
+#' Persist MSS validation artifacts to disk, including per-timepoint sheets for
+#' observed/expected, calibration, discrimination, and competing risks.
+#'
+#' @param standard_results Named list of standard MSS results (per timepoint)
+#' @param competing_results Named list of competing risk MSS results (per timepoint)
+#' @param missing_data Missing-data diagnostics results (may be NULL)
+#' @param prame_results PRAME-augmented MSS analysis results (may be NULL)
+#' @param output_dir Directory path to save artifacts
+#' @param prefix Filename prefix for saved files
+#' @param group_var Variable name for grouping (default: "biopsy1_gep")
+#' @return Invisibly returns NULL after writing files
+save_mss_validation_results <- function(standard_results, competing_results,
+                                        missing_data, prame_results, output_dir, prefix,
+                                        group_var = "biopsy1_gep") {
+    logger::log_info("Saving MSS validation results")
+    if (GEP_SAVE_RDS) {
+        saveRDS(standard_results, file.path(output_dir, paste0(prefix, "mss_standard_validation_results.rds")))
+        saveRDS(competing_results, file.path(output_dir, paste0(prefix, "mss_competing_risk_results.rds")))
+        if (!is.null(missing_data)) {
+            saveRDS(missing_data, file.path(output_dir, paste0(prefix, "mss_missing_data_analysis.rds")))
+        }
+        if (!is.null(prame_results)) {
+            saveRDS(prame_results, file.path(output_dir, paste0(prefix, "mss_prame_analysis.rds")))
+        }
+    }
+    create_mss_validation_excel_files(
+        standard_results = standard_results,
+        competing_results = competing_results,
+        missing_data = missing_data,
+        prame_results = prame_results,
+        output_dir = output_dir,
+        prefix = prefix,
+        group_var = group_var
+    )
+    create_mss_validation_summary_text(
+        standard_results = standard_results,
+        competing_results = competing_results,
+        missing_data = missing_data,
+        prame_results = prame_results,
+        output_dir = output_dir,
+        prefix = prefix,
+        group_var = group_var
+    )
+}
+
+#' Create MSS validation Excel files
+create_mss_validation_excel_files <- function(standard_results, competing_results,
+                                              missing_data, prame_results, output_dir, prefix,
+                                              group_var = "biopsy1_gep") {
+    logger::log_info("Creating MSS validation Excel files")
+    excel_sheets <- list()
+    # Summary statistics now generated by comprehensive summary system
+
+    # Stacked tables parallel to MFS workbook
+    obs_exp_df <- data.frame()
+    cal_df <- data.frame()
+    disc_df <- data.frame()
+    counts_df <- data.frame()
+    cif_ci_df <- data.frame()
+
+    for (tp_name in names(standard_results)) {
+        tp_results <- standard_results[[tp_name]]
+        # Observed/Expected by class using available fields
+        if (!is.null(tp_results$observed_expected)) {
+            oe <- tp_results$observed_expected
+            if (is.data.frame(oe)) {
+                # Accept either counts or rates input; compute rates if needed
+                if (all(c(group_var, "n") %in% names(oe))) {
+                    keep_cols <- intersect(names(oe), c(group_var, "n", "observed", "expected", "expected_rate", "observed_rate"))
+                    tmp_counts <- oe[, keep_cols]
+                    names(tmp_counts)[names(tmp_counts) == group_var] <- "GEP_Class"
+                    tmp_counts$Timepoint <- tp_name
+                    counts_df <- rbind(counts_df, tmp_counts)
+                }
+                if (all(c("expected", "observed", "n", group_var) %in% names(oe))) {
+                    tmp <- data.frame(
+                        Timepoint = tp_name,
+                        GEP_Class = oe[[group_var]],
+                        N = oe$n,
+                        Expected = oe$expected,
+                        Observed = oe$observed,
+                        OE_Ratio = ifelse(oe$expected > 0, oe$observed / oe$expected, NA_real_),
+                        stringsAsFactors = FALSE
+                    )
+                    obs_exp_df <- rbind(obs_exp_df, tmp)
+                } else if (all(c("expected_rate", "observed_rate", "n", group_var) %in% names(oe))) {
+                    tmp <- data.frame(
+                        Timepoint = tp_name,
+                        GEP_Class = oe[[group_var]],
+                        N = oe$n,
+                        Expected = oe$expected_rate * oe$n,
+                        Observed = oe$observed_rate * oe$n,
+                        OE_Ratio = ifelse(oe$expected_rate > 0, (oe$observed_rate / oe$expected_rate), NA_real_),
+                        stringsAsFactors = FALSE
+                    )
+                    obs_exp_df <- rbind(obs_exp_df, tmp)
+                }
+            }
+        }
+        # Calibration
+        if (!is.null(tp_results$calibration)) {
+            cal <- tp_results$calibration
+            cal_df <- rbind(cal_df, data.frame(
+                Timepoint = tp_name,
+                N = cal$n %||% NA,
+                Nam_D_Agostino_p = cal$nam_dagostino_p %||% cal$nam_dagostino_p,
+                ICI = cal$ici %||% NA,
+                Slope = cal$slope %||% cal$calibration_slope %||% NA,
+                stringsAsFactors = FALSE
+            ))
+        }
+        # Discrimination
+        if (!is.null(tp_results$discrimination)) {
+            d <- tp_results$discrimination
+            if (!is.data.frame(d)) d <- as.data.frame(lapply(d, identity))
+            d$Timepoint <- tp_name
+            disc_df <- rbind(disc_df, d)
+        }
+    }
+
+    if (nrow(obs_exp_df) > 0) excel_sheets[["Observed_Expected_by_class"]] <- obs_exp_df
+    if (nrow(cal_df) > 0) excel_sheets[["Calibration"]] <- cal_df
+    if (nrow(disc_df) > 0) excel_sheets[["Discrimination"]] <- disc_df
+    if (nrow(counts_df) > 0) excel_sheets[["Counts"]] <- counts_df
+
+    if (!is.null(competing_results)) {
+        # Stack competing risks tables with a Timepoint column
+        ci_df <- data.frame()
+        csh_df <- data.frame()
+        for (tp_name in names(competing_results)) {
+            tp_results <- competing_results[[tp_name]]
+            if (!is.null(tp_results$cumulative_incidence)) {
+                tmp <- tp_results$cumulative_incidence
+                tmp$Timepoint <- tp_name
+                # Standardize class column deterministically using group_var parameter
+                tmp$GEP_Class <- tmp[[group_var]]
+                tmp <- tmp[, c("GEP_Class", setdiff(names(tmp), c(group_var, "GEP_Class"))), drop = FALSE]
+                ci_df <- rbind(ci_df, tmp)
+            }
+            # Cause-specific Cox model (CSC proxy)
+            if (!is.null(tp_results$cause_specific_cox)) {
+                tmp <- tp_results$cause_specific_cox
+                tmp$Timepoint <- tp_name
+                names(tmp) <- c("GEP_Class", "HR", "CI_Lower", "CI_Upper", "p_value", "reference", "Timepoint")
+                csh_df <- rbind(csh_df, tmp)
+            }
+            # Fine-Gray subdistribution model
+            if (!is.null(tp_results$fine_gray)) {
+                fg_tmp <- tp_results$fine_gray
+                fg_tmp$Timepoint <- tp_name
+                if (!"GEP_Class" %in% names(fg_tmp)) names(fg_tmp)[1] <- "GEP_Class"
+                excel_sheets[["CompetingRisk_FineGray"]] <- rbind(excel_sheets[["CompetingRisk_FineGray"]] %||% data.frame(), fg_tmp)
+            }
+            if (!is.null(tp_results$cif_with_ci)) {
+                tmp <- tp_results$cif_with_ci
+                tmp$Timepoint <- tp_name
+                names(tmp) <- c("GEP_Class", "N", "CIF", "CI_Lower", "CI_Upper", "Timepoint")
+                cif_ci_df <- rbind(cif_ci_df, tmp)
+            }
+        }
+        if (nrow(ci_df) > 0) excel_sheets[["CompRisk_CIF"]] <- ci_df
+        if (nrow(csh_df) > 0) excel_sheets[["CompRisk_CSC"]] <- csh_df
+        if (nrow(cif_ci_df) > 0) excel_sheets[["CompRisk_CIF_with_CI"]] <- cif_ci_df
+    }
+    excel_path <- file.path(output_dir, paste0(prefix, "mss_validation_summary.xlsx"))
+    writexl::write_xlsx(excel_sheets, excel_path)
+    logger::log_info(sprintf("MSS validation Excel file saved: %s", excel_path))
+}
+
+#' Create MSS validation summary text
+create_mss_validation_summary_text <- function(standard_results, competing_results,
+                                               missing_data, prame_results, output_dir, prefix,
+                                               group_var = "biopsy1_gep") {
+    logger::log_info("Creating MSS validation summary text file")
+    
+    # Create comprehensive, interpretable summary instead of repetitive per-timepoint approach
+    # Convert standard_results to the format expected by create_comprehensive_gep_summary
+    validation_results <- standard_results
+    
+    comprehensive_summary <- create_comprehensive_gep_summary(
+        validation_results = validation_results,
+        outcome_type = "MSS",
+        prame_analysis = prame_results,
+        missing_data_analysis = missing_data,
+        dataset_name = NULL
+    )
+    
+    # Save comprehensive summary
+    summary_path <- file.path(output_dir, paste0(prefix, "mss_validation_summary.txt"))
+    writeLines(comprehensive_summary, summary_path)
+    
+    # Create consolidated tables to replace redundant visualizations
+    consolidated_tables <- create_consolidated_gep_tables(
+        validation_results = validation_results,
+        outcome_type = "MSS",
+        output_dir = output_dir,
+        prefix = prefix
+    )
+    
+    logger::log_info(sprintf("MSS validation summary saved: %s", summary_path))
+    logger::log_info(sprintf("Consolidated tables created: %s", paste(names(consolidated_tables), collapse = ", ")))
+    
+    # REMOVED: Simplified outputs directory creation to eliminate redundancy
+    # simplified_dir <- file.path(output_dir, "simplified_outputs")
+    # if (!dir.exists(simplified_dir)) {
+    #     dir.create(simplified_dir, recursive = TRUE, showWarnings = FALSE)
+    # }
+    
+    # REMOVED: Duplicate consolidated summary saving to eliminate redundancy
+    # simplified_summary_path <- file.path(simplified_dir, paste0(prefix, "mss_consolidated_summary.txt"))
+    # writeLines(consolidated_tables$text_summary, simplified_summary_path)
+    # logger::log_info(formatted("Simplified MSS summary saved: %s", simplified_summary_path), indent = 2)
+}

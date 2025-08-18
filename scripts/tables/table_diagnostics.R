@@ -1,79 +1,153 @@
 # Table Diagnostics Utilities
 
-#' Create comprehensive diagnostics with all required tabs
+#' Create comprehensive diagnostic information for regression models
 #'
 #' @param model_fit Fitted model object
-#' @param data Data frame
-#' @param outcome_var Character string name of outcome variable
+#' @param data Data frame used for the model
+#' @param outcome_var Name of the outcome variable
 #' @param predictor_vars Character vector of predictor variables
 #' @param confounders Character vector of confounder variables
-#' @param analysis_name Character string for analysis name
-#' @param dataset_name Character string for dataset name
-#' @param filtered_variables Character vector of variables that were filtered from the table
-#' @param treatment_var Character string for treatment variable (default: "treatment_group")
+#' @param analysis_name Name of the analysis
+#' @param dataset_name Name of the dataset
+#' @param filtered_variables Character vector of filtered variables (optional)
+#' @param other_map List mapping variable names to "Other" categories (optional)
+#' @param extreme_diagnostics List containing extreme estimate diagnostics (optional)
+#' @param treatment_var Name of treatment variable (default: "treatment_group")
+#' @param effect_measure Effect measure type (optional, auto-detected if NULL)
+#' @param table_result gtsummary table object (optional)
 #' @return List containing all diagnostic data frames
-create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predictor_vars, confounders, analysis_name, dataset_name, filtered_variables = NULL, other_map = list(), extreme_diagnostics = NULL, treatment_var = "treatment_group") {
-    # Get model coefficients and summary
-    coefs <- coef(model_fit)
+create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predictor_vars, confounders, analysis_name, dataset_name, filtered_variables = NULL, other_map = list(), extreme_diagnostics = NULL, treatment_var = "treatment_group", effect_measure = NULL, table_result = NULL) {
+    # === UNIFIED MODEL EXTRACTION ===
+    # Single model summary call - no redundancy
     model_summary <- summary(model_fit)
+    coefs <- coef(model_fit)
 
-    # Create a temporary gtsummary table to get the confidence intervals
-    temp_table <- tryCatch(
-        {
-            model_fit %>%
-                tbl_regression(
-                    exponentiate = FALSE,
-                    conf.int = TRUE
-                )
-        },
+    # Unified confidence interval extraction - no gtsummary fallback complexity
+    conf_int <- tryCatch(
+        suppressWarnings(confint(model_fit)),
         error = function(e) {
-            logger::log_warn(sprintf("Warning: Could not create temporary table for CI extraction: %s", e$message))
-            NULL
+            logger::log_warn(sprintf("Warning: Could not compute confidence intervals: %s", e$message))
+            matrix(NA,
+                nrow = length(coefs), ncol = 2,
+                dimnames = list(names(coefs), c("2.5 %", "97.5 %"))
+            )
         }
     )
 
-    # Extract confidence intervals from the gtsummary table
-    if (!is.null(temp_table)) {
-        table_data <- temp_table$table_body
-        ci_mapping <- data.frame(
-            term = table_data$term,
-            conf.low = table_data$conf.low,
-            conf.high = table_data$conf.high,
+    # Unified model type and effect measure detection - no duplication
+    model_type <- class(model_fit)[1]
+    if (is.null(effect_measure)) {
+        effect_measure <- ifelse("coxph" %in% class(model_fit), "HR", "OR")
+    }
+    is_exponentiated <- effect_measure %in% c("OR", "HR")
+    filtering_scale <- ifelse(is_exponentiated, "log_scale", "raw_scale")
+
+    # === UNIFIED P-VALUE EXTRACTION ===
+    p_values <- extract_p_values(model_summary, coefs)
+
+
+
+    # === UNIFIED FACTOR LABEL P-VALUES ===
+    factor_label_pvalues_tab <- create_factor_label_pvalues(model_fit, data, outcome_var, confounders, treatment_var)
+    factor_label_pvalue_map <- setNames(factor_label_pvalues_tab$factor_label_pvalue, factor_label_pvalues_tab$variable)
+
+    # === UNIFIED DIAGNOSTIC TABLES ===
+    model_summary_tab <- create_model_summary_tab(model_fit, data, outcome_var, confounders, analysis_name, extreme_diagnostics, filtered_variables)
+    model_diagnostics_tab <- create_model_diagnostics_tab(model_fit, dataset_name, analysis_name, effect_measure, coefs, extreme_diagnostics, filtered_variables)
+    data_characteristics_tab <- create_data_characteristics_tab(dataset_name, analysis_name, predictor_vars, confounders, outcome_var, data)
+    other_level_details_tab <- create_other_level_details_tab(model_fit, other_map)
+
+    # === UNIFIED RAW MODEL OUTPUT ===
+    raw_model_output_tab <- create_raw_model_output_tab(
+        coefs, conf_int, p_values, factor_label_pvalue_map,
+        effect_measure, filtering_scale, model_fit, data, factor_label_pvalues_tab,
+        table_result  # Pass the gtsummary table to ensure consistent ordering
+    )
+
+    # === UNIFIED FILTERING LOGIC ===
+    raw_model_output_tab <- apply_filtering_logic(
+        raw_model_output_tab, filtered_variables, extreme_diagnostics, factor_label_pvalues_tab
+    )
+
+    # === UNIFIED EXCLUDED ROWS ===
+    excluded_rows_tab <- create_excluded_rows_tab(raw_model_output_tab)
+
+    # === UNIFIED FILTERING SUMMARY ===
+    filtering_summary_tab <- create_filtering_summary_tab(raw_model_output_tab, excluded_rows_tab, conf_int, predictor_vars)
+
+    # === UNIFIED REFERENCE LEVELS ===
+    reference_levels_tab <- create_reference_levels_tab(extreme_diagnostics)
+
+    return(list(
+        model_summary = model_summary_tab,
+        model_diagnostics_tab = model_diagnostics_tab,
+        data_characteristics = data_characteristics_tab,
+        other_level_details = other_level_details_tab,
+        excluded_rows = excluded_rows_tab,
+        raw_model_output = raw_model_output_tab,
+        filtering_summary = filtering_summary_tab,
+        reference_levels = reference_levels_tab
+    ))
+}
+
+# === HELPER FUNCTIONS ===
+
+#' Extract p-values from model summary
+extract_p_values <- function(model_summary, coefs) {
+    n_coefs <- length(coefs)
+    p_values_vector <- rep(NA, n_coefs)
+    names(p_values_vector) <- names(coefs)
+
+    available_coefs <- intersect(names(coefs), rownames(model_summary$coefficients))
+    if (length(available_coefs) > 0) {
+        col_names <- colnames(model_summary$coefficients)
+        p_value_col <- which(col_names %in% c("Pr(>|z|)", "Pr(>|t|)", "Pr(>F)"))
+        if (length(p_value_col) == 0) {
+            p_value_col <- ncol(model_summary$coefficients)
+            logger::log_warn(sprintf("Warning: Could not find p-value column, using last column (%d)", p_value_col))
+        } else {
+            p_value_col <- p_value_col[1]
+        }
+        p_values_vector[available_coefs] <- as.numeric(model_summary$coefficients[available_coefs, p_value_col])
+    }
+
+    return(p_values_vector)
+}
+
+
+
+#' Create factor label p-values table
+create_factor_label_pvalues <- function(model_fit, data, outcome_var, confounders, treatment_var) {
+    model_terms <- attr(terms(model_fit), "term.labels")
+    variables_to_test <- unique(c(treatment_var, model_terms))
+
+    factor_label_pvalues_list <- list()
+    for (var_name in variables_to_test) {
+        var_confounders <- confounders[confounders != var_name]
+        pval <- calculate_factor_label_pvalue(model_fit, var_name, data, outcome_var, var_confounders, treatment_var = treatment_var)
+        factor_label_pvalues_list[[length(factor_label_pvalues_list) + 1]] <- data.frame(
+            variable = var_name,
+            factor_label_pvalue = pval,
+            test_type = "Likelihood Ratio Test",
             stringsAsFactors = FALSE
         )
+    }
 
-        conf_int <- matrix(NA,
-            nrow = length(coefs), ncol = 2,
-            dimnames = list(names(coefs), c("2.5 %", "97.5 %"))
-        )
-
-        for (i in seq_len(nrow(ci_mapping))) {
-            term_name <- ci_mapping$term[i]
-            if (term_name %in% names(coefs)) {
-                conf_int[term_name, "2.5 %"] <- ci_mapping$conf.low[i]
-                conf_int[term_name, "97.5 %"] <- ci_mapping$conf.high[i]
-            }
-        }
+    if (length(factor_label_pvalues_list) > 0) {
+        do.call(rbind, factor_label_pvalues_list)
     } else {
-        conf_int <- tryCatch(
-            {
-                suppressWarnings(confint(model_fit))
-            },
-            error = function(e) {
-                logger::log_warn(sprintf("Warning: Could not compute confidence intervals: %s", e$message))
-                matrix(NA,
-                    nrow = length(coefs), ncol = 2,
-                    dimnames = list(names(coefs), c("2.5 %", "97.5 %"))
-                )
-            }
+        data.frame(
+            variable = character(),
+            factor_label_pvalue = numeric(),
+            test_type = character(),
+            stringsAsFactors = FALSE
         )
     }
+}
 
-    if (all(is.na(conf_int))) {
-        logger::log_warn("Warning: All confidence intervals are NA - this indicates severe model convergence issues")
-    }
-
-    model_summary_tab <- data.frame(
+#' Create model summary table
+create_model_summary_tab <- function(model_fit, data, outcome_var, confounders, analysis_name, extreme_diagnostics, filtered_variables) {
+    data.frame(
         analysis_type = paste0("unified_", analysis_name),
         outcome = outcome_var,
         n_total = nrow(data),
@@ -86,12 +160,13 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
         notes = "Generated by unified table generation system",
         stringsAsFactors = FALSE
     )
+}
 
+#' Create model diagnostics table
+create_model_diagnostics_tab <- function(model_fit, dataset_name, analysis_name, effect_measure, coefs, extreme_diagnostics, filtered_variables) {
     model_warnings <- c()
-    if (!is.null(model_fit) && "glm" %in% class(model_fit)) {
-        if (!model_fit$converged) {
-            model_warnings <- c(model_warnings, "Model did not converge")
-        }
+    if (!is.null(model_fit) && "glm" %in% class(model_fit) && !model_fit$converged) {
+        model_warnings <- c(model_warnings, "Model did not converge")
     }
     if (!is.null(extreme_diagnostics) && length(extreme_diagnostics) > 0) {
         model_warnings <- c(model_warnings, "Extreme estimates detected")
@@ -101,10 +176,10 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
     }
     model_warnings_text <- if (length(model_warnings) > 0) paste(model_warnings, collapse = "; ") else "None"
 
-    model_diagnostics_tab <- data.frame(
+    data.frame(
         dataset_name = dataset_name,
         model_type = class(model_fit)[1],
-        effect_measure = ifelse("coxph" %in% class(model_fit), "HR", "OR"),
+        effect_measure = effect_measure,
         n_coefficients = length(coefs),
         model_converged = ifelse("glm" %in% class(model_fit), model_fit$converged, TRUE),
         log_likelihood = ifelse("glm" %in% class(model_fit), logLik(model_fit), NA),
@@ -113,8 +188,11 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
         model_warnings = model_warnings_text,
         stringsAsFactors = FALSE
     )
+}
 
-    data_characteristics_tab <- data.frame(
+#' Create data characteristics table
+create_data_characteristics_tab <- function(dataset_name, analysis_name, predictor_vars, confounders, outcome_var, data) {
+    data.frame(
         dataset_name = dataset_name,
         analysis_name = analysis_name,
         total_variables = length(c(predictor_vars, confounders)),
@@ -125,16 +203,13 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
         missing_data_pct = round(mean(is.na(data[c(predictor_vars, confounders, outcome_var)])) * 100, 1),
         stringsAsFactors = FALSE
     )
+}
 
-    other_level_details_tab <- data.frame(
-        variable = character(),
-        has_other_level = logical(),
-        other_categories = character(),
-        other_count = integer(),
-        stringsAsFactors = FALSE
-    )
-
+#' Create other level details table
+create_other_level_details_tab <- function(model_fit, other_map) {
+    other_level_details_list <- list()
     model_data <- model_fit$model
+
     for (var_name in names(model_data)) {
         if (var_name != "(weights)" && var_name != "(offset)") {
             var_data <- model_data[[var_name]]
@@ -142,346 +217,322 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
                 levels_data <- levels(var_data) %||% unique(var_data)
                 if ("Other" %in% levels_data) {
                     other_count <- sum(var_data == "Other", na.rm = TRUE)
-                    if (var_name %in% names(other_map) && length(other_map[[var_name]]) > 0) {
-                        other_categories <- paste(other_map[[var_name]], collapse = ", ")
+                    other_categories <- if (var_name %in% names(other_map) && length(other_map[[var_name]]) > 0) {
+                        paste(other_map[[var_name]], collapse = ", ")
                     } else {
-                        other_categories <- "Original categories not available in model data"
+                        "Original categories not available in model data"
                     }
-                    other_level_details_tab <- rbind(other_level_details_tab, data.frame(
+                    other_level_details_list[[length(other_level_details_list) + 1]] <- data.frame(
                         variable = var_name,
                         has_other_level = TRUE,
                         other_categories = other_categories,
                         other_count = other_count,
                         stringsAsFactors = FALSE
-                    ))
+                    )
                 }
             }
         }
     }
 
-    excluded_rows_tab <- data.frame(
-        term = character(),
-        variable = character(),
-        label = character(),
-        estimate = numeric(),
-        conf_low = numeric(),
-        conf_high = numeric(),
-        exclusion_reason = character(),
-        stringsAsFactors = FALSE
-    )
+    if (length(other_level_details_list) > 0) {
+        do.call(rbind, other_level_details_list)
+    } else {
+        data.frame(
+            variable = character(),
+            has_other_level = logical(),
+            other_categories = character(),
+            other_count = integer(),
+            stringsAsFactors = FALSE
+        )
+    }
+}
 
-    factor_label_pvalues_tab <- data.frame(
-        variable = character(),
-        factor_label_pvalue = numeric(),
-        test_type = character(),
-        stringsAsFactors = FALSE
-    )
-
-    model_terms <- attr(terms(model_fit), "term.labels")
-    variables_to_test <- unique(c(treatment_var, model_terms))
-
-    for (var_name in variables_to_test) {
-        var_confounders <- confounders[confounders != var_name]
-        pval <- calculate_factor_label_pvalue(model_fit, var_name, data, outcome_var, var_confounders, treatment_var = treatment_var)
-        factor_label_pvalues_tab <- rbind(factor_label_pvalues_tab, data.frame(
-            variable = var_name,
-            factor_label_pvalue = pval,
-            test_type = "Likelihood Ratio Test",
+#' Create raw model output table
+create_raw_model_output_tab <- function(coefs, conf_int, p_values, factor_label_pvalue_map, effect_measure, filtering_scale, model_fit, data, factor_label_pvalues_tab, table_result) {
+    # Use gtsummary table structure as the foundation
+    gts_table_body <- table_result$table_body
+    
+    # Debug: Print the gtsummary structure to understand what we're working with
+    logger::log_debug("gtsummary table structure:")
+    logger::log_debug(paste("Total rows:", nrow(gts_table_body)))
+    logger::log_debug(paste("Columns:", paste(colnames(gts_table_body), collapse = ", ")))
+    logger::log_debug("First few rows:")
+    for (i in seq_len(min(5, nrow(gts_table_body)))) {
+        row <- gts_table_body[i, ]
+        logger::log_debug(sprintf("Row %d: variable='%s', row_type='%s', reference_row=%s, term='%s'", 
+                                 i, row$variable, row$row_type, row$reference_row, row$term))
+    }
+    
+    # Create the table structure based on gtsummary order
+    table_rows <- list()
+    current_pos <- 1
+    
+    # Add intercept first if it exists in the model coefficients
+    if ("(Intercept)" %in% names(coefs)) {
+        intercept_row <- data.frame(
+            variable_base = "(Intercept)",
+            variable = "(Intercept)",
+            effect_measure = effect_measure,
+            filtering_scale = filtering_scale,
+            raw_coefficient = as.numeric(coefs["(Intercept)"]),
+            raw_ci_lower = if ("(Intercept)" %in% rownames(conf_int)) conf_int["(Intercept)", 1] else NA_real_,
+            raw_ci_upper = if ("(Intercept)" %in% rownames(conf_int)) conf_int["(Intercept)", 2] else NA_real_,
+            exp_estimate = if (effect_measure %in% c("OR", "HR")) exp(as.numeric(coefs["(Intercept)"])) else NA,
+            exp_ci_lower = if (effect_measure %in% c("OR", "HR") && "(Intercept)" %in% rownames(conf_int)) exp(conf_int["(Intercept)", 1]) else NA,
+            exp_ci_upper = if (effect_measure %in% c("OR", "HR") && "(Intercept)" %in% rownames(conf_int)) exp(conf_int["(Intercept)", 2]) else NA,
+            p_value = p_values["(Intercept)"],
+            row_type = "Coefficient",
+            inclusion_status = "Included",
+            filtering_reason = "None",
+            stringsAsFactors = FALSE
+        )
+        
+        # Add reporting columns
+        is_survival_model <- "coxph" %in% class(model_fit)
+        if (is_survival_model) {
+            intercept_row$hazard_ratio <- intercept_row$exp_estimate
+            intercept_row$hr_ci_lower <- intercept_row$exp_ci_lower
+            intercept_row$hr_ci_upper <- intercept_row$exp_ci_upper
+            intercept_row$odds_ratio <- NA_real_
+            intercept_row$or_ci_lower <- NA_real_
+            intercept_row$or_ci_upper <- NA_real_
+        } else if ("glm" %in% class(model_fit) && effect_measure == "OR") {
+            intercept_row$hazard_ratio <- NA_real_
+            intercept_row$hr_ci_lower <- NA_real_
+            intercept_row$hr_ci_upper <- NA_real_
+            intercept_row$odds_ratio <- intercept_row$exp_estimate
+            intercept_row$or_ci_lower <- intercept_row$exp_ci_lower
+            intercept_row$or_ci_upper <- intercept_row$exp_ci_upper
+        } else {
+            intercept_row$hazard_ratio <- NA_real_
+            intercept_row$hr_ci_lower <- NA_real_
+            intercept_row$hr_ci_upper <- NA_real_
+            intercept_row$odds_ratio <- NA_real_
+            intercept_row$or_ci_lower <- NA_real_
+            intercept_row$or_ci_upper <- NA_real_
+        }
+        
+        table_rows[[current_pos]] <- intercept_row
+        current_pos <- current_pos + 1
+    }
+    
+    # Process each row in gtsummary order
+    for (i in seq_len(nrow(gts_table_body))) {
+        gts_row <- gts_table_body[i, ]
+        var_name <- gts_row$variable
+        row_type <- gts_row$row_type
+        is_reference <- gts_row$reference_row
+        
+        if (row_type == "label") {
+            # This is a factor label row - create it with interaction p-value
+            factor_pvalue <- if (var_name %in% factor_label_pvalues_tab$variable) {
+                factor_label_pvalues_tab$factor_label_pvalue[factor_label_pvalues_tab$variable == var_name]
+            } else {
+                NA_real_
+            }
+            
+            factor_label_row <- data.frame(
+                variable_base = var_name,
+                variable = var_name,
+                effect_measure = effect_measure,
+                filtering_scale = filtering_scale,
+                raw_coefficient = NA_real_,
+                raw_ci_lower = NA_real_,
+                raw_ci_upper = NA_real_,
+                exp_estimate = NA_real_,
+                exp_ci_lower = NA_real_,
+                exp_ci_upper = NA_real_,
+                p_value = factor_pvalue,
+                row_type = "Factor Label",
+                inclusion_status = "Included",
+                filtering_reason = "None",
+                stringsAsFactors = FALSE
+            )
+            
+            # Add reporting columns
+            factor_label_row$hazard_ratio <- NA_real_
+            factor_label_row$hr_ci_lower <- NA_real_
+            factor_label_row$hr_ci_upper <- NA_real_
+            factor_label_row$odds_ratio <- NA_real_
+            factor_label_row$or_ci_lower <- NA_real_
+            factor_label_row$or_ci_upper <- NA_real_
+            
+            table_rows[[current_pos]] <- factor_label_row
+            current_pos <- current_pos + 1
+            
+        } else if (row_type == "level") {
+            # This is a level row - check if it's a reference level or coefficient
+            if (!is_reference) {
+                # This is a coefficient level - find the corresponding coefficient
+                # The term column in gtsummary contains the actual coefficient name
+                coeff_name <- gts_row$term
+                if (!is.na(coeff_name) && coeff_name %in% names(coefs)) {
+                    # Extract the actual level name by removing the base variable from the term
+                    level_name <- sub(paste0("^", var_name), "", coeff_name)
+                    if (level_name == "") {
+                        level_name <- coeff_name
+                    }
+                    
+                    # Get coefficient data
+                    coeff_value <- coefs[coeff_name]
+                    p_value <- p_values[coeff_name]
+                    
+                    # Get confidence interval if available
+                    ci_lower <- NA_real_
+                    ci_upper <- NA_real_
+                    if (coeff_name %in% rownames(conf_int)) {
+                        ci_lower <- conf_int[coeff_name, 1]
+                        ci_upper <- conf_int[coeff_name, 2]
+                    }
+                    
+                    # Create coefficient row
+                    coeff_row <- data.frame(
+                        variable_base = var_name,  # Base variable name (e.g., "treatment_group")
+                        variable = level_name,     # Actual level name (e.g., "GKSRS")
+                        effect_measure = effect_measure,
+                        filtering_scale = filtering_scale,
+                        raw_coefficient = as.numeric(coeff_value),
+                        raw_ci_lower = ci_lower,
+                        raw_ci_upper = ci_upper,
+                        exp_estimate = if (effect_measure %in% c("OR", "HR")) exp(as.numeric(coeff_value)) else NA,
+                        exp_ci_lower = if (effect_measure %in% c("OR", "HR")) exp(ci_lower) else NA,
+                        exp_ci_upper = if (effect_measure %in% c("OR", "HR")) exp(ci_upper) else NA,
+                        p_value = p_value,
+                        row_type = "Coefficient",
+                        inclusion_status = "Included",
+                        filtering_reason = "None",
+                        stringsAsFactors = FALSE
+                    )
+                    
+                    # Add reporting columns based on model type
+                    is_survival_model <- "coxph" %in% class(model_fit)
+                    if (is_survival_model) {
+                        coeff_row$hazard_ratio <- coeff_row$exp_estimate
+                        coeff_row$hr_ci_lower <- coeff_row$exp_ci_lower
+                        coeff_row$hr_ci_upper <- coeff_row$exp_ci_upper
+                        coeff_row$odds_ratio <- NA_real_
+                        coeff_row$or_ci_lower <- NA_real_
+                        coeff_row$or_ci_upper <- NA_real_
+                    } else if ("glm" %in% class(model_fit) && effect_measure == "OR") {
+                        coeff_row$hazard_ratio <- NA_real_
+                        coeff_row$hr_ci_lower <- NA_real_
+                        coeff_row$hr_ci_upper <- NA_real_
+                        coeff_row$odds_ratio <- coeff_row$exp_estimate
+                        coeff_row$or_ci_lower <- coeff_row$exp_ci_lower
+                        coeff_row$or_ci_upper <- coeff_row$exp_ci_upper
+                    } else {
+                        coeff_row$hazard_ratio <- NA_real_
+                        coeff_row$hr_ci_lower <- NA_real_
+                        coeff_row$hr_ci_upper <- NA_real_
+                        coeff_row$odds_ratio <- NA_real_
+                        coeff_row$or_ci_lower <- NA_real_
+                        coeff_row$or_ci_upper <- NA_real_
+                    }
+                    
+                    table_rows[[current_pos]] <- coeff_row
+                    current_pos <- current_pos + 1
+                }
+            }
+        }
+    }
+    
+    # Combine all rows
+    if (length(table_rows) > 0) {
+        raw_model_output_tab <- do.call(rbind, table_rows)
+        return(raw_model_output_tab)
+    } else {
+        # Fallback to empty table if something went wrong
+        return(data.frame(
+            variable_base = character(),
+            variable = character(),
+            effect_measure = character(),
+            filtering_scale = character(),
+            raw_coefficient = numeric(),
+            raw_ci_lower = numeric(),
+            raw_ci_upper = numeric(),
+            exp_estimate = numeric(),
+            exp_ci_lower = numeric(),
+            exp_ci_upper = numeric(),
+            p_value = numeric(),
+            row_type = character(),
+            inclusion_status = character(),
+            filtering_reason = character(),
             stringsAsFactors = FALSE
         ))
     }
+}
 
-    n_coefs <- length(coefs)
-    n_conf_int <- nrow(conf_int)
-    conf_int_padded <- matrix(NA,
-        nrow = n_coefs, ncol = 2,
-        dimnames = list(names(coefs), c("2.5 %", "97.5 %"))
-    )
-    available_coefs <- intersect(names(coefs), rownames(conf_int))
-    if (length(available_coefs) > 0) {
-        conf_int_padded[available_coefs, ] <- conf_int[available_coefs, ]
-    }
-    if (length(available_coefs) < n_coefs) {
-        missing_coefs <- setdiff(names(coefs), rownames(conf_int))
-        logger::log_warn(sprintf(
-            "Warning: Missing confidence intervals for coefficients: %s",
-            paste(missing_coefs, collapse = ", ")
-        ))
-    }
-
-    n_coefs <- length(coefs)
-    p_values <- tryCatch(
-        {
-            p_values_vector <- rep(NA, n_coefs)
-            names(p_values_vector) <- names(coefs)
-            available_coefs <- intersect(names(coefs), rownames(model_summary$coefficients))
-            if (length(available_coefs) > 0) {
-                col_names <- colnames(model_summary$coefficients)
-                p_value_col <- which(col_names %in% c("Pr(>|z|)", "Pr(>|t|)", "Pr(>F)"))
-                if (length(p_value_col) == 0) {
-                    p_value_col <- ncol(model_summary$coefficients)
-                    logger::log_warn(sprintf("Warning: Could not find p-value column, using last column (%d)", p_value_col))
-                } else {
-                    p_value_col <- p_value_col[1]
-                }
-                p_values_vector[available_coefs] <- as.numeric(model_summary$coefficients[available_coefs, p_value_col])
-            }
-            p_values_vector
-        },
-        error = function(e) {
-            logger::log_warn(sprintf("Error extracting p-values: %s", e$message))
-            rep(NA, n_coefs)
-        }
-    )
-
-    factor_label_pvalue_map <- setNames(
-        factor_label_pvalues_tab$factor_label_pvalue,
-        factor_label_pvalues_tab$variable
-    )
-
-    variable_names <- sapply(names(coefs), function(term) {
-        if (grepl("^[a-zA-Z_]+[A-Z]", term)) {
-            base_name <- sub("^([a-zA-Z_]+?)[A-Z].*", "\\1", term)
-            if (base_name == term) {
-                term
-            } else {
-                base_name
-            }
-        } else {
-            term
-        }
-    })
-
-    factor_label_pvalues_for_coefs <- sapply(variable_names, function(var_name) {
-        if (var_name %in% names(factor_label_pvalue_map)) {
-            factor_label_pvalue_map[[var_name]]
-        } else {
-            NA
-        }
-    })
-
-    is_survival_model <- "coxph" %in% class(model_fit)
-    effect_measure <- ifelse(is_survival_model, "HR", "OR")
-
-    raw_model_output_tab <- data.frame(
-        variable_base = variable_names,
-        variable = names(coefs),
-        log_coefficient = as.numeric(coefs),
-        log_ci_lower = as.numeric(conf_int_padded[, 1]),
-        log_ci_upper = as.numeric(conf_int_padded[, 2]),
-        hazard_ratio = if (is_survival_model) exp(as.numeric(coefs)) else NA,
-        hr_ci_lower = if (is_survival_model) exp(as.numeric(conf_int_padded[, 1])) else NA,
-        hr_ci_upper = if (is_survival_model) exp(as.numeric(conf_int_padded[, 2])) else NA,
-        odds_ratio = if (!is_survival_model) exp(as.numeric(coefs)) else NA,
-        or_ci_lower = if (!is_survival_model) exp(as.numeric(conf_int_padded[, 1])) else NA,
-        or_ci_upper = if (!is_survival_model) exp(as.numeric(conf_int_padded[, 2])) else NA,
-        p_value = p_values,
-        row_type = "Coefficient",
-        inclusion_status = "Included",
-        filtering_reason = "None",
-        stringsAsFactors = FALSE
-    )
-
-    categorical_variables <- c()
-    continuous_variables <- c()
-
-    for (var_name in factor_label_pvalues_tab$variable) {
-        if (var_name %in% names(data)) {
-            if (is.factor(data[[var_name]]) || is.character(data[[var_name]])) {
-                categorical_variables <- c(categorical_variables, var_name)
-            } else if (is.numeric(data[[var_name]])) {
-                continuous_variables <- c(continuous_variables, var_name)
-            }
-        } else {
-            categorical_variables <- c(categorical_variables, var_name)
-        }
-    }
-
-    factor_label_rows <- data.frame(
-        variable_base = factor_label_pvalues_tab$variable[factor_label_pvalues_tab$variable %in% categorical_variables],
-        variable = factor_label_pvalues_tab$variable[factor_label_pvalues_tab$variable %in% categorical_variables],
-        log_coefficient = NA,
-        log_ci_lower = NA,
-        log_ci_upper = NA,
-        hazard_ratio = NA,
-        hr_ci_lower = NA,
-        hr_ci_upper = NA,
-        odds_ratio = NA,
-        or_ci_lower = NA,
-        or_ci_upper = NA,
-        p_value = factor_label_pvalues_tab$factor_label_pvalue[factor_label_pvalues_tab$variable %in% categorical_variables],
-        row_type = "Factor Label",
-        inclusion_status = "Included",
-        filtering_reason = "None",
-        stringsAsFactors = FALSE
-    )
-
-    raw_model_output_tab <- rbind(factor_label_rows, raw_model_output_tab)
-
-    # Define local ordering function that can see raw_model_output_tab and treatment_var in this scope
-    #' Custom ordering function for regression table rows
-    #'
-    #' Determines the display order of rows in the regression output table,
-    #' prioritizing the intercept, then treatment variable, then other variables,
-    #' and distinguishing between coefficient and factor label rows.
-    #'
-    #' @param var_name Character. The variable name for the row.
-    #' @param row_type_val Character. The type of row ("Coefficient" or "Factor Label").
-    #' @return Numeric. The sort order value for the row.
-    custom_order <- function(var_name, row_type_val) {
-        if (var_name == "(Intercept)") {
-            return(1)
-        } else {
-            base_name <- if (grepl("^[a-zA-Z_]+[A-Z]", var_name)) {
-                sub("^([a-zA-Z_]+?)[A-Z].*", "\\1", var_name)
-            } else {
-                var_name
-            }
-            unique_bases <- unique(raw_model_output_tab$variable_base[raw_model_output_tab$variable_base != "(Intercept)"])
-            base_to_group <- list()
-            group_counter <- 2
-            if (treatment_var %in% unique_bases) {
-                base_to_group[[treatment_var]] <- group_counter
-                group_counter <- group_counter + 1
-            }
-            for (base_var in unique_bases) {
-                if (base_var != treatment_var && !(base_var %in% names(base_to_group))) {
-                    base_to_group[[base_var]] <- group_counter
-                    group_counter <- group_counter + 1
-                }
-            }
-            base_priority <- base_to_group[[base_name]]
-            if (row_type_val == "Factor Label") {
-                return(base_priority)
-            } else {
-                return(base_priority + 0.5)
-            }
-        }
-    }
-
-    sort_order <- mapply(custom_order, raw_model_output_tab$variable, raw_model_output_tab$row_type)
-    raw_model_output_tab <- raw_model_output_tab[order(sort_order), ]
-
-    excluded_variables <- c()
-    if (nrow(excluded_rows_tab) > 0) {
-        excluded_variables <- unique(excluded_rows_tab$variable[!is.na(excluded_rows_tab$variable)])
-        logger::log_info(
-            sprintf(
-                "Found %d variables in excluded rows: %s",
-                length(excluded_variables), paste(excluded_variables, collapse = ", ")
-            )
-        )
-        for (var_name in excluded_variables) {
-            var_rows <- which(raw_model_output_tab$variable == var_name)
-            if (length(var_rows) > 0) {
-                raw_model_output_tab$inclusion_status[var_rows] <- "Filtered"
-                raw_model_output_tab$filtering_reason[var_rows] <- "Extreme estimate or convergence issue"
-                logger::log_info(sprintf("Marked variable %s as Filtered", var_name))
-            }
-        }
-    }
-
-    logger::log_info("DEBUG: Starting diagnostic filtering logic using sophisticated detection")
-
-    coeff_rows <- raw_model_output_tab$row_type == "Coefficient"
-    if (any(coeff_rows)) {
-        if ("coxph" %in% class(model_fit)) {
-            effect_measure <- "HR"
-        } else if ("glm" %in% class(model_fit)) {
-            effect_measure <- "OR"
-        } else {
-            effect_measure <- "MD"
-        }
-
-        diagnostic_extreme_result <- detect_extreme_regression_estimates(
-            estimate = raw_model_output_tab$log_coefficient[coeff_rows],
-            ci_lower = raw_model_output_tab$log_ci_lower[coeff_rows],
-            ci_upper = raw_model_output_tab$log_ci_upper[coeff_rows],
-            effect_measure = effect_measure,
-            is_exponentiated = FALSE
-        )
-
-        if (length(diagnostic_extreme_result$extreme_indices) > 0) {
-            coeff_indices <- which(coeff_rows)
-            extreme_full_indices <- coeff_indices[diagnostic_extreme_result$extreme_indices]
-            raw_model_output_tab$inclusion_status[extreme_full_indices] <- "Filtered"
-            raw_model_output_tab$filtering_reason[extreme_full_indices] <- diagnostic_extreme_result$exclusion_reasons
-            logger::log_info(sprintf(
-                "Marked %d variables as Filtered using sophisticated detection",
-                length(extreme_full_indices)
-            ))
-            for (i in seq_along(extreme_full_indices)) {
-                idx <- extreme_full_indices[i]
-                logger::log_info(sprintf(
-                    "DEBUG: Row %d (%s) filtered: %s",
-                    idx, raw_model_output_tab$variable[idx],
-                    diagnostic_extreme_result$exclusion_reasons[i]
-                ))
-            }
-        }
-    }
-
-    infinite_ci_mask <- is.infinite(raw_model_output_tab$log_ci_upper) | is.infinite(raw_model_output_tab$log_ci_lower)
+#' Apply filtering logic to raw model output
+apply_filtering_logic <- function(raw_model_output_tab, filtered_variables, extreme_diagnostics, factor_label_pvalues_tab) {
+    # Apply basic filtering rules
+    infinite_ci_mask <- is.infinite(raw_model_output_tab$raw_ci_upper) | is.infinite(raw_model_output_tab$raw_ci_lower)
     raw_model_output_tab$inclusion_status[infinite_ci_mask] <- "Filtered"
     raw_model_output_tab$filtering_reason[infinite_ci_mask] <- "Infinite CI"
 
-    na_estimate_mask <- is.na(raw_model_output_tab$log_coefficient) & raw_model_output_tab$row_type != "Factor Label"
+    na_estimate_mask <- is.na(raw_model_output_tab$raw_coefficient) & raw_model_output_tab$row_type != "Factor Label"
     raw_model_output_tab$inclusion_status[na_estimate_mask] <- "Filtered"
     raw_model_output_tab$filtering_reason[na_estimate_mask] <- "NA estimate (convergence issue)"
 
+    # Apply filtered variables logic
     if (!is.null(filtered_variables) && length(filtered_variables) > 0) {
-        logger::log_info(sprintf("DEBUG: Marking %d variables as filtered based on table output", length(filtered_variables)))
-
         for (filtered_var in filtered_variables) {
             var_rows <- grep(paste0("^", filtered_var), raw_model_output_tab$variable)
             if (length(var_rows) > 0) {
                 raw_model_output_tab$inclusion_status[var_rows] <- "Filtered"
-                var_row_with_reason <- var_rows[raw_model_output_tab$filtering_reason[var_rows] != "None"][1]
                 for (row_idx in var_rows) {
                     row_variable <- raw_model_output_tab$variable[row_idx]
-                    row_reason <- "Filtered from table (specific reason not available)"
                     if (!is.na(raw_model_output_tab$filtering_reason[row_idx]) &&
                         raw_model_output_tab$filtering_reason[row_idx] != "None" &&
                         raw_model_output_tab$filtering_reason[row_idx] != "") {
                         next
                     } else {
-                        if (!is.null(extreme_diagnostics) && !is.null(extreme_diagnostics$exclusion_reasons)) {
+                        row_reason <- if (!is.null(extreme_diagnostics) && !is.null(extreme_diagnostics$exclusion_reasons)) {
                             extreme_term_index <- which(extreme_diagnostics$extreme_terms == row_variable)
                             if (length(extreme_term_index) > 0) {
-                                row_reason <- extreme_diagnostics$exclusion_reasons[extreme_term_index[1]]
-                                logger::log_info(sprintf("DEBUG: Found table-level reason for %s: %s", row_variable, row_reason))
+                                extreme_diagnostics$exclusion_reasons[extreme_term_index[1]]
                             } else {
-                                if (grepl("^", filtered_var, row_variable)) {
-                                    row_reason <- sprintf("Variable '%s' filtered due to extreme estimates or convergence issues", filtered_var)
-                                } else {
-                                    row_reason <- sprintf("Variable '%s' filtered - all coefficients had extreme estimates or convergence issues", filtered_var)
-                                }
-                                logger::log_info(sprintf("DEBUG: Generated specific reason for %s: %s", row_variable, row_reason))
+                                sprintf("Variable '%s' filtered due to extreme estimates or convergence issues", filtered_var)
                             }
                         } else {
-                            if (grepl("^", filtered_var, row_variable)) {
-                                row_reason <- sprintf("Variable '%s' filtered due to extreme estimates or convergence issues", filtered_var)
-                            } else {
-                                row_reason <- sprintf("Variable '%s' filtered - all coefficients had extreme estimates or convergence issues", filtered_var)
-                            }
-                            logger::log_info(sprintf("DEBUG: Generated specific reason for %s: %s", row_variable, row_reason))
+                            sprintf("Variable '%s' filtered due to extreme estimates or convergence issues", filtered_var)
                         }
+                        raw_model_output_tab$filtering_reason[row_idx] <- row_reason
                     }
-                    raw_model_output_tab$filtering_reason[row_idx] <- row_reason
                 }
-                logger::log_info(sprintf("DEBUG: Marked variable %s as filtered with individual reasons for each term", filtered_var))
             }
         }
     }
 
+    # Apply completely removed variables logic
+    if (!is.null(extreme_diagnostics) && !is.null(extreme_diagnostics$completely_removed_variables)) {
+        completely_removed_vars <- extreme_diagnostics$completely_removed_variables
+        for (removed_var in completely_removed_vars) {
+            var_rows <- which(raw_model_output_tab$variable_base == removed_var)
+            if (length(var_rows) > 0) {
+                for (row_idx in var_rows) {
+                    current_reason <- raw_model_output_tab$filtering_reason[row_idx]
+                    if (is.na(current_reason) || current_reason == "None" || current_reason == "") {
+                        raw_model_output_tab$filtering_reason[row_idx] <- "Variable completely removed (only reference levels remained)"
+                    }
+                }
+                raw_model_output_tab$inclusion_status[var_rows] <- "Filtered"
+            }
+        }
+    }
+
+    return(raw_model_output_tab)
+}
+
+#' Create excluded rows table
+create_excluded_rows_tab <- function(raw_model_output_tab) {
     excluded_mask <- raw_model_output_tab$inclusion_status == "Filtered"
     if (any(excluded_mask)) {
-        excluded_rows_tab <- data.frame(
+        data.frame(
             variable_base = raw_model_output_tab$variable_base[excluded_mask],
             variable = raw_model_output_tab$variable[excluded_mask],
-            log_coefficient = raw_model_output_tab$log_coefficient[excluded_mask],
-            log_ci_lower = raw_model_output_tab$log_ci_lower[excluded_mask],
-            log_ci_upper = raw_model_output_tab$log_ci_upper[excluded_mask],
+            raw_coefficient = raw_model_output_tab$raw_coefficient[excluded_mask],
+            raw_ci_lower = raw_model_output_tab$raw_ci_lower[excluded_mask],
+            raw_ci_upper = raw_model_output_tab$raw_ci_upper[excluded_mask],
             hazard_ratio = raw_model_output_tab$hazard_ratio[excluded_mask],
             hr_ci_lower = raw_model_output_tab$hr_ci_lower[excluded_mask],
             hr_ci_upper = raw_model_output_tab$hr_ci_upper[excluded_mask],
@@ -493,8 +544,22 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
             exclusion_reason = raw_model_output_tab$filtering_reason[excluded_mask],
             stringsAsFactors = FALSE
         )
+    } else {
+        data.frame(
+            term = character(),
+            variable = character(),
+            label = character(),
+            estimate = numeric(),
+            conf_low = numeric(),
+            conf_high = numeric(),
+            exclusion_reason = character(),
+            stringsAsFactors = FALSE
+        )
     }
+}
 
+#' Create filtering summary table
+create_filtering_summary_tab <- function(raw_model_output_tab, excluded_rows_tab, conf_int, predictor_vars) {
     filtered_count <- sum(raw_model_output_tab$inclusion_status == "Filtered", na.rm = TRUE)
     remaining_count <- sum(raw_model_output_tab$inclusion_status == "Included", na.rm = TRUE)
     excluded_count <- if (nrow(excluded_rows_tab) > 0) {
@@ -507,12 +572,14 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
     main_predictor_filtered <- FALSE
     if (!is.null(predictor_vars) && length(predictor_vars) > 0) {
         for (pred_var in predictor_vars) {
-            if (!(pred_var %in% raw_model_output_tab$variable)) {
+            # Check if any coefficient rows exist for this predictor variable
+            var_rows <- grep(paste0("^", pred_var), raw_model_output_tab$variable)
+            if (length(var_rows) == 0) {
+                # No rows found for this predictor - it was completely removed
                 main_predictor_filtered <- TRUE
                 break
-            }
-            var_rows <- grep(paste0("^", pred_var), raw_model_output_tab$variable)
-            if (length(var_rows) > 0) {
+            } else {
+                # Check if all coefficient rows for this predictor are filtered
                 coeff_rows <- var_rows[raw_model_output_tab$row_type[var_rows] == "Coefficient"]
                 if (length(coeff_rows) > 0) {
                     all_filtered <- all(raw_model_output_tab$inclusion_status[coeff_rows] == "Filtered")
@@ -525,7 +592,7 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
         }
     }
 
-    filtering_summary_tab <- data.frame(
+    data.frame(
         total_coefficients = nrow(raw_model_output_tab),
         extreme_estimates_removed = final_filtered_count,
         rows_removed = final_filtered_count,
@@ -535,16 +602,19 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
         table_has_meaningful_content = (nrow(raw_model_output_tab) - final_filtered_count) > 0,
         main_predictor_filtered = main_predictor_filtered
     )
+}
 
-    return(list(
-        model_summary = model_summary_tab,
-        model_diagnostics_tab = model_diagnostics_tab,
-        data_characteristics = data_characteristics_tab,
-        other_level_details = other_level_details_tab,
-        excluded_rows = excluded_rows_tab,
-        raw_model_output = raw_model_output_tab,
-        filtering_summary = filtering_summary_tab
-    ))
+#' Create reference levels table
+create_reference_levels_tab <- function(extreme_diagnostics) {
+    if (!is.null(extreme_diagnostics) && !is.null(extreme_diagnostics$reference_levels_info)) {
+        extreme_diagnostics$reference_levels_info
+    } else {
+        data.frame(
+            variable = character(),
+            reference_level = character(),
+            stringsAsFactors = FALSE
+        )
+    }
 }
 
 #' Get list of variables that were completely removed from the table
@@ -560,41 +630,8 @@ get_filtered_variables_from_table <- function(table_result, model_fit) {
     return(removed_vars)
 }
 
-#' Remove variables that have only reference levels or extreme estimates (orphaned variables)
-#'
-#' @param table gtsummary table object
-#' @param model_fit Fitted model object
-#' @return Processed gtsummary table object
-remove_orphaned_variables <- function(table, model_fit) {
-    table_data <- table$table_body
-    is_exponentiated <- any(grepl("OR|HR", table$table_body$coefficients_label, ignore.case = TRUE))
-    valid_rows <- which(!is.na(suppressWarnings(as.numeric(table_data$estimate))))
-    if (length(valid_rows) > 0) {
-        extreme_result <- detect_extreme_regression_estimates(
-            estimate = as.numeric(table_data$estimate[valid_rows]),
-            ci_lower = as.numeric(table_data$conf.low[valid_rows]),
-            ci_upper = as.numeric(table_data$conf.high[valid_rows]),
-            effect_measure = ifelse(is_exponentiated, "OR", "estimate"),
-            is_exponentiated = is_exponentiated
-        )
-        if (length(extreme_result$extreme_indices) > 0) {
-            extreme_original_indices <- valid_rows[extreme_result$extreme_indices]
-            orphaned_vars <- unique(table_data$variable[extreme_original_indices])
-            if (length(orphaned_vars) > 0) {
-                logger::log_info(sprintf(
-                    "Removing variables with extreme estimates detected by centralized function: %s",
-                    paste(orphaned_vars, collapse = ", ")
-                ))
-                table$table_body <- table_data[!table_data$variable %in% orphaned_vars, ]
-            }
-        } else {
-            logger::log_info("No variables with extreme estimates found by centralized function.")
-        }
-    } else {
-        logger::log_info("No valid numeric estimates to check for extreme values.")
-    }
-    return(table)
-}
+# NOTE: remove_orphaned_variables function has been removed as dead code
+# This functionality is now handled by process_extreme_estimates
 
 #' Calculate F-test p-value for linear regression models
 #'

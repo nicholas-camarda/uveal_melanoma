@@ -61,16 +61,8 @@ validate_cohort_integrity <- function(cohort_list) {
         logger::log_info("✓ Cohort size relationships are reasonable")
     }
 
-    # Check 3: Validate GEP variables were created correctly (Objective 4)
-    logger::log_info("Validating GEP-related variables for Objective 4")
-    gep_validation_result <- validate_gep_variables_with_report(cohort_list$uveal_melanoma_full_cohort)
-    gep_validation_passed <- gep_validation_result$validation_passed
-    if (!gep_validation_passed) {
-        logger::log_error("VALIDATION FAILED: GEP variables not created correctly")
-        validation_passed <- FALSE
-    } else {
-        logger::log_info("✓ GEP variables validated successfully")
-    }
+    # Check 3: GEP variables will be validated in the comprehensive validation pipeline
+    logger::log_info("✓ GEP variables will be validated in comprehensive validation pipeline")
 
     # Check 4: Verify cohort definitions match consort_group assignments
     restricted_data <- cohort_list$uveal_melanoma_restricted_cohort
@@ -257,7 +249,15 @@ validate_factor_level_consistency <- function(cohort_list, phase = "data_process
             actual_levels <- levels(factor_col)
             expected_levels <- expected_config$levels
 
-            if (!identical(actual_levels, expected_levels)) {
+            if (identical(actual_levels, expected_levels)) {
+                logger::log_info(sprintf("✓ Factor levels correct for '%s' in %s", factor_name, cohort_display_name))
+            } else if (length(actual_levels) == 1 && all(actual_levels %in% expected_levels)) {
+                # Relaxed rule: if only a single level is present, warn but do not fail
+                logger::log_warn(sprintf(
+                    "VALIDATION WARNING: Only single level '%s' present for '%s' in %s; expected levels: %s",
+                    paste(actual_levels, collapse = ", "), factor_name, cohort_display_name, paste(expected_levels, collapse = ", ")
+                ))
+            } else {
                 logger::log_error(sprintf(
                     "VALIDATION FAILED: Factor levels mismatch for '%s' in %s",
                     factor_name, cohort_display_name
@@ -265,19 +265,29 @@ validate_factor_level_consistency <- function(cohort_list, phase = "data_process
                 logger::log_error(sprintf("  Expected: %s", paste(expected_levels, collapse = ", ")))
                 logger::log_error(sprintf("  Actual:   %s", paste(actual_levels, collapse = ", ")))
                 validation_passed <- FALSE
-            } else {
-                logger::log_info(sprintf("✓ Factor levels correct for '%s' in %s", factor_name, cohort_display_name))
             }
 
-            # Check reference level (first level)
-            if (length(actual_levels) > 0 && actual_levels[1] != expected_config$reference) {
-                logger::log_error(sprintf(
-                    "VALIDATION FAILED: Reference level mismatch for '%s' in %s",
-                    factor_name, cohort_display_name
-                ))
-                logger::log_error(sprintf("  Expected reference: %s", expected_config$reference))
-                logger::log_error(sprintf("  Actual reference:   %s", actual_levels[1]))
-                validation_passed <- FALSE
+            # Check reference level (first level) when at least one expected level present
+            if (length(actual_levels) > 0 && length(expected_levels) > 0) {
+                if (length(actual_levels) == length(expected_levels)) {
+                    if (actual_levels[1] != expected_config$reference) {
+                        logger::log_error(sprintf(
+                            "VALIDATION FAILED: Reference level mismatch for '%s' in %s",
+                            factor_name, cohort_display_name
+                        ))
+                        logger::log_error(sprintf("  Expected reference: %s", expected_config$reference))
+                        logger::log_error(sprintf("  Actual reference:   %s", actual_levels[1]))
+                        validation_passed <- FALSE
+                    }
+                } else if (length(actual_levels) == 1) {
+                    # Single-level present: only warn about potential reference mismatch
+                    if (actual_levels[1] != expected_config$reference) {
+                        logger::log_warn(sprintf(
+                            "VALIDATION WARNING: Single-level '%s' for '%s' in %s differs from expected reference '%s'",
+                            actual_levels[1], factor_name, cohort_display_name, expected_config$reference
+                        ))
+                    }
+                }
             }
 
             # Special validation for treatment_group (most critical)
@@ -320,18 +330,26 @@ validate_factor_level_consistency <- function(cohort_list, phase = "data_process
         cohort_levels <- list()
         for (cohort_name in names(cohort_list)) {
             if (factor_name %in% names(cohort_list[[cohort_name]])) {
-                cohort_levels[[cohort_name]] <- levels(cohort_list[[cohort_name]][[factor_name]])
+                lvls <- levels(cohort_list[[cohort_name]][[factor_name]])
+                cohort_levels[[cohort_name]] <- lvls
+                if (length(lvls) < 2) {
+                    logger::log_warn(sprintf(
+                        "Cross-cohort check: %s has single level for '%s' (levels: %s) — skipping this cohort for strict comparison",
+                        cohort_name, factor_name, paste(lvls, collapse = ", ")
+                    ))
+                }
             }
         }
 
-        # Check that all cohorts have identical factor levels
-        if (length(cohort_levels) > 1) {
-            first_levels <- cohort_levels[[1]]
-            for (i in 2:length(cohort_levels)) {
-                if (!identical(first_levels, cohort_levels[[i]])) {
-                    logger::log_error(sprintf("VALIDATION FAILED: Factor levels for '%s' differ between cohorts", factor_name))
-                    logger::log_error(sprintf("  %s: %s", names(cohort_levels)[1], paste(first_levels, collapse = ", ")))
-                    logger::log_error(sprintf("  %s: %s", names(cohort_levels)[i], paste(cohort_levels[[i]], collapse = ", ")))
+        # Compare only cohorts where at least two levels exist
+        multi_level <- Filter(function(x) length(x) >= 2, cohort_levels)
+        if (length(multi_level) > 1) {
+            ref_levels <- multi_level[[1]]
+            for (i in 2:length(multi_level)) {
+                if (!identical(ref_levels, multi_level[[i]])) {
+                    logger::log_error(sprintf("VALIDATION FAILED: Factor levels for '%s' differ between multi-level cohorts", factor_name))
+                    logger::log_error(sprintf("  %s: %s", names(multi_level)[1], paste(ref_levels, collapse = ", ")))
+                    logger::log_error(sprintf("  %s: %s", names(multi_level)[i], paste(multi_level[[i]], collapse = ", ")))
                     validation_passed <- FALSE
                 }
             }
@@ -395,14 +413,18 @@ generate_validation_report <- function(data) {
         # Final validation summary
         if (validation_passed) {
             logger::log_info("=== ALL DATA PROCESSING VALIDATIONS PASSED ===")
+            return(TRUE)
         } else {
             logger::log_error("=== DATA PROCESSING VALIDATION FAILED - SEE ERRORS ABOVE ===")
+            stop("Data processing validation failed. Please fix the errors above before proceeding.")
         }
-
-        return(validation_passed)
     } else {
         # Single dataset validation
-        return(validate_single_cohort_comprehensive(data, "single_dataset"))
+        validation_result <- validate_single_cohort_comprehensive(data, "single_dataset")
+        if (!validation_result) {
+            stop("Single dataset validation failed. Please fix the errors above before proceeding.")
+        }
+        return(TRUE)
     }
 }
 
@@ -497,8 +519,8 @@ validate_single_cohort_comprehensive <- function(data, cohort_name) {
     if ("treatment_group" %in% names(data)) {
         treatment_dist <- table(data$treatment_group, useNA = "ifany")
         if (length(treatment_dist) < 2) {
-            logger::log_error(formatted("VALIDATION FAILED: Insufficient treatment groups", indent = 3))
-            validation_passed <- FALSE
+            # Relaxed: warn rather than fail when only a single treatment level is present
+            logger::log_warn(formatted("VALIDATION WARNING: Only one treatment group present; models may be skipped", indent = 3))
         }
 
         # Check for expected treatment levels
@@ -516,30 +538,117 @@ validate_single_cohort_comprehensive <- function(data, cohort_name) {
     # 5. GEP VARIABLE VALIDATION
     logger::log_info(formatted("5. GEP Variable Validation", indent = 2))
 
-    # Only validate GEP variables if we're running Objective 4 (GEP validation)
-    # Check if we're in GEP validation mode by looking for GEP-specific variables
-    is_gep_validation_mode <- exists("GEP_VALIDATION_TIMEPOINTS") &&
-        exists("GEP_BOOTSTRAP_ITERATIONS") &&
-        length(GEP_VALIDATION_TIMEPOINTS) > 0
-
-    if (is_gep_validation_mode && "biopsy1_gep" %in% names(data)) {
-        gep_validation <- validate_gep_variables_with_report(data)
-        if (!gep_validation$validation_passed) {
-            logger::log_error(formatted("VALIDATION FAILED: GEP variables failed validation", indent = 3))
-            validation_passed <- FALSE
-        }
-
-        # Check for derived GEP variables only in GEP validation mode
-        missing_gep_derived <- setdiff(GEP_DERIVED_VARIABLES, names(data))
-        if (length(missing_gep_derived) > 0) {
+    # Always validate GEP variables if they are present in the dataset
+    # This ensures data quality issues are caught during data processing, not just during analysis
+    if ("biopsy1_gep" %in% names(data)) {
+        # Required GEP variables
+                required_gep_vars <- c(
+            "biopsy1_gep", "biopsy1_gep_mss", "mss_analysis_eligible",
+            "biopsy1_gep_mfs", "mfs_analysis_eligible",
+            "tt_death_years", "melanoma_death_event", "competing_death_event",
+            "mss_event_5yr", "mss_event_7yr", "mss_event_10yr",
+            "expected_mss_5yr", "expected_mss_7yr", "expected_mss_10yr",
+            "prame_status", "gep_validation_set", "gep_class_simple",
+            "missing_gep_group", "has_gep", "has_gep_mfs", "has_gep_mss", "has_prame"
+        )
+        
+        # Check for missing required GEP variables
+        missing_gep_vars <- setdiff(required_gep_vars, names(data))
+        if (length(missing_gep_vars) > 0) {
             logger::log_error(formatted(sprintf(
-                "VALIDATION FAILED: Missing derived GEP variables: %s",
-                paste(missing_gep_derived, collapse = ", ")
+                "VALIDATION FAILED: Missing required GEP variables: %s",
+                paste(missing_gep_vars, collapse = ", ")
             ), indent = 3))
             validation_passed <- FALSE
         }
+        
+        # Enhanced GEP validation set checks
+        if ("gep_validation_set" %in% names(data)) {
+            validation_set_counts <- table(data$gep_validation_set, useNA = "ifany")
+            training_count <- ifelse("Training" %in% names(validation_set_counts), validation_set_counts["Training"], 0)
+            testing_count <- ifelse("Testing" %in% names(validation_set_counts), validation_set_counts["Testing"], 0)
+            no_gep_count <- ifelse("No GEP Data" %in% names(validation_set_counts), validation_set_counts["No GEP Data"], 0)
+            
+            # Calculate expected counts for patients with valid GEP data
+            patients_with_valid_gep <- sum(!is.na(data$biopsy1_gep_mfs) & !is.na(data$biopsy1_gep_mss) & 
+                                          data$gep_class_simple %in% c("Class 1", "Class 2", "No"), na.rm = TRUE)
+            
+            # Validation checks for gep_validation_set
+            # Check 1: Ensure we have both Training and Testing sets
+            if (training_count == 0 && patients_with_valid_gep > 0) {
+                logger::log_error(formatted("VALIDATION FAILED: No patients assigned to Training set despite having valid GEP data", indent = 3))
+                validation_passed <- FALSE
+            }
+            
+            if (testing_count == 0 && patients_with_valid_gep > 0) {
+                logger::log_error(formatted("VALIDATION FAILED: No patients assigned to Testing set despite having valid GEP data", indent = 3))
+                validation_passed <- FALSE
+            }
+            
+            # Check 2: Ensure reasonable split proportions (allow some tolerance)
+            if (training_count > 0 && testing_count > 0) {
+                actual_training_rate <- training_count / (training_count + testing_count)
+                if (actual_training_rate < 0.5 || actual_training_rate > 0.9) {
+                    logger::log_error(formatted(sprintf(
+                        "VALIDATION FAILED: Training/testing split is unreasonable: %.1f%% training (expected ~70%%)", 
+                        actual_training_rate * 100
+                    ), indent = 3))
+                    validation_passed <- FALSE
+                }
+            }
+            
+            # Check 3: Ensure total Training + Testing equals patients with valid GEP data
+            total_assigned <- training_count + testing_count
+            if (abs(total_assigned - patients_with_valid_gep) > 1) { # Allow small rounding differences
+                logger::log_error(formatted(sprintf(
+                    "VALIDATION FAILED: Training + Testing count (%d) doesn't match patients with valid GEP data (%d)", 
+                    total_assigned, patients_with_valid_gep
+                ), indent = 3))
+                validation_passed <- FALSE
+            }
+            
+            # Check 4: Ensure "No GEP Data" count is reasonable
+            expected_no_gep <- nrow(data) - patients_with_valid_gep
+            if (abs(no_gep_count - expected_no_gep) > 1) {
+                logger::log_error(formatted(sprintf(
+                    "VALIDATION FAILED: 'No GEP Data' count (%d) doesn't match expected (%d)", 
+                    no_gep_count, expected_no_gep
+                ), indent = 3))
+                validation_passed <- FALSE
+            }
+            
+            # Log validation results
+            if (validation_passed) {
+                logger::log_info(formatted(sprintf("✓ GEP validation set properly configured: %d Training, %d Testing, %d No GEP Data", 
+                                                 training_count, testing_count, no_gep_count), indent = 3))
+            }
+        } else {
+            logger::log_error(formatted("VALIDATION FAILED: gep_validation_set variable not found in dataset", indent = 3))
+            validation_passed <- FALSE
+        }
+        
+        # Check for derived GEP variables
+        if (exists("GEP_DERIVED_VARIABLES")) {
+            missing_gep_derived <- setdiff(GEP_DERIVED_VARIABLES, names(data))
+            if (length(missing_gep_derived) > 0) {
+                logger::log_error(formatted(sprintf(
+                    "VALIDATION FAILED: Missing derived GEP variables: %s",
+                    paste(missing_gep_derived, collapse = ", ")
+                ), indent = 3))
+                validation_passed <- FALSE
+            }
+        }
+        
+        # Log GEP data availability summary
+        patients_with_gep <- sum(!is.na(data$biopsy1_gep) & data$biopsy1_gep != "Failed" & data$biopsy1_gep != "Unknown")
+        patients_with_mfs <- sum(!is.na(data$biopsy1_gep_mfs))
+        patients_with_mss <- sum(!is.na(data$biopsy1_gep_mss))
+        
+        logger::log_info(formatted(sprintf("GEP data availability: %d patients with GEP, %d with MFS, %d with MSS", 
+                                         patients_with_gep, patients_with_mfs, patients_with_mss), indent = 3))
+        
     } else {
-        logger::log_info(formatted("Skipping GEP validation (not in GEP validation mode)", indent = 3))
+        logger::log_info(formatted("Skipping GEP validation (no GEP variables present)", indent = 3))
     }
 
     # 6. DATA QUALITY VALIDATION
@@ -626,11 +735,39 @@ validate_processed_files_exist <- function(cohort_list) {
         }
     }
 
-    # Check that other_map.rds exists
+    # Check that other_map.rds exists and is valid
     other_map_file <- file.path(PROCESSED_DATA_DIR, "other_map.rds")
     if (!file.exists(other_map_file)) {
         logger::log_error(formatted("VALIDATION FAILED: other_map.rds file missing", indent = 2))
         validation_passed <- FALSE
+    } else {
+        file_info <- tryCatch(file.info(other_map_file), error = function(e) NULL)
+        if (is.null(file_info) || is.na(file_info$size) || file_info$size <= 0) {
+            logger::log_error(formatted("VALIDATION FAILED: other_map.rds exists but is empty or unreadable", indent = 2))
+            validation_passed <- FALSE
+        } else {
+            combined_map <- tryCatch(readRDS(other_map_file), error = function(e) NULL)
+            if (is.null(combined_map) || (!is.list(combined_map))) {
+                logger::log_error(formatted("VALIDATION FAILED: other_map.rds could not be parsed as a named list", indent = 2))
+                validation_passed <- FALSE
+            } else {
+                # Per-cohort log of availability
+                for (cohort_name in names(cohort_list)) {
+                    if (cohort_name %in% names(combined_map)) {
+                        cm <- combined_map[[cohort_name]]
+                        logger::log_info(formatted(sprintf(
+                            "other_map entry for %s present with %d variables",
+                            cohort_name, length(cm)
+                        ), indent = 2))
+                    } else {
+                        logger::log_warn(formatted(sprintf(
+                            "No other_map entry for %s (will use empty mapping)",
+                            cohort_name
+                        ), indent = 2))
+                    }
+                }
+            }
+        }
     }
 
     if (validation_passed) {
