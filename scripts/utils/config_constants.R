@@ -141,7 +141,8 @@ confounders <- c(
 
 # Define subgroup variables for analysis
 subgroup_vars <- c(
-    "age_at_diagnosis", "sex", "location", "initial_t_stage",
+    "age_at_diagnosis", "sex", "location", "initial_t_stage_simple",
+    #"initial_t_stage",
     "initial_tumor_height", "initial_tumor_diameter",
     "initial_overall_stage", "biopsy1_gep", "optic_nerve"
 )
@@ -196,7 +197,7 @@ MAXIMUM_MISSING_DATA_PERCENTAGE <- 50 # Maximum allowed missing data percentage 
 # Critical variables that must exist in the dataset
 CRITICAL_VARIABLES <- c(
     "id", "treatment_group", "age_at_diagnosis", "sex", "location",
-    "initial_tumor_height", "initial_tumor_diameter", "initial_t_stage",
+    "initial_tumor_height", "initial_tumor_diameter", "initial_t_stage_simple", # "initial_t_stage",
     "recurrence1", "mets_progression", "last_known_alive_date"
 )
 
@@ -250,6 +251,7 @@ STANDARD_TABLE_LABELS <- list(
     initial_overall_stage = "Overall Stage",
     # initial_overall_stage_modified = "Initial Overall Stage (Modified)",
     initial_t_stage = "Initial T-Stage",
+    initial_t_stage_simple = "Initial T-Stage (Simple)",
     initial_n_stage = "N Stage",
     initial_m_stage = "M Stage",
     unstaged = "Unstaged",
@@ -340,7 +342,8 @@ BASELINE_VARIABLES_TO_SUMMARIZE <- c(
     "eye", "location", "initial_tumor_height", "initial_tumor_diameter",
     "initial_overall_stage", # this is the original variable
     # "initial_overall_stage_modified", # this is the modified variable
-    "initial_t_stage", "initial_n_stage", "initial_m_stage", "unstaged",
+    "initial_t_stage_simple", # "initial_t_stage", 
+    "initial_n_stage", "initial_m_stage", "unstaged",
 
     # Clinical features
     "initial_vision", "srf", "op", "symptoms", "vision_loss_blurred_vision",
@@ -370,7 +373,8 @@ BASELINE_VARIABLES_TO_SUMMARIZE <- c(
 
 # Variable order for forest plots and subgroup analyses
 FOREST_PLOT_VARIABLE_ORDER <- c(
-    "age_at_diagnosis", "sex", "location", "initial_t_stage",
+    "age_at_diagnosis", "sex", "location", 
+    "initial_t_stage_simple", # "initial_t_stage",
     "initial_tumor_height", "initial_tumor_diameter", "biopsy1_gep", "optic_nerve"
 )
 

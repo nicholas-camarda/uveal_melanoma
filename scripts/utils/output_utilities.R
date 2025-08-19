@@ -102,16 +102,52 @@ merge_cohort_tables <- function(full_cohort_data, restricted_cohort_data, output
     # Get variable labels for human-readable display
     variable_labels <- get_variable_labels()
 
+    # Helper function to filter variables with sufficient variation
+    filter_variables_with_variation <- function(data, variables, by_var = "treatment_group") {
+        filtered_vars <- c()
+        
+        for (var in variables) {
+            if (var %in% names(data)) {
+                # Check if variable has sufficient variation
+                if (is.numeric(data[[var]])) {
+                    # For numeric variables, check if there's variation
+                    if (length(unique(data[[var]])) > 1) {
+                        filtered_vars <- c(filtered_vars, var)
+                    }
+                } else {
+                    # For categorical variables, check if there are at least 2 levels
+                    # and if the by_var has sufficient variation
+                    if (length(unique(data[[var]])) > 1) {
+                        # Also check if the by_var has sufficient variation
+                        if (by_var %in% names(data) && length(unique(data[[by_var]])) > 1) {
+                            filtered_vars <- c(filtered_vars, var)
+                        }
+                    }
+                }
+            }
+        }
+        
+        if (length(filtered_vars) < length(variables)) {
+            removed_vars <- setdiff(variables, filtered_vars)
+            logger::log_info(sprintf("Removed variables with insufficient variation: %s", paste(removed_vars, collapse = ", ")))
+        }
+        
+        return(filtered_vars)
+    }
+
     tryCatch(
         {
-            # Create baseline table for full cohort
+            # Filter variables with sufficient variation for full cohort
             full_available <- intersect(vars_to_summarize, names(full_cohort_data))
+            full_available_filtered <- filter_variables_with_variation(full_cohort_data, full_available)
+            
+            # Create baseline table for full cohort
             full_baseline <- full_cohort_data %>%
-                select(any_of(c(full_available, "treatment_group"))) %>%
+                select(any_of(c(full_available_filtered, "treatment_group"))) %>%
                 tbl_summary(
                     by = treatment_group,
                     missing = "no",
-                    label = variable_labels[intersect(names(variable_labels), full_available)],
+                    label = variable_labels[intersect(names(variable_labels), full_available_filtered)],
                     statistic = list(
                         all_continuous() ~ "{mean} ({sd})",
                         all_categorical() ~ "{n} ({p}%)"
@@ -122,23 +158,32 @@ merge_cohort_tables <- function(full_cohort_data, restricted_cohort_data, output
                     test = list(all_categorical() ~ "fisher.test"),
                     test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))
                 ) %>%
-                bold_labels() %>%
-                modify_header(
-                    label = "**Characteristic**",
-                    stat_0 = "**Overall**\nN = {N}",
-                    stat_1 = "**Plaque**\nN = {n}",
-                    stat_2 = "**GKSRS**\nN = {n}",
-                    p.value = "**p-value**"
-                )
+                bold_labels()
+
+            # Add header modification with error handling for full cohort
+            tryCatch({
+                full_baseline <- full_baseline %>%
+                    modify_header(
+                        label = "**Characteristic**",
+                        stat_0 = "**Overall**\nN = {N}",
+                        stat_1 = "**Plaque**\nN = {n}",
+                        stat_2 = "**GKSRS**\nN = {n}",
+                        p.value = "**p-value**"
+                    )
+            }, error = function(e) {
+                logger::log_warn(sprintf("Warning: Could not modify headers for full cohort table: %s", e$message))
+                logger::log_info("Proceeding with default headers for full cohort")
+            })
 
             # Create baseline table for restricted cohort
             restricted_available <- intersect(vars_to_summarize, names(restricted_cohort_data))
+            restricted_available_filtered <- filter_variables_with_variation(restricted_cohort_data, restricted_available)
             restricted_baseline <- restricted_cohort_data %>%
-                select(any_of(c(restricted_available, "treatment_group"))) %>%
+                select(any_of(c(restricted_available_filtered, "treatment_group"))) %>%
                 tbl_summary(
                     by = treatment_group,
                     missing = "no",
-                    label = variable_labels[intersect(names(variable_labels), restricted_available)],
+                    label = variable_labels[intersect(names(variable_labels), restricted_available_filtered)],
                     statistic = list(
                         all_continuous() ~ "{mean} ({sd})",
                         all_categorical() ~ "{n} ({p}%)"
@@ -149,14 +194,22 @@ merge_cohort_tables <- function(full_cohort_data, restricted_cohort_data, output
                     test = list(all_categorical() ~ "fisher.test"),
                     test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))
                 ) %>%
-                bold_labels() %>%
-                modify_header(
-                    label = "**Characteristic**",
-                    stat_0 = "**Overall**\nN = {N}",
-                    stat_1 = "**Plaque**\nN = {n}",
-                    stat_2 = "**GKSRS**\nN = {n}",
-                    p.value = "**p-value**"
-                )
+                bold_labels()
+
+            # Add header modification with error handling for restricted cohort
+            tryCatch({
+                restricted_baseline <- restricted_baseline %>%
+                    modify_header(
+                        label = "**Characteristic**",
+                        stat_0 = "**Overall**\nN = {N}",
+                        stat_1 = "**Plaque**\nN = {n}",
+                        stat_2 = "**GKSRS**\nN = {n}",
+                        p.value = "**p-value**"
+                    )
+            }, error = function(e) {
+                logger::log_warn(sprintf("Warning: Could not modify headers for restricted cohort table: %s", e$message))
+                logger::log_info("Proceeding with default headers for restricted cohort")
+            })
 
             # Merge tables side by side
             merged_table <- tbl_merge(
