@@ -9,14 +9,42 @@
 apply_criteria <- function(data) {
     logger::log_info("Applying inclusion/exclusion criteria to full cohort to generate restricted and GKSRS-only cohorts")
 
-    full_cohort <- data %>%
-        filter(!is.na(consort_group)) %>%
-        filter(!is.na(treatment_group)) %>%
-        filter(!(id %in% SPECIFIC_PATIENTS_TO_EXCLUDE) | is.na(id)) %>%
-        mutate(cohort = "All Patients")
+    # Exclude Stage IV patients globally per spec (focus on localized treatment)
+    total_before <- nrow(data)
+    stage_iv_ids <- data$id[!is.na(data$initial_stage_binary) & data$initial_stage_binary == "Stage IV"]
+    num_stage_iv <- length(stage_iv_ids)
+    data_no_stage_iv <- data %>%
+        filter(initial_stage_binary != "Stage IV" | is.na(initial_stage_binary))
+    logger::log_info(sprintf("Stage IV exclusion applied: removed %d patients%s",
+        num_stage_iv,
+        if (num_stage_iv > 0) sprintf(" (IDs: %s)", paste(stage_iv_ids, collapse = ", ")) else ""
+    ))
 
-    logger::log_info(sprintf("Removed %d patients from full cohort based on NA values in consort_group, treatment_group, or id", nrow(data) - nrow(full_cohort)))
-    logger::log_info(sprintf("IDs of patients removed: %s", paste(SPECIFIC_PATIENTS_TO_EXCLUDE, collapse = ", ")))
+    # Remove records with missing cohort-defining fields
+    before_missing_filter <- nrow(data_no_stage_iv)
+    data_after_missing <- data_no_stage_iv %>%
+        filter(!is.na(consort_group)) %>%
+        filter(!is.na(treatment_group))
+    num_missing_removed <- before_missing_filter - nrow(data_after_missing)
+    if (num_missing_removed > 0) {
+        logger::log_info(sprintf(
+            "Removed %d patients due to missing consort_group or treatment_group",
+            num_missing_removed
+        ))
+    } else {
+        logger::log_info("No patients removed for missing consort_group or treatment_group")
+    }
+
+    # Remove any specifically excluded IDs
+    before_specific_excl <- nrow(data_after_missing)
+    data_after_specific <- data_after_missing %>%
+        filter(!(id %in% SPECIFIC_PATIENTS_TO_EXCLUDE) | is.na(id))
+    num_specific_removed <- before_specific_excl - nrow(data_after_specific)
+    logger::log_info(sprintf("IDs of patients removed by SPECIFIC_PATIENTS_TO_EXCLUDE: %s",
+        if (num_specific_removed > 0) paste(SPECIFIC_PATIENTS_TO_EXCLUDE, collapse = ", ") else "None"))
+
+    full_cohort <- data_after_specific %>%
+        mutate(cohort = "All Patients")
 
     restricted_cohort <- full_cohort %>%
         filter(consort_group == "eligible_both") %>%
@@ -24,7 +52,7 @@ apply_criteria <- function(data) {
 
     gksrs_only_cohort <- full_cohort %>%
         filter(consort_group == "gksrs_only") %>%
-        mutate(cohort = "GKSRS-Only Cohort (Ineligible for Plaque)")
+        mutate(cohort = "GKSRS-Only Cohort (Ineligible for PBT)")
 
     factored_filtered_data <- list(
         uveal_melanoma_full_cohort = full_cohort,
@@ -53,6 +81,10 @@ prepare_factor_levels <- function(data) {
 
     data <- data %>%
         mutate(
+            # Preserve original raw GEP text before any recoding for downstream flags
+            biopsy1_gep_text_raw = as.character(biopsy1_gep),
+            # Preserve original raw GEP values for accurate untested flag
+            biopsy1_gep_original = biopsy1_gep,
             recurrence1 = factor(recurrence1, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
             mets_progression = factor(mets_progression, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
             treatment_group = factor(treatment_group, levels = TREATMENT_FACTOR_LEVELS),
@@ -63,7 +95,7 @@ prepare_factor_levels <- function(data) {
                 labels = c("Choroidal", "Ciliary Body", "Cilio-Choroidal", "Conjunctival", "Irido-Ciliary", "Iris"),
                 ordered = FALSE
             ),
-            optic_nerve = factor(optic_nerve, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
+            optic_nerve = factor(optic_nerve, levels = YN_RAW_LEVELS, labels = c("No", "Yes")),
             internal_reflectivity = factor(internal_reflectivity,
                 levels = c("Very_Low", "Low", "Low_Medium", "Medium", "Medium_High", "High", "Unknown"),
                 labels = c("Very Low", "Low", "Low-Medium", "Medium", "Medium-High", "High", "Unknown"),
@@ -113,15 +145,13 @@ prepare_factor_levels <- function(data) {
             ),
             biopsy1_gep = factor(
                 case_when(
-                    biopsy1_gep_raw %in% c("Class_1A_PRAME_negative", "Class_1B_PRAME_negative") ~ "Class 1 PRAME Negative",
-                    biopsy1_gep_raw %in% c("Class_1A_PRAME_positive", "Class_1B_PRAME_positive") ~ "Class 1 PRAME Positive",
-                    biopsy1_gep_raw == "Class_2_PRAME_negative" ~ "Class 2 PRAME Negative",
-                    biopsy1_gep_raw == "Class_2_PRAME_positive" ~ "Class 2 PRAME Positive",
-                    biopsy1_gep_raw == "No" ~ "No",
+                    grepl("Class_1", biopsy1_gep_raw, fixed = TRUE) ~ "Class 1",
+                    grepl("Class_2", biopsy1_gep_raw, fixed = TRUE) ~ "Class 2",
+                    biopsy1_gep_raw == "No" | biopsy1_gep_raw == "N/A" | is.na(biopsy1_gep_raw) ~ "GEP Not Tested",
+                    biopsy1_gep_raw == "Failed" | biopsy1_gep_raw == "Other" ~ "GEP Failed/Indeterminate",
                     TRUE ~ NA_character_
                 ),
-                levels = c("Class 1 PRAME Negative", "Class 1 PRAME Positive", "Class 2 PRAME Negative", "Class 2 PRAME Positive", "No"),
-                ordered = FALSE
+                levels = c("Class 1", "Class 2", "GEP Not Tested", "GEP Failed/Indeterminate"), ordered = FALSE
             ),
             # Simple GEP class is now binary: Class 1 vs Class 2
             gep_class_simple = factor(

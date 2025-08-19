@@ -17,7 +17,7 @@ create_derived_variables <- function(data) {
         mutate(
             treatment_group = case_when(
                 initial_gk == "Y" & initial_plaque == "N" ~ "GKSRS",
-                initial_gk == "N" & initial_plaque == "Y" ~ "Plaque",
+                initial_gk == "N" & initial_plaque == "Y" ~ "PBT",
                 TRUE ~ NA_character_
             )
         ) %>%
@@ -30,7 +30,7 @@ create_derived_variables <- function(data) {
         mutate(
             treatment_date = case_when(
                 treatment_group == "GKSRS" ~ initial_gk_date,
-                treatment_group == "Plaque" ~ initial_plaque_date,
+                treatment_group == "PBT" ~ initial_plaque_date,
                 TRUE ~ NA_Date_
             )
         ) %>%
@@ -317,13 +317,18 @@ create_binned_continuous_variables <- function(data) {
     data <- data %>%
         mutate(
             age_at_diagnosis_binned = factor(
-                ifelse(age_at_diagnosis < median(age_at_diagnosis, na.rm = TRUE),
-                    paste0("< ", round(median(age_at_diagnosis, na.rm = TRUE), 1)),
-                    paste0("≥ ", round(median(age_at_diagnosis, na.rm = TRUE), 1))
+                case_when(
+                    age_at_diagnosis < 40 ~ "< 40 years",
+                    age_at_diagnosis < 50 ~ "40-49 years",
+                    age_at_diagnosis < 60 ~ "50-59 years",
+                    age_at_diagnosis < 70 ~ "60-69 years",
+                    age_at_diagnosis < 80 ~ "70-79 years",
+                    age_at_diagnosis >= 80 ~ "≥ 80 years",
+                    TRUE ~ NA_character_
                 ),
                 levels = c(
-                    paste0("< ", round(median(age_at_diagnosis, na.rm = TRUE), 1)),
-                    paste0("≥ ", round(median(age_at_diagnosis, na.rm = TRUE), 1))
+                    "< 40 years", "40-49 years", "50-59 years", 
+                    "60-69 years", "70-79 years", "≥ 80 years"
                 )
             ),
             initial_tumor_height_binned = if (USE_CLINICAL_BINNING_CONTINUOUS) {

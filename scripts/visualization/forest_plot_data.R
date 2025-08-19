@@ -27,7 +27,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
             data_frame = data.frame(
                 Subgroup = character(),
                 `GKSRS n/N` = character(),
-                `Plaque n/N` = character(),
+                `PBT n/N` = character(),
                 ` ` = character(),
                 `HR (95% CI)` = character(),
                 `p-value` = character(),
@@ -329,7 +329,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
         final_df <- data.frame(
             Subgroup = character(),
             `GKSRS n/N` = character(),
-            `Plaque n/N` = character(),
+            `PBT n/N` = character(),
             ` ` = character(),
             `HR (95% CI)` = character(),
             `p-value` = character(),
@@ -561,20 +561,9 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
 #' @return Character string of formatted variable name
 format_variable_name <- function(var_name) {
     # Create a mapping of variable names to display names
-    name_mapping <- list(
-        "age_at_diagnosis" = "Age at Diagnosis",
-        "sex" = "Sex",
-        "location" = "Location",
-        "initial_overall_stage" = "Initial Overall Stage",
-        "initial_t_stage" = "Initial T Stage",
-        "initial_tumor_height" = "Initial Tumor Height",
-        "initial_tumor_diameter" = "Initial Tumor Diameter",
-        "biopsy1_gep" = "GEP Class",
-        "optic_nerve" = "Optic Nerve"
-    )
 
-    if (var_name %in% names(name_mapping)) {
-        return(name_mapping[[var_name]])
+    if (var_name %in% names(FORESTPLOT_NAME_MAPPING)) {
+        return(FORESTPLOT_NAME_MAPPING[[var_name]])
     } else {
         return(tools::toTitleCase(gsub("_", " ", var_name)))
     }

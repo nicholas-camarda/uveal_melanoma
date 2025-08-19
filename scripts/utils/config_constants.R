@@ -84,18 +84,18 @@ UNITS_OF_TIME <- "months" # "days" or "months" or "years"
 # TREATMENT AND FACTOR LEVEL CONFIGURATION
 # =============================================================================
 # CRITICAL: These settings control ALL statistical models and factor levels
-# - TREATMENT_FACTOR_LEVELS: Order determines reference group (Plaque = reference, GKSRS = comparison)
+# - TREATMENT_FACTOR_LEVELS: Order determines reference group (PBT = reference, GKSRS = comparison)
 # - TREATMENT_LABELS: Display labels for plots and tables
 # - SEX_FACTOR_LEVELS: Female = reference, Male = comparison
 # - YN_RAW_LEVELS: Binary variables (N = reference, Y = comparison)
 # WARNING: Changing these affects ALL regression models, tables, and plots
 
 # Treatment group configuration
-TREATMENT_FACTOR_LEVELS <- c("Plaque", "GKSRS") # Plaque is reference group
+TREATMENT_FACTOR_LEVELS <- c("PBT", "GKSRS") # PBT is reference group
 TREATMENT_REFERENCE_LEVEL <- TREATMENT_FACTOR_LEVELS[1] # Explicitly define reference
 TREATMENT_COMPARISON_LEVEL <- TREATMENT_FACTOR_LEVELS[2] # Explicitly define comparison
-TREATMENT_LABELS <- c("Plaque", "GKSRS") # For display/plotting (matches factor levels order)
-FAVOURS_LABELS <- c("Favours Plaque", "Favours GKSRS") # For forest plot labels (matches factor levels order)
+TREATMENT_LABELS <- c("PBT", "GKSRS") # For display/plotting (matches factor levels order)
+FAVOURS_LABELS <- c("Favors PBT", "Favors GKSRS") # For forest plot labels (matches factor levels order)
 
 # Validation: Ensure consistency with TREATMENT_LABELS
 if (!all(TREATMENT_LABELS %in% TREATMENT_FACTOR_LEVELS)) {
@@ -125,7 +125,7 @@ SEX_FACTOR_LEVELS <- c("Female", "Male")
 
 # Define confounders for adjustment in all models
 confounders <- c(
-    "age_at_diagnosis", "sex", "location"
+    "age_at_diagnosis_binned", "sex", "location"
     # "internal_reflectivity",
     # "srf", "flashes_photopsia", "floaters",
     # "initial_overall_stage", "initial_t_stage",
@@ -141,14 +141,14 @@ confounders <- c(
 
 # Define subgroup variables for analysis
 subgroup_vars <- c(
-    "age_at_diagnosis", "sex", "location", "initial_t_stage_simple",
+    "age_at_diagnosis_binned", "sex", "location", "initial_t_stage_simple",
     #"initial_t_stage",
     "initial_tumor_height", "initial_tumor_diameter",
     "initial_overall_stage", "biopsy1_gep", "optic_nerve"
 )
 
 # Define which subgroup variables are continuous and need binning
-continuous_subgroup_vars <- c("age_at_diagnosis", "initial_tumor_height", "initial_tumor_diameter")
+continuous_subgroup_vars <- c("age_at_diagnosis_binned", "initial_tumor_height", "initial_tumor_diameter")
 
 # Define variables that are constant within specific cohorts and should be excluded from subgroup analysis
 # These variables have no variation within the specified cohort and cannot be used for subgroup analysis
@@ -196,7 +196,7 @@ MAXIMUM_MISSING_DATA_PERCENTAGE <- 50 # Maximum allowed missing data percentage 
 
 # Critical variables that must exist in the dataset
 CRITICAL_VARIABLES <- c(
-    "id", "treatment_group", "age_at_diagnosis", "sex", "location",
+    "id", "treatment_group", "age_at_diagnosis_binned", "sex", "location",
     "initial_tumor_height", "initial_tumor_diameter", "initial_t_stage_simple", # "initial_t_stage",
     "recurrence1", "mets_progression", "last_known_alive_date"
 )
@@ -216,7 +216,7 @@ CRITICAL_FACTORS <- c(
 
 # Variables to check for missing data
 MISSING_DATA_CHECK_VARIABLES <- c(
-    "age_at_diagnosis", "sex", "location", "initial_tumor_height",
+    "age_at_diagnosis_binned", "sex", "location", "initial_tumor_height",
     "initial_tumor_diameter", "treatment_group", "recurrence1",
     "mets_progression", "last_known_alive_date"
 )
@@ -238,7 +238,7 @@ EXPECTED_COHORT_SIZES <- list(
 # Human-readable labels for all variables
 STANDARD_TABLE_LABELS <- list(
     # Demographics
-    age_at_diagnosis = "Age at Diagnosis",
+    age_at_diagnosis_binned = "Age at Diagnosis",
     sex = "Sex",
     race = "Race",
     ethnicity = "Ethnicity",
@@ -248,10 +248,12 @@ STANDARD_TABLE_LABELS <- list(
     location = "Tumor Location",
     initial_tumor_height = "Initial Tumor Height (mm)",
     initial_tumor_diameter = "Initial Tumor Diameter (mm)",
+    # GEP display cleanup driven in data; underscores removed via AUTO_CLEAN_LEVELS
+
     initial_overall_stage = "Overall Stage",
     # initial_overall_stage_modified = "Initial Overall Stage (Modified)",
     initial_t_stage = "Initial T-Stage",
-    initial_t_stage_simple = "Initial T-Stage (Simple)",
+    initial_t_stage_simple = "Initial T-Stage",
     initial_n_stage = "N Stage",
     initial_m_stage = "M Stage",
     unstaged = "Unstaged",
@@ -264,7 +266,7 @@ STANDARD_TABLE_LABELS <- list(
     initial_vision = "Initial Visual Acuity (logMAR)",
     srf = "Subretinal Fluid (SRF)",
     op = "Orange Pigment",
-    symptoms = "Any Symptoms",
+    symptoms = "Symptomatic",
     vision_loss_blurred_vision = "Vision Loss/Blurred Vision",
     visual_field_defect = "Visual Field Defect",
     flashes_photopsia = "Flashes/Photopsia",
@@ -285,6 +287,12 @@ STANDARD_TABLE_LABELS <- list(
     recurrence1 = "Local Recurrence",
     mets_progression = "Metastatic Progression",
     last_known_alive_date = "Last Known Alive Date",
+
+    # Adverse Events
+    vision_change = "Vision Change (logMAR)",
+    retinopathy = "Radiation Retinopathy",
+    nvg = "Neovascular Glaucoma",
+    srd = "Serous Retinal Detachment",
 
     # Derived variables
     age_at_diagnosis_binned = "Age at Diagnosis (Binned)",
@@ -311,6 +319,13 @@ STANDARD_LEVEL_LABELS <- list(
     ethnicity = c(
         "Eastern_European" = "Eastern European",
         "Middle_Eastern" = "Middle Eastern"
+    ),
+    race = c(
+        "African_American" = "African American",
+        "Hispanic_Latino" = "Hispanic/Latino"
+    ),
+    unstaged = c(
+        "Yes_Inappropriate_Scan" = "Yes Inappropriate Scan"
     )
     # Add more mappings as needed, e.g.:
     # , eye = c("Left" = "OS", "Right" = "OD")
@@ -328,7 +343,7 @@ T_STAGE_DIAMETER_CUTOFFS <- c(3.0, 6.0, 9.0, 12.0, 15.0, 18.0) # Creates ranges:
 
 # Legacy median-based cutoffs (for backward compatibility)
 LEGACY_CUTOFFS <- list(
-    age_at_diagnosis = 65, # Age cutoff for elderly vs young
+    age_at_diagnosis_binned = 65, # Age cutoff for elderly vs young
     initial_tumor_height = 6.0, # Height cutoff for small vs large tumors (median-based)
     initial_tumor_diameter = 11.0 # Diameter cutoff for small vs large tumors (median-based)
 )
@@ -336,7 +351,7 @@ LEGACY_CUTOFFS <- list(
 # Variables to include in baseline characteristics tables
 BASELINE_VARIABLES_TO_SUMMARIZE <- c(
     # Demographics
-    "age_at_diagnosis", "sex", "race", "ethnicity",
+    "age_at_diagnosis_binned", "sex", "race", "ethnicity",
 
     # Eye and tumor characteristics
     "eye", "location", "initial_tumor_height", "initial_tumor_diameter",
@@ -373,9 +388,27 @@ BASELINE_VARIABLES_TO_SUMMARIZE <- c(
 
 # Variable order for forest plots and subgroup analyses
 FOREST_PLOT_VARIABLE_ORDER <- c(
-    "age_at_diagnosis", "sex", "location", 
+    # "age_at_diagnosis_binned", 
+    "age_at_diagnosis_binned",
+    "sex", "location",
     "initial_t_stage_simple", # "initial_t_stage",
-    "initial_tumor_height", "initial_tumor_diameter", "biopsy1_gep", "optic_nerve"
+    "initial_tumor_height", "initial_tumor_diameter", # temporarily added back
+    "biopsy1_gep", "optic_nerve"
+)
+
+# This is used to map variable names to display names for forest plots
+FORESTPLOT_NAME_MAPPING <- list(
+    "age_at_diagnosis" = "Age at Diagnosis",
+    "age_at_diagnosis_binned" = "Age at Diagnosis",
+    "sex" = "Sex",
+    "location" = "Location",
+    "initial_overall_stage" = "Initial Overall Stage",
+    "initial_t_stage" = "Initial T Stage",
+    "initial_t_stage_simple" = "Initial T Stage",
+    "initial_tumor_height" = "Initial Tumor Height",
+    "initial_tumor_diameter" = "Initial Tumor Diameter",
+    "biopsy1_gep" = "GEP Class",
+    "optic_nerve" = "Optic Nerve Abutment"
 )
 
 # Plot dimensions and settings for all output figures

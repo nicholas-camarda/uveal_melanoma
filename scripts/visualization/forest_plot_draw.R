@@ -71,10 +71,10 @@ create_forest_plot <- function(subgroup_results,
 #' @param subgroup_results List of subgroup analysis results from analyze_treatment_effect_subgroups_*
 #' @param outcome_name Character string for the outcome name (e.g., "Overall Survival")
 #' @param cohort_name Character string for the cohort name (e.g., "Full Cohort")
-#' @param treatment_labels Character vector of length 2 with treatment labels (e.g., c("GKSRS", "Plaque"))
+#' @param treatment_labels Character vector of length 2 with treatment labels (e.g., c("GKSRS", "PBT"))
 #' @param variable_order Character vector specifying the order of variables to display (REQUIRED for consistency)
 #' @param effect_measure Character string for the effect measure (default: "HR")
-#' @param favours_labels Character vector of length 2 for axis labels (e.g., c("Favours GKSRS", "Favours Plaque"))
+#' @param favours_labels Character vector of length 2 for axis labels (e.g., c("Favors GKSRS", "Favors PBT"))
 #' @param clip Numeric vector of length 2 for clipping range (default: c(0.1, 10))
 #' @param title Character string for plot title (optional)
 #' @param other_map List mapping variable names to "Other" category contents (optional)
@@ -96,7 +96,7 @@ create_single_cohort_forest_plot <- function(subgroup_results,
 
     # Set default favours labels if not provided
     if (is.null(favours_labels)) {
-        favours_labels <- paste0("Favours ", treatment_labels)
+        favours_labels <- paste0("Favors ", treatment_labels)
     }
 
     # Resolve treatment colors via centralized palette (if two labels provided)

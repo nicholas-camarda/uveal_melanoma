@@ -46,7 +46,7 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders,
             .groups = "drop"
         )
 
-    plaque <- data_with_height_change %>% filter(treatment_group == "Plaque")
+    plaque <- data_with_height_change %>% filter(treatment_group == "PBT")
     gk <- data_with_height_change %>% filter(treatment_group == "GKSRS")
     wilcox.test(height_change ~ treatment_group, data = data_with_height_change)
 
@@ -59,9 +59,10 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders,
             missing = "no",
             label = get_variable_labels(),
             statistic = list(
-                all_continuous() ~ "{mean} ({sd})",
+                all_continuous() ~ "{median} ({min}, {max})",
                 all_categorical() ~ "{n} ({p}%)"
-            )
+            ),
+            digits = list(all_continuous() ~ 1, all_categorical() ~ 0)
         ) %>%
         add_overall() %>%
         add_p(test = list(all_continuous() ~ "wilcox.test")) %>%
@@ -69,7 +70,7 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders,
         modify_header(
             label = "**Characteristic**",
             stat_0 = "**Overall**\nN = {N}",
-            stat_1 = "**Plaque**\nN = {n}",
+            stat_1 = "**PBT**\nN = {n}",
             stat_2 = "**GKSRS**\nN = {n}",
             p.value = "**p-value**"
         ) %>%

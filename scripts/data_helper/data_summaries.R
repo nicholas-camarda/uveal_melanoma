@@ -208,10 +208,10 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
                     initial_tumor_diameter ~ "continuous"
                 ),
                 statistic = list(
-                    all_continuous() ~ "{mean} ({sd})",
+                    all_continuous() ~ "{median} ({min}, {max})",
                     all_categorical() ~ "{n} ({p}%)"
                 ),
-                digits = list(all_continuous() ~ 1, all_categorical() ~ 1),
+                digits = list(all_continuous() ~ 1, all_categorical() ~ 0),
                 missing = "no",
                 label = STANDARD_TABLE_LABELS[intersect(names(STANDARD_TABLE_LABELS), available_vars)]
             ) %>%

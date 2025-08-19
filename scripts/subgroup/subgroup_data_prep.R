@@ -89,21 +89,29 @@ process_subgroup_data <- function(data, subgroup_var, confounders, include_basel
     is_categorical_factor <- is.factor(data[[subgroup_var]])
     cutoff_value <- NULL
     if (was_continuous) {
-        cutoff_val <- get_cutoff_value(subgroup_var, data, percentile_cut = 0.5)
-        if (subgroup_var %in% c("initial_tumor_height", "initial_tumor_diameter") && USE_CLINICAL_BINNING_CONTINUOUS && length(cutoff_val) > 1) {
-            subgroup_var_binned <- paste0(subgroup_var, "_binned")
-            processed_data[[subgroup_var_binned]] <- create_clinical_bins(data[[subgroup_var]], cutoff_val, subgroup_var)
+        # Check if a binned version already exists (e.g., age_at_diagnosis_binned)
+        subgroup_var_binned <- paste0(subgroup_var, "_binned")
+        if (subgroup_var_binned %in% names(data)) {
+            # Use existing binned variable instead of creating a new one
             subgroup_var_to_use <- subgroup_var_binned
-            cutoff_value <- cutoff_val
+            cutoff_value <- NULL
             other_map <- list()
         } else {
-            subgroup_var_binned <- paste0(subgroup_var, "_binned")
-            processed_data[[subgroup_var_binned]] <- factor(
-                ifelse(data[[subgroup_var]] < cutoff_val, paste0("< ", round(cutoff_val, 1)), paste0("\u2265 ", round(cutoff_val, 1))),
-                levels = c(paste0("< ", round(cutoff_val, 1)), paste0("\u2265 ", round(cutoff_val, 1)))
-            )
-            subgroup_var_to_use <- subgroup_var_binned
-            cutoff_value <- cutoff_val
+            # Create new binned variable as before
+            cutoff_val <- get_cutoff_value(subgroup_var, data, percentile_cut = 0.5)
+            if (subgroup_var %in% c("initial_tumor_height", "initial_tumor_diameter") && USE_CLINICAL_BINNING_CONTINUOUS && length(cutoff_val) > 1) {
+                processed_data[[subgroup_var_binned]] <- create_clinical_bins(data[[subgroup_var]], cutoff_val, subgroup_var)
+                subgroup_var_to_use <- subgroup_var_binned
+                cutoff_value <- cutoff_val
+                other_map <- list()
+            } else {
+                processed_data[[subgroup_var_binned]] <- factor(
+                    ifelse(data[[subgroup_var]] < cutoff_val, paste0("< ", round(cutoff_val, 1)), paste0("\u2265 ", round(cutoff_val, 1))),
+                    levels = c(paste0("< ", round(cutoff_val, 1)), paste0("\u2265 ", round(cutoff_val, 1)))
+                )
+                subgroup_var_to_use <- subgroup_var_binned
+                cutoff_value <- cutoff_val
+            }
         }
     } else if (is_categorical_factor) {
         other_map <- list()
@@ -137,7 +145,7 @@ fit_subgroup_model <- function(data, outcome_config, subgroup_var_to_use, confou
     subgroup_levels <- levels(data[[subgroup_var_to_use]])
     for (level in subgroup_levels) {
         level_data <- data[data[[subgroup_var_to_use]] == level, ]
-        n_plaque <- sum(level_data$treatment_group == "Plaque", na.rm = TRUE)
+        n_plaque <- sum(level_data$treatment_group == "PBT", na.rm = TRUE)
         n_gksrs <- sum(level_data$treatment_group == "GKSRS", na.rm = TRUE)
         if (outcome_config$type == "survival") {
             event_vars <- c("death_event", "mets_event", "pfs_event", "event")
@@ -149,7 +157,7 @@ fit_subgroup_model <- function(data, outcome_config, subgroup_var_to_use, confou
                 }
             }
             if (!is.null(event_var)) {
-                plaque_events <- sum(level_data$treatment_group == "Plaque" & level_data[[event_var]] == 1, na.rm = TRUE)
+                plaque_events <- sum(level_data$treatment_group == "PBT" & level_data[[event_var]] == 1, na.rm = TRUE)
                 gksrs_events <- sum(level_data$treatment_group == "GKSRS" & level_data[[event_var]] == 1, na.rm = TRUE)
                 if (n_plaque >= 2 && n_gksrs >= 2 && plaque_events >= 1 && gksrs_events >= 1) valid_levels <- c(valid_levels, level)
             } else if (n_plaque >= 2 && n_gksrs >= 2) valid_levels <- c(valid_levels, level)
@@ -226,12 +234,12 @@ calculate_subgroup_effects <- function(model, data, subgroup_var_to_use, outcome
         level <- levels_to_process[i]
         level_data <- data[data[[subgroup_var_to_use]] == level, ]
         n_total <- nrow(level_data)
-        n_plaque <- sum(level_data$treatment_group == "Plaque", na.rm = TRUE)
+        n_plaque <- sum(level_data$treatment_group == "PBT", na.rm = TRUE)
         n_gksrs <- sum(level_data$treatment_group == "GKSRS", na.rm = TRUE)
         events_plaque <- NA
         events_gksrs <- NA
         if (outcome_type == "survival") {
-            plaque_data <- level_data %>% dplyr::filter(treatment_group == "Plaque")
+            plaque_data <- level_data %>% dplyr::filter(treatment_group == "PBT")
             gksrs_data <- level_data %>% dplyr::filter(treatment_group == "GKSRS")
             event_vars <- c("death_event", "mets_event", "pfs_event", "event")
             found_event_var <- NULL
@@ -246,7 +254,7 @@ calculate_subgroup_effects <- function(model, data, subgroup_var_to_use, outcome
                 events_gksrs <- sum(gksrs_data[[found_event_var]] == 1, na.rm = TRUE)
             }
         } else if (outcome_type == "binary") {
-            plaque_data <- level_data %>% dplyr::filter(treatment_group == "Plaque")
+            plaque_data <- level_data %>% dplyr::filter(treatment_group == "PBT")
             gksrs_data <- level_data %>% dplyr::filter(treatment_group == "GKSRS")
             outcome_vars <- c("recurrence1", "mets_progression", "outcome")
             found_outcome_var <- NULL

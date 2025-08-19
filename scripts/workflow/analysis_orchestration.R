@@ -182,8 +182,45 @@ run_specific_objective <- function(dataset_name, objective_number) {
     return(results)
 }
 
+#' Merge baseline tables from all cohorts using provided data
+#' This function merges baseline tables using data that's already loaded in memory
+#'
+#' @param full_data Data frame for the full cohort
+#' @param restricted_data Data frame for the restricted cohort
+#' @return None
+#' @export
+merge_baseline_tables_with_data <- function(full_data, restricted_data) {
+    # Merge baseline tables from all cohorts
+    logger::log_info("Merging baseline tables from all cohorts")
+    log_phase("STARTING TABLE MERGING: Full and Restricted Cohorts")
+
+    # Create merged tables directory
+    if (!dir.exists(MERGED_TABLES_DIR)) {
+        dir.create(MERGED_TABLES_DIR, recursive = TRUE, showWarnings = FALSE)
+    }
+
+    logger::log_info(formatted(sprintf("Merging tables will be saved to: %s", MERGED_TABLES_DIR)))
+
+    # Create merged baseline characteristics table using the correct function
+    merge_cohort_tables(full_data, restricted_data, MERGED_TABLES_DIR)
+    logger::log_info("=== COMPLETED BASELINE TABLE MERGING ===")
+    logger::log_info(formatted(sprintf("Merged baseline characteristics table saved to: %s", MERGED_TABLES_DIR)))
+    logger::log_info("Files created: merged_baseline_characteristics.xlsx and merged_baseline_characteristics.html")
+    
+    # Create merged recurrence and metastatic progression tables
+    merge_recurrence_metastatic_progression_tables(full_data, restricted_data, MERGED_TABLES_DIR)
+    logger::log_info("=== COMPLETED RECURRENCE/METASTATIC TABLE MERGING ===")
+    logger::log_info("Files created: merged_recurrence_metastatic_progression.xlsx and merged_recurrence_metastatic_progression.html")
+    
+    # Create merged adverse events tables
+    merge_adverse_events_tables(full_data, restricted_data, MERGED_TABLES_DIR)
+    logger::log_info("=== COMPLETED ADVERSE EVENTS TABLE MERGING ===")
+    logger::log_info("Files created: merged_adverse_events.xlsx and merged_adverse_events.html")
+}
+
 #' Merge baseline tables from all cohorts
-#' This function merges the baseline tables from all cohorts.
+#' This function merges baseline tables by reading the .rds files
+#' @deprecated Use merge_baseline_tables_with_data instead when data is already loaded
 #'
 #' @return None
 #' @export
@@ -205,9 +242,19 @@ merge_baseline_tables <- function() {
 
     # Create merged baseline characteristics table using the correct function
     merge_cohort_tables(full_data, restricted_data, MERGED_TABLES_DIR)
-    logger::log_info("=== COMPLETED TABLE MERGING ===")
+    logger::log_info("=== COMPLETED BASELINE TABLE MERGING ===")
     logger::log_info(formatted(sprintf("Merged baseline characteristics table saved to: %s", MERGED_TABLES_DIR)))
     logger::log_info("Files created: merged_baseline_characteristics.xlsx and merged_baseline_characteristics.html")
+    
+    # Create merged recurrence and metastatic progression tables
+    merge_recurrence_metastatic_progression_tables(full_data, restricted_data, MERGED_TABLES_DIR)
+    logger::log_info("=== COMPLETED RECURRENCE/METASTATIC TABLE MERGING ===")
+    logger::log_info("Files created: merged_recurrence_metastatic_progression.xlsx and merged_recurrence_metastatic_progression.html")
+    
+    # Create merged adverse events tables
+    merge_adverse_events_tables(full_data, restricted_data, MERGED_TABLES_DIR)
+    logger::log_info("=== COMPLETED ADVERSE EVENTS TABLE MERGING ===")
+    logger::log_info("Files created: merged_adverse_events.xlsx and merged_adverse_events.html")
 }
 
 #' Main execution and merging of baseline tables
@@ -227,6 +274,9 @@ main_execution <- function() {
     datasets_to_analyze <- grep("^uveal_melanoma_.*_cohort$", datasets_to_analyze_temp, value = TRUE)
 
     had_errors <- FALSE
+    
+    # Store data for merging at the end
+    cohort_data <- list()
 
     # Run analysis for each dataset with progress tracking
     progressr::with_progress({
@@ -239,6 +289,12 @@ main_execution <- function() {
                 {
                     results <- run_my_analysis(dataset_name)
                     if (results$had_errors) had_errors <- TRUE
+                    
+                    # Store the data for merging (if available)
+                    if (exists("data") && !is.null(data)) {
+                        cohort_data[[dataset_name]] <- data
+                    }
+                    
                     logger::log_info(formatted(sprintf(">>> Dataset %d/%d completed: %s", i, length(datasets_to_analyze), dataset_name)))
                 },
                 error = function(e) {
@@ -251,9 +307,21 @@ main_execution <- function() {
         }
     })
 
-    # Merge baseline tables from all cohorts
+    # Merge baseline tables from all cohorts using stored data
     tryCatch({
-        merge_baseline_tables()
+        if (length(cohort_data) >= 2) {
+            # Get the two main cohorts for merging
+            full_data <- cohort_data[["uveal_melanoma_full_cohort"]]
+            restricted_data <- cohort_data[["uveal_melanoma_restricted_cohort"]]
+            
+            if (!is.null(full_data) && !is.null(restricted_data)) {
+                merge_baseline_tables_with_data(full_data, restricted_data)
+            } else {
+                logger::log_warn("Cannot merge tables: required cohort data not available")
+            }
+        } else {
+            logger::log_warn("Cannot merge tables: insufficient cohort data available")
+        }
     }, error = function(e) {
         had_errors <<- TRUE
         logger::log_error(formatted(sprintf("Error merging baseline tables: %s", e$message)))

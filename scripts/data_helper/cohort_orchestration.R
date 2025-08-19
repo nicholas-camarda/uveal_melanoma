@@ -21,10 +21,6 @@ create_analytic_dataset <- function(output_dirs = NULL) {
     logger::log_info("Applying inclusion/exclusion criteria")
     factored_filtered_data <- apply_criteria(factored_data)
 
-    logger::log_info("Validating cohorts")
-    # This is here because data needs to be validated before it is saved
-    generate_validation_report(factored_filtered_data)
-
     logger::log_info(sprintf("Created %d cohorts", length(factored_filtered_data)))
     for (cohort in names(factored_filtered_data)) {
         logger::log_info(formatted(sprintf("Cohort '%s': %d patients", cohort, nrow(factored_filtered_data[[cohort]]))))
@@ -77,6 +73,10 @@ create_analytic_dataset <- function(output_dirs = NULL) {
 
     saveRDS(other_map, file.path(PROCESSED_DATA_DIR, "other_map.rds"))
     logger::log_info("Saved combined other_map information for all cohorts")
+
+    logger::log_info("Validating cohorts after saving")
+    # Validate after files are saved and that they meet all the criteria for analytic dataset
+    generate_validation_report(factored_filtered_data)
 
     return(list(
         analytic_data = factored_filtered_data,

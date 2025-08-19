@@ -47,8 +47,8 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
 
     # ===== TREATMENT VARIABLES =====
     treatment_date = list(
-        description = "Date of initial treatment (GKSRS or Plaque)",
-        calculation = "case_when(treatment_group == 'GKSRS' ~ initial_gk_date, treatment_group == 'Plaque' ~ initial_plaque_date)",
+        description = "Date of initial treatment (GKSRS or PBT)",
+        calculation = "case_when(treatment_group == 'GKSRS' ~ initial_gk_date, treatment_group == 'PBT' ~ initial_plaque_date)",
         purpose = "Reference date for all time-to-event calculations",
         data_type = "Date",
         units = "date"

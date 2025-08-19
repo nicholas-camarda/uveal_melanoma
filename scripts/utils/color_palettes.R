@@ -81,7 +81,7 @@ get_prame_palette <- function(levels) {
 #' @return Named vector mapping levels to colors
 get_treatment_palette <- function(levels) {
     mapping <- c(
-        "Plaque" = "#0072B5FF", # blue
+        "PBT" = "#0072B5FF", # blue
         "GKSRS"  = "#BC3C29FF", # red
         "Other"  = "#E18727FF" # orange
     )

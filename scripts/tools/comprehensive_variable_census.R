@@ -177,7 +177,7 @@ get_derived_variables_info <- function() {
             "Binary indicator for metastasis (1 = metastasized, 0 = censored)",
             "Binary indicator for progression (1 = progressed, 0 = censored)",
             "Binary indicator for recurrence (1 = recurred, 0 = censored)",
-            "Treatment group (Plaque vs GKSRS)",
+            "Treatment group (PBT vs GKSRS)",
             "Age at diagnosis calculated from DOB",
             "Initial tumor height in mm",
             "Initial tumor diameter in mm",

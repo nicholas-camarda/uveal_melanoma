@@ -310,10 +310,10 @@ validate_factor_level_consistency <- function(cohort_list, phase = "data_process
                     paste(names(treatment_dist), "=", treatment_dist, collapse = ", ")
                 ))
 
-                # Validate that reference group is Plaque (expected for our analysis)
-                if (actual_levels[1] != "Plaque") {
+                # Validate that reference group is PBT (expected for our analysis)
+                if (actual_levels[1] != "PBT") {
                     logger::log_error(sprintf(
-                        "VALIDATION FAILED: Treatment reference group should be 'Plaque', got '%s' in %s",
+                        "VALIDATION FAILED: Treatment reference group should be 'PBT', got '%s' in %s",
                         actual_levels[1], cohort_display_name
                     ))
                     validation_passed <- FALSE

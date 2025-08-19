@@ -19,7 +19,7 @@
 create_output_structure <- function(cohort_dir) {
     # Define cohort-specific objective-based directory structure
     dirs <- list(
-        # OBJECTIVE 1: Efficacy of Plaque vs GKSRS
+        # OBJECTIVE 1: Efficacy of PBT vs GKSRS
         obj1_recurrence = file.path(cohort_dir, "01_Efficacy", "a_recurrence"),
         obj1_mets = file.path(cohort_dir, "01_Efficacy", "b_metastatic_progression"),
         obj1_os = file.path(cohort_dir, "01_Efficacy", "c_overall_survival"),
@@ -32,7 +32,7 @@ create_output_structure <- function(cohort_dir) {
         # obj1_subgroup_clinical = file.path(cohort_dir, "01_Efficacy", "g_subgroup_analysis", "clinical_outcomes"),
         obj1_forest_plots = file.path(cohort_dir, "01_Efficacy", "g_subgroup_analysis", "forest_plots"),
 
-        # OBJECTIVE 2: Safety/Toxicity of Plaque vs GKSRS
+        # OBJECTIVE 2: Safety/Toxicity of PBT vs GKSRS
         obj2_vision = file.path(cohort_dir, "02_Safety", "a_vision_changes"),
         obj2_retinopathy = file.path(cohort_dir, "02_Safety", "b_retinopathy"),
         obj2_nvg = file.path(cohort_dir, "02_Safety", "c_neovascular_glaucoma"),
@@ -149,9 +149,10 @@ merge_cohort_tables <- function(full_cohort_data, restricted_cohort_data, output
                     missing = "no",
                     label = variable_labels[intersect(names(variable_labels), full_available_filtered)],
                     statistic = list(
-                        all_continuous() ~ "{mean} ({sd})",
+                        all_continuous() ~ "{median} ({min}, {max})",
                         all_categorical() ~ "{n} ({p}%)"
-                    )
+                    ),
+                    digits = list(all_continuous() ~ 1, all_categorical() ~ 0)
                 ) %>%
                 add_overall() %>%
                 add_p(
@@ -166,7 +167,7 @@ merge_cohort_tables <- function(full_cohort_data, restricted_cohort_data, output
                     modify_header(
                         label = "**Characteristic**",
                         stat_0 = "**Overall**\nN = {N}",
-                        stat_1 = "**Plaque**\nN = {n}",
+                        stat_1 = "**PBT**\nN = {n}",
                         stat_2 = "**GKSRS**\nN = {n}",
                         p.value = "**p-value**"
                     )
@@ -185,9 +186,10 @@ merge_cohort_tables <- function(full_cohort_data, restricted_cohort_data, output
                     missing = "no",
                     label = variable_labels[intersect(names(variable_labels), restricted_available_filtered)],
                     statistic = list(
-                        all_continuous() ~ "{mean} ({sd})",
+                        all_continuous() ~ "{median} ({min}, {max})",
                         all_categorical() ~ "{n} ({p}%)"
-                    )
+                    ),
+                    digits = list(all_continuous() ~ 1, all_categorical() ~ 0)
                 ) %>%
                 add_overall() %>%
                 add_p(
@@ -202,7 +204,7 @@ merge_cohort_tables <- function(full_cohort_data, restricted_cohort_data, output
                     modify_header(
                         label = "**Characteristic**",
                         stat_0 = "**Overall**\nN = {N}",
-                        stat_1 = "**Plaque**\nN = {n}",
+                        stat_1 = "**PBT**\nN = {n}",
                         stat_2 = "**GKSRS**\nN = {n}",
                         p.value = "**p-value**"
                     )
@@ -321,10 +323,10 @@ create_all_combined_forest_plots <- function(base_dir, cohort_names = c("full", 
                         full_results = full_results,
                         restricted_results = restricted_results,
                         outcome_name = outcome_name,
-                        treatment_labels = c("GKSRS", "Plaque"),
+                        treatment_labels = c("GKSRS", "PBT"),
                         variable_order = FOREST_PLOT_VARIABLE_ORDER,
                         effect_measure = effect_measure,
-                        favours_labels = c("Favours GKSRS", "Favours Plaque")
+                        favours_labels = c("Favors GKSRS", "Favors PBT")
                     )
 
                     # Save the plot
@@ -460,3 +462,509 @@ write_analysis_diagnostics_excel <- function(diagnostics, file_path) {
 }
 
 ## Note: subdirectory creation for GEP visuals is centralized above; plotting code should not mkdir
+
+#' Merge recurrence and metastatic progression tables from full and restricted cohorts
+#'
+#' Creates a merged table comparing recurrence and metastatic progression rates between full and restricted cohorts
+#' using gtsummary's built-in functions for clean, publication-ready output.
+#' Follows the exact same pattern as merge_cohort_tables.
+#'
+#' @param full_cohort_data Data frame containing full cohort data
+#' @param restricted_cohort_data Data frame containing restricted cohort data
+#' @param output_path Directory where merged tables should be saved
+#' @return Invisibly returns NULL
+#'
+#' @examples
+#' merge_recurrence_metastatic_progression_tables(full_data, restricted_data, "final_data/Analysis/merged_tables/")
+merge_recurrence_metastatic_progression_tables <- function(full_cohort_data, restricted_cohort_data, output_path = NULL) {
+    logger::log_info("=== STARTING TABLE MERGING: Recurrence and Metastatic Progression ===")
+
+    # Set default output path if not provided
+    if (is.null(output_path)) {
+        output_path <- MERGED_TABLES_DIR
+    }
+
+    # Create output directory
+    if (!dir.exists(output_path)) {
+        dir.create(output_path, recursive = TRUE, showWarnings = FALSE)
+        logger::log_info(sprintf("Created merged tables directory: %s", output_path))
+    }
+
+    logger::log_info(sprintf("Merging tables will be saved to: %s", output_path))
+
+    # Variables to summarize for recurrence and metastatic progression
+    outcome_vars <- c("recurrence1", "mets_progression")
+    
+    # Get variable labels for human-readable display (use existing STANDARD_TABLE_LABELS)
+    variable_labels <- get_variable_labels()
+
+    tryCatch(
+        {
+            # Create baseline table for full cohort
+            full_outcomes <- full_cohort_data %>%
+                select(any_of(c(outcome_vars, "treatment_group"))) %>%
+                tbl_summary(
+                    by = treatment_group,
+                    missing = "no",
+                    label = variable_labels[intersect(names(variable_labels), outcome_vars)],
+                    statistic = list(
+                        all_categorical() ~ "{n} ({p}%)"
+                    )
+                ) %>%
+                add_overall() %>%
+                add_p(
+                    test = list(all_categorical() ~ "fisher.test"),
+                    test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))
+                ) %>%
+                bold_labels()
+
+            # Add header modification with error handling for full cohort
+            tryCatch({
+                full_outcomes <- full_outcomes %>%
+                    modify_header(
+                        label = "**Outcome**",
+                        stat_0 = "**Overall**\nN = {N}",
+                        stat_1 = "**PBT**\nN = {n}",
+                        stat_2 = "**GKSRS**\nN = {n}",
+                        p.value = "**p-value**"
+                    )
+            }, error = function(e) {
+                logger::log_warn(sprintf("Warning: Could not modify headers for full cohort table: %s", e$message))
+                logger::log_info("Proceeding with default headers for full cohort")
+            })
+
+            # Create baseline table for restricted cohort
+            restricted_outcomes <- restricted_cohort_data %>%
+                select(any_of(c(outcome_vars, "treatment_group"))) %>%
+                tbl_summary(
+                    by = treatment_group,
+                    missing = "no",
+                    label = variable_labels[intersect(names(variable_labels), outcome_vars)],
+                    statistic = list(
+                        all_categorical() ~ "{n} ({p}%)"
+                    )
+                ) %>%
+                add_overall() %>%
+                add_p(
+                    test = list(all_categorical() ~ "fisher.test"),
+                    test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))
+                ) %>%
+                bold_labels()
+
+            # Add header modification with error handling for restricted cohort
+            tryCatch({
+                restricted_outcomes <- restricted_outcomes %>%
+                    modify_header(
+                        label = "**Outcome**",
+                        stat_0 = "**Overall**\nN = {N}",
+                        stat_1 = "**PBT**\nN = {n}",
+                        stat_2 = "**GKSRS**\nN = {n}",
+                        p.value = "**p-value**"
+                    )
+            }, error = function(e) {
+                logger::log_warn(sprintf("Warning: Could not modify headers for restricted cohort table: %s", e$message))
+                logger::log_info("Proceeding with default headers for restricted cohort")
+            })
+
+            # Merge tables side by side (exact same approach as merge_cohort_tables)
+            merged_table <- tbl_merge(
+                tbls = list(full_outcomes, restricted_outcomes),
+                tab_spanner = c("**Full Cohort**", "**Restricted Cohort**")
+            ) %>%
+                modify_caption("**Table 2: Local Recurrence and Metastatic Progression Rates**")
+
+            # Save as HTML (same approach as merge_cohort_tables)
+            save_gt_html(
+                merged_table,
+                filename = file.path(output_path, "merged_recurrence_metastatic_progression.html")
+            )
+
+            # Save as Excel (same approach as merge_cohort_tables)
+            merged_table %>%
+                as_tibble() %>%
+                writexl::write_xlsx(
+                    path = file.path(output_path, "merged_recurrence_metastatic_progression.xlsx")
+                )
+
+            logger::log_info("Saved merged recurrence and metastatic progression table (Excel and HTML)")
+        },
+        error = function(e) {
+            logger::log_error(sprintf("Error merging recurrence/metastatic tables: %s", e$message))
+            logger::log_info("Skipping recurrence/metastatic table merge")
+        }
+    )
+
+    # Summary message
+    logger::log_info("=== COMPLETED RECURRENCE/METASTATIC TABLE MERGING ===")
+    logger::log_info(sprintf("Merged recurrence and metastatic progression table saved to: %s", output_path))
+    logger::log_info("Files created: merged_recurrence_metastatic_progression.xlsx and merged_recurrence_metastatic_progression.html")
+
+    return(invisible(NULL))
+}
+
+#' Merge adverse events tables from full and restricted cohorts
+#'
+#' Creates a merged table comparing adverse events between full and restricted cohorts
+#' using gtsummary's built-in functions for clean, publication-ready output.
+#' Follows the exact same pattern as merge_cohort_tables.
+#'
+#' @param full_cohort_data Data frame containing full cohort data
+#' @param restricted_cohort_data Data frame containing restricted cohort data
+#' @param output_path Directory where merged tables should be saved
+#' @return Invisibly returns NULL
+#'
+#' @examples
+#' merge_adverse_events_tables(full_data, restricted_data, "final_data/Analysis/merged_tables/")
+merge_adverse_events_tables <- function(full_cohort_data, restricted_cohort_data, output_path = NULL) {
+    logger::log_info("=== STARTING TABLE MERGING: Adverse Events ===")
+
+    # Set default output path if not provided
+    if (is.null(output_path)) {
+        output_path <- MERGED_TABLES_DIR
+    }
+
+    # Create output directory
+    if (!dir.exists(output_path)) {
+        dir.create(output_path, recursive = TRUE, showWarnings = FALSE)
+        logger::log_info(sprintf("Created merged tables directory: %s", output_path))
+    }
+
+    logger::log_info(sprintf("Merging tables will be saved to: %s", output_path))
+
+    # Get variable labels for human-readable display (use existing STANDARD_TABLE_LABELS)
+    variable_labels <- get_variable_labels()
+
+    tryCatch(
+        {
+            # Create vision change variable (logMAR difference) for both cohorts
+            full_cohort_data <- full_cohort_data %>%
+                mutate(vision_change = last_vision - initial_vision)
+            
+            restricted_cohort_data <- restricted_cohort_data %>%
+                mutate(vision_change = last_vision - initial_vision)
+
+            # Variables to summarize for adverse events
+            outcome_vars <- c("vision_change", "retinopathy", "nvg", "srd")
+
+            # Create baseline table for full cohort
+            full_outcomes <- full_cohort_data %>%
+                select(any_of(c(outcome_vars, "treatment_group"))) %>%
+                tbl_summary(
+                    by = treatment_group,
+                    missing = "no",
+                    label = variable_labels[intersect(names(variable_labels), outcome_vars)],
+                    statistic = list(
+                        all_continuous() ~ "{median} ({min}, {max})",
+                        all_categorical() ~ "{n} ({p}%)"
+                    ),
+                    digits = list(all_continuous() ~ 1, all_categorical() ~ 0)
+                ) %>%
+                add_overall() %>%
+                add_p(
+                    test = list(all_continuous() ~ "wilcox.test", all_categorical() ~ "fisher.test"),
+                    test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))
+                ) %>%
+                bold_labels()
+
+            # Add header modification with error handling for full cohort
+            tryCatch({
+                full_outcomes <- full_outcomes %>%
+                    modify_header(
+                        label = "**Adverse Event**",
+                        stat_0 = "**Overall**\nN = {N}",
+                        stat_1 = "**PBT**\nN = {n}",
+                        stat_2 = "**GKSRS**\nN = {n}",
+                        p.value = "**p-value**"
+                    )
+            }, error = function(e) {
+                logger::log_warn(sprintf("Warning: Could not modify headers for full cohort table: %s", e$message))
+                logger::log_info("Proceeding with default headers for full cohort")
+            })
+
+            # Create baseline table for restricted cohort
+            restricted_outcomes <- restricted_cohort_data %>%
+                select(any_of(c(outcome_vars, "treatment_group"))) %>%
+                tbl_summary(
+                    by = treatment_group,
+                    missing = "no",
+                    label = variable_labels[intersect(names(variable_labels), outcome_vars)],
+                    statistic = list(
+                        all_continuous() ~ "{median} ({min}, {max})",
+                        all_categorical() ~ "{n} ({p}%)"
+                    ),
+                    digits = list(all_continuous() ~ 1, all_categorical() ~ 0)
+                ) %>%
+                add_overall() %>%
+                add_p(
+                    test = list(all_continuous() ~ "wilcox.test", all_categorical() ~ "fisher.test"),
+                    test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))
+                ) %>%
+                bold_labels()
+
+            # Add header modification with error handling for restricted cohort
+            tryCatch({
+                restricted_outcomes <- restricted_outcomes %>%
+                    modify_header(
+                        label = "**Adverse Event**",
+                        stat_0 = "**Overall**\nN = {N}",
+                        stat_1 = "**PBT**\nN = {n}",
+                        stat_2 = "**GKSRS**\nN = {n}",
+                        p.value = "**p-value**"
+                    )
+            }, error = function(e) {
+                logger::log_warn(sprintf("Warning: Could not modify headers for restricted cohort table: %s", e$message))
+                logger::log_info("Proceeding with default headers for restricted cohort")
+            })
+
+            # Merge tables side by side (exact same approach as merge_cohort_tables)
+            merged_table <- tbl_merge(
+                tbls = list(full_outcomes, restricted_outcomes),
+                tab_spanner = c("**Full Cohort**", "**Restricted Cohort**")
+            ) %>%
+                modify_caption("**Table 3: Adverse Events**")
+
+            # Save as HTML (same approach as merge_cohort_tables)
+            save_gt_html(
+                merged_table,
+                filename = file.path(output_path, "merged_adverse_events.html")
+            )
+
+            # Save as Excel (same approach as merge_cohort_tables)
+            merged_table %>%
+                as_tibble() %>%
+                writexl::write_xlsx(
+                    path = file.path(output_path, "merged_adverse_events.xlsx")
+                )
+
+            logger::log_info("Saved merged adverse events table (Excel and HTML)")
+        },
+        error = function(e) {
+            logger::log_error(sprintf("Error merging adverse events tables: %s", e$message))
+            logger::log_info("Skipping adverse events table merge")
+        }
+    )
+
+    # Summary message
+    logger::log_info("=== COMPLETED ADVERSE EVENTS TABLE MERGING ===")
+    logger::log_info(sprintf("Merged adverse events table saved to: %s", output_path))
+    logger::log_info("Files created: merged_adverse_events.xlsx and merged_adverse_events.html")
+
+    return(invisible(NULL))
+}
+
+#' Export descriptive statistics for patients who received repeat treatments
+#'
+#' Creates a comprehensive dataset of patients who received repeat treatments,
+#' including their first treatment, repeat treatment details, and descriptive statistics.
+#'
+#' @param full_cohort_data Data frame containing full cohort data
+#' @param restricted_cohort_data Data frame containing restricted cohort data
+#' @param output_path Directory where the Excel file should be saved
+#' @return Invisibly returns NULL
+#'
+#' @examples
+#' export_repeat_treatment_descriptive_stats(full_data, restricted_data, "final_data/Analysis/")
+export_repeat_treatment_descriptive_stats <- function(full_cohort_data, restricted_cohort_data, output_path = NULL) {
+    logger::log_info("=== EXPORTING REPEAT TREATMENT DESCRIPTIVE STATISTICS ===")
+
+    # Set default output path if not provided
+    if (is.null(output_path)) {
+        output_path <- file.path(DATA_DIR, "Analysis", "merged_tables")
+    }
+
+    # Create output directory
+    if (!dir.exists(output_path)) {
+        dir.create(output_path, recursive = TRUE, showWarnings = FALSE)
+        logger::log_info(sprintf("Created output directory: %s", output_path))
+    }
+
+    tryCatch(
+        {
+            # Function to process repeat treatment data for a cohort
+            process_repeat_treatments <- function(cohort_data, cohort_name) {
+                # Identify patients with any repeat treatment
+                repeat_treatment_patients <- cohort_data %>%
+                    filter(!is.na(recurrence1_treatment) | !is.na(recurrence2_treatment) | !is.na(recurrence3_treatment)) %>%
+                    mutate(
+                        cohort = cohort_name,
+                        has_recurrence1_treatment = !is.na(recurrence1_treatment),
+                        has_recurrence2_treatment = !is.na(recurrence2_treatment),
+                        has_recurrence3_treatment = !is.na(recurrence3_treatment),
+                        total_repeat_treatments = rowSums(!is.na(select(., recurrence1_treatment, recurrence2_treatment, recurrence3_treatment)))
+                    ) %>%
+                    select(
+                        # Patient identifiers
+                        id, cohort, treatment_group,
+                        
+                        # First treatment details
+                        treatment_date,
+                        
+                        # Recurrence 1 treatment details (grouped together)
+                        recurrence1_treatment, recurrence1_treatment_date, 
+                        recurrence1_pretreatment_height, recurrence1_pretreatment_vision,
+                        
+                        # Recurrence 2 treatment details (grouped together)
+                        recurrence2_treatment, recurrence2_treatment_date,
+                        recurrence2_pretreatment_height, recurrence2_pretreatment_vision,
+                        
+                        # Recurrence 3 treatment details (grouped together)
+                        recurrence3_treatment, recurrence3_treatment_date,
+                        recurrence3_pretreatment_height, recurrence3_pretreatment_vision,
+                        
+                        # Repeat treatment flags
+                        has_recurrence1_treatment, has_recurrence2_treatment, has_recurrence3_treatment, total_repeat_treatments,
+                        
+                        # Descriptive statistics
+                        age_at_diagnosis, sex, race, ethnicity,
+                        initial_tumor_height, initial_tumor_diameter, initial_overall_stage,
+                        optic_nerve, initial_vision,
+                        
+                        # Time intervals
+                        tt_recurrence_months, tt_recurrence_months_analysis
+                    )
+                
+                return(repeat_treatment_patients)
+            }
+
+            # Process both cohorts
+            full_repeat_treatments <- process_repeat_treatments(full_cohort_data, "Full Cohort")
+            restricted_repeat_treatments <- process_repeat_treatments(restricted_cohort_data, "Restricted Cohort")
+
+            # Combine datasets
+            all_repeat_treatments <- bind_rows(full_repeat_treatments, restricted_repeat_treatments)
+
+            # Create summary statistics in wide format: treatments as rows, variables as columns
+            create_treatment_type_summary <- function(data) {
+                # Get unique repeat treatment types (excluding NA)
+                treatment_types <- unique(c(
+                    data$recurrence1_treatment,
+                    data$recurrence2_treatment, 
+                    data$recurrence3_treatment
+                ))
+                treatment_types <- treatment_types[!is.na(treatment_types)]
+                
+                # Create summary data frame with treatments as rows
+                summary_data <- data.frame(Treatment_Type = treatment_types, stringsAsFactors = FALSE)
+                
+                # Add total patient counts
+                summary_data$Total_Patients <- sapply(treatment_types, function(tx) {
+                    sum(data$recurrence1_treatment == tx | data$recurrence2_treatment == tx | data$recurrence3_treatment == tx, na.rm = TRUE)
+                })
+                
+                # Process categorical variables
+                categorical_vars <- c("sex", "race", "ethnicity", "initial_overall_stage", "optic_nerve", "treatment_group")
+                for (var in categorical_vars) {
+                    if (var %in% names(data)) {
+                        var_values <- unique(data[[var]])
+                        var_values <- var_values[!is.na(var_values)]
+                        
+                        for (val in var_values) {
+                            col_name <- paste0(var, "_", val)
+                            summary_data[[col_name]] <- sapply(treatment_types, function(tx) {
+                                sum((data$recurrence1_treatment == tx | data$recurrence2_treatment == tx | data$recurrence3_treatment == tx) & 
+                                    data[[var]] == val, na.rm = TRUE)
+                            })
+                        }
+                    }
+                }
+                
+                # Process continuous variables
+                continuous_vars <- c("age_at_diagnosis", "initial_tumor_height", "initial_tumor_diameter", "initial_vision")
+                for (var in continuous_vars) {
+                    if (var %in% names(data)) {
+                        # Mean
+                        col_name_mean <- paste0(var, "_Mean")
+                        summary_data[[col_name_mean]] <- sapply(treatment_types, function(tx) {
+                            tx_patients <- data[data$recurrence1_treatment == tx | data$recurrence2_treatment == tx | data$recurrence3_treatment == tx, ]
+                            mean(tx_patients[[var]], na.rm = TRUE)
+                        })
+                        
+                        # Median
+                        col_name_median <- paste0(var, "_Median")
+                        summary_data[[col_name_median]] <- sapply(treatment_types, function(tx) {
+                            tx_patients <- data[data$recurrence1_treatment == tx | data$recurrence2_treatment == tx | data$recurrence3_treatment == tx, ]
+                            median(tx_patients[[var]], na.rm = TRUE)
+                        })
+                        
+                        # SD
+                        col_name_sd <- paste0(var, "_SD")
+                        summary_data[[col_name_sd]] <- sapply(treatment_types, function(tx) {
+                            tx_patients <- data[data$recurrence1_treatment == tx | data$recurrence2_treatment == tx | data$recurrence3_treatment == tx, ]
+                            sd(tx_patients[[var]], na.rm = TRUE)
+                        })
+                    }
+                }
+                
+                # Round numeric values
+                numeric_cols <- names(summary_data)[sapply(summary_data, is.numeric)]
+                for (col in numeric_cols) {
+                    summary_data[[col]] <- round(summary_data[[col]], 2)
+                }
+                
+                return(summary_data)
+            }
+            
+            # Create cohort distribution summary
+            create_cohort_distribution_summary <- function(data) {
+                # Get unique repeat treatment types
+                treatment_types <- unique(c(
+                    data$recurrence1_treatment,
+                    data$recurrence2_treatment, 
+                    data$recurrence3_treatment
+                ))
+                treatment_types <- treatment_types[!is.na(treatment_types)]
+                
+                # Create summary by cohort and treatment type
+                cohort_summary <- data %>%
+                    select(recurrence1_treatment, recurrence2_treatment, recurrence3_treatment, treatment_group, cohort) %>%
+                    pivot_longer(
+                        cols = c(recurrence1_treatment, recurrence2_treatment, recurrence3_treatment),
+                        names_to = "recurrence_number",
+                        values_to = "treatment_type"
+                    ) %>%
+                    filter(!is.na(treatment_type)) %>%
+                    group_by(treatment_type, treatment_group, cohort) %>%
+                    summarise(count = n(), .groups = "drop") %>%
+                    pivot_wider(
+                        names_from = c(treatment_group, cohort),
+                        values_from = count,
+                        values_fill = 0
+                    )
+                
+                return(cohort_summary)
+            }
+            
+            # Generate summaries
+            summary_stats <- create_treatment_type_summary(all_repeat_treatments)
+            cohort_distribution <- create_cohort_distribution_summary(all_repeat_treatments)
+
+            # Create Excel file with multiple sheets
+            excel_file <- file.path(output_path, "repeat_treatment_descriptive_statistics.xlsx")
+            
+            # Write to Excel with multiple sheets
+            writexl::write_xlsx(
+                list(
+                    "All_Repeat_Treatments" = all_repeat_treatments,
+                    "Full_Cohort_Repeat" = full_repeat_treatments,
+                    "Restricted_Cohort_Repeat" = restricted_repeat_treatments,
+                    "Summary_By_Treatment_Type" = summary_stats,
+                    "Cohort_Distribution" = cohort_distribution
+                ),
+                path = excel_file
+            )
+
+            logger::log_info(sprintf("Repeat treatment descriptive statistics exported to: %s", excel_file))
+            logger::log_info(sprintf("Total patients with repeat treatments: %d", summary_stats$total_patients))
+            logger::log_info(sprintf("Full cohort: %d, Restricted cohort: %d", 
+                                   summary_stats$full_cohort_count, summary_stats$restricted_cohort_count))
+
+        },
+        error = function(e) {
+            logger::log_error(sprintf("Error exporting repeat treatment statistics: %s", e$message))
+            stop(e)
+        }
+    )
+
+    logger::log_info("=== COMPLETED REPEAT TREATMENT STATISTICS EXPORT ===")
+    return(invisible(NULL))
+}

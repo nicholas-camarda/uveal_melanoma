@@ -58,8 +58,8 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, other_map =
             missing = "no",
             by = treatment_group,
             type = list(vision_change ~ "continuous"),
-            statistic = list(vision_change ~ "{mean} ({sd})"),
-            digits = list(vision_change ~ 2)
+            statistic = list(vision_change ~ "{median} ({min}, {max})"),
+            digits = list(all_continuous() ~ 1, all_categorical() ~ 0)
         ) %>%
         add_p(test = list(all_continuous() ~ "wilcox.test")) %>%
         add_overall() %>%
@@ -214,9 +214,10 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
             missing = "no",
             label = get_variable_labels(),
             statistic = list(
-                all_continuous() ~ "{mean} ({sd})",
+                all_continuous() ~ "{median} ({min}, {max})",
                 all_categorical() ~ "{n} ({p}%)"
-            )
+            ),
+            digits = list(all_continuous() ~ 1, all_categorical() ~ 0)
         ) %>%
         add_overall() %>%
         add_p(test = list(all_continuous() ~ "wilcox.test")) %>%
@@ -224,7 +225,7 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
         modify_header(
             label = "**Characteristic**",
             stat_0 = "**Overall**\nN = {N}",
-            stat_1 = "**Plaque**\nN = {n}",
+            stat_1 = "**PBT**\nN = {n}",
             stat_2 = "**GKSRS**\nN = {n}",
             p.value = "**p-value**"
         ) %>%

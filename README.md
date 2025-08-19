@@ -1,8 +1,8 @@
-# Uveal Melanoma: GKSRS vs Plaque
+# Uveal Melanoma: GKSRS vs PBT
 
 ## Overview
 
-This project provides a complete pipeline for processing, cleaning, and analyzing clinical data for uveal melanoma patients, with a focus on comparing outcomes between Gamma Knife Stereotactic Radiosurgery (GKSRS) and plaque brachytherapy. The analysis is organized around **4 primary study objectives** with results structured for easy navigation by research question.
+This project provides a complete pipeline for processing, cleaning, and analyzing clinical data for uveal melanoma patients, with a focus on comparing outcomes between Gamma Knife Stereotactic Radiosurgery (GKSRS) and PBT brachytherapy. The analysis is organized around **4 primary study objectives** with results structured for easy navigation by research question.
 
 **Author:** Nicholas Camarda
 
@@ -40,7 +40,7 @@ run_my_analysis("uveal_melanoma_full_cohort")
 
 The analysis is structured around four prioritized research objectives:
 
-### **Objective 1: Efficacy of Plaque vs GKSRS (COMPLETE)**
+### **Objective 1: Efficacy of PBT vs GKSRS (COMPLETE)**
 **Primary research question:** How do clinical outcomes compare between treatments?
 - **1a.** Local recurrence rates
 - **1b.** Metastatic progression rates  
@@ -84,7 +84,7 @@ flowchart TD
     
     H --> I["uveal_melanoma_full_cohort<br/>(All patients, n=263)"]
     H --> J["uveal_melanoma_restricted_cohort<br/>(Eligible for both, n=169)"]
-    H --> K["uveal_melanoma_gksrs_only_cohort<br/>(Ineligible for plaque, n=93)"]
+    H --> K["uveal_melanoma_gksrs_only_cohort<br/>(Ineligible for PBT, n=93)"]
     
     I --> L["Save to RDS<br/>final_data/Analytic Dataset/"]
     J --> L
@@ -136,7 +136,7 @@ Each objective has its own dedicated workflow script:
 The analysis includes three distinct patient cohorts based on tumor characteristics and treatment eligibility:
 
 ### **Full Cohort** (n=263)
-- **Definition:** All patients who received either GKSRS or plaque brachytherapy
+- **Definition:** All patients who received either GKSRS or PBT brachytherapy
 - **Purpose:** Real-world effectiveness comparison across all tumor sizes and locations
 
 ### **Restricted Cohort** (n=169) 
@@ -145,9 +145,9 @@ The analysis includes three distinct patient cohorts based on tumor characterist
 - **Purpose:** Balanced comparison minimizing treatment selection bias
 
 ### **GKSRS-Only Cohort** (n=93)
-- **Definition:** Patients **ineligible** for plaque brachytherapy
+- **Definition:** Patients **ineligible** for PBT brachytherapy
 - **Criteria:** Tumor diameter >20mm OR height >10mm OR optic nerve involvement
-- **Purpose:** GKSRS effectiveness in challenging cases where plaque is not feasible
+- **Purpose:** GKSRS effectiveness in challenging cases where PBT is not feasible
 
 ---
 
@@ -298,6 +298,30 @@ All primary efficacy analyses have been implemented with comprehensive outputs t
   - **Sensitivity tumor height subgroups:** `{cohort}/01_Efficacy/g_subgroup_analysis/tumor_height_sensitivity/`
   - **Forest plots:** `{cohort}/01_Efficacy/g_subgroup_analysis/forest_plots/`
 
+##### **Statistical Filtering and Stability**
+The subgroup analysis implements rigorous filtering criteria to ensure statistical validity:
+
+**Filtering Requirements:**
+- **Minimum sample size:** ≥2 patients in each treatment group
+- **Minimum events:** ≥1 event in each treatment group (for survival outcomes)
+- **Statistical stability:** Groups with insufficient events are excluded from analysis
+
+**Risk Comparison Stability:**
+- **Zero events in one group → Stable comparison** (risk vs no risk)
+  - The Cox model can handle "no risk vs some risk" comparisons mathematically
+  - Example: ≥80 years group with 0 PBT events vs 2 GKSRS events produces stable HR
+- **Very few events vs many events → Unstable comparison** (unreliable relative risk estimation)
+  - Extreme imbalances create statistical instability and infinite confidence intervals
+  - Example: 50-59 years group with 1 PBT event vs 8 GKSRS events produces infinite HR
+  - These groups are automatically marked as "skipped_non_finite" in forest plot diagnostics
+
+**Why This Matters:**
+The filtering ensures publication-quality results by preventing:
+1. Models running on statistically unstable subgroups
+2. Infinite hazard ratios and confidence intervals  
+3. Inconsistent filtering between different outcome types
+4. Meaningless statistical comparisons that could mislead interpretation
+
 ### **OBJECTIVE 2: Safety/Toxicity Analysis (COMPLETE)**
 
 All safety endpoint analyses have been implemented through the new workflow system:
@@ -426,8 +450,7 @@ Comprehensive forest plot generation for subgroup analysis visualization:
   - Dynamic effect measure handling (HR, OR, MD)
   - Automatic log scale for HR/OR, linear scale for mean differences
   - Formatting with confidence intervals
-  - Treatment direction indicators ("Favours GKSRS" vs "Favours Plaque")
-  - High-resolution PNG output (300 DPI)
+  - Treatment direction indicators ("Favours GKSRS" vs "Favours PBT")
 - **Generated For:** All subgroup analyses across all primary outcomes
 - **Location:** `{cohort}/01_Efficacy/g_subgroup_analysis/forest_plots/`
 
@@ -486,7 +509,7 @@ All survival endpoints include comprehensive RMST analysis. RMST is used because
 
 #### **RMST Outputs Generated:**
 1. **📈 Survival Rate Tables:** 1, 3, 5, 10, and 15-year survival probabilities by treatment
-2. **📊 RMST Comparison Tables:** Mean survival time differences (GKSRS vs Plaque) at each time point  
+2. **📊 RMST Comparison Tables:** Mean survival time differences (GKSRS vs PBT) at each time point  
 3. **📉 P-value Progression Plots:** Visual representation of statistical significance evolution over time
 
 #### **🎨 RMST P-value Progression Plots**
@@ -509,7 +532,7 @@ All survival endpoints include comprehensive RMST analysis. RMST is used because
 All Cox regression analyses automatically include comprehensive testing of the proportional hazards (PH) assumption using Schoenfeld residuals to detect time-varying treatment effects.
 
 #### **What is the Proportional Hazards Assumption?**
-The Cox proportional hazards model assumes that the hazard ratio between treatment groups remains **constant over time**. When this assumption is violated, it means the treatment effect changes over time - for example, "plaque significant survival early on then GKSRS seems to take over."
+The Cox proportional hazards model assumes that the hazard ratio between treatment groups remains **constant over time**. When this assumption is violated, it means the treatment effect changes over time - for example, "PBT significant survival early on then GKSRS seems to take over."
 
 #### **Files Generated**
 For each survival outcome, the analysis creates these files in the `h_proportional_hazards_diagnostics/` directory:
