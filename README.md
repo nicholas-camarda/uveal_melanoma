@@ -573,15 +573,17 @@ If **treatment_group** violates the PH assumption:
 - **Objective 1 (Efficacy)**: `{cohort}/01_Efficacy/h_proportional_hazards_diagnostics/`
 - **Objective 3 (PFS-2)**: `{cohort}/03_Repeat_Radiation/b_proportional_hazards_diagnostics/`
 
-### **GEP Analysis (Objective 4: GEP Validation)**
+---
 
-#### **What This Analysis Does and Why It Matters**
+## **More Details about the GEP Analysis (Objective 4: GEP Validation)**
+
+### **What This Analysis Does and Why It Matters**
 - **Purpose**: Validates whether lab-reported gene expression profile (GEP) probabilities actually match real patient outcomes
 - **Two Outcomes**: Metastasis-free survival (MFS) and melanoma-specific survival (MSS)
 - **Time Points**: 5, 7, and 10 years (clinically relevant follow-up periods)
 - **Clinical Value**: Helps determine if GEP testing should guide treatment decisions and patient counseling
 
-#### **What You Get (Output Files and Structure)**
+### **What You Get (Output Files and Structure)**
 
 By cohort in `final_data/Analysis/<cohort>/04_GEP_Validation/`:
 
@@ -601,7 +603,7 @@ By cohort in `final_data/Analysis/<cohort>/04_GEP_Validation/`:
 - `*_mfs_consolidated_summary.xlsx`: All MFS metrics consolidated in one view
 - `*_mss_consolidated_summary.xlsx`: All MSS metrics consolidated in one view
 
-#### **Understanding the Statistical Terms (In Plain Language)**
+### **Understanding the Statistical Terms (In Plain Language)**
 
 **Calibration: "Are the predictions accurate?"**
 - **What it measures**: How close predicted risks are to what actually happened
@@ -656,7 +658,7 @@ By cohort in `final_data/Analysis/<cohort>/04_GEP_Validation/`:
   - **No net improvement**: The new biomarker doesn't provide additional discriminatory information
   - **Clinical implication**: Adding the biomarker (e.g., PRAME) may not be worth the additional cost/complexity
 
-#### **Technical Implementation: How the Analysis Works**
+### **Technical Implementation: How the Analysis Works**
 
 **Data Preparation**:
 - **GEP Classes**: Patients grouped into risk classes (Class 1 = low risk, Class 2 = high risk)
@@ -686,7 +688,7 @@ By cohort in `final_data/Analysis/<cohort>/04_GEP_Validation/`:
 - **Discordant results**: May indicate that GEP affects instantaneous risk differently than cumulative risk
 - **Complementary value**: Both perspectives enhance understanding of GEP clinical utility
 
-#### **Why Different Plot Types for MFS vs MSS?**
+### **Why Different Plot Types for MFS vs MSS?**
 
 **MFS (Metastasis-Free Survival) = Standard Survival Analysis**
 - **Event**: Metastasis (first occurrence)
@@ -707,7 +709,7 @@ By cohort in `final_data/Analysis/<cohort>/04_GEP_Validation/`:
 - **MFS**: 16 metastasis events out of 86 patients → KM curves show metastasis-free survival probability
 - **MSS**: 15 melanoma deaths, 0 competing deaths → CIF shows cumulative probability of melanoma death
 
-#### **Competing Risk Analysis: Two Different Models**
+### **Competing Risk Analysis: Two Different Models**
 
 Both cause-specific Cox regression and Fine-Gray subdistribution hazards are appropriate but answer **different clinical questions**:
 
@@ -732,7 +734,7 @@ Consider a high-risk GEP patient:
 
 The cause-specific HR is typically larger because it conditions on survival, while the subdistribution SHR accounts for competing mortality reducing overall melanoma death risk.
 
-#### **Robust Discrimination Implementation**
+### **Robust Discrimination Implementation**
 
 **What We Implemented:**
 - **Robust Discrimination Strategy**: Replaced fragile Uno's C-index and time-dependent AUC with Harrell's C-index and integrated AUC
@@ -756,7 +758,7 @@ Our data has events spread across time, not concentrated at exact 5yr/7yr/10yr t
 - **Clinical utility assessment** through decision curve analysis and IPA
 - **Transparent documentation** of why certain metrics can't be calculated with our data
 
-#### **Statistical Metric Categorization**
+### **Statistical Metric Categorization**
 
 **Proper Statistical Grouping:**
 The GEP analysis now properly categorizes metrics by their statistical function, ensuring clinical researchers can interpret results correctly:
