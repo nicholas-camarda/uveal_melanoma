@@ -193,7 +193,7 @@ create_discrimination_plots <- function(mfs_results, mss_results, output_dir, pr
                     outcome = "MFS",
                     timepoint = tp_name,
                     harrell_c = tp_results$discrimination$harrell_c,
-                    uno_c = tp_results$discrimination$uno_c,
+                    integrated_auc = tp_results$discrimination$integrated_auc,
                     stringsAsFactors = FALSE
                 ))
             }

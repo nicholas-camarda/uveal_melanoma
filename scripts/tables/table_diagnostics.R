@@ -439,6 +439,22 @@ create_raw_model_output_tab <- function(coefs, conf_int, p_values, factor_label_
     # Combine all rows
     if (length(table_rows) > 0) {
         raw_model_output_tab <- do.call(rbind, table_rows)
+        
+        # Add explanatory note for single-variable models with missing label p-value
+        # Detect number of non-intercept predictors from model terms
+        model_terms <- attr(terms(model_fit), "term.labels")
+        has_single_predictor <- length(model_terms) == 1
+        if (has_single_predictor) {
+            label_rows <- which(raw_model_output_tab$row_type == "Factor Label")
+            if (length(label_rows) > 0) {
+                for (idx in label_rows) {
+                    if (is.na(raw_model_output_tab$p_value[idx])) {
+                        raw_model_output_tab$filtering_reason[idx] <- "Overall p-value not computed (single-variable model; no interaction)"
+                    }
+                }
+            }
+        }
+        
         return(raw_model_output_tab)
     } else {
         # Fallback to empty table if something went wrong
@@ -473,30 +489,26 @@ apply_filtering_logic <- function(raw_model_output_tab, filtered_variables, extr
     raw_model_output_tab$inclusion_status[na_estimate_mask] <- "Filtered"
     raw_model_output_tab$filtering_reason[na_estimate_mask] <- "NA estimate (convergence issue)"
 
-    # Apply filtered variables logic
-    if (!is.null(filtered_variables) && length(filtered_variables) > 0) {
-        for (filtered_var in filtered_variables) {
-            var_rows <- grep(paste0("^", filtered_var), raw_model_output_tab$variable)
-            if (length(var_rows) > 0) {
-                raw_model_output_tab$inclusion_status[var_rows] <- "Filtered"
-                for (row_idx in var_rows) {
-                    row_variable <- raw_model_output_tab$variable[row_idx]
-                    if (!is.na(raw_model_output_tab$filtering_reason[row_idx]) &&
-                        raw_model_output_tab$filtering_reason[row_idx] != "None" &&
-                        raw_model_output_tab$filtering_reason[row_idx] != "") {
-                        next
+    # Apply extreme estimates filtering logic
+    if (!is.null(extreme_diagnostics) && !is.null(extreme_diagnostics$extreme_terms)) {
+        extreme_terms <- extreme_diagnostics$extreme_terms
+        exclusion_reasons <- extreme_diagnostics$exclusion_reasons
+        
+        for (i in seq_len(nrow(raw_model_output_tab))) {
+            if (raw_model_output_tab$row_type[i] == "Coefficient") {
+                # Reconstruct the full term name for matching
+                full_term_name <- paste0(raw_model_output_tab$variable_base[i], raw_model_output_tab$variable[i])
+                
+                # Check if this term is in the extreme_terms list
+                if (full_term_name %in% extreme_terms) {
+                    raw_model_output_tab$inclusion_status[i] <- "Filtered"
+                    
+                    # Find the corresponding exclusion reason
+                    term_index <- which(extreme_terms == full_term_name)
+                    if (length(term_index) > 0 && length(exclusion_reasons) >= term_index[1]) {
+                        raw_model_output_tab$filtering_reason[i] <- exclusion_reasons[term_index[1]]
                     } else {
-                        row_reason <- if (!is.null(extreme_diagnostics) && !is.null(extreme_diagnostics$exclusion_reasons)) {
-                            extreme_term_index <- which(extreme_diagnostics$extreme_terms == row_variable)
-                            if (length(extreme_term_index) > 0) {
-                                extreme_diagnostics$exclusion_reasons[extreme_term_index[1]]
-                            } else {
-                                sprintf("Variable '%s' filtered due to extreme estimates or convergence issues", filtered_var)
-                            }
-                        } else {
-                            sprintf("Variable '%s' filtered due to extreme estimates or convergence issues", filtered_var)
-                        }
-                        raw_model_output_tab$filtering_reason[row_idx] <- row_reason
+                        raw_model_output_tab$filtering_reason[i] <- "Extreme estimate detected"
                     }
                 }
             }
@@ -573,7 +585,7 @@ create_filtering_summary_tab <- function(raw_model_output_tab, excluded_rows_tab
     if (!is.null(predictor_vars) && length(predictor_vars) > 0) {
         for (pred_var in predictor_vars) {
             # Check if any coefficient rows exist for this predictor variable
-            var_rows <- grep(paste0("^", pred_var), raw_model_output_tab$variable)
+            var_rows <- which(raw_model_output_tab$variable_base == pred_var)
             if (length(var_rows) == 0) {
                 # No rows found for this predictor - it was completely removed
                 main_predictor_filtered <- TRUE
@@ -719,33 +731,36 @@ calculate_factor_label_pvalue <- function(model_fit, variable_name, data, outcom
             )
         },
         "cox" = {
-            base <- gsub("_event$", "", outcome_var)
-            time_months <- paste0("tt_", base, "_months")
-            time_years <- paste0("tt_", base, "_years")
-            if (time_months %in% names(data)) {
-                time_var <- time_months
-            } else if (time_years %in% names(data)) {
-                time_var <- time_years
-            } else {
-                warning(sprintf("No time variable found for outcome '%s'", outcome_var))
-                return(NA)
-            }
-            tryCatch(
-                {
-                    calculate_variable_overall_significance(
-                        data, variable_name, outcome_var,
-                        treatment_var = treatment_var,
-                        confounders = var_confounders,
-                        outcome_type = model_type_to_outcome_type(model_type),
-                        time_var = time_var,
-                        event_var = outcome_var
-                    )
-                },
-                error = function(e) {
-                    warning(sprintf("Cox p-value calculation failed: %s", e$message))
-                    NA
+            # Extract overall p-value using Wald test on coefficients (no refitting needed)
+            tryCatch({
+                co <- coef(model_fit)
+                V <- vcov(model_fit)
+                
+                # Find all coefficients for this variable
+                idx <- grep(paste0("^", variable_name), names(co))
+                if (length(idx) > 0) {
+                    beta <- as.numeric(co[idx])
+                    # Check if coefficients are finite and non-zero
+                    if (all(is.finite(beta)) && any(beta != 0)) {
+                        # Filter out zero coefficients to avoid singular matrix
+                        non_zero_idx <- which(beta != 0)
+                        if (length(non_zero_idx) > 0) {
+                            beta_nonzero <- beta[non_zero_idx]
+                            V_sub <- V[idx[non_zero_idx], idx[non_zero_idx], drop = FALSE]
+                            # Compute Wald test statistic
+                            chisq <- as.numeric(t(beta_nonzero) %*% solve(V_sub) %*% beta_nonzero)
+                            df <- length(non_zero_idx)
+                            if (is.finite(chisq) && df > 0 && chisq > 0) {
+                                return(pchisq(chisq, df = df, lower.tail = FALSE))
+                            }
+                        }
+                    }
                 }
-            )
+                NA_real_
+            }, error = function(e) {
+                warning(sprintf("Wald test failed for variable '%s': %s", variable_name, e$message))
+                NA_real_
+            })
         },
         "other_glm" = {
             calculate_wald_pvalue(model_fit, variable_name)

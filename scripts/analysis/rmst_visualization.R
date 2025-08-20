@@ -106,13 +106,19 @@ plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dir
             plot.caption = element_text(size = 10, hjust = 0.5, margin = margin(t = 15))
         )
 
-    # Add text annotations for p-values and direction
+    # Add text annotations for p-values and direction with improved formatting
+    # Separate p-value and RMST difference to prevent overlap with larger, more readable text
     p <- p + geom_text(
-        aes(label = sprintf(
-            "p=%.3f\n%s%.1f mo", RMST_P_Value,
-            ifelse(RMST_Difference > 0, "+", ""), RMST_Difference
-        )),
-        vjust = -0.8, hjust = 0.5, size = 3, color = "black"
+        aes(label = ifelse(RMST_P_Value < 0.001, 
+                          "p<0.001", 
+                          sprintf("p=%.3f", RMST_P_Value))),
+        vjust = -2.0, hjust = 0.5, size = 3.5, color = "black", fontface = "bold"
+    ) +
+    geom_text(
+        aes(label = sprintf("%s%.1f mo", 
+                           ifelse(RMST_Difference > 0, "+", ""), 
+                           RMST_Difference)),
+        vjust = -0.8, hjust = 0.5, size = 3.5, color = "black", fontface = "bold"
     )
 
     # Save the plot with proper error handling
@@ -127,6 +133,7 @@ plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dir
         "Progression-Free Survival Probability" = output_dirs$obj1_pfs,
         "PFS-2 Probability (Freedom from 2nd Recurrence)" = output_dirs$obj3_pfs2,
         "PFS-2 Probability" = output_dirs$obj3_pfs2, # Add this case for test compatibility
+        "Metastasis-Free Survival Probability" = output_dirs$obj4_mfs, # Add GEP validation case
         NULL # No fallback - let the calling function handle it
     )
 

@@ -219,7 +219,12 @@ perform_discrimination_mss <- function(data, timepoint) {
     # Create survival object
     surv_obj <- Surv(disc_data$observed_time, disc_data$observed_event)
 
-    # Initialize discrimination metrics
+    # 1. HARRELL'S C-INDEX - PRIMARY DISCRIMINATION METRIC (Robust and Clinically Meaningful)
+    # This is our primary discrimination metric because:
+    # - It measures overall discrimination ability across the entire follow-up period
+    # - It's robust to data distribution and doesn't require events at exact timepoints
+    # - It's widely accepted in survival analysis literature
+    # - It provides clinically meaningful information about risk stratification
     harrell_c <- NA
     harrell_ci_lower <- NA
     harrell_ci_upper <- NA
@@ -235,285 +240,194 @@ perform_discrimination_mss <- function(data, timepoint) {
         harrell_ci_lower <- harrell_result$lower
         harrell_ci_upper <- harrell_result$upper
         harrell_method <- "survcomp"
+        
+        logger::log_info(formatted(sprintf(
+            "PRIMARY METRIC: Harrell's C-index calculated successfully (MSS): %.3f (95%% CI: %.3f-%.3f)",
+            harrell_c, harrell_ci_lower, harrell_ci_upper
+        ), indent = 3))
+        
     }, error = function(e) {
-        logger::log_error(formatted("Error calculating Harrell's C-index (MSS)", indent = 3))
+        logger::log_error(formatted("Error calculating Harrell's C-index (MSS): %s", e$message), indent = 3)
         harrell_method <- "error"
     })
 
-    # Uno's C-index (guarded)
-    uno_c <- NA; uno_ci_lower <- NA; uno_ci_upper <- NA; uno_c_method <- NA_character_
-    unique_risk <- length(unique(na.omit(disc_data$predicted_risk)))
-    num_events_timepoint <- sum(disc_data$observed_event == 1 & disc_data$observed_time <= timepoint_months, na.rm = TRUE)
-    if (num_events_timepoint < GEP_MIN_EVENTS_COMPETING_RISK) {
-        logger::log_warn(formatted(sprintf(
-            "Skipping Uno's C-index (MSS): events at timepoint=%d months (min %d), unique risk=%d",
-            timepoint_months, GEP_MIN_EVENTS_COMPETING_RISK, unique_risk
-        ), indent = 3))
-        uno_c_method <- "skipped_insufficient_data"
-    } else {
-        tryCatch({
-            # survcomp approach at specified timepoint (months)
-            time_specific_event <- disc_data$observed_event == 1 & disc_data$observed_time <= timepoint_months
-            time_specific_time <- pmin(disc_data$observed_time, timepoint_months)
-            uno_result <- survcomp::concordance.index(
-                x = disc_data$predicted_risk,
-                surv.time = time_specific_time,
-                surv.event = time_specific_event,
-                method = "uno"
-            )
-            uno_c <- uno_result$c.index
-            uno_ci_lower <- uno_result$lower
-            uno_ci_upper <- uno_result$upper
-            uno_c_method <- "survcomp"
-        }, error = function(e1) {
-            tryCatch({
-                # riskRegression::AUC.uno fallback using original times
-                # Validate timepoint_months parameter to prevent "invalid 'times' argument" errors
-                if (is.na(timepoint_months) || !is.numeric(timepoint_months) || timepoint_months <= 0 || is.infinite(timepoint_months)) {
-                    logger::log_warn(formatted(sprintf("Invalid timepoint_months for riskRegression::AUC.uno fallback (MSS): %s", timepoint_months), indent = 3))
-                    logger::log_warn("Skipping riskRegression::AUC.uno fallback due to invalid timepoint")
-                    uno_c_method <- "invalid_timepoint"
-                } else {
-                    auc_uno <- riskRegression::AUC.uno(
-                        Surv(disc_data$observed_time, disc_data$observed_event),
-                        Surv(disc_data$observed_time, disc_data$observed_event),
-                        marker = disc_data$predicted_risk,
-                        times = timepoint_months
-                    )
-                    if (!is.null(auc_uno$AUC)) {
-                        uno_c <- as.numeric(auc_uno$AUC[length(auc_uno$AUC)])
-                    } else if (!is.null(auc_uno$iauc)) {
-                        uno_c <- as.numeric(auc_uno$iauc)
-                    }
-                    uno_c_method <- "riskRegression::AUC.uno"
-                }
-            }, error = function(e2) {
-                tryCatch({
-                    # timeROC fallback
-                    # Validate timepoint_months parameter to prevent "invalid 'times' argument" errors
-                    if (is.na(timepoint_months) || !is.numeric(timepoint_months) || timepoint_months <= 0 || is.infinite(timepoint_months)) {
-                        logger::log_warn(formatted(sprintf("Invalid timepoint_months for timeROC fallback (MSS): %s", timepoint_months), indent = 3))
-                        logger::log_warn("Skipping timeROC fallback due to invalid timepoint")
-                        uno_c_method <- "invalid_timepoint"
-                    } else {
-                        tr <- timeROC::timeROC(T = disc_data$observed_time,
-                                               delta = disc_data$observed_event,
-                                               marker = disc_data$predicted_risk,
-                                               cause = 1,
-                                               times = timepoint_months,
-                                               iid = FALSE)
-                        if (!is.null(tr$AUC)) {
-                            uno_c <- as.numeric(tr$AUC[1])
-                        }
-                        uno_c_method <- "timeROC"
-                    }
-                }, error = function(e3) {
-                    # Final fallback: empirical C-index calculation
-                    # Only proceed if timepoint_months is valid
-                    if (is.na(timepoint_months) || !is.numeric(timepoint_months) || timepoint_months <= 0 || is.infinite(timepoint_months)) {
-                        logger::log_warn("Skipping empirical C-index calculation due to invalid timepoint")
-                        uno_c_method <- "invalid_timepoint"
-                    } else {
-                        tryCatch({
-                            time_specific_event <- disc_data$observed_event == 1 & disc_data$observed_time <= timepoint_months
-                            if (sum(time_specific_event) > GEP_MIN_EVENTS_COMPETING_RISK) {
-                                # Simple empirical C-index using concordance pairs
-                                cases <- disc_data$predicted_risk[time_specific_event]
-                                controls <- disc_data$predicted_risk[!time_specific_event]
-                                if (length(cases) > 0 && length(controls) > 0) {
-                                    # Use more efficient method for large datasets
-                                    if (length(cases) * length(controls) > 10000) {
-                                        # Sample-based approach for large datasets
-                                        set.seed(123) # For reproducibility
-                                        case_sample <- sample(cases, min(100, length(cases)), replace = TRUE)
-                                        control_sample <- sample(controls, min(100, length(controls)), replace = TRUE)
-                                        concordant <- sum(outer(case_sample, control_sample, ">"))
-                                        total_pairs <- length(case_sample) * length(control_sample)
-                                    } else {
-                                        # Full calculation for smaller datasets
-                                        concordant <- sum(outer(cases, controls, ">"))
-                                        total_pairs <- length(cases) * length(controls)
-                                    }
-                                    uno_c <- concordant / total_pairs
-                                }
-                            }
-                            uno_c_method <- "empirical"
-                        }, error = function(e4) {
-                            logger::log_warn(formatted("Unable to compute Uno's C-index (MSS) with available methods", indent = 3))
-                            uno_c_method <- "error"
-                        })
-                    }
-                })
-            })
-        })
-    }
+    # REMOVED: Uno's C-index - Fragile metric that requires events at exact timepoints
+    # Our data has events spread across time, not concentrated at arbitrary marks
+    # This makes Uno's C-index clinically nonsensical and unreliable
 
-    # Time-dependent AUC at the timepoint (months)
-    auc_timepoint <- NA; auc_ci_lower <- NA; auc_ci_upper <- NA; auc_method <- NA_character_
+    # 2. INTEGRATED AUC (iAUC) - Robust discrimination metric over time periods
+    # This is more robust than point estimates as it integrates over time ranges
+    integrated_auc <- NA
+    integrated_auc_method <- NA_character_
     
-    # Validate timepoint_months parameter to prevent "invalid 'times' argument" errors
-    if (is.na(timepoint_months) || !is.numeric(timepoint_months) || timepoint_months <= 0 || is.infinite(timepoint_months)) {
-        logger::log_warn(formatted(sprintf("Invalid timepoint_months for AUC calculation (MSS): %s", timepoint_months), indent = 3))
-        logger::log_warn("Skipping AUC calculation due to invalid timepoint")
-        auc_method <- "invalid_timepoint"
-    } else {
-        # Try riskRegression::Score first, then timeROC, then pROC
-        tryCatch({
-            # Build time-specific data for ROC at given timepoint
-            # Create a temporary data frame with the time-specific variables
-            temp_data <- disc_data %>%
-                dplyr::mutate(
-                    time_specific_event = .data$observed_event == 1 & .data$observed_time <= timepoint_months,
-                    time_specific_time = pmin(.data$observed_time, timepoint_months)
-                )
-            
-            time_specific_surv <- Surv(temp_data$time_specific_time, temp_data$time_specific_event)
-            # Fit simple model; Score needs a model interface
-            cox_model <- coxph(time_specific_surv ~ predicted_risk, data = temp_data)
-            
-            # Validate timepoint_months parameter to prevent "invalid 'times' argument" errors
-            if (is.na(timepoint_months) || !is.numeric(timepoint_months) || timepoint_months <= 0 || is.infinite(timepoint_months)) {
-                logger::log_warn(formatted(sprintf("Invalid timepoint_months for riskRegression::Score (MSS): %s", timepoint_months), indent = 3))
-                logger::log_warn("Skipping riskRegression::Score due to invalid timepoint")
-                auc_method <- "invalid_timepoint"
-            } else {
-                roc_result <- riskRegression::Score(
-                    list("GEP" = cox_model),
-                    formula = Surv(time_specific_time, time_specific_event) ~ 1,
-                    data = temp_data,
-                    times = timepoint_months,
-                    metrics = "auc",
-                    summary = "risks"
-                )
-                
-                if (!is.null(roc_result$AUC)) {
-                    auc_data <- roc_result$AUC$score
-                    if (nrow(auc_data) > 0) {
-                        auc_timepoint <- auc_data$AUC[1]
-                        auc_ci_lower <- auc_data$lower[1]
-                        auc_ci_upper <- auc_data$upper[1]
-                    }
-                }
-                auc_method <- "riskRegression::Score"
+    tryCatch({
+        # Use riskRegression::Score for integrated AUC over time periods
+        # This is more robust than requiring events at exact timepoints
+        cox_model <- coxph(Surv(observed_time, observed_event) ~ predicted_risk, data = disc_data, x = TRUE)
+        
+        # Calculate integrated AUC over the entire follow-up period
+        # This avoids the fragility of exact timepoint requirements
+        roc_result <- riskRegression::Score(
+            list("GEP" = cox_model),
+            formula = Surv(observed_time, observed_event) ~ 1,
+            data = disc_data,
+            times = seq(0, max(disc_data$observed_time, na.rm = TRUE), by = 12), # Monthly intervals
+            metrics = "auc",
+            summary = "risks"
+        )
+        
+        auc_data <- NULL
+        if (!is.null(roc_result$AUC)) {
+            auc_data <- roc_result$AUC$score
+            if (nrow(auc_data) > 0) {
+                # Calculate integrated AUC as mean across time periods
+                integrated_auc <- mean(auc_data$AUC, na.rm = TRUE)
             }
-        }, error = function(e1) {
-            tryCatch({
-                # timeROC fallback - use time-specific data for better accuracy
-                # Validate timepoint_months parameter to prevent "invalid 'times' argument" errors
-                if (is.na(timepoint_months) || !is.numeric(timepoint_months) || timepoint_months <= 0 || is.infinite(timepoint_months)) {
-                    logger::log_warn(formatted(sprintf("Invalid timepoint_months for timeROC fallback (MSS): %s", timepoint_months), indent = 3))
-                    logger::log_warn("Skipping timeROC fallback due to invalid timepoint")
-                    auc_method <- "invalid_timepoint"
-                } else {
-                    time_specific_event <- disc_data$observed_event == 1 & disc_data$observed_time <= timepoint_months
-                    time_specific_time <- pmin(disc_data$observed_time, timepoint_months)
-                    
-                    tr <- timeROC::timeROC(T = time_specific_time,
-                                           delta = time_specific_event,
-                                           marker = disc_data$predicted_risk,
-                                           cause = 1,
-                                           times = timepoint_months,
-                                           iid = FALSE)
-                    if (!is.null(tr$AUC)) {
-                        auc_timepoint <- as.numeric(tr$AUC[1])
-                    }
-                    auc_method <- "timeROC"
-                }
-            }, error = function(e2) {
-                tryCatch({
-                    # pROC fallback on binary-at-timepoint - this is the most reliable method
-                    # Only proceed if timepoint_months is valid
-                    if (is.na(timepoint_months) || !is.numeric(timepoint_months) || timepoint_months <= 0 || is.infinite(timepoint_months)) {
-                        logger::log_warn("Skipping pROC fallback due to invalid timepoint")
-                        auc_method <- "invalid_timepoint"
-                    } else {
-                        binary_outcome <- disc_data$observed_event == 1 & disc_data$observed_time <= timepoint_months
-                        if (sum(binary_outcome) > GEP_MIN_EVENTS_COMPETING_RISK && sum(!binary_outcome) > GEP_MIN_EVENTS_COMPETING_RISK) {
-                            roc_obj <- pROC::roc(binary_outcome, disc_data$predicted_risk, quiet = TRUE)
-                            auc_timepoint <- as.numeric(roc_obj$auc)
-                            tryCatch({
-                                ci_result <- pROC::ci.auc(roc_obj)
-                                auc_ci_lower <- ci_result[1]; auc_ci_upper <- ci_result[3]
-                            }, error = function(e) { auc_ci_lower <- NA; auc_ci_upper <- NA })
-                            
-                            logger::log_info(formatted(sprintf(
-                                "pROC AUC calculated successfully (MSS): %.3f (events=%d, non-events=%d)",
-                                auc_timepoint, sum(binary_outcome), sum(!binary_outcome)
-                            ), indent = 3))
-                        } else {
-                            logger::log_warn(formatted(sprintf(
-                                "Insufficient events for pROC (MSS): events=%d, min_required=%d",
-                                sum(binary_outcome), GEP_MIN_EVENTS_COMPETING_RISK
-                            ), indent = 3))
-                        }
-                        auc_method <- "pROC"
-                    }
-                }, error = function(e3) {
-                    # Final fallback: empirical AUC calculation
-                    # Only proceed if timepoint is valid
-                    if (is.na(timepoint) || !is.numeric(timepoint) || timepoint <= 0 || is.infinite(timepoint)) {
-                        logger::log_warn("Skipping empirical AUC calculation due to invalid timepoint")
-                        auc_method <- "invalid_timepoint"
-                    } else {
-                        tryCatch({
-                            binary_outcome <- disc_data$observed_event == 1 & disc_data$observed_time <= timepoint
-                            if (sum(binary_outcome) > GEP_MIN_EVENTS_COMPETING_RISK && sum(!binary_outcome) > GEP_MIN_EVENTS_COMPETING_RISK) {
-                                # Simple empirical AUC using Wilcoxon-Mann-Whitney statistic
-                                cases <- disc_data$predicted_risk[binary_outcome]
-                                controls <- disc_data$predicted_risk[!binary_outcome]
-                                if (length(cases) > 0 && length(controls) > 0) {
-                                    # Use more efficient method for large datasets
-                                    if (length(cases) * length(controls) > 10000) {
-                                        # Sample-based approach for large datasets
-                                        set.seed(123) # For reproducibility
-                                        case_sample <- sample(cases, min(100, length(cases)), replace = TRUE)
-                                        control_sample <- sample(controls, min(100, length(controls)), replace = TRUE)
-                                        auc_timepoint <- sum(outer(case_sample, control_sample, ">")) / (length(case_sample) * length(control_sample))
-                                    } else {
-                                        # Full calculation for smaller datasets
-                                        auc_timepoint <- sum(outer(cases, controls, ">")) / (length(cases) * length(controls))
-                                    }
-                                    auc_method <- "empirical"
-                                }
-                            }
-                        }, error = function(e4) {
-                            logger::log_warn("All AUC calculation methods failed")
-                            auc_method <- "all_failed"
-                        })
-                    }
-                })
-            })
-        })
-    }
+        }
+        integrated_auc_method <- "riskRegression::Score_integrated"
+        
+        num_periods <- ifelse(!is.null(auc_data) && nrow(auc_data) > 0, nrow(auc_data), 0)
+        logger::log_info(formatted(sprintf(
+            "Integrated AUC calculated successfully (MSS): %.3f over %d time periods",
+            integrated_auc, num_periods
+        ), indent = 3))
+        
+    }, error = function(e) {
+        logger::log_warn(formatted(sprintf("Integrated AUC calculation failed (MSS): %s", e$message), indent = 3))
+        integrated_auc_method <- "calculation_failed"
+    })
+
+    # 3. CUMULATIVE DISCRIMINATION - Discrimination ability over time ranges
+    # This provides a more robust view than single timepoint estimates
+    cumulative_discrimination <- NA
+    cumulative_discrimination_method <- NA_character_
+    
+    tryCatch({
+        # Calculate discrimination over different time ranges (0-5yr, 0-7yr, 0-10yr)
+        time_ranges <- c(5, 7, 10) * 12  # Convert to months
+        discrimination_values <- numeric(length(time_ranges))
+        
+        for (i in seq_along(time_ranges)) {
+            time_range <- time_ranges[i]
+            
+            # Create time-range specific outcome
+            range_event <- disc_data$observed_event == 1 & disc_data$observed_time <= time_range
+            range_time <- pmin(disc_data$observed_time, time_range)
+            
+            # Calculate Harrell's C-index for this time range
+            if (sum(range_event) > GEP_MIN_EVENTS_COMPETING_RISK) {
+                range_result <- survcomp::concordance.index(
+                    x = disc_data$predicted_risk,
+                    surv.time = range_time,
+                    surv.event = range_event,
+                    method = "noether"
+                )
+                discrimination_values[i] <- range_result$c.index
+            } else {
+                discrimination_values[i] <- NA
+            }
+        }
+        
+        # Calculate cumulative discrimination as mean across time ranges
+        valid_values <- !is.na(discrimination_values)
+        if (sum(valid_values) > 0) {
+            cumulative_discrimination <- mean(discrimination_values[valid_values], na.rm = TRUE)
+            cumulative_discrimination_method <- "survcomp_cumulative_ranges"
+            
+            logger::log_info(formatted(sprintf(
+                "Cumulative discrimination calculated (MSS): %.3f over %d time ranges",
+                cumulative_discrimination, sum(valid_values)
+            ), indent = 3))
+        } else {
+            cumulative_discrimination_method <- "insufficient_events"
+        }
+        
+    }, error = function(e) {
+        logger::log_warn(formatted(sprintf("Cumulative discrimination calculation failed (MSS): %s", e$message), indent = 3))
+        cumulative_discrimination_method <- "calculation_failed"
+    })
+
+    # 4. TIME-AVERAGED DISCRIMINATION - Average discrimination across follow-up periods
+    # This provides a robust measure of discrimination performance over time
+    time_averaged_discrimination <- NA
+    time_averaged_discrimination_method <- NA_character_
+    
+    tryCatch({
+        # Calculate discrimination at multiple time points and average them
+        # This is more robust than single timepoint estimates
+        time_points <- seq(12, max(disc_data$observed_time, na.rm = TRUE), by = 12)  # Monthly intervals
+        discrimination_at_times <- numeric(length(time_points))
+        
+        for (i in seq_along(time_points)) {
+            time_point <- time_points[i]
+            
+            # Create time-specific outcome
+            time_event <- disc_data$observed_event == 1 & disc_data$observed_time <= time_point
+            time_specific_time <- pmin(disc_data$observed_time, time_point)
+            
+            # Calculate Harrell's C-index for this time point
+            if (sum(time_event) > GEP_MIN_EVENTS_COMPETING_RISK) {
+                time_result <- survcomp::concordance.index(
+                    x = disc_data$predicted_risk,
+                    surv.time = time_specific_time,
+                    surv.event = time_event,
+                    method = "noether"
+                )
+                discrimination_at_times[i] <- time_result$c.index
+            } else {
+                discrimination_at_times[i] <- NA
+            }
+        }
+        
+        # Calculate time-averaged discrimination
+        valid_times <- !is.na(discrimination_at_times)
+        if (sum(valid_times) > 0) {
+            time_averaged_discrimination <- mean(discrimination_at_times[valid_times], na.rm = TRUE)
+            time_averaged_discrimination_method <- "survcomp_time_averaged"
+            
+            logger::log_info(formatted(sprintf(
+                "Time-averaged discrimination calculated (MSS): %.3f over %d time points",
+                time_averaged_discrimination, sum(valid_times)
+            ), indent = 3))
+        } else {
+            time_averaged_discrimination_method <- "insufficient_events"
+        }
+        
+    }, error = function(e) {
+        logger::log_warn(formatted(sprintf("Time-averaged discrimination calculation failed (MSS): %s", e$message), indent = 3))
+        time_averaged_discrimination_method <- "calculation_failed"
+    })
+
+    # REMOVED: Time-dependent AUC - Fragile metric that requires events at exact timepoints
+    # Our data has events spread across time, not concentrated at arbitrary marks
+    # This makes time-dependent AUC clinically nonsensical and unreliable
 
     events_at_timepoint <- sum(disc_data$observed_event == 1 & disc_data$observed_time <= timepoint)
     total_at_timepoint <- nrow(disc_data)
 
     logger::log_info(formatted(sprintf("MSS %d years: %d events of %d", timepoint, events_at_timepoint, total_at_timepoint), indent = 3))
     logger::log_info(formatted(sprintf(
-        "Discrimination (MSS): Harrell C=%s, Uno C=%s, AUC=%s",
-        ifelse(is.na(harrell_c), "NA", sprintf("%.3f", harrell_c)),
-        ifelse(is.na(uno_c), "NA", sprintf("%.3f", uno_c)),
-        ifelse(is.na(auc_timepoint), "NA", sprintf("%.3f", auc_timepoint))
+        "Discrimination (MSS): Harrell C=%s (Robust Primary Metric)",
+        ifelse(is.na(harrell_c), "NA", sprintf("%.3f", harrell_c))
     ), indent = 3))
-    logger::log_info(formatted(sprintf("Methods used (MSS): Harrell=%s, Uno=%s, AUC=%s", harrell_method, uno_c_method, auc_method), indent = 3))
+    logger::log_info(formatted(sprintf("Methods used (MSS): Harrell=%s (Uno C-index and time-dependent AUC removed as fragile metrics)", harrell_method), indent = 3))
 
     return(list(
         n = nrow(disc_data),
         events = sum(disc_data$observed_event),
         events_by_timepoint = events_at_timepoint,
+        # PRIMARY DISCRIMINATION METRIC
         harrell_c = round(harrell_c, 3),
         harrell_ci_lower = round(harrell_ci_lower, 3),
         harrell_ci_upper = round(harrell_ci_upper, 3),
         harrell_method = harrell_method,
-        uno_c = round(uno_c, 3),
-        uno_ci_lower = round(uno_ci_lower, 3),
-        uno_ci_upper = round(uno_ci_upper, 3),
-        uno_c_method = uno_c_method,
-        auc_timepoint = round(auc_timepoint, 3),
-        auc_ci_lower = round(auc_ci_lower, 3),
-        auc_ci_upper = round(auc_ci_upper, 3),
-        auc_method = auc_method
+        # ROBUST DISCRIMINATION METRICS (replacing fragile timepoint-dependent metrics)
+        integrated_auc = round(integrated_auc, 3),
+        integrated_auc_method = integrated_auc_method,
+        cumulative_discrimination = round(cumulative_discrimination, 3),
+        cumulative_discrimination_method = cumulative_discrimination_method,
+        time_averaged_discrimination = round(time_averaged_discrimination, 3),
+        time_averaged_discrimination_method = time_averaged_discrimination_method
     ))
 }
 

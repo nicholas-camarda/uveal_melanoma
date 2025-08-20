@@ -10,22 +10,110 @@
 #' @param outcome_type Character string ("MFS" or "MSS")
 #' @param output_dir Directory path to save consolidated outputs
 #' @param prefix Filename prefix for saved files
+#' @param prame_results Optional PRAME analysis results object (may be NULL)
+#' @param missing_data Optional missing-data analysis results object (may be NULL)
 #' @return List of created table names
-create_consolidated_gep_tables <- function(validation_results, outcome_type, output_dir, prefix) {
+create_consolidated_gep_tables <- function(validation_results, outcome_type, output_dir, prefix, prame_results = NULL, missing_data = NULL) {
     logger::log_info(formatted(sprintf("Creating consolidated %s tables to replace redundant outputs", outcome_type), indent = 1))
-    
+
     # Create consolidated calibration table across all timepoints
     cal_consolidated <- create_consolidated_calibration_table(validation_results, outcome_type)
-    
+
     # Create consolidated discrimination table across all timepoints
     disc_consolidated <- create_consolidated_discrimination_table(validation_results, outcome_type)
-    
+
     # REMOVED: Redundant performance table that duplicates discrimination metrics
     # perf_consolidated <- create_consolidated_performance_table(validation_results, outcome_type)
-    
-    # Create consolidated decision curve table across all timepoints
+
+    # Create consolidated decision curve table across all timepoints (enriched)
     dca_consolidated <- create_consolidated_decision_curve_table(validation_results, outcome_type)
-    
+    if (nrow(dca_consolidated) > 0) {
+        # Add enriched columns when available
+        if (!"Optimal_Threshold" %in% names(dca_consolidated) && "Net_Benefit_Threshold" %in% names(dca_consolidated)) {
+            dca_consolidated$Optimal_Threshold <- dca_consolidated$Net_Benefit_Threshold
+        }
+    }
+
+    # Build PRAME summary table when available
+    prame_consolidated <- data.frame()
+    if (!is.null(prame_results)) {
+        # MFS structure: list with element 'nri_results' (list per timepoint) containing 'nri_total'
+        if (!is.null(prame_results$nri_results) && is.list(prame_results$nri_results)) {
+            rows <- lapply(names(prame_results$nri_results), function(tp) {
+                res <- prame_results$nri_results[[tp]]
+                nri_val <- suppressWarnings(as.numeric(res$nri_total))
+                nri_interpretation <- if (is.na(nri_val)) {
+                    "Analysis failed - insufficient data"
+                } else if (nri_val == 0) {
+                    "No improvement - PRAME doesn't add value beyond GEP alone"
+                } else if (nri_val > 0) {
+                    "Improvement - PRAME enhances risk stratification"
+                } else {
+                    "Worsening - PRAME reduces risk stratification accuracy"
+                }
+                data.frame(
+                    Timepoint = tp, 
+                    NRI = nri_val, 
+                    Interpretation = nri_interpretation,
+                    stringsAsFactors = FALSE
+                )
+            })
+            if (length(rows) > 0) prame_consolidated <- do.call(rbind, rows)
+        } else if (is.list(prame_results)) {
+            # MSS structure: list per timepoint with data.frame having column 'nri'
+            rows <- list()
+            for (nm in names(prame_results)) {
+                val <- prame_results[[nm]]
+                if (is.data.frame(val) && "nri" %in% names(val)) {
+                    nri_val <- suppressWarnings(as.numeric(val$nri)[1])
+                    nri_interpretation <- if (is.na(nri_val)) {
+                        "Analysis failed - insufficient data"
+                    } else if (nri_val == 0) {
+                        "No improvement - PRAME doesn't add value beyond GEP alone"
+                    } else if (nri_val > 0) {
+                        "Improvement - PRAME enhances risk stratification"
+                    } else {
+                        "Worsening - PRAME reduces risk stratification accuracy"
+                    }
+                    rows[[length(rows) + 1]] <- data.frame(
+                        Timepoint = nm, 
+                        NRI = nri_val, 
+                        Interpretation = nri_interpretation,
+                        stringsAsFactors = FALSE
+                    )
+                }
+            }
+            if (length(rows) > 0) prame_consolidated <- do.call(rbind, rows)
+        }
+    }
+
+    # Build Missing Data summary (compact and human-readable)
+    missing_consolidated <- data.frame()
+    if (!is.null(missing_data)) {
+        # Patterns table if available
+        patterns <- tryCatch(missing_data$missing_patterns, error = function(e) NULL)
+        n_sig <- tryCatch(missing_data$baseline_comparison$n_significant, error = function(e) NA)
+        logrank_p <- tryCatch(missing_data$outcome_by_missing$logrank_p, error = function(e) NA)
+        n_imputable <- tryCatch(missing_data$imputation_analysis$n_imputable, error = function(e) NA)
+        missing_consolidated <- data.frame(
+            Metric = c(
+                "Total_Patients_n",
+                "Missingness_Groups_n",
+                "Baseline_Variables_with_Significant_Differences_n",
+                "Survival_by_Missingness_Logrank_p",
+                "Imputable_Patients_n"
+            ),
+            Value = c(
+                tryCatch(missing_data$n_total, error = function(e) NA),
+                if (!is.null(patterns)) nrow(patterns) else NA,
+                n_sig,
+                logrank_p,
+                n_imputable
+            ),
+            stringsAsFactors = FALSE
+        )
+    }
+
     # Combine all consolidated tables into a single Excel workbook
     consolidated_workbook <- list()
     if (nrow(cal_consolidated) > 0) consolidated_workbook[["Calibration_Summary"]] <- cal_consolidated
@@ -33,31 +121,36 @@ create_consolidated_gep_tables <- function(validation_results, outcome_type, out
     # REMOVED: Redundant performance summary
     # if (nrow(perf_consolidated) > 0) consolidated_workbook[["Performance_Summary"]] <- perf_consolidated
     if (nrow(dca_consolidated) > 0) consolidated_workbook[["Decision_Curve_Summary"]] <- dca_consolidated
-    
+    if (nrow(prame_consolidated) > 0) consolidated_workbook[["PRAME_Summary"]] <- prame_consolidated
+    if (nrow(missing_consolidated) > 0) consolidated_workbook[["Missing_Data_Summary"]] <- missing_consolidated
+
     # Save consolidated workbook
     if (length(consolidated_workbook) > 0) {
         consolidated_path <- file.path(output_dir, paste0(prefix, outcome_type, "_consolidated_summary.xlsx"))
         writexl::write_xlsx(consolidated_workbook, consolidated_path)
         logger::log_info(formatted(sprintf("Consolidated %s tables saved: %s", outcome_type, consolidated_path), indent = 2))
     }
-    
+
     # Create comprehensive text summary (but don't save to file to avoid redundancy)
     text_summary <- create_comprehensive_text_summary(
-        validation_results, outcome_type, 
-        cal_consolidated, disc_consolidated, 
-        NULL, dca_consolidated  # Pass NULL for performance table since it's removed
+        validation_results = validation_results,
+        outcome_type = outcome_type,
+        cal_consolidated = cal_consolidated,
+        disc_consolidated = disc_consolidated,
+        dca_consolidated = dca_consolidated
     )
-    
+
     # REMOVED: Text file generation to eliminate redundancy
     # text_path <- file.path(output_dir, paste0(prefix, outcome_type, "_consolidated_summary.txt"))
     # writeLines(text_summary, text_path)
     # logger::log_info(formatted(sprintf("Consolidated %s text summary saved: %s", outcome_type, text_path), indent = 2))
-    
+
     return(list(
         calibration = cal_consolidated,
         discrimination = disc_consolidated,
-        performance = NULL,  # Set to NULL since performance table is removed
         decision_curves = dca_consolidated,
+        prame = prame_consolidated,
+        missing_data = missing_consolidated,
         text_summary = text_summary
     ))
 }
@@ -65,7 +158,7 @@ create_consolidated_gep_tables <- function(validation_results, outcome_type, out
 #' Create consolidated calibration table across all timepoints
 create_consolidated_calibration_table <- function(validation_results, outcome_type) {
     cal_data <- data.frame()
-    
+
     for (tp_name in names(validation_results)) {
         tp_results <- validation_results[[tp_name]]
         if (!is.null(tp_results$calibration)) {
@@ -76,18 +169,21 @@ create_consolidated_calibration_table <- function(validation_results, outcome_ty
                 Nam_D_Agostino_p = cal$nam_dagostino_p %||% NA,
                 ICI = cal$ici %||% NA,
                 Slope = cal$slope %||% cal$calibration_slope %||% NA,
+                Brier_Score = cal$brier_score %||% NA,
+                Brier_Method = cal$brier_method %||% NA,
+                Brier_Fallback_Used = cal$brier_fallback_used %||% NA,
                 stringsAsFactors = FALSE
             ))
         }
     }
-    
+
     return(cal_data)
 }
 
 #' Create consolidated discrimination table across all timepoints
 create_consolidated_discrimination_table <- function(validation_results, outcome_type) {
     disc_data <- data.frame()
-    
+
     for (tp_name in names(validation_results)) {
         tp_results <- validation_results[[tp_name]]
         if (!is.null(tp_results$discrimination)) {
@@ -96,21 +192,28 @@ create_consolidated_discrimination_table <- function(validation_results, outcome
                 Timepoint = tp_name,
                 N = disc$n %||% NA,
                 Events = disc$events %||% NA,
+                # PRIMARY DISCRIMINATION METRIC
                 Harrell_C = disc$harrell_c %||% NA,
-                Uno_C = disc$uno_c %||% NA,
-                AUC = disc$auc_timepoint %||% NA,
+                # ROBUST DISCRIMINATION METRICS (replacing fragile timepoint-dependent metrics)
+                Integrated_AUC = disc$integrated_auc %||% NA,
+                Cumulative_Discrimination = disc$cumulative_discrimination %||% NA,
+                Time_averaged_Discrimination = disc$time_averaged_discrimination %||% NA,
+                # CLINICAL VALUE ASSESSMENT
+                IPA = disc$ipa %||% NA,
+                IPA_Method = disc$ipa_method %||% NA,
+                IPA_Fallback_Used = disc$ipa_fallback_used %||% NA,
                 stringsAsFactors = FALSE
             ))
         }
     }
-    
+
     return(disc_data)
 }
 
 #' Create consolidated performance table across all timepoints
 create_consolidated_performance_table <- function(validation_results, outcome_type) {
     perf_data <- data.frame()
-    
+
     for (tp_name in names(validation_results)) {
         tp_results <- validation_results[[tp_name]]
         if (!is.null(tp_results$discrimination)) {
@@ -120,20 +223,20 @@ create_consolidated_performance_table <- function(validation_results, outcome_ty
                 Timepoint = tp_name,
                 N = disc$n %||% NA,
                 Events = disc$events %||% NA,
-                C_Index = disc$harrell_c %||% NA,
-                AUC = disc$auc_timepoint %||% NA,
+                Harrell_C = disc$harrell_c %||% NA,
+                Integrated_AUC = disc$integrated_auc %||% NA,
                 stringsAsFactors = FALSE
             ))
         }
     }
-    
+
     return(perf_data)
 }
 
 #' Create consolidated decision curve table across all timepoints
 create_consolidated_decision_curve_table <- function(validation_results, outcome_type) {
     dca_data <- data.frame()
-    
+
     for (tp_name in names(validation_results)) {
         tp_results <- validation_results[[tp_name]]
         if (!is.null(tp_results$decision_curve)) {
@@ -142,24 +245,29 @@ create_consolidated_decision_curve_table <- function(validation_results, outcome
             dca_data <- rbind(dca_data, data.frame(
                 Timepoint = tp_name,
                 N = dca$n %||% NA,
-                Net_Benefit_Threshold = dca$net_benefit_threshold %||% dca$optimal_threshold %||% NA,
+                Events = dca$events %||% NA,
+                Event_Rate = dca$event_rate %||% NA,
+                Optimal_Threshold = dca$optimal_threshold %||% dca$net_benefit_threshold %||% NA,
+                Optimal_Net_Benefit = dca$optimal_net_benefit %||% NA,
+                Threshold_Range_Min = dca$threshold_range_min %||% NA,
+                Threshold_Range_Max = dca$threshold_range_max %||% NA,
+                Area_Between_Curves = dca$area_between_curves %||% NA,
                 stringsAsFactors = FALSE
             ))
         }
     }
-    
+
     return(dca_data)
 }
 
 #' Create comprehensive text summary from consolidated tables
-create_comprehensive_text_summary <- function(validation_results, outcome_type, 
-                                            cal_consolidated, disc_consolidated, 
-                                            perf_consolidated, dca_consolidated) {
-    
+create_comprehensive_text_summary <- function(validation_results, outcome_type,
+                                              cal_consolidated, disc_consolidated,
+                                              dca_consolidated) {
     summary_lines <- c()
     summary_lines <- c(summary_lines, paste("=", outcome_type, "Validation - Consolidated Summary", "="))
     summary_lines <- c(summary_lines, "")
-    
+
     # Calibration summary
     if (nrow(cal_consolidated) > 0) {
         summary_lines <- c(summary_lines, "CALIBRATION SUMMARY:")
@@ -168,8 +276,10 @@ create_comprehensive_text_summary <- function(validation_results, outcome_type,
         summary_lines <- c(summary_lines, paste(rep("-", 70), collapse = ""))
         for (i in seq_len(nrow(cal_consolidated))) {
             row <- cal_consolidated[i, ]
-            summary_lines <- c(summary_lines, 
-                sprintf("%-10s %-8s %-20s %-12s %-10s",
+            summary_lines <- c(
+                summary_lines,
+                sprintf(
+                    "%-10s %-8s %-20s %-12s %-10s",
                     row$Timepoint,
                     ifelse(is.na(row$N), "NA", as.character(row$N)),
                     ifelse(is.na(row$Nam_D_Agostino_p), "NA", sprintf("%.3f", row$Nam_D_Agostino_p)),
@@ -180,52 +290,57 @@ create_comprehensive_text_summary <- function(validation_results, outcome_type,
         }
         summary_lines <- c(summary_lines, "")
     }
-    
+
     # Discrimination summary
     if (nrow(disc_consolidated) > 0) {
         summary_lines <- c(summary_lines, "DISCRIMINATION SUMMARY:")
         summary_lines <- c(summary_lines, "")
-        summary_lines <- c(summary_lines, sprintf("%-10s %-8s %-10s %-15s %-12s %-10s", "Timepoint", "N", "Events", "Harrell's C", "Uno's C", "AUC"))
-        summary_lines <- c(summary_lines, paste(rep("-", 75), collapse = ""))
+        summary_lines <- c(summary_lines, sprintf("%-10s %-8s %-10s %-15s %-15s %-15s", "Timepoint", "N", "Events", "Harrell's C", "Integrated_AUC", "Cumulative_Disc"))
+        summary_lines <- c(summary_lines, paste(rep("-", 80), collapse = ""))
         for (i in seq_len(nrow(disc_consolidated))) {
             row <- disc_consolidated[i, ]
-            summary_lines <- c(summary_lines, 
-                sprintf("%-10s %-8s %-10s %-15s %-12s %-10s",
+            summary_lines <- c(
+                summary_lines,
+                sprintf(
+                    "%-10s %-8s %-10s %-15s %-15s %-15s",
                     row$Timepoint,
                     ifelse(is.na(row$N), "NA", as.character(row$N)),
                     ifelse(is.na(row$Events), "NA", as.character(row$Events)),
                     ifelse(is.na(row$Harrell_C), "NA", sprintf("%.3f", row$Harrell_C)),
-                    ifelse(is.na(row$Uno_C), "NA", sprintf("%.3f", row$Uno_C)),
-                    ifelse(is.na(row$AUC), "NA", sprintf("%.3f", row$AUC))
+                    ifelse(is.na(row$Integrated_AUC), "NA", sprintf("%.3f", row$Integrated_AUC)),
+                    ifelse(is.na(row$Cumulative_Discrimination), "NA", sprintf("%.3f", row$Cumulative_Discrimination))
                 )
             )
         }
         summary_lines <- c(summary_lines, "")
     }
-    
+
     # REMOVED: Performance summary section that duplicated discrimination metrics
     # The Performance Summary was redundant because C-Index = Harrell's C (same metric, different name)
     # This eliminates user confusion and data redundancy
-    
+
     # Decision curve summary
     if (nrow(dca_consolidated) > 0) {
         summary_lines <- c(summary_lines, "DECISION CURVE SUMMARY:")
         summary_lines <- c(summary_lines, "")
-        summary_lines <- c(summary_lines, sprintf("%-10s %-8s %-20s", "Timepoint", "N", "Net Benefit Threshold"))
-        summary_lines <- c(summary_lines, paste(rep("-", 40), collapse = ""))
+        summary_lines <- c(summary_lines, sprintf("%-10s %-8s %-12s %-10s", "Timepoint", "N", "Opt_Threshold", "Opt_Net_Ben"))
+        summary_lines <- c(summary_lines, paste(rep("-", 50), collapse = ""))
         for (i in seq_len(nrow(dca_consolidated))) {
             row <- dca_consolidated[i, ]
-            summary_lines <- c(summary_lines, 
-                sprintf("%-10s %-8s %-20s",
+            summary_lines <- c(
+                summary_lines,
+                sprintf(
+                    "%-10s %-8s %-12s %-10s",
                     row$Timepoint,
                     ifelse(is.na(row$N), "NA", as.character(row$N)),
-                    ifelse(is.na(row$Net_Benefit_Threshold), "NA", sprintf("%.3f", row$Net_Benefit_Threshold))
+                    ifelse(is.na(row$Optimal_Threshold), "NA", sprintf("%.3f", row$Optimal_Threshold)),
+                    ifelse(is.na(row$Optimal_Net_Benefit), "NA", sprintf("%.4f", row$Optimal_Net_Benefit))
                 )
             )
         }
         summary_lines <- c(summary_lines, "")
     }
-    
+
     # Key findings summary
     summary_lines <- c(summary_lines, "KEY FINDINGS:")
     if (nrow(cal_consolidated) > 0) {
@@ -234,27 +349,31 @@ create_comprehensive_text_summary <- function(validation_results, outcome_type,
         if (best_cal_idx > 0) {
             best_tp <- cal_consolidated$Timepoint[best_cal_idx]
             best_slope <- cal_consolidated$Slope[best_cal_idx]
-            summary_lines <- c(summary_lines, 
-                sprintf("- Best calibration at %s (slope: %.3f)", best_tp, best_slope))
+            summary_lines <- c(
+                summary_lines,
+                sprintf("- Best calibration at %s (slope: %.3f)", best_tp, best_slope)
+            )
         }
     }
-    
+
     if (nrow(disc_consolidated) > 0) {
         # Find best discrimination timepoint
         best_disc_idx <- which.max(disc_consolidated$Harrell_C %||% 0)
         if (best_disc_idx > 0) {
             best_tp <- disc_consolidated$Timepoint[best_disc_idx]
             best_c <- disc_consolidated$Harrell_C[best_disc_idx]
-            summary_lines <- c(summary_lines, 
-                sprintf("- Best discrimination at %s (Harrell's C: %.3f)", best_tp, best_c))
+            summary_lines <- c(
+                summary_lines,
+                sprintf("- Best discrimination at %s (Harrell's C: %.3f)", best_tp, best_c)
+            )
         }
     }
-    
+
     summary_lines <- c(summary_lines, "")
     summary_lines <- c(summary_lines, "Note: This consolidated summary replaces multiple redundant plots")
     summary_lines <- c(summary_lines, "while maintaining all statistical information.")
     summary_lines <- c(summary_lines, "Performance Summary removed to eliminate redundancy with Discrimination Summary.")
-    
+
     return(paste(summary_lines, collapse = "\n"))
 }
 
@@ -270,40 +389,125 @@ create_comprehensive_text_summary <- function(validation_results, outcome_type,
 #' @return List of created summary files
 create_unified_gep_validation_summary <- function(mfs_results, mss_results, output_dir, prefix) {
     logger::log_info(formatted("Creating unified GEP validation summary to eliminate redundancy", indent = 1))
-    
+
     # Create unified calibration comparison
     unified_cal <- create_unified_calibration_summary(mfs_results, mss_results)
-    
+
     # Create unified discrimination comparison
     unified_disc <- create_unified_discrimination_summary(mfs_results, mss_results)
-    
-    # REMOVED: Unified performance comparison to eliminate redundancy with discrimination metrics
-    # unified_perf <- create_unified_performance_summary(mfs_results, mss_results)
-    
+
+    # Build unified PRAME summary if available
+    unified_prame <- data.frame()
+    try(
+        {
+            # MFS PRAME (expects mfs_results$prame_analysis$nri_results)
+            if (!is.null(mfs_results) && !is.null(mfs_results$prame_analysis) && !is.null(mfs_results$prame_analysis$nri_results)) {
+                for (nm in names(mfs_results$prame_analysis$nri_results)) {
+                    res <- mfs_results$prame_analysis$nri_results[[nm]]
+                    nri_val <- suppressWarnings(as.numeric(res$nri_total))
+                    nri_interpretation <- if (is.na(nri_val)) {
+                        "Analysis failed - insufficient data"
+                    } else if (nri_val == 0) {
+                        "No improvement - PRAME doesn't add value beyond GEP alone"
+                    } else if (nri_val > 0) {
+                        "Improvement - PRAME enhances risk stratification"
+                    } else {
+                        "Worsening - PRAME reduces risk stratification accuracy"
+                    }
+                    unified_prame <- rbind(unified_prame, data.frame(
+                        Outcome = "MFS", 
+                        Timepoint = nm, 
+                        NRI = nri_val,
+                        Interpretation = nri_interpretation,
+                        stringsAsFactors = FALSE
+                    ))
+                }
+            }
+            # MSS PRAME (expects mss_results$prame_results[[tp]] data.frame with 'nri')
+            if (!is.null(mss_results) && !is.null(mss_results$prame_results)) {
+                for (nm in names(mss_results$prame_results)) {
+                    val <- mss_results$prame_results[[nm]]
+                    if (is.data.frame(val) && "nri" %in% names(val)) {
+                        nri_val <- suppressWarnings(as.numeric(val$nri)[1])
+                        nri_interpretation <- if (is.na(nri_val)) {
+                            "Analysis failed - insufficient data"
+                        } else if (nri_val == 0) {
+                            "No improvement - PRAME doesn't add value beyond GEP alone"
+                        } else if (nri_val > 0) {
+                            "Improvement - PRAME enhances risk stratification"
+                        } else {
+                            "Worsening - PRAME reduces risk stratification accuracy"
+                        }
+                        unified_prame <- rbind(unified_prame, data.frame(
+                            Outcome = "MSS", 
+                            Timepoint = nm, 
+                            NRI = nri_val,
+                            Interpretation = nri_interpretation,
+                            stringsAsFactors = FALSE
+                        ))
+                    }
+                }
+            }
+        },
+        silent = TRUE
+    )
+
+    # Build unified Missing Data summary if available
+    unified_missing <- data.frame()
+    try(
+        {
+            # Helper to extract compact metrics
+            compact_missing <- function(md, outcome_label) {
+                if (is.null(md)) {
+                    return(NULL)
+                }
+                patterns <- tryCatch(md$missing_patterns, error = function(e) NULL)
+                n_sig <- tryCatch(md$baseline_comparison$n_significant, error = function(e) NA)
+                logrank_p <- tryCatch(md$outcome_by_missing$logrank_p, error = function(e) NA)
+                n_imputable <- tryCatch(md$imputation_analysis$n_imputable, error = function(e) NA)
+                data.frame(
+                    Outcome = outcome_label,
+                    Total_Patients_n = tryCatch(md$n_total, error = function(e) NA),
+                    Missingness_Groups_n = if (!is.null(patterns)) nrow(patterns) else NA,
+                    Baseline_Significant_Differences_n = n_sig,
+                    Survival_by_Missingness_Logrank_p = logrank_p,
+                    Imputable_Patients_n = n_imputable,
+                    stringsAsFactors = FALSE
+                )
+            }
+            if (!is.null(mfs_results) && !is.null(mfs_results$missing_data_analysis)) {
+                unified_missing <- rbind(unified_missing, compact_missing(mfs_results$missing_data_analysis, "MFS"))
+            }
+            if (!is.null(mss_results) && !is.null(mss_results$missing_data_analysis)) {
+                unified_missing <- rbind(unified_missing, compact_missing(mss_results$missing_data_analysis, "MSS"))
+            }
+        },
+        silent = TRUE
+    )
+
     # Combine into single workbook
     unified_workbook <- list()
     if (nrow(unified_cal) > 0) unified_workbook[["Unified_Calibration"]] <- unified_cal
     if (nrow(unified_disc) > 0) unified_workbook[["Unified_Discrimination"]] <- unified_disc
-    # REMOVED: Performance summary to eliminate redundancy
-    # if (nrow(unified_perf) > 0) unified_workbook[["Unified_Performance"]] <- unified_perf
-    
+    if (nrow(unified_prame) > 0) unified_workbook[["PRAME_Summary"]] <- unified_prame
+    if (nrow(unified_missing) > 0) unified_workbook[["Missing_Data_Summary"]] <- unified_missing
+
     # Save unified workbook
     if (length(unified_workbook) > 0) {
         unified_path <- file.path(output_dir, paste0(prefix, "unified_gep_validation_summary.xlsx"))
         writexl::write_xlsx(unified_workbook, unified_path)
         logger::log_info(formatted(sprintf("Unified GEP validation summary saved: %s", unified_path), indent = 2))
     }
-    
+
     # Create unified text summary (but don't save to file to avoid redundancy)
-    unified_text <- create_unified_text_summary(mfs_results, mss_results, unified_cal, unified_disc, NULL)  # Pass NULL for performance table
+    unified_text <- create_unified_text_summary(mfs_results = mfs_results, mss_results = mss_results, unified_cal = unified_cal, unified_disc = unified_disc)
     # REMOVED: Text file generation to eliminate redundancy
     # text_path <- file.path(output_dir, paste0(prefix, "unified_gep_validation_summary.txt"))
     # writeLines(unified_text, text_path)
-    
+
     return(list(
         calibration = unified_cal,
         discrimination = unified_disc,
-        performance = NULL,  # Set to NULL since performance table is removed
         text_summary = unified_text
     ))
 }
@@ -311,7 +515,7 @@ create_unified_gep_validation_summary <- function(mfs_results, mss_results, outp
 #' Create unified calibration summary across outcomes
 create_unified_calibration_summary <- function(mfs_results, mss_results) {
     unified_cal <- data.frame()
-    
+
     # Add MFS calibration data
     if (!is.null(mfs_results$validation_results)) {
         for (tp_name in names(mfs_results$validation_results)) {
@@ -330,11 +534,11 @@ create_unified_calibration_summary <- function(mfs_results, mss_results) {
             }
         }
     }
-    
+
     # Add MSS calibration data
-    if (!is.null(mss_results$standard_validation)) {
-        for (tp_name in names(mss_results$standard_validation)) {
-            tp_results <- mss_results$standard_validation[[tp_name]]
+    if (!is.null(mss_results$standard_results)) {
+        for (tp_name in names(mss_results$standard_results)) {
+            tp_results <- mss_results$standard_results[[tp_name]]
             if (!is.null(tp_results$calibration)) {
                 cal <- tp_results$calibration
                 unified_cal <- rbind(unified_cal, data.frame(
@@ -349,14 +553,14 @@ create_unified_calibration_summary <- function(mfs_results, mss_results) {
             }
         }
     }
-    
+
     return(unified_cal)
 }
 
 #' Create unified discrimination summary across outcomes
 create_unified_discrimination_summary <- function(mfs_results, mss_results) {
     unified_disc <- data.frame()
-    
+
     # Add MFS discrimination data
     if (!is.null(mfs_results$validation_results)) {
         for (tp_name in names(mfs_results$validation_results)) {
@@ -368,19 +572,22 @@ create_unified_discrimination_summary <- function(mfs_results, mss_results) {
                     Timepoint = tp_name,
                     N = disc$n %||% NA,
                     Events = disc$events %||% NA,
+                    # PRIMARY DISCRIMINATION METRIC
                     Harrell_C = disc$harrell_c %||% NA,
-                    Uno_C = disc$uno_c %||% NA,
-                    AUC = disc$auc_timepoint %||% NA,
+                    # ROBUST DISCRIMINATION METRICS (replacing fragile timepoint-dependent metrics)
+                    Integrated_AUC = disc$integrated_auc %||% NA,
+                    Cumulative_Discrimination = disc$cumulative_discrimination %||% NA,
+                    Time_averaged_Discrimination = disc$time_averaged_discrimination %||% NA,
                     stringsAsFactors = FALSE
                 ))
             }
         }
     }
-    
+
     # Add MSS discrimination data
-    if (!is.null(mss_results$standard_validation)) {
-        for (tp_name in names(mss_results$standard_validation)) {
-            tp_results <- mss_results$standard_validation[[tp_name]]
+    if (!is.null(mss_results$standard_results)) {
+        for (tp_name in names(mss_results$standard_results)) {
+            tp_results <- mss_results$standard_results[[tp_name]]
             if (!is.null(tp_results$discrimination)) {
                 disc <- tp_results$discrimination
                 unified_disc <- rbind(unified_disc, data.frame(
@@ -388,70 +595,32 @@ create_unified_discrimination_summary <- function(mfs_results, mss_results) {
                     Timepoint = tp_name,
                     N = disc$n %||% NA,
                     Events = disc$events %||% NA,
+                    # PRIMARY DISCRIMINATION METRIC
                     Harrell_C = disc$harrell_c %||% NA,
-                    Uno_C = disc$uno_c %||% NA,
-                    AUC = disc$auc_timepoint %||% NA,
+                    # ROBUST DISCRIMINATION METRICS (replacing fragile timepoint-dependent metrics)
+                    Integrated_AUC = disc$integrated_auc %||% NA,
+                    Cumulative_Discrimination = disc$cumulative_discrimination %||% NA,
+                    Time_averaged_Discrimination = disc$time_averaged_discrimination %||% NA,
                     stringsAsFactors = FALSE
                 ))
             }
         }
     }
-    
+
     return(unified_disc)
 }
 
-#' Create unified performance summary across outcomes
-create_unified_performance_summary <- function(mfs_results, mss_results) {
-    unified_perf <- data.frame()
-    
-    # Add MFS performance data
-    if (!is.null(mfs_results$validation_results)) {
-        for (tp_name in names(mfs_results$validation_results)) {
-            tp_results <- mfs_results$validation_results[[tp_name]]
-            if (!is.null(tp_results$discrimination)) {
-                disc <- tp_results$discrimination
-                unified_perf <- rbind(unified_perf, data.frame(
-                    Outcome = "MFS",
-                    Timepoint = tp_name,
-                    N = disc$n %||% NA,
-                    Events = disc$events %||% NA,
-                    C_Index = disc$harrell_c %||% NA,
-                    AUC = disc$auc_timepoint %||% NA,
-                    stringsAsFactors = FALSE
-                ))
-            }
-        }
-    }
-    
-    # Add MSS performance data
-    if (!is.null(mss_results$standard_validation)) {
-        for (tp_name in names(mss_results$standard_validation)) {
-            tp_results <- mss_results$standard_validation[[tp_name]]
-            if (!is.null(tp_results$discrimination)) {
-                disc <- tp_results$discrimination
-                unified_perf <- rbind(unified_perf, data.frame(
-                    Outcome = "MSS",
-                    Timepoint = tp_name,
-                    N = disc$n %||% NA,
-                    Events = disc$events %||% NA,
-                    C_Index = disc$harrell_c %||% NA,
-                    AUC = disc$auc_timepoint %||% NA,
-                    stringsAsFactors = FALSE
-                ))
-            }
-        }
-    }
-    
-    return(unified_perf)
-}
+# REMOVED: create_unified_performance_summary function
+# This function was removed to eliminate redundancy with discrimination metrics
+# Performance metrics (C-Index, AUC) are the same as discrimination metrics (Harrell's C, Integrated AUC)
 
 #' Create unified text summary
-create_unified_text_summary <- function(mfs_results, mss_results, unified_cal, unified_disc, unified_perf) {
+create_unified_text_summary <- function(mfs_results, mss_results, unified_cal, unified_disc) {
     summary_lines <- c()
     summary_lines <- c(summary_lines, "=", "Unified GEP Validation Summary", "=")
     summary_lines <- c(summary_lines, "Combines MFS and MSS results to eliminate redundancy")
     summary_lines <- c(summary_lines, "")
-    
+
     # Calibration comparison
     if (nrow(unified_cal) > 0) {
         summary_lines <- c(summary_lines, "CALIBRATION COMPARISON (MFS vs MSS):")
@@ -459,8 +628,10 @@ create_unified_text_summary <- function(mfs_results, mss_results, unified_cal, u
         summary_lines <- c(summary_lines, "---------|-----------|----|------------------|-----|------")
         for (i in seq_len(nrow(unified_cal))) {
             row <- unified_cal[i, ]
-            summary_lines <- c(summary_lines, 
-                sprintf("%s | %s | %s | %s | %s | %s",
+            summary_lines <- c(
+                summary_lines,
+                sprintf(
+                    "%s | %s | %s | %s | %s | %s",
                     row$Outcome,
                     row$Timepoint,
                     ifelse(is.na(row$N), "NA", as.character(row$N)),
@@ -472,89 +643,154 @@ create_unified_text_summary <- function(mfs_results, mss_results, unified_cal, u
         }
         summary_lines <- c(summary_lines, "")
     }
-    
+
     # Discrimination comparison
     if (nrow(unified_disc) > 0) {
         summary_lines <- c(summary_lines, "DISCRIMINATION COMPARISON (MFS vs MSS):")
-        summary_lines <- c(summary_lines, "Outcome | Timepoint | N | Events | Harrell's C | Uno's C | AUC")
-        summary_lines <- c(summary_lines, "---------|-----------|----|--------|-------------|---------|-----")
+        summary_lines <- c(summary_lines, "Outcome | Timepoint | N | Events | Harrell's C | Integrated_AUC | Cumulative_Disc | Time_Avg_Disc")
+        summary_lines <- c(summary_lines, "---------|-----------|----|--------|-------------|---------------|----------------|-------------")
         for (i in seq_len(nrow(unified_disc))) {
             row <- unified_disc[i, ]
-            summary_lines <- c(summary_lines, 
-                sprintf("%s | %s | %s | %s | %s | %s | %s",
+            summary_lines <- c(
+                summary_lines,
+                sprintf(
+                    "%s | %s | %s | %s | %s | %s | %s | %s",
                     row$Outcome,
                     row$Timepoint,
                     ifelse(is.na(row$N), "NA", as.character(row$N)),
                     ifelse(is.na(row$Events), "NA", as.character(row$Events)),
                     ifelse(is.na(row$Harrell_C), "NA", sprintf("%.3f", row$Harrell_C)),
-                    ifelse(is.na(row$Uno_C), "NA", sprintf("%.3f", row$Uno_C)),
-                    ifelse(is.na(row$AUC), "NA", sprintf("%.3f", row$AUC))
+                    ifelse(is.na(row$Integrated_AUC), "NA", sprintf("%.3f", row$Integrated_AUC)),
+                    ifelse(is.na(row$Cumulative_Discrimination), "NA", sprintf("%.3f", row$Cumulative_Discrimination)),
+                    ifelse(is.na(row$Time_averaged_Discrimination), "NA", sprintf("%.3f", row$Time_averaged_Discrimination))
                 )
             )
         }
         summary_lines <- c(summary_lines, "")
     }
-    
+
     # REMOVED: Performance comparison to eliminate redundancy with discrimination metrics
     # Performance comparison was redundant because C-Index = Harrell's C (same metric, different name)
-    
+
+    # Brief PRAME / Missing Data summaries
+    # PRAME
+    try(
+        {
+            pr_lines <- c()
+            if (!is.null(mfs_results) && !is.null(mfs_results$prame_analysis)) {
+                vals <- mfs_results$prame_analysis
+                pairs <- paste(names(vals), vapply(vals, function(x) if (is.list(x) && !is.null(x$nri)) as.numeric(x$nri) else as.numeric(x), numeric(1)), sep = "=")
+                pr_lines <- c(pr_lines, sprintf("MFS PRAME NRI: %s", paste(pairs, collapse = ", ")))
+            }
+            if (!is.null(mss_results) && !is.null(mss_results$prame_results)) {
+                vals <- mss_results$prame_results
+                pairs <- paste(names(vals), vapply(vals, function(x) if (is.list(x) && !is.null(x$nri)) as.numeric(x$nri) else as.numeric(x), numeric(1)), sep = "=")
+                pr_lines <- c(pr_lines, sprintf("MSS PRAME NRI: %s", paste(pairs, collapse = ", ")))
+            }
+            if (length(pr_lines) > 0) {
+                summary_lines <- c(summary_lines, "PRAME SUMMARY:", pr_lines, "")
+            }
+        },
+        silent = TRUE
+    )
+    # Missing Data
+    try(
+        {
+            md_lines <- c()
+            if (!is.null(mfs_results) && !is.null(mfs_results$missing_data_analysis)) {
+                md <- mfs_results$missing_data_analysis
+                md_lines <- c(md_lines, sprintf(
+                    "MFS Missing: total=%s, patterns=%s, baseline_diffs_sig=%s, logrank_p=%s, imputable=%s",
+                    tryCatch(md$n_total, error = function(e) NA),
+                    tryCatch(nrow(md$missing_patterns), error = function(e) NA),
+                    tryCatch(md$baseline_comparison$n_significant, error = function(e) NA),
+                    tryCatch(md$outcome_by_missing$logrank_p, error = function(e) NA),
+                    tryCatch(md$imputation_analysis$n_imputable, error = function(e) NA)
+                ))
+            }
+            if (!is.null(mss_results) && !is.null(mss_results$missing_data_analysis)) {
+                md <- mss_results$missing_data_analysis
+                md_lines <- c(md_lines, sprintf(
+                    "MSS Missing: total=%s, patterns=%s, baseline_diffs_sig=%s, logrank_p=%s, imputable=%s",
+                    tryCatch(md$n_total, error = function(e) NA),
+                    tryCatch(nrow(md$missing_patterns), error = function(e) NA),
+                    tryCatch(md$baseline_comparison$n_significant, error = function(e) NA),
+                    tryCatch(md$outcome_by_missing$logrank_p, error = function(e) NA),
+                    tryCatch(md$imputation_analysis$n_imputable, error = function(e) NA)
+                ))
+            }
+            if (length(md_lines) > 0) {
+                summary_lines <- c(summary_lines, "MISSING DATA SUMMARY:", md_lines, "")
+            }
+        },
+        silent = TRUE
+    )
+
     # Key findings
     summary_lines <- c(summary_lines, "KEY FINDINGS:")
     if (nrow(unified_cal) > 0) {
         # Find best calibration by outcome
         mfs_cal <- unified_cal[unified_cal$Outcome == "MFS", ]
         mss_cal <- unified_cal[unified_cal$Outcome == "MSS", ]
-        
+
         if (nrow(mfs_cal) > 0) {
             best_mfs_idx <- which.max(mfs_cal$Slope %||% 0)
             if (best_mfs_idx > 0) {
                 best_tp <- mfs_cal$Timepoint[best_mfs_idx]
                 best_slope <- mfs_cal$Slope[best_mfs_idx]
-                summary_lines <- c(summary_lines, 
-                    sprintf("- MFS: Best calibration at %s (slope: %.3f)", best_tp, best_slope))
+                summary_lines <- c(
+                    summary_lines,
+                    sprintf("- MFS: Best calibration at %s (slope: %.3f)", best_tp, best_slope)
+                )
             }
         }
-        
+
         if (nrow(mss_cal) > 0) {
             best_mss_idx <- which.max(mss_cal$Slope %||% 0)
             if (best_mss_idx > 0) {
                 best_tp <- mss_cal$Timepoint[best_mss_idx]
                 best_slope <- mss_cal$Slope[best_mss_idx]
-                summary_lines <- c(summary_lines, 
-                    sprintf("- MSS: Best calibration at %s (slope: %.3f)", best_tp, best_slope))
+                summary_lines <- c(
+                    summary_lines,
+                    sprintf("- MSS: Best calibration at %s (slope: %.3f)", best_tp, best_slope)
+                )
             }
         }
     }
-    
+
     if (nrow(unified_disc) > 0) {
         # Find best discrimination by outcome
         mfs_disc <- unified_disc[unified_disc$Outcome == "MFS", ]
         mss_disc <- unified_disc[unified_disc$Outcome == "MSS", ]
-        
+
         if (nrow(mfs_disc) > 0) {
             best_mfs_idx <- which.max(mfs_disc$Harrell_C %||% 0)
             if (best_mfs_idx > 0) {
                 best_tp <- mfs_disc$Timepoint[best_mfs_idx]
                 best_c <- mfs_disc$Harrell_C[best_mfs_idx]
-                summary_lines <- c(summary_lines, 
-                    sprintf("- MFS: Best discrimination at %s (Harrell's C: %.3f)", best_tp, best_c))
+                summary_lines <- c(
+                    summary_lines,
+                    sprintf("- MFS: Best discrimination at %s (Harrell's C: %.3f)", best_tp, best_c)
+                )
             }
         }
-        
+
         if (nrow(mss_disc) > 0) {
             best_mss_idx <- which.max(mss_disc$Harrell_C %||% 0)
             if (best_mss_idx > 0) {
                 best_tp <- mss_disc$Timepoint[best_mss_idx]
                 best_c <- mss_disc$Harrell_C[best_mss_idx]
-                summary_lines <- c(summary_lines, 
-                    sprintf("- MSS: Best discrimination at %s (Harrell's C: %.3f)", best_tp, best_c))
+                summary_lines <- c(
+                    summary_lines,
+                    sprintf("- MSS: Best discrimination at %s (Harrell's C: %.3f)", best_tp, best_c)
+                )
             }
         }
     }
-    
+
     summary_lines <- c(summary_lines, "")
     summary_lines <- c(summary_lines, "Note: This unified summary eliminates redundant outputs")
     summary_lines <- c(summary_lines, "while maintaining all statistical information across outcomes.")
-    
+
     return(paste(summary_lines, collapse = "\n"))
 }

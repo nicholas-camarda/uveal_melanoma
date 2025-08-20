@@ -63,6 +63,9 @@ save_mfs_validation_results <- function(validation_results, missing_data_analysi
                         Nam_D_Agostino_p = cal_data$nam_dagostino_p,
                         ICI = cal_data$ici,
                         Slope = cal_data$calibration_slope,
+                        Brier_Score = ifelse("brier_score" %in% names(cal_data), cal_data$brier_score, NA_real_),
+                        Brier_Method = ifelse("brier_method" %in% names(cal_data), cal_data$brier_method, NA_character_),
+                        Brier_Fallback_Used = ifelse("brier_fallback_used" %in% names(cal_data), cal_data$brier_fallback_used, NA),
                         stringsAsFactors = FALSE
                     ))
                 }
@@ -78,8 +81,8 @@ save_mfs_validation_results <- function(validation_results, missing_data_analysi
                         N = disc_data$n,
                         Events = disc_data$events,
                         Harrell_C = disc_data$harrell_c,
-                        Uno_C = disc_data$uno_c,
-                        AUC = disc_data$auc_timepoint,
+                        Integrated_AUC = disc_data$integrated_auc,
+                        Cumulative_Discrimination = disc_data$cumulative_discrimination,
                         stringsAsFactors = FALSE
                     ))
                 }
@@ -123,7 +126,9 @@ save_mfs_validation_results <- function(validation_results, missing_data_analysi
         validation_results = validation_results,
         outcome_type = "MFS",
         output_dir = output_dir,
-        prefix = prefix
+        prefix = prefix,
+        prame_results = prame_analysis,
+        missing_data = missing_data_analysis
     )
     
     logger::log_info("MFS validation results saved successfully")
@@ -251,6 +256,9 @@ create_mss_validation_excel_files <- function(standard_results, competing_result
                 Nam_D_Agostino_p = cal$nam_dagostino_p %||% cal$nam_dagostino_p,
                 ICI = cal$ici %||% NA,
                 Slope = cal$slope %||% cal$calibration_slope %||% NA,
+                Brier_Score = cal$brier_score %||% NA,
+                Brier_Method = cal$brier_method %||% NA,
+                Brier_Fallback_Used = cal$brier_fallback_used %||% NA,
                 stringsAsFactors = FALSE
             ))
         }
@@ -339,7 +347,9 @@ create_mss_validation_summary_text <- function(standard_results, competing_resul
         validation_results = validation_results,
         outcome_type = "MSS",
         output_dir = output_dir,
-        prefix = prefix
+        prefix = prefix,
+        prame_results = prame_results,
+        missing_data = missing_data
     )
     
     logger::log_info(sprintf("MSS validation summary saved: %s", summary_path))

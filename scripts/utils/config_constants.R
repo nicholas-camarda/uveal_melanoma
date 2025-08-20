@@ -284,6 +284,7 @@ STANDARD_TABLE_LABELS <- list(
     initial_mets = "Initial Metastases",
 
     # Outcomes
+    height_change = "Tumor Height Change (mm)",
     recurrence1 = "Local Recurrence",
     mets_progression = "Metastatic Progression",
     last_known_alive_date = "Last Known Alive Date",

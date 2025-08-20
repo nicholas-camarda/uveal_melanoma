@@ -25,12 +25,12 @@ create_detailed_metrics_table <- function(validation_results, outcome_type) {
         if (!is.null(result$discrimination)) {
             disc <- result$discrimination
             harrell_val <- ifelse(is.null(disc$harrell_c), NA_real_, disc$harrell_c)
-            uno_val <- ifelse(is.null(disc$uno_c), NA_real_, disc$uno_c)
-            auc_val <- ifelse(is.null(disc$auc_timepoint), NA_real_, disc$auc_timepoint)
+            integrated_auc_val <- ifelse(is.null(disc$integrated_auc), NA_real_, disc$integrated_auc)
+            cumulative_disc_val <- ifelse(is.null(disc$cumulative_discrimination), NA_real_, disc$cumulative_discrimination)
             
             table_lines <- c(table_lines,
-                sprintf("  Discrimination: Harrell's C=%.3f, Uno's C=%.3f, AUC=%.3f",
-                    harrell_val, uno_val, auc_val))
+                sprintf("  Discrimination: Harrell's C=%.3f, Integrated AUC=%.3f, Cumulative Disc=%.3f",
+                    harrell_val, integrated_auc_val, cumulative_disc_val))
         }
         
         # Observed/Expected - with defensive programming
@@ -202,8 +202,8 @@ create_performance_summary_table <- function(validation_results, outcome_type) {
     performance_data <- data.frame(
         Timepoint = character(),
         Harrell_C = numeric(),
-        Uno_C = numeric(),
-        AUC = numeric(),
+        Integrated_AUC = numeric(),
+        Cumulative_Discrimination = numeric(),
         OE_Ratio = numeric(),
         Chi_Square_p = numeric(),
         Discrimination_Quality = character(),
@@ -218,8 +218,8 @@ create_performance_summary_table <- function(validation_results, outcome_type) {
         # Discrimination metrics - with defensive programming
         disc <- result$discrimination
         harrell_c <- if (!is.null(disc) && !is.null(disc$harrell_c)) disc$harrell_c else NA_real_
-        uno_c <- if (!is.null(disc) && !is.null(disc$uno_c)) disc$uno_c else NA_real_
-        auc <- if (!is.null(disc) && !is.null(disc$auc_timepoint)) disc$auc_timepoint else NA_real_
+        integrated_auc <- if (!is.null(disc) && !is.null(disc$integrated_auc)) disc$integrated_auc else NA_real_
+        cumulative_disc <- if (!is.null(disc) && !is.null(disc$cumulative_discrimination)) disc$cumulative_discrimination else NA_real_
         
         # Observed/Expected metrics - support MSS nested overall and MFS flat fields
         oe <- result$observed_expected
@@ -234,8 +234,8 @@ create_performance_summary_table <- function(validation_results, outcome_type) {
         new_row <- data.frame(
             Timepoint = tp,
             Harrell_C = harrell_c,
-            Uno_C = uno_c,
-            AUC = auc,
+            Integrated_AUC = integrated_auc,
+            Cumulative_Discrimination = cumulative_disc,
             OE_Ratio = oe_ratio,
             Chi_Square_p = chisq_p,
             Discrimination_Quality = tryCatch({
@@ -278,14 +278,14 @@ create_gep_comparison_table <- function(mfs_results, mss_results) {
             cal_slope <- if (!is.null(tp_results$calibration) && !is.null(tp_results$calibration$slope)) tp_results$calibration$slope else tp_results$calibration$calibration_slope
             cal_intercept <- if (!is.null(tp_results$calibration) && !is.null(tp_results$calibration$intercept)) tp_results$calibration$intercept else NA
             harrell_c <- if (!is.null(tp_results$discrimination) && !is.null(tp_results$discrimination$harrell_c)) tp_results$discrimination$harrell_c else NA
-            uno_c <- if (!is.null(tp_results$discrimination) && !is.null(tp_results$discrimination$uno_c)) tp_results$discrimination$uno_c else NA
+            integrated_auc <- if (!is.null(tp_results$discrimination) && !is.null(tp_results$discrimination$integrated_auc)) tp_results$discrimination$integrated_auc else NA
             comparison_data <- rbind(comparison_data, data.frame(
                 outcome = "MFS",
                 timepoint = tp_name,
                 calibration_slope = cal_slope,
                 calibration_intercept = cal_intercept,
                 harrell_c = harrell_c,
-                uno_c = uno_c,
+                integrated_auc = integrated_auc,
                 stringsAsFactors = FALSE
             ))
         }
@@ -298,14 +298,14 @@ create_gep_comparison_table <- function(mfs_results, mss_results) {
                 cal_slope <- if (!is.null(tp_results$calibration) && !is.null(tp_results$calibration$slope)) tp_results$calibration$slope else tp_results$calibration$calibration_slope
                 cal_intercept <- if (!is.null(tp_results$calibration) && !is.null(tp_results$calibration$intercept)) tp_results$calibration$intercept else NA
                 harrell_c <- if (!is.null(tp_results$discrimination) && !is.null(tp_results$discrimination$harrell_c)) tp_results$discrimination$harrell_c else NA
-                uno_c <- if (!is.null(tp_results$discrimination) && !is.null(tp_results$discrimination$uno_c)) tp_results$discrimination$uno_c else NA
+                integrated_auc <- if (!is.null(tp_results$discrimination) && !is.null(tp_results$discrimination$integrated_auc)) tp_results$discrimination$integrated_auc else NA
                 comparison_data <- rbind(comparison_data, data.frame(
                     outcome = "MSS",
                     timepoint = tp_name,
                     calibration_slope = cal_slope,
                     calibration_intercept = cal_intercept,
                     harrell_c = harrell_c,
-                    uno_c = uno_c,
+                    integrated_auc = integrated_auc,
                     stringsAsFactors = FALSE
                 ))
             }

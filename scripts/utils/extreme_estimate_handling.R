@@ -19,10 +19,10 @@
 process_extreme_estimates <- function(tbl, model_fit, effect_measure = "OR", variables_to_check = NULL, analysis_name = "analysis") {
     # Extract table data
     tbl_data <- tbl$table_body
-    
+
     # Initialize completely_removed_variables
     completely_removed_variables <- c()
-    
+
     # DEBUG: Check initial table state
     logger::log_info(sprintf("DEBUG: process_extreme_estimates for %s - initial table has %d rows", analysis_name, nrow(tbl_data)))
     if (nrow(tbl_data) > 0) {
@@ -40,14 +40,14 @@ process_extreme_estimates <- function(tbl, model_fit, effect_measure = "OR", var
         reference_level = character(),
         stringsAsFactors = FALSE
     )
-    
+
     for (var in unique(tbl_data$variable)) {
         var_rows <- tbl_data[tbl_data$variable == var, ]
         level_rows <- var_rows[var_rows$row_type == "level", ]
-        
+
         # Find reference level (rows with empty estimates)
         reference_rows <- level_rows[is.na(level_rows$estimate) | level_rows$estimate == "" | level_rows$estimate == "-", ]
-        
+
         if (nrow(reference_rows) > 0) {
             reference_level <- paste(reference_rows$term, collapse = ", ")
         } else if (nrow(level_rows) == 0) {
@@ -57,7 +57,7 @@ process_extreme_estimates <- function(tbl, model_fit, effect_measure = "OR", var
             # No clear reference level found
             reference_level <- "(unknown)"
         }
-        
+
         reference_levels_info <- rbind(reference_levels_info, data.frame(
             variable = var,
             reference_level = reference_level,
@@ -92,13 +92,35 @@ process_extreme_estimates <- function(tbl, model_fit, effect_measure = "OR", var
     # Raw scale measures: MD, beta, estimate (can be negative)
     is_exponentiated <- effect_measure %in% c("OR", "HR")
 
-    # DETECT EXTREME ESTIMATES
+    # Initialize collections
     extreme_indices <- c()
     exclusion_reasons <- c()
 
+    # STEP 0: Remove non-estimable factor-level rows from HTML output
+    # Keep exactly one NA-level per variable (reference); drop other NA-levels
+    for (var in unique(tbl_data$variable)) {
+        idx_var <- which(tbl_data$variable == var & tbl_data$row_type == "level")
+        if (length(idx_var) == 0) next
+        # Identify NA/blank estimate and CI rows
+        na_rows <- idx_var[
+            (is.na(table_estimates[idx_var]) | table_estimates[idx_var] == "" | table_estimates[idx_var] == "-") &
+                (is.na(table_ci_lower[idx_var]) | table_ci_lower[idx_var] == "") &
+                (is.na(table_ci_upper[idx_var]) | table_ci_upper[idx_var] == "")
+        ]
+        if (length(na_rows) > 1) {
+            # Keep the first NA level (reference), remove the rest
+            drop_rows <- na_rows[-1]
+            extreme_indices <- c(extreme_indices, drop_rows)
+            exclusion_reasons <- c(exclusion_reasons, rep("Non-estimable level (no coefficient/CI); removed from HTML", length(drop_rows)))
+        }
+    }
+
+    # DETECT EXTREME ESTIMATES
     for (i in seq_along(table_estimates)) {
+        # Skip already recorded removals
+        if (i %in% extreme_indices) next
         reason <- NULL
-        
+
         # Skip Factor Label rows - these contain interaction p-values and should never be filtered
         if (!is.null(table_row_types) && length(table_row_types) >= i && table_row_types[i] == "Factor Label") {
             next
@@ -115,6 +137,10 @@ process_extreme_estimates <- function(tbl, model_fit, effect_measure = "OR", var
                 # Perfect separation: CI = (0,0) - shouldn't happen on ratio scale
                 if (!is.na(table_ci_lower[i]) && !is.na(table_ci_upper[i]) && table_ci_lower[i] == table_ci_upper[i] && table_ci_lower[i] == 0) {
                     reason <- "Perfect separation detected: CI = (0,0)"
+                }
+                # Degenerate zero-width CI at a finite value (e.g., 1.00, 1.00) indicates non-estimable/aliased level
+                else if (!is.na(table_ci_lower[i]) && !is.na(table_ci_upper[i]) && is.finite(table_ci_lower[i]) && is.finite(table_ci_upper[i]) && table_ci_lower[i] == table_ci_upper[i]) {
+                    reason <- sprintf("Degenerate zero-width CI detected (exponentiated): (%.2f, %.2f)", table_ci_lower[i], table_ci_upper[i])
                 }
                 # Extremely wide CIs on exponentiated scale
                 else if (!is.na(table_ci_lower[i]) && !is.na(table_ci_upper[i]) &&
@@ -226,7 +252,7 @@ process_extreme_estimates <- function(tbl, model_fit, effect_measure = "OR", var
             if (length(remaining_rows) > 0) {
                 remaining_data <- tbl_data[remaining_rows, ]
                 all_reference_levels <- all(is.na(remaining_data$estimate) | remaining_data$estimate == "" | remaining_data$estimate == "-")
-                
+
                 if (all_reference_levels) {
                     logger::log_info(sprintf(
                         "Removing entire variable '%s' in %s - only reference levels remain after filtering extreme estimates",
@@ -255,19 +281,21 @@ process_extreme_estimates <- function(tbl, model_fit, effect_measure = "OR", var
                 "Removed %d extreme estimates from %s table output",
                 length(final_rows_to_remove), analysis_name
             ))
-            
+
             # Update table with filtered data
             tbl_filtered <- tbl
             tbl_filtered$table_body <- tbl_data_filtered
-            
+
             # DEBUG: Show final table state
             logger::log_info(sprintf("DEBUG: After filtering, table has %d rows", nrow(tbl_data_filtered)))
             if (nrow(tbl_data_filtered) > 0) {
                 logger::log_info(sprintf("DEBUG: Remaining terms: %s", paste(tbl_data_filtered$term, collapse = ", ")))
             }
 
-            logger::log_info(sprintf("DEBUG: process_extreme_estimates returning completely_removed_variables: %s", 
-                paste(completely_removed_variables, collapse = ", ")))
+            logger::log_info(sprintf(
+                "DEBUG: process_extreme_estimates returning completely_removed_variables: %s",
+                paste(completely_removed_variables, collapse = ", ")
+            ))
             return(list(
                 tbl_filtered = tbl_filtered,
                 diagnostics = list(
@@ -285,18 +313,18 @@ process_extreme_estimates <- function(tbl, model_fit, effect_measure = "OR", var
                 "No rows safe to remove in %s after checking for empty variables",
                 analysis_name
             ))
-                    return(list(
-            tbl_filtered = tbl,
-            diagnostics = list(
-                extreme_terms = extreme_terms,
-                exclusion_reasons = exclusion_reasons,
-                rows_removed = 0,
-                sparse_table_warning = TRUE,
-                confint_error = FALSE,
-                reference_levels_info = reference_levels_info,
-                completely_removed_variables = completely_removed_variables
-            )
-        ))
+            return(list(
+                tbl_filtered = tbl,
+                diagnostics = list(
+                    extreme_terms = extreme_terms,
+                    exclusion_reasons = exclusion_reasons,
+                    rows_removed = 0,
+                    sparse_table_warning = TRUE,
+                    confint_error = FALSE,
+                    reference_levels_info = reference_levels_info,
+                    completely_removed_variables = completely_removed_variables
+                )
+            ))
         }
     }
 

@@ -199,16 +199,25 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
             extreme_filtering_result$diagnostics,
             treatment_var = treatment_var,
             effect_measure = effect_measure,
-            table_result = filtered_table_result
+            table_result = table_result
         )
 
         # Create raw_output from diagnostics for save_table_outputs
         raw_output <- diagnostics$raw_model_output
 
         # Save outputs using the filtered table
-        output_files <- save_table_outputs(filtered_table_result, raw_output, model_fit,
-            analysis_name, dataset_name, output_dir, prefix,
-            diagnostics, data, outcome_var, confounders,
+        output_files <- save_table_outputs(
+            table_result = filtered_table_result, 
+            raw_output = raw_output, 
+            model_fit = model_fit,
+            analysis_name = analysis_name, 
+            dataset_name = dataset_name, 
+            output_dir = output_dir, 
+            prefix = prefix,
+            diagnostics = diagnostics, 
+            data = data, 
+            outcome_var = outcome_var, 
+            confounders = confounders,
             treatment_var = treatment_var
         )
     } else {

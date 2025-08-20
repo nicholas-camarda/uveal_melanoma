@@ -31,8 +31,9 @@ create_comprehensive_gep_summary <- function(validation_results, outcome_type, p
     discrimination_data <- data.frame(
         Timepoint = character(),
         Harrell_C = numeric(),
-        Uno_C = numeric(),
-        AUC = numeric(),
+        Integrated_AUC = numeric(),
+        Cumulative_Discrimination = numeric(),
+        Time_averaged_Discrimination = numeric(),
         stringsAsFactors = FALSE
     )
     
@@ -73,16 +74,17 @@ create_comprehensive_gep_summary <- function(validation_results, outcome_type, p
         if (!is.null(result$discrimination) && !is.null(result$discrimination$harrell_c)) {
             disc <- result$discrimination
             # Debug: Log what's in discrimination data
-            logger::log_info(sprintf("Discrimination data for %s: Harrell_C=%s, Uno_C=%s, AUC=%s", 
+            logger::log_info(sprintf("Discrimination data for %s: Harrell_C=%s, Integrated_AUC=%s, Cumulative_Disc=%s", 
                                    tp, 
                                    ifelse(is.null(disc$harrell_c), "NULL", as.character(disc$harrell_c)),
-                                   ifelse(is.null(disc$uno_c), "NULL", as.character(disc$uno_c)),
-                                   ifelse(is.null(disc$auc_timepoint), "NULL", as.character(disc$auc_timepoint))))
+                                   ifelse(is.null(disc$integrated_auc), "NULL", as.character(disc$integrated_auc)),
+                                   ifelse(is.null(disc$cumulative_discrimination), "NULL", as.character(disc$cumulative_discrimination))))
             new_disc_row <- data.frame(
                 Timepoint = tp,
                 Harrell_C = ifelse(is.null(disc$harrell_c), NA_real_, disc$harrell_c),
-                Uno_C = ifelse(is.null(disc$uno_c), NA_real_, disc$uno_c),
-                AUC = ifelse(is.null(disc$auc_timepoint), NA_real_, disc$auc_timepoint),
+                Integrated_AUC = ifelse(is.null(disc$integrated_auc), NA_real_, disc$integrated_auc),
+                Cumulative_Discrimination = ifelse(is.null(disc$cumulative_discrimination), NA_real_, disc$cumulative_discrimination),
+                Time_averaged_Discrimination = ifelse(is.null(disc$time_averaged_discrimination), NA_real_, disc$time_averaged_discrimination),
                 stringsAsFactors = FALSE
             )
             discrimination_data <- rbind(discrimination_data, new_disc_row)
@@ -250,7 +252,7 @@ create_comprehensive_gep_report <- function(mfs_results, mss_results, comparison
         "",
         "Discrimination Performance:",
         "  - Harrell's C-index > 0.7 indicates good discrimination",
-        "  - Uno's C-index provides time-dependent discrimination measure",
+        "  - Integrated AUC provides robust discrimination over time periods",
         "",
         "All detailed results saved as Excel tables and visualizations.",
         "See individual files for complete statistical outputs."

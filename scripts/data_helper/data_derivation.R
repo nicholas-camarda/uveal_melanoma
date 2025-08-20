@@ -237,10 +237,12 @@ create_derived_variables <- function(data) {
             ),
             
             # Time-to-event variables for specific timepoints (prevents analysis-time creation)
+            # MFS: already in months (correct)
             tt_mfs_5yr = pmin(tt_mets_months, 60),
             tt_mfs_7yr = pmin(tt_mets_months, 84),
             tt_mfs_10yr = pmin(tt_mets_months, 120),
             
+            # MSS: keep years for compatibility
             tt_mss_5yr = pmin(tt_death_years, 5),
             tt_mss_7yr = pmin(tt_death_years, 7),
             tt_mss_10yr = pmin(tt_death_years, 10),

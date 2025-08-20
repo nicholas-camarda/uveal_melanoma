@@ -171,10 +171,25 @@ modify_gt_table_pvalues <- function(gt_table, table_result, data, outcome_var, c
         pval <- factor_label_pvalues[[var_name]]
         var_rows <- which(table_data$variable == var_name)
         if (length(var_rows) > 0) {
-            modified_table$table_body$p.value[var_rows] <- NA
-            label_row <- var_rows[1]
+            # Determine if this is a single-predictor model (no confounders/other predictors)
+            is_single_predictor_model <- FALSE
+            if (!is.null(model_fit)) {
+                term_labels <- attr(terms(model_fit), "term.labels")
+                is_single_predictor_model <- length(term_labels) == 1
+            }
+            # In multi-variable models, always hide p-values for all non-label rows
+            if (!is_single_predictor_model) {
+                non_label_rows <- var_rows[table_data$row_type[var_rows] != "label"]
+                if (length(non_label_rows) > 0) {
+                    modified_table$table_body$p.value[non_label_rows] <- NA
+                }
+            }
+            # Set overall p-value at the label row when available
             if (!is.na(pval)) {
-                modified_table$table_body$p.value[label_row] <- pval
+                label_row <- var_rows[table_data$row_type[var_rows] == "label"][1]
+                if (!is.na(label_row)) {
+                    modified_table$table_body$p.value[label_row] <- pval
+                }
             }
         }
     }
@@ -319,7 +334,7 @@ add_factor_label_pvalues_to_table <- function(
         if (!is.null(model_fit)) {
             pval <- calculate_factor_label_pvalue(
                 model_fit, var_name, data, outcome_var, var_confounders,
-                treatment_var = treatment_var
+                reatment_var = treatment_var
             )
         } else {
             pval <- calculate_variable_overall_significance(
@@ -333,18 +348,31 @@ add_factor_label_pvalues_to_table <- function(
         factor_label_pvalues[[var_name]] <- pval
     }
 
-    # Update the table: clear all p-values for each variable, then set the overall p-value at the label row
+    # Update the table: clear level p-values and set overall p-value at the label row
     table_data <- table$table_body
     for (var_name in all_variables) {
         pval <- factor_label_pvalues[[var_name]]
         var_rows <- which(table_data$variable == var_name)
         if (length(var_rows) > 0) {
-            # Clear all p-values for this variable
-            table_data$p.value[var_rows] <- NA
-            # Set the overall p-value at the label row (first row for this variable)
-            label_row <- var_rows[1]
+            # Determine if this is a single-predictor model (no confounders/other predictors)
+            is_single_predictor_model <- FALSE
+            if (!is.null(model_fit)) {
+                term_labels <- attr(terms(model_fit), "term.labels")
+                is_single_predictor_model <- length(term_labels) == 1
+            }
+            # In multi-variable models, always hide p-values for all non-label rows
+            if (!is_single_predictor_model) {
+                non_label_rows <- var_rows[table_data$row_type[var_rows] != "label"]
+                if (length(non_label_rows) > 0) {
+                    table_data$p.value[non_label_rows] <- NA
+                }
+            }
+            # Set overall p-value at the label row when available
             if (!is.na(pval)) {
-                table_data$p.value[label_row] <- pval
+                label_row <- var_rows[table_data$row_type[var_rows] == "label"][1]
+                if (!is.na(label_row)) {
+                    table_data$p.value[label_row] <- pval
+                }
             }
         }
     }

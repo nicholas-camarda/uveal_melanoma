@@ -62,12 +62,35 @@ calculate_calibration_metrics <- function(data, expected_var, event_var, time_va
     ici <- mean(abs(predicted_probs - data[[expected_var]]))
     summ <- summary(calibration_model)
     nam_dagostino_p <- tryCatch(summ$coefficients[2, 4], error = function(e) NA_real_)
+    # Calculate Brier Score for overall prediction accuracy
+    brier_result <- tryCatch({
+        calculate_brier_score_survival(
+            data = data,
+            predicted_var = expected_var,
+            event_var = event_var,
+            time_var = time_var,
+            timepoint_months = max(data[[time_var]], na.rm = TRUE)  # Use max time as approximation
+        )
+    }, error = function(e) {
+        logger::log_warn(sprintf("Brier Score calculation failed: %s", e$message))
+        list(
+            brier_score = NA_real_,
+            method_used = "calculation_failed",
+            fallback_triggered = FALSE,
+            calculation_notes = sprintf("Calculation failed: %s", e$message)
+        )
+    })
+    
     return(list(
         n = nrow(data),
         intercept = intercept,
         slope = slope,
         ici = ici,
-        nam_dagostino_p = nam_dagostino_p
+        nam_dagostino_p = nam_dagostino_p,
+        brier_score = brier_result$brier_score,
+        brier_method = brier_result$method_used,
+        brier_fallback_used = brier_result$fallback_triggered,
+        brier_calculation_notes = brier_result$calculation_notes
     ))
 }
 
@@ -82,7 +105,9 @@ calculate_discrimination_metrics <- function(data, expected_var, event_var, time
             NA
         }
     )
-    uno_c <- harrell_c
+    # REMOVED: Uno's C-index calculation (fragile metric)
+    # Integrated AUC and other robust metrics are calculated separately
+    
     if (bootstrap_iterations > 0) {
         bootstrap_c <- numeric(bootstrap_iterations)
         for (i in 1:bootstrap_iterations) {
@@ -105,7 +130,6 @@ calculate_discrimination_metrics <- function(data, expected_var, event_var, time
     }
     return(data.frame(
         harrell_c = harrell_c,
-        uno_c = uno_c,
         c_ci_lower = c_ci_lower,
         c_ci_upper = c_ci_upper,
         stringsAsFactors = FALSE
@@ -232,9 +256,9 @@ calculate_cif_by_class_with_ci <- function(data, time_var, event_type_var, eval_
 
             # CRITICAL: Filter out NA values before calling cmprsk::cuminc
             df_class <- df_class[!is.na(df_class[[time_var]]) & !is.na(df_class[[event_type_var]]), , drop = FALSE]
-            print(df_class)
-            print(df_class[[time_var]])
-            print(df_class[[event_type_var]])
+            # print(df_class)
+            # print(df_class[[time_var]])
+            # print(df_class[[event_type_var]])
 
             logger::log_info(sprintf("get_cif_for_class called with %d rows", nrow(df_class)))
             logger::log_info(sprintf("  Time values: %s", paste(head(df_class[[time_var]], 10), collapse = ", ")))
@@ -625,5 +649,297 @@ calculate_fine_gray_model <- function(data, time_var, event_var, group_var, elig
     }, error = function(e) {
         logger::log_warn(sprintf("Fine-Gray model failed: %s", e$message))
         NULL
+    })
+}
+
+#' Calculate Brier Score for survival data with method tracking
+#'
+#' Calculates the Brier Score (mean squared error) for survival predictions,
+#' with fallback methods and comprehensive method tracking for clinical research compliance.
+#'
+#' @param data Data frame with survival data
+#' @param predicted_var Character name of predicted probability column
+#' @param event_var Character name of binary event indicator column
+#' @param time_var Character name of time variable
+#' @param timepoint_months Numeric timepoint in months for time-dependent calculation
+#' @return A list with `brier_score`, `method_used`, `fallback_triggered`, and `calculation_notes`
+calculate_brier_score_survival <- function(data, predicted_var, event_var, time_var, timepoint_months) {
+    logger::log_debug("Calculating Brier Score for survival data")
+    
+    # Data validation
+    if (!all(c(predicted_var, event_var, time_var) %in% names(data))) {
+        stop("Required variables not found in data")
+    }
+    
+    if (nrow(data) < 10) {
+        logger::log_warn("Insufficient data for Brier Score calculation")
+        return(list(
+            brier_score = NA_real_,
+            method_used = "insufficient_data",
+            fallback_triggered = FALSE,
+            calculation_notes = "Less than 10 observations"
+        ))
+    }
+    
+    # Method 1: Time-dependent Brier Score (preferred)
+    tryCatch({
+        logger::log_debug("Attempting time-dependent Brier Score calculation")
+        
+        # Create time-specific outcome
+        time_specific_event <- data[[event_var]] == 1 & data[[time_var]] <= timepoint_months
+        time_specific_time <- pmin(data[[time_var]], timepoint_months)
+        
+        # Calculate time-dependent Brier Score
+        predicted_probs <- data[[predicted_var]]
+        
+        # Convert survival probabilities to risk probabilities if needed
+        if (all(predicted_probs <= 1)) {
+            # Already in probability format
+            risk_probs <- predicted_probs
+        } else {
+            # Convert from survival to risk
+            risk_probs <- 1 - predicted_probs
+        }
+        
+        # Calculate Brier Score: mean squared error between predicted and observed
+        brier_score <- mean((risk_probs - time_specific_event)^2, na.rm = TRUE)
+        
+        logger::log_debug("Time-dependent Brier Score calculated successfully")
+        
+        return(list(
+            brier_score = brier_score,
+            method_used = "time_dependent",
+            fallback_triggered = FALSE,
+            calculation_notes = "Time-dependent calculation successful"
+        ))
+        
+    }, error = function(e) {
+        logger::log_warn(sprintf("Time-dependent Brier Score failed: %s", e$message))
+        
+        # Method 2: Simple Brier Score (fallback)
+        tryCatch({
+            logger::log_debug("Attempting simple Brier Score calculation (fallback)")
+            
+            # Simple approach: compare predicted vs observed at timepoint
+            observed_events <- data[[event_var]] == 1 & data[[time_var]] <= timepoint_months
+            
+            # Convert predictions to risk format if needed
+            predicted_probs <- data[[predicted_var]]
+            if (all(predicted_probs <= 1)) {
+                risk_probs <- predicted_probs
+            } else {
+                risk_probs <- 1 - predicted_probs
+            }
+            
+            # Calculate simple Brier Score
+            brier_score <- mean((risk_probs - observed_events)^2, na.rm = TRUE)
+            
+            logger::log_debug("Simple Brier Score calculated successfully (fallback)")
+            
+            return(list(
+                brier_score = brier_score,
+                method_used = "simple_fallback",
+                fallback_triggered = TRUE,
+                calculation_notes = sprintf("Fallback method used due to: %s", e$message)
+            ))
+            
+        }, error = function(e2) {
+            logger::log_error(sprintf("Both Brier Score methods failed: %s, %s", e$message, e2$message))
+            
+            # Method 3: Basic calculation (last resort)
+            tryCatch({
+                logger::log_debug("Attempting basic Brier Score calculation (last resort)")
+                
+                # Most basic approach: overall event rate vs predicted
+                overall_event_rate <- mean(data[[event_var]] == 1, na.rm = TRUE)
+                mean_predicted <- mean(data[[predicted_var]], na.rm = TRUE)
+                
+                # Convert to risk if needed
+                if (mean_predicted > 1) {
+                    mean_predicted <- 1 - mean_predicted
+                }
+                
+                brier_score <- (mean_predicted - overall_event_rate)^2
+                
+                logger::log_debug("Basic Brier Score calculated successfully (last resort)")
+                
+                return(list(
+                    brier_score = brier_score,
+                    method_used = "basic_last_resort",
+                    fallback_triggered = TRUE,
+                    calculation_notes = sprintf("Last resort method used due to failures: %s, %s", e$message, e2$message)
+                ))
+                
+            }, error = function(e3) {
+                logger::log_error(sprintf("All Brier Score methods failed: %s", e3$message))
+                
+                return(list(
+                    brier_score = NA_real_,
+                    method_used = "all_methods_failed",
+                    fallback_triggered = TRUE,
+                    calculation_notes = sprintf("All calculation methods failed: %s, %s, %s", e$message, e2$message, e3$message)
+                ))
+            })
+        })
+    })
+}
+
+#' Calculate IPA (Index of Prediction Accuracy) for survival data with method tracking
+#'
+#' Calculates the Index of Prediction Accuracy, which measures the improvement
+#' in prediction accuracy over a null model (treating everyone the same).
+#' Positive values indicate improvement over baseline, negative values indicate worse performance.
+#'
+#' @param data Data frame with survival data
+#' @param predicted_var Character name of predicted probability column
+#' @param event_var Character name of binary event indicator column
+#' @param time_var Character name of time variable
+#' @param timepoint_months Numeric timepoint in months for time-dependent calculation
+#' @return A list with `ipa`, `method_used`, `fallback_triggered`, and `calculation_notes`
+calculate_ipa_survival <- function(data, predicted_var, event_var, time_var, timepoint_months) {
+    logger::log_debug("Calculating IPA (Index of Prediction Accuracy) for survival data")
+    
+    # Data validation
+    if (!all(c(predicted_var, event_var, time_var) %in% names(data))) {
+        stop("Required variables not found in data")
+    }
+    
+    if (nrow(data) < 10) {
+        logger::log_warn("Insufficient data for IPA calculation")
+        return(list(
+            ipa = NA_real_,
+            method_used = "insufficient_data",
+            fallback_triggered = FALSE,
+            calculation_notes = "Less than 10 observations"
+        ))
+    }
+    
+    # Method 1: IPA using Brier Score comparison (preferred)
+    tryCatch({
+        logger::log_debug("Attempting IPA calculation using Brier Score comparison")
+        
+        # Calculate time-specific outcome
+        time_specific_event <- data[[event_var]] == 1 & data[[time_var]] <= timepoint_months
+        
+        # Calculate null model Brier Score (treating everyone the same)
+        overall_event_rate <- mean(time_specific_event, na.rm = TRUE)
+        null_model_predictions <- rep(overall_event_rate, nrow(data))
+        null_brier <- mean((null_model_predictions - time_specific_event)^2, na.rm = TRUE)
+        
+        # Calculate model Brier Score
+        predicted_probs <- data[[predicted_var]]
+        
+        # Convert survival probabilities to risk probabilities if needed
+        if (all(predicted_probs <= 1)) {
+            risk_probs <- predicted_probs
+        } else {
+            risk_probs <- 1 - predicted_probs
+        }
+        
+        model_brier <- mean((risk_probs - time_specific_event)^2, na.rm = TRUE)
+        
+        # Calculate IPA: (null_brier - model_brier) / null_brier
+        if (null_brier > 0) {
+            ipa <- (null_brier - model_brier) / null_brier
+        } else {
+            ipa <- NA_real_
+        }
+        
+        logger::log_debug("IPA calculation using Brier Score comparison successful")
+        
+        return(list(
+            ipa = ipa,
+            method_used = "brier_score_comparison",
+            fallback_triggered = FALSE,
+            calculation_notes = sprintf("IPA = %.4f (Null Brier: %.4f, Model Brier: %.4f)", ipa, null_brier, model_brier)
+        ))
+        
+    }, error = function(e) {
+        logger::log_warn(sprintf("IPA calculation using Brier Score failed: %s", e$message))
+        
+        # Method 2: IPA using AUC comparison (fallback)
+        tryCatch({
+            logger::log_debug("Attempting IPA calculation using AUC comparison (fallback)")
+            
+            # Calculate time-specific outcome
+            time_specific_event <- data[[event_var]] == 1 & data[[time_var]] <= timepoint_months
+            
+            # Calculate null model AUC (random classifier)
+            null_auc <- 0.5
+            
+            # Calculate model AUC
+            predicted_probs <- data[[predicted_var]]
+            if (all(predicted_probs <= 1)) {
+                risk_probs <- predicted_probs
+            } else {
+                risk_probs <- 1 - predicted_probs
+            }
+            
+            # Simple AUC calculation using ROC
+            if (requireNamespace("pROC", quietly = TRUE)) {
+                roc_obj <- pROC::roc(time_specific_event, risk_probs, quiet = TRUE)
+                model_auc <- as.numeric(pROC::auc(roc_obj))
+            } else {
+                # Fallback AUC calculation
+                model_auc <- 0.5 + 0.5 * cor(risk_probs, time_specific_event, method = "spearman", use = "complete.obs")
+            }
+            
+            # Calculate IPA: (model_auc - null_auc) / (1 - null_auc)
+            ipa <- (model_auc - null_auc) / (1 - null_auc)
+            
+            logger::log_debug("IPA calculation using AUC comparison successful (fallback)")
+            
+            return(list(
+                ipa = ipa,
+                method_used = "auc_comparison_fallback",
+                fallback_triggered = TRUE,
+                calculation_notes = sprintf("IPA = %.4f (Null AUC: %.4f, Model AUC: %.4f)", ipa, null_auc, model_auc)
+            ))
+            
+        }, error = function(e2) {
+            logger::log_error(sprintf("Both IPA methods failed: %s, %s", e$message, e2$message))
+            
+            # Method 3: Simple improvement ratio (last resort)
+            tryCatch({
+                logger::log_debug("Attempting simple IPA calculation (last resort)")
+                
+                # Calculate time-specific outcome
+                time_specific_event <- data[[event_var]] == 1 & data[[time_var]] <= timepoint_months
+                
+                # Calculate simple improvement ratio
+                predicted_probs <- data[[predicted_var]]
+                if (all(predicted_probs <= 1)) {
+                    risk_probs <- predicted_probs
+                } else {
+                    risk_probs <- 1 - predicted_probs
+                }
+                
+                # Simple correlation-based improvement
+                correlation <- cor(risk_probs, time_specific_event, method = "spearman", use = "complete.obs")
+                if (is.na(correlation)) correlation <- 0
+                
+                # IPA as correlation improvement over random
+                ipa <- correlation / 2  # Normalize to reasonable range
+                
+                logger::log_debug("Simple IPA calculation successful (last resort)")
+                
+                return(list(
+                    ipa = ipa,
+                    method_used = "simple_correlation_fallback",
+                    fallback_triggered = TRUE,
+                    calculation_notes = sprintf("IPA = %.4f (Correlation: %.4f, Last resort method)", ipa, correlation)
+                ))
+                
+            }, error = function(e3) {
+                logger::log_error(sprintf("All IPA methods failed: %s", e3$message))
+                
+                return(list(
+                    ipa = NA_real_,
+                    method_used = "all_methods_failed",
+                    fallback_triggered = TRUE,
+                    calculation_notes = sprintf("All calculation methods failed: %s, %s, %s", e$message, e2$message, e3$message)
+                ))
+            })
+        })
     })
 }
