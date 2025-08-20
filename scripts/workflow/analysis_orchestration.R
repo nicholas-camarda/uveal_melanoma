@@ -290,10 +290,18 @@ main_execution <- function() {
                     results <- run_my_analysis(dataset_name)
                     if (results$had_errors) had_errors <- TRUE
                     
-                    # Store the data for merging (if available)
-                    if (exists("data") && !is.null(data)) {
-                        cohort_data[[dataset_name]] <- data
-                    }
+                    # Load the data directly for merging
+                    tryCatch({
+                        data_path <- file.path(PROCESSED_DATA_DIR, paste0(dataset_name, ".rds"))
+                        if (file.exists(data_path)) {
+                            cohort_data[[dataset_name]] <- readRDS(data_path)
+                            logger::log_info(sprintf("Loaded data for merging: %s (%d patients)", dataset_name, nrow(cohort_data[[dataset_name]])))
+                        } else {
+                            logger::log_warn(sprintf("Data file not found for merging: %s", data_path))
+                        }
+                    }, error = function(e) {
+                        logger::log_warn(sprintf("Error loading data for merging (%s): %s", dataset_name, e$message))
+                    })
                     
                     logger::log_info(formatted(sprintf(">>> Dataset %d/%d completed: %s", i, length(datasets_to_analyze), dataset_name)))
                 },

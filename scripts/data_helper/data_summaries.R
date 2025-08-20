@@ -201,12 +201,6 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
         tbl <- data %>%
             tbl_summary(
                 by = treatment_group,
-                type = list(
-                    age_at_diagnosis ~ "continuous",
-                    initial_vision ~ "continuous",
-                    initial_tumor_height ~ "continuous",
-                    initial_tumor_diameter ~ "continuous"
-                ),
                 statistic = list(
                     all_continuous() ~ "{median} ({min}, {max})",
                     all_categorical() ~ "{n} ({p}%)"

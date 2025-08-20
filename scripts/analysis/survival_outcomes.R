@@ -481,6 +481,46 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, other_ma
         logger::log_info(sprintf("Total events: %d (minimum 5 required)", total_events))
         logger::log_info("Skipping survival analysis due to insufficient data")
 
+        # Create explanation text file for skipped analysis
+        explanation_text <- sprintf(
+            "PFS-2 Analysis Skipped - Insufficient Events
+
+            The Issue:
+            %s cohort: %d patients total
+            PFS-2 eligible patients: %d patients (those with first recurrence)
+            PFS-2 events: %d patients (second recurrence)
+            Minimum required: 5 events for survival analysis
+
+            Analysis was skipped because there are insufficient events (%d) to perform a meaningful survival analysis. 
+            The minimum requirement of 5 events ensures statistical validity and reliable results.
+
+            This is expected behavior for cohorts with limited recurrence data and does not indicate an error.",
+            tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name))),
+            nrow(data),
+            nrow(pfs2_data),
+            total_events,
+            total_events
+        )
+
+        # Save explanation to both a_pfs2 and b_proportional_hazards_diagnostics directories
+        if (!is.null(output_dirs)) {
+            # Save to a_pfs2 directory
+            pfs2_dir <- output_dirs$obj3_pfs2
+            if (!is.null(pfs2_dir) && dir.exists(pfs2_dir)) {
+                explanation_file <- file.path(pfs2_dir, paste0(prefix, "pfs2_analysis_skipped_explanation.txt"))
+                writeLines(explanation_text, explanation_file)
+                logger::log_info(sprintf("Explanation saved to: %s", explanation_file))
+            }
+            
+            # Save to b_proportional_hazards_diagnostics directory
+            ph_dir <- output_dirs$obj3_ph_diagnostics
+            if (!is.null(ph_dir) && dir.exists(ph_dir)) {
+                explanation_file <- file.path(ph_dir, paste0(prefix, "pfs2_analysis_skipped_explanation.txt"))
+                writeLines(explanation_text, explanation_file)
+                logger::log_info(sprintf("Explanation saved to: %s", explanation_file))
+            }
+        }
+
         pfs2_survival <- list(
             fit = NULL,
             plot = NULL,
