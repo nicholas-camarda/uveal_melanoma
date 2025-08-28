@@ -29,10 +29,10 @@ This research platform provides a comprehensive for analyzing clinical outcomes 
 - [Data Processing Workflow](#data-processing-workflow)
 
 ### **Implementation Status**
-- [Objective 1: Efficacy Analysis](#objective-1-efficacy-analysis-complete)
-- [Objective 2: Safety/Toxicity Analysis](#objective-2-safetytoxicity-analysis-complete)
-- [Objective 3: Repeat Radiation Efficacy](#objective-3-repeat-radiation-efficacy-complete)
-- [Objective 4: GEP Predictive Accuracy](#objective-4-gep-predictive-accuracy-complete)
+- [Objective 1: Efficacy Analysis](#objective-1)
+- [Objective 2: Safety/Toxicity Analysis](#objective-2)
+- [Objective 3: Repeat Radiation Efficacy](#objective-3)
+- [Objective 4: GEP Predictive Accuracy](#objective-4)
 
 ### **Technical Details**
 - [Key Features](#key-features)
@@ -79,7 +79,7 @@ run_my_analysis("uveal_melanoma_gksrs_only_cohort") # GKSRS-only cohort (n=93)
 run_specific_objective("uveal_melanoma_full_cohort", 1)  # Efficacy analysis only
 run_specific_objective("uveal_melanoma_full_cohort", 2)  # Safety/toxicity only
 run_specific_objective("uveal_melanoma_full_cohort", 3)  # Repeat radiation only
-run_specific_objective("uveal_melanoma_full_cohort", 4)  # GEP validation only
+run_specific_objective("uveal_melanoma_full_cohort", 4)  # GEP validation only (planned; in progress)
 ```
 
 ### **What You'll Get**
@@ -94,14 +94,15 @@ All outputs are automatically organized in `final_data/Analysis/` with the follo
 - **`{cohort}/01_Efficacy/`**: Primary outcomes, tumor height changes, subgroup analysis
 - **`{cohort}/02_Safety/`**: Vision changes, radiation complications
 - **`{cohort}/03_Repeat_Radiation/`**: PFS-2 analysis and diagnostics
-- **`{cohort}/04_GEP_Validation/`**: Gene expression profile validation
+- **`{cohort}/04_GEP_Validation/`**: Gene expression profile validation (planned; will be populated once Objective 4 is finalized)
 
 ---
 
 ## Study Objectives
 
-This research platform addresses four prioritized clinical research questions, each designed to provide comprehensive insights into uveal melanoma treatment outcomes. All objectives have been **100% completed** with publication-ready outputs.
+This research platform addresses four prioritized clinical research questions, each designed to provide comprehensive insights into uveal melanoma treatment outcomes. Objectives 1–3 are **complete**; Objective 4 is **in progress** and not yet finalized.
 
+<a id="objective-1"></a>
 ### **Objective 1: Treatment Efficacy Comparison** ✅ **COMPLETE**
 **Primary Research Question:** How do clinical outcomes compare between GKSRS and PBT treatments?  
 **Purpose:** Evaluate the comparative effectiveness of two radiation treatment modalities for uveal melanoma, providing evidence-based guidance for treatment selection.
@@ -116,6 +117,7 @@ This research platform addresses four prioritized clinical research questions, e
 | **1f. Tumor Height Changes** | Linear regression (sensitivity) | ✅ Complete | Baseline-adjusted models |
 | **1g. Subgroup Analysis** | Treatment effect heterogeneity | ✅ Complete | Forest plots, interaction testing |
 
+<a id="objective-2"></a>
 ### **Objective 2: Safety and Toxicity Profile** ✅ **COMPLETE**
 **Primary Research Question:** What are the comparative safety profiles between treatments?  
 **Purpose:** Assess treatment-related complications and side effects to inform patient counseling and treatment decision-making.
@@ -127,6 +129,7 @@ This research platform addresses four prioritized clinical research questions, e
 | **2c. Neovascular Glaucoma** | Binary outcome analysis | ✅ Complete | Complication rates, risk factors |
 | **2d. Serous Retinal Detachment** | Binary outcome analysis | ✅ Complete | Radiation-induced SRD analysis |
 
+<a id="objective-3"></a>
 ### **Objective 3: Repeat Radiation Efficacy** ✅ **COMPLETE**
 **Primary Research Question:** How effective are second-line treatments for patients with local recurrence?  
 **Purpose:** Evaluate outcomes for patients requiring additional treatment, informing salvage therapy strategies and patient prognosis.
@@ -135,14 +138,15 @@ This research platform addresses four prioritized clinical research questions, e
 |---------------|---------------|---------|----------|
 | **3a. PFS-2 Analysis** | Survival analysis | ✅ Complete | PFS-2 characteristics, survival curves |
 
-### **Objective 4: GEP Predictive Accuracy** ✅ **COMPLETE**
+<a id="objective-4"></a>
+### **Objective 4: GEP Predictive Accuracy** ❗ **IN PROGRESS**
 **Primary Research Question:** How well do gene expression profiles predict clinical outcomes?  
-**Purpose:** Validate molecular biomarkers for risk stratification and personalized treatment planning in uveal melanoma.
+**Purpose:** Plan and implement validation of molecular biomarkers for risk stratification and personalized treatment planning in uveal melanoma. This objective is under active development.
 
 | Sub-objective | Analysis Type | Status | Outputs |
 |---------------|---------------|---------|----------|
-| **4a. Metastasis-Free Survival** | Multi-timepoint validation | ✅ Complete | Calibration, robust discrimination, DCA |
-| **4b. Melanoma-Specific Survival** | Competing risk analysis | ✅ Complete | CIF curves, Fine-Gray models, robust metrics |
+| **4a. Metastasis-Free Survival** | Multi-timepoint validation | 🚧 In progress | Planned: calibration, robust discrimination, DCA |
+| **4b. Melanoma-Specific Survival** | Competing risk analysis | 🚧 In progress | Planned: CIF curves, Fine-Gray models, robust metrics |
 
 ---
 
@@ -209,7 +213,7 @@ Each research objective has a dedicated, optimized workflow script:
 | **1: Efficacy Analysis** | `objective_1_primary_outcomes.R` | Survival analysis, tumor height, subgroups | Primary outcomes |
 | **2: Safety/Toxicity** | `objective_2_safety_toxicity.R` | Vision changes, complications | Safety endpoints |
 | **3: Repeat Radiation** | `objective_3_repeat_radiation.R` | PFS-2 analysis, diagnostics | Second-line treatment |
-| **4: GEP Validation** | `objective_4_gep_analysis.R` | Predictive accuracy testing | Biomarker validation |
+| **4: GEP Validation** | `objective_4_gep_analysis.R` | Predictive accuracy testing | Biomarker validation (planned/in progress) |
 
 
 ---
@@ -323,6 +327,7 @@ The codebase is organized into logical, focused modules:
 
 ## Implementation Status: Analysis Pipeline
 
+<a id="objective-1-efficacy-analysis-complete"></a>
 ### **OBJECTIVE 1: Efficacy Analysis** ✅ **COMPLETE**
 
 All primary efficacy analyses have been implemented with comprehensive outputs through the new workflow system:
@@ -374,6 +379,7 @@ The filtering ensures publication-quality results by preventing:
 3. Inconsistent filtering between different outcome types
 4. Meaningless statistical comparisons that could mislead interpretation
 
+<a id="objective-2-safetytoxicity-analysis-complete"></a>
 ### **OBJECTIVE 2: Safety/Toxicity Analysis** ✅ **COMPLETE**
 
 All safety endpoint analyses have been implemented through the workflow system:
@@ -385,6 +391,7 @@ All safety endpoint analyses have been implemented through the workflow system:
 | **2c. Neovascular Glaucoma** | Binary outcome analysis with logistic regression | `analyze_radiation_complications()` function | Complication rates (.xlsx), logistic regression models (.html) | `{cohort}/02_Safety/c_neovascular_glaucoma/` |
 | **2d. Serous Retinal Detachment** | Binary outcome analysis (radiation-induced only) with logistic regression | `analyze_radiation_complications()` function | Complication rates (.xlsx), logistic regression models (.html) | `{cohort}/02_Safety/d_serous_retinal_detachment/` |
 
+<a id="objective-3-repeat-radiation-efficacy-complete"></a>
 ### **OBJECTIVE 3: Repeat Radiation Efficacy** ✅ **COMPLETE**
 
 #### **3a. Progression-Free Survival-2 (PFS-2)**
@@ -395,41 +402,42 @@ All safety endpoint analyses have been implemented through the workflow system:
 **Location:** `{cohort}/03_Repeat_Radiation/a_pfs2/`  
 **Note:** Analysis automatically skips survival modeling when insufficient events are present (minimum: 5 total events across 2+ treatment groups)
 
-### **OBJECTIVE 4: GEP Predictive Accuracy** ✅ **COMPLETE**
+<a id="objective-4-details"></a>
+### **OBJECTIVE 4: GEP Predictive Accuracy** ❗ **IN PROGRESS**
 
-Gene expression profile validation analyses using survival model validation methods with a **robust discrimination approach** that focuses on clinically meaningful metrics:
+Planned gene expression profile validation analyses will use survival model validation methods with a **robust discrimination approach** focused on clinically meaningful metrics. This objective is under active development and not yet finalized.
 
 #### **4a. Metastasis-Free Survival Validation**
-**Status:** Fully implemented with robust validation suite  
-**Method:** Multi-timepoint validation (5, 7, 10 years) with comprehensive statistical testing:
+**Status:** Planned (implementation in progress)  
+**Method (planned):** Multi-timepoint validation (5, 7, 10 years) with comprehensive statistical testing:
 - **Calibration Metrics:** Nam-D'Agostino χ² tests, ICI (Integrated Calibration Index), calibration slope and intercept
 - **Overall Prediction Accuracy:** Brier Score with fallback methods for robust calculation
 - **Robust Discrimination:** Harrell's C-index (primary metric) and integrated AUC over time periods
 - **Clinical Utility:** Decision curve analysis with net benefit assessment
 - **Clinical Value:** IPA (Index of Prediction Accuracy) measuring incremental benefit over baseline
 
-**Purpose:** This analysis tests how well the gene expression profile predicts whether patients will develop distant metastases over time. It provides statistical validation of the GEP model's prognostic accuracy through calibration tests, discrimination metrics, and observed vs. expected event rates at multiple time points.  
-**Implementation:** `analyze_gep_mfs_validation()` function in `scripts/workflow/objective_4_gep_analysis.R`  
-**Outputs:** Comprehensive validation reports (.xlsx), calibration plots (.png), discrimination metrics (.xlsx), decision curves (.png)  
+**Purpose (planned):** This analysis will test how well the gene expression profile predicts whether patients will develop distant metastases over time. It is intended to provide statistical validation of the GEP model's prognostic accuracy through calibration tests, discrimination metrics, and observed vs. expected event rates at multiple time points.  
+**Implementation (planned):** `analyze_gep_mfs_validation()` in `scripts/workflow/objective_4_gep_analysis.R`  
+**Outputs (planned):** Comprehensive validation reports (.xlsx), calibration plots (.png), discrimination metrics (.xlsx), decision curves (.png)  
 **Location:** `{cohort}/04_GEP_Validation/a_metastasis_free_survival/`
 
 #### **4b. Melanoma-Specific Survival Validation**  
-**Status:** Fully implemented with dual competing-risk models and robust metrics  
-**Method:** Standard survival analysis plus Fine-Gray competing risk models with cumulative incidence functions. The analysis employs a **robust discrimination strategy** that focuses on metrics that work reliably with our data distribution:
+**Status:** Planned (implementation in progress)  
+**Method (planned):** Standard survival analysis plus Fine-Gray competing risk models with cumulative incidence functions. The analysis will employ a **robust discrimination strategy** that focuses on metrics that work reliably with our data distribution:
 - **Calibration Metrics:** Same comprehensive suite as MFS validation
 - **Overall Prediction Accuracy:** Brier Score with robust fallback methods
 - **Robust Discrimination:** Harrell's C-index (primary) and integrated AUC over time periods
 - **Clinical Utility:** Decision curve analysis with net benefit assessment
 - **Clinical Value:** IPA calculation for incremental benefit measurement
 
-**Purpose:** This analysis evaluates the gene expression profile's ability to predict melanoma-related mortality while accounting for other causes of death (competing risks). It provides statistical validation of the GEP model's prognostic accuracy through calibration and discrimination metrics, which can inform clinical interpretation of risk predictions.  
-**Implementation:** `analyze_gep_mss_validation()` function in `scripts/workflow/objective_4_gep_analysis.R`  
-**Outputs:** Standard and competing risk validation reports (.xlsx), cumulative incidence curves (.png), discrimination and DCA summaries/plots when available (.xlsx/.png)  
+**Purpose (planned):** This analysis will evaluate the gene expression profile's ability to predict melanoma-related mortality while accounting for other causes of death (competing risks). It aims to provide statistical validation of the GEP model's prognostic accuracy through calibration and discrimination metrics, which can inform clinical interpretation of risk predictions.  
+**Implementation (planned):** `analyze_gep_mss_validation()` in `scripts/workflow/objective_4_gep_analysis.R`  
+**Outputs (planned):** Standard and competing risk validation reports (.xlsx), cumulative incidence curves (.png), discrimination and DCA summaries/plots when available (.xlsx/.png)  
 **Location:** `{cohort}/04_GEP_Validation/b_melanoma_specific_survival/`
 
-#### **Robust Discrimination Approach**
-- Implemented: Harrell's C-index (primary), integrated AUC (iAUC); removed Uno's C-index and point AUC.
-- Consolidated outputs now include: calibration (ICI, slope, Nam-D'Agostino, Brier), discrimination (Harrell C, iAUC, cumulative/time-averaged where available), decision curves, and IPA.
+#### **Robust Discrimination Approach (planned)**
+- Planned metrics: Harrell's C-index (primary), integrated AUC (iAUC); Uno's C-index and point AUC excluded.
+- Consolidated outputs will include: calibration (ICI, slope, Nam-D'Agostino, Brier), discrimination (Harrell C, iAUC, cumulative/time-averaged where available), decision curves, and IPA.
 
 #### **Secondary Analyses**
 - **PRAME-Augmented Models:** Net reclassification index comparing GEP-only vs GEP+PRAME models
@@ -577,31 +585,33 @@ If **treatment_group** violates the PH assumption:
 
 ## **More Details about the GEP Analysis (Objective 4: GEP Validation)**
 
-### **What This Analysis Does and Why It Matters**
-- **Purpose**: Validates whether lab-reported gene expression profile (GEP) probabilities actually match real patient outcomes
+Status: 🚧 In progress. The content below describes planned analyses and outputs for Objective 4; implementation details may change.
+
+### **What This Analysis Will Do and Why It Matters**
+- **Purpose (planned)**: Validate whether lab-reported gene expression profile (GEP) probabilities actually match real patient outcomes
 - **Two Outcomes**: Metastasis-free survival (MFS) and melanoma-specific survival (MSS)
 - **Time Points**: 5, 7, and 10 years (clinically relevant follow-up periods)
 - **Clinical Value**: Helps determine if GEP testing should guide treatment decisions and patient counseling
 
-### **What You Get (Output Files and Structure)**
+### **Planned Outputs and Structure**
 
-By cohort in `final_data/Analysis/<cohort>/04_GEP_Validation/`:
+By cohort in `final_data/Analysis/<cohort>/04_GEP_Validation/` (to be produced upon completion):
 
 **`a_metastasis_free_survival/`**
-- `*_mfs_validation_summary.xlsx`: Comprehensive workbook with all metric categories (Calibration, Overall Prediction Accuracy, Robust Discrimination, Clinical Utility, Clinical Value)
-- `*_mfs_validation_summary.txt`: Human-readable summary of key metrics
-- `*_mfs_survival_curves.png`: Kaplan-Meier curves by GEP class with log-rank test
+- `*_mfs_validation_summary.xlsx` (planned): Comprehensive workbook with all metric categories (Calibration, Overall Prediction Accuracy, Robust Discrimination, Clinical Utility, Clinical Value)
+- `*_mfs_validation_summary.txt` (planned): Human-readable summary of key metrics
+- `*_mfs_survival_curves.png` (planned): Kaplan-Meier curves by GEP class with log-rank test
 
 **`b_melanoma_specific_survival/`**
-- `*_mss_validation_summary.xlsx`: Comprehensive workbook with competing risk analysis and all metric categories
-- `*_mss_validation_summary.txt`: Human-readable summary of analyses performed
-- `*_mss_cumulative_incidence_curves.png`: Competing risk CIFs by GEP class
+- `*_mss_validation_summary.xlsx` (planned): Comprehensive workbook with competing risk analysis and all metric categories
+- `*_mss_validation_summary.txt` (planned): Human-readable summary of analyses performed
+- `*_mss_cumulative_incidence_curves.png` (planned): Competing risk CIFs by GEP class
 
 **`unified_summary/`**
-- `*_gep_comprehensive_report.txt`: Integrated analysis summary
-- `*_gep_comparison_table.xlsx`: Side-by-side MFS vs MSS metrics with all categories
-- `*_mfs_consolidated_summary.xlsx`: All MFS metrics consolidated in one view
-- `*_mss_consolidated_summary.xlsx`: All MSS metrics consolidated in one view
+- `*_gep_comprehensive_report.txt` (planned): Integrated analysis summary
+- `*_gep_comparison_table.xlsx` (planned): Side-by-side MFS vs MSS metrics with all categories
+- `*_mfs_consolidated_summary.xlsx` (planned): All MFS metrics consolidated in one view
+- `*_mss_consolidated_summary.xlsx` (planned): All MSS metrics consolidated in one view
 
 ### **Understanding the Statistical Terms (In Plain Language)**
 
@@ -761,7 +771,7 @@ Our data has events spread across time, not concentrated at exact 5yr/7yr/10yr t
 ### **Statistical Metric Categorization**
 
 **Proper Statistical Grouping:**
-The GEP analysis now properly categorizes metrics by their statistical function, ensuring clinical researchers can interpret results correctly:
+The planned GEP analysis will categorize metrics by their statistical function, ensuring clinical researchers can interpret results correctly:
 
 **Calibration Metrics** (How well predicted probabilities match observed frequencies):
 - **ICI (Integrated Calibration Index)**: Measures overall calibration across the entire risk range
@@ -862,7 +872,7 @@ run_specific_objective("uveal_melanoma_full_cohort", 0)  # Data processing only
 run_specific_objective("uveal_melanoma_full_cohort", 1)  # Primary outcomes only
 run_specific_objective("uveal_melanoma_full_cohort", 2)  # Safety/toxicity only
 run_specific_objective("uveal_melanoma_full_cohort", 3)  # Repeat radiation only
-run_specific_objective("uveal_melanoma_full_cohort", 4)  # GEP validation only
+run_specific_objective("uveal_melanoma_full_cohort", 4)  # GEP validation only (planned; in progress)
 ```
 
 ### **4. 📊 Analysis Execution**
@@ -871,8 +881,9 @@ The pipeline executes:
 - **Objective 1:** Primary outcomes (efficacy analysis)
 - **Objective 2:** Safety and toxicity endpoints
 - **Objective 3:** Repeat radiation efficacy (PFS-2)
-- **Objective 4:** GEP predictive accuracy validation
+- **Objective 4:** GEP predictive accuracy validation (planned; in progress)
 
+<a id="logging-and-monitoring"></a>
 ### **5. 📋 Logging and Monitoring**
 - **Log Files:** Detailed logs saved to `logs/` directory with timestamps
 - **Progress Tracking:** Real-time progress updates during analysis
@@ -889,6 +900,3 @@ The current `scripts/main.R` is configured to run specific objectives for debugg
 
 *Research use only - no license currently specified.*
 ---
-
-
-
