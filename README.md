@@ -141,7 +141,7 @@ This research platform addresses four prioritized clinical research questions, e
 <a id="objective-4"></a>
 ### **Objective 4: GEP Predictive Accuracy** ❗ **IN PROGRESS**
 **Primary Research Question:** How well do gene expression profiles predict clinical outcomes?  
-**Purpose:** Plan and implement validation of molecular biomarkers for risk stratification and personalized treatment planning in uveal melanoma. This objective is under active development.
+**Purpose:** Validate GEP-based risk predictions (calibration, discrimination, clinical utility) for metastasis-free and melanoma-specific survival.
 
 | Sub-objective | Analysis Type | Status | Outputs |
 |---------------|---------------|---------|----------|
@@ -405,7 +405,8 @@ All safety endpoint analyses have been implemented through the workflow system:
 <a id="objective-4-details"></a>
 ### **OBJECTIVE 4: GEP Predictive Accuracy** ❗ **IN PROGRESS**
 
-Planned gene expression profile validation analyses will use survival model validation methods with a **robust discrimination approach** focused on clinically meaningful metrics. This objective is under active development and not yet finalized.
+**Purpose**
+- Validate lab-reported GEP probabilities against real outcomes for two endpoints: metastasis-free survival (MFS) and melanoma-specific survival (MSS).
 
 #### **4a. Metastasis-Free Survival Validation**
 **Status:** Planned (implementation in progress)  

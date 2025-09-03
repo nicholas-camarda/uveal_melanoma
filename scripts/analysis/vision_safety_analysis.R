@@ -59,7 +59,8 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, other_map =
             by = treatment_group,
             type = list(vision_change ~ "continuous"),
             statistic = list(vision_change ~ "{median} ({min}, {max})"),
-            digits = list(all_continuous() ~ 1, all_categorical() ~ 0)
+            digits = list(all_continuous() ~ 1, all_categorical() ~ 0),
+            label = list(vision_change ~ "Vision Change (logMAR)")
         ) %>%
         add_p(test = list(all_continuous() ~ "wilcox.test")) %>%
         add_overall() %>%

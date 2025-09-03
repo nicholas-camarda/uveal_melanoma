@@ -29,7 +29,7 @@ main_execution()
 
 # DEBUG: We are running specific objectives for all cohorts to debug each objective in isolation
 # Run specific objective for specific dataset and objective number
-my_cohort <- "uveal_melanoma_full_cohort"
+# my_cohort <- "uveal_melanoma_full_cohort"
 # # my_cohort <- uveal_melanoma_restricted_cohort
 # # my_cohort <- uveal_melanoma_gksrs_only_cohort
 
