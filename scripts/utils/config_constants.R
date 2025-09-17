@@ -148,7 +148,7 @@ subgroup_vars <- c(
 )
 
 # Define which subgroup variables are continuous and need binning
-continuous_subgroup_vars <- c("age_at_diagnosis_binned", "initial_tumor_height", "initial_tumor_diameter")
+continuous_subgroup_vars <- c("age_at_diagnosis", "initial_tumor_height", "initial_tumor_diameter")
 
 # Define variables that are constant within specific cohorts and should be excluded from subgroup analysis
 # These variables have no variation within the specified cohort and cannot be used for subgroup analysis
@@ -352,7 +352,9 @@ LEGACY_CUTOFFS <- list(
 # Variables to include in baseline characteristics tables
 BASELINE_VARIABLES_TO_SUMMARIZE <- c(
     # Demographics
-    "age_at_diagnosis_binned", "sex", "race", "ethnicity",
+    "age_at_diagnosis_binned", 
+    "sex", "race", 
+    # "ethnicity",
 
     # Eye and tumor characteristics
     "eye", "location", "initial_tumor_height", "initial_tumor_diameter",
@@ -369,7 +371,7 @@ BASELINE_VARIABLES_TO_SUMMARIZE <- c(
     "internal_reflectivity", "optic_nerve",
 
     # Staging
-    "initial_mets",
+    # "initial_mets",
 
     # GEP
     "biopsy1_gep",
@@ -393,8 +395,9 @@ FOREST_PLOT_VARIABLE_ORDER <- c(
     "age_at_diagnosis_binned",
     "sex", "location",
     "initial_t_stage_simple", # "initial_t_stage",
-    "initial_tumor_height", "initial_tumor_diameter", # temporarily added back
-    "biopsy1_gep", "optic_nerve"
+    # "initial_tumor_height", "initial_tumor_diameter", 
+    "biopsy1_gep", 
+    "optic_nerve"
 )
 
 # This is used to map variable names to display names for forest plots

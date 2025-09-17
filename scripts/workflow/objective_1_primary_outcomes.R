@@ -273,7 +273,8 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     diagnostics_list[["tumor_height_primary"]] <- create_forest_plot_diagnostics(
         subgroup_results = primary_subgroup_results,
         other_map = primary_other_maps,
-        effect_measure = "MD"
+        effect_measure = "MD",
+        variable_order = FOREST_PLOT_VARIABLE_ORDER
     )
 
     # Save the PRIMARY forest plot
@@ -301,7 +302,8 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     diagnostics_list[["tumor_height_sensitivity"]] <- create_forest_plot_diagnostics(
         subgroup_results = sensitivity_subgroup_results,
         other_map = sensitivity_other_maps,
-        effect_measure = "MD"
+        effect_measure = "MD",
+        variable_order = FOREST_PLOT_VARIABLE_ORDER
     )
 
     # Save the SENSITIVITY forest plot
@@ -544,22 +546,26 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     diagnostics_list[["local_recurrence"]] <- create_forest_plot_diagnostics(
         subgroup_results = recurrence_subgroup_results,
         other_map = recurrence_other_map,
-        effect_measure = "OR"
+        effect_measure = "OR",
+        variable_order = FOREST_PLOT_VARIABLE_ORDER
     )
     diagnostics_list[["metastatic_progression"]] <- create_forest_plot_diagnostics(
         subgroup_results = mets_subgroup_results,
         other_map = mets_other_map,
-        effect_measure = "OR"
+        effect_measure = "OR",
+        variable_order = FOREST_PLOT_VARIABLE_ORDER
     )
     diagnostics_list[["overall_survival"]] <- create_forest_plot_diagnostics(
         subgroup_results = os_subgroup_results,
         other_map = os_other_map,
-        effect_measure = "HR"
+        effect_measure = "HR",
+        variable_order = FOREST_PLOT_VARIABLE_ORDER
     )
     diagnostics_list[["progression_free_survival"]] <- create_forest_plot_diagnostics(
         subgroup_results = pfs_subgroup_results,
         other_map = pfs_other_map,
-        effect_measure = "HR"
+        effect_measure = "HR",
+        variable_order = FOREST_PLOT_VARIABLE_ORDER
     )
 
     # Save forest plot diagnostics

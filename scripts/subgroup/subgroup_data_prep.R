@@ -142,11 +142,17 @@ fit_subgroup_model <- function(data, outcome_config, subgroup_var_to_use, confou
     interaction_diagnostics <- list()
     interaction_p <- NA
     valid_levels <- c()
+    level_statistics <- list()
     subgroup_levels <- levels(data[[subgroup_var_to_use]])
     for (level in subgroup_levels) {
         level_data <- data[data[[subgroup_var_to_use]] == level, ]
         n_plaque <- sum(level_data$treatment_group == "PBT", na.rm = TRUE)
         n_gksrs <- sum(level_data$treatment_group == "GKSRS", na.rm = TRUE)
+
+        level_label <- as.character(level)
+        plaque_events <- NA
+        gksrs_events <- NA
+        reason_parts <- c()
         if (outcome_config$type == "survival") {
             event_vars <- c("death_event", "mets_event", "pfs_event", "event")
             event_var <- NULL
@@ -159,13 +165,75 @@ fit_subgroup_model <- function(data, outcome_config, subgroup_var_to_use, confou
             if (!is.null(event_var)) {
                 plaque_events <- sum(level_data$treatment_group == "PBT" & level_data[[event_var]] == 1, na.rm = TRUE)
                 gksrs_events <- sum(level_data$treatment_group == "GKSRS" & level_data[[event_var]] == 1, na.rm = TRUE)
-                if (n_plaque >= 2 && n_gksrs >= 2 && plaque_events >= 1 && gksrs_events >= 1) valid_levels <- c(valid_levels, level)
-            } else if (n_plaque >= 2 && n_gksrs >= 2) valid_levels <- c(valid_levels, level)
+            }
+            sample_ok <- n_plaque >= 2 && n_gksrs >= 2
+            events_ok <- !is.null(event_var) && !is.na(plaque_events) && !is.na(gksrs_events) && plaque_events >= 1 && gksrs_events >= 1
+            if (!sample_ok) {
+                reason_parts <- c(reason_parts, sprintf("Requires ≥2 patients per arm; observed PBT=%d, GKSRS=%d", n_plaque, n_gksrs))
+            }
+            if (!events_ok) {
+                reason_parts <- c(reason_parts, sprintf("Requires ≥1 event per arm; observed PBT events=%s, GKSRS events=%s",
+                    ifelse(is.na(plaque_events), "NA", plaque_events), ifelse(is.na(gksrs_events), "NA", gksrs_events)))
+            }
+            if (sample_ok && events_ok) {
+                valid_levels <- c(valid_levels, level)
+            }
         } else {
-            if (n_plaque >= 2 && n_gksrs >= 2) valid_levels <- c(valid_levels, level)
+            if (outcome_config$type == "binary") {
+                outcome_vars <- c("recurrence1", "mets_progression", "event", "outcome")
+                found_outcome_var <- NULL
+                for (ov in outcome_vars) {
+                    if (ov %in% names(level_data)) {
+                        found_outcome_var <- ov
+                        break
+                    }
+                }
+                if (!is.null(found_outcome_var)) {
+                    outcome_var <- level_data[[found_outcome_var]]
+                    if (is.factor(outcome_var)) {
+                        ref_level <- levels(outcome_var)[1]
+                        plaque_events <- sum(level_data$treatment_group == "PBT" & level_data[[found_outcome_var]] != ref_level, na.rm = TRUE)
+                        gksrs_events <- sum(level_data$treatment_group == "GKSRS" & level_data[[found_outcome_var]] != ref_level, na.rm = TRUE)
+                    } else {
+                        plaque_events <- sum(level_data$treatment_group == "PBT" & (level_data[[found_outcome_var]] == 1 | level_data[[found_outcome_var]] == TRUE), na.rm = TRUE)
+                        gksrs_events <- sum(level_data$treatment_group == "GKSRS" & (level_data[[found_outcome_var]] == 1 | level_data[[found_outcome_var]] == TRUE), na.rm = TRUE)
+                    }
+                }
+            }
+            sample_ok <- n_plaque >= 2 && n_gksrs >= 2
+            events_ok <- TRUE
+            if (!is.na(plaque_events) || !is.na(gksrs_events)) {
+                events_ok <- (is.na(plaque_events) || plaque_events >= 1) && (is.na(gksrs_events) || gksrs_events >= 1)
+                if (!events_ok) {
+                    reason_parts <- c(reason_parts, sprintf("Low events; PBT events=%s, GKSRS events=%s",
+                        ifelse(is.na(plaque_events), "NA", plaque_events), ifelse(is.na(gksrs_events), "NA", gksrs_events)))
+                }
+            }
+            if (!sample_ok) {
+                reason_parts <- c(reason_parts, sprintf("Requires ≥2 patients per arm; observed PBT=%d, GKSRS=%d", n_plaque, n_gksrs))
+            }
+            if (sample_ok && events_ok) {
+                valid_levels <- c(valid_levels, level)
+            }
         }
+
+        level_statistics[[level_label]] <- list(
+            n_total = nrow(level_data),
+            n_plaque = n_plaque,
+            n_gksrs = n_gksrs,
+            events_plaque = plaque_events,
+            events_gksrs = gksrs_events,
+            exclusion_reason = if (length(reason_parts) > 0) paste(reason_parts, collapse = "; ") else ""
+        )
     }
+    interaction_diagnostics$level_statistics <- level_statistics
+    excluded_levels <- setdiff(subgroup_levels, valid_levels)
+    if (length(excluded_levels) > 0) {
+        interaction_diagnostics$excluded_level_names <- paste(excluded_levels, collapse = ", ")
+    }
+
     if (length(valid_levels) == 0) {
+        interaction_diagnostics$failure_reason <- "No subgroup levels met minimum sample/event requirements"
         return(list(model = NULL, interaction_p = NA, formula_used = NA, interaction_diagnostics = interaction_diagnostics, filtered_data = NULL))
     }
     filtered_data <- data[data[[subgroup_var_to_use]] %in% valid_levels, ]
@@ -186,7 +254,8 @@ fit_subgroup_model <- function(data, outcome_config, subgroup_var_to_use, confou
         no_int <- tryCatch(lm(as.formula(paste0(outcome_config$outcome_var, " ~ treatment_group + ", subgroup_var_to_use, confounders_str)), data = filtered_data), error = function(e) NULL)
     }
     if (is.null(model)) {
-        return(list(model = NULL, interaction_p = NA, formula_used = NA, interaction_diagnostics = list(failure_reason = "Model fitting failed"), filtered_data = filtered_data))
+        interaction_diagnostics$failure_reason <- "Model fitting failed"
+        return(list(model = NULL, interaction_p = NA, formula_used = NA, interaction_diagnostics = interaction_diagnostics, filtered_data = filtered_data))
     }
     subgroup_levels <- levels(filtered_data[[subgroup_var_to_use]])
     if (length(subgroup_levels) == 2) {
@@ -215,7 +284,7 @@ fit_subgroup_model <- function(data, outcome_config, subgroup_var_to_use, confou
             interaction_p <- NA
         }
     }
-    list(model = model, interaction_p = interaction_p, formula_used = formula_str, interaction_diagnostics = list(), filtered_data = filtered_data)
+    list(model = model, interaction_p = interaction_p, formula_used = formula_str, interaction_diagnostics = interaction_diagnostics, filtered_data = filtered_data)
 }
 
 #' Calculate subgroup effects by level
