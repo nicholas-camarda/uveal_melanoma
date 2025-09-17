@@ -18,7 +18,8 @@ create_forest_plot_diagnostics <- function(subgroup_results, other_map = NULL, e
     }
 
     # Process each variable in order
-    for (var_name in variable_order) {
+    for (var_index in seq_along(variable_order)) {
+        var_name <- variable_order[var_index]
         # Check if variable exists in results
         if (!(var_name %in% names(subgroup_results))) {
             # Variable missing from results - create a "no data" header
@@ -69,6 +70,7 @@ create_forest_plot_diagnostics <- function(subgroup_results, other_map = NULL, e
             status = "header",
             reason = header_reason,
             other_variable_contents = "",
+            variable_order = var_index,
             level_order = -1,
             stringsAsFactors = FALSE
         )
@@ -110,6 +112,7 @@ create_forest_plot_diagnostics <- function(subgroup_results, other_map = NULL, e
                             status = if (has_infinite_ci) "skipped_infinite_ci" else "skipped_non_finite",
                             reason = if (has_infinite_ci) "Infinite confidence interval bounds" else "Treatment effect, CI bounds, or both are NA/non-finite",
                             other_variable_contents = "",
+                            variable_order = var_index,
                             level_order = level_idx,
                             stringsAsFactors = FALSE
                         )
@@ -137,6 +140,7 @@ create_forest_plot_diagnostics <- function(subgroup_results, other_map = NULL, e
                                 status = "skipped_non_positive",
                                 reason = "Treatment effect or CI bounds ≤ 0 (invalid for ratio measures)",
                                 other_variable_contents = "",
+                                variable_order = var_index,
                                 level_order = level_idx,
                                 stringsAsFactors = FALSE
                             )
@@ -164,6 +168,7 @@ create_forest_plot_diagnostics <- function(subgroup_results, other_map = NULL, e
                             status = "skipped_extreme",
                             reason = sprintf("Estimate (%.2f) exceeds threshold of %.2f", row_data$treatment_effect, EXTREME_ESTIMATE_THRESHOLD),
                             other_variable_contents = "",
+                            variable_order = var_index,
                             level_order = level_idx,
                             stringsAsFactors = FALSE
                         )
@@ -184,9 +189,9 @@ create_forest_plot_diagnostics <- function(subgroup_results, other_map = NULL, e
                     # Record valid subgroup level
                     level_idx <- if (length(level_names) > 0) match(as.character(row_data$subgroup_level), level_names) else NA
                     if (is.na(level_idx)) level_idx <- length(level_names) + 1
-                    diagnostics_rows[[length(diagnostics_rows) + 1]] <- data.frame(
-                        variable = var_name,
-                        level = as.character(row_data$subgroup_level),
+                diagnostics_rows[[length(diagnostics_rows) + 1]] <- data.frame(
+                    variable = var_name,
+                    level = as.character(row_data$subgroup_level),
                         n_total = row_data$n_total,
                         n_plaque = row_data$n_plaque,
                         n_gksrs = row_data$n_gksrs,
@@ -198,10 +203,11 @@ create_forest_plot_diagnostics <- function(subgroup_results, other_map = NULL, e
                         p_value = row_data$p_value,
                         status = "plotted",
                         reason = "",
-                        other_variable_contents = other_contents,
-                        level_order = level_idx,
-                        stringsAsFactors = FALSE
-                    )
+                    other_variable_contents = other_contents,
+                    variable_order = var_index,
+                    level_order = level_idx,
+                    stringsAsFactors = FALSE
+                )
                 }
             }
 
@@ -221,9 +227,9 @@ create_forest_plot_diagnostics <- function(subgroup_results, other_map = NULL, e
                         level_idx <- if (length(level_names) > 0) match(level_name, level_names) else NA
                         if (is.na(level_idx)) level_idx <- length(level_names) + 1
                         # Record excluded level
-                        diagnostics_rows[[length(diagnostics_rows) + 1]] <- data.frame(
-                            variable = var_name,
-                            level = level_name,
+                    diagnostics_rows[[length(diagnostics_rows) + 1]] <- data.frame(
+                        variable = var_name,
+                        level = level_name,
                             n_total = if (!is.null(stats$n_total)) stats$n_total else NA,
                             n_plaque = if (!is.null(stats$n_plaque)) stats$n_plaque else NA,
                             n_gksrs = if (!is.null(stats$n_gksrs)) stats$n_gksrs else NA,
@@ -235,10 +241,11 @@ create_forest_plot_diagnostics <- function(subgroup_results, other_map = NULL, e
                             p_value = NA,
                             status = "skipped_insufficient_sample",
                             reason = if (!is.null(stats$exclusion_reason) && nzchar(stats$exclusion_reason)) stats$exclusion_reason else "Insufficient data to fit model",
-                            other_variable_contents = "",
-                            level_order = level_idx,
-                            stringsAsFactors = FALSE
-                        )
+                        other_variable_contents = "",
+                        variable_order = var_index,
+                        level_order = level_idx,
+                        stringsAsFactors = FALSE
+                    )
                     }
                 }
             }
@@ -259,6 +266,7 @@ create_forest_plot_diagnostics <- function(subgroup_results, other_map = NULL, e
                 status = "no_data",
                 reason = "No subgroup effects data available",
                 other_variable_contents = "",
+                variable_order = var_index,
                 level_order = Inf,
                 stringsAsFactors = FALSE
             )
@@ -275,7 +283,7 @@ create_forest_plot_diagnostics <- function(subgroup_results, other_map = NULL, e
         all_cols <- c(
             "variable", "level", "n_total", "n_plaque", "n_gksrs",
             "events_plaque", "events_gksrs", "treatment_effect", "ci_lower", "ci_upper",
-            "p_value", "status", "reason", "other_variable_contents", "level_order"
+            "p_value", "status", "reason", "other_variable_contents", "variable_order", "level_order"
         )
         # Add any missing columns as NA
         for (col in setdiff(all_cols, names(df))) df[[col]] <- NA
@@ -286,13 +294,17 @@ create_forest_plot_diagnostics <- function(subgroup_results, other_map = NULL, e
 
     diagnostics_df <- do.call(rbind, normalized)
 
+    if ("variable_order" %in% names(diagnostics_df)) {
+        diagnostics_df$variable_order[is.na(diagnostics_df$variable_order)] <- Inf
+    }
     if ("level_order" %in% names(diagnostics_df)) {
         diagnostics_df$level_order[is.na(diagnostics_df$level_order)] <- Inf
         diagnostics_df <- diagnostics_df[order(
-            diagnostics_df$variable,
+            diagnostics_df$variable_order,
             diagnostics_df$level_order,
             seq_len(nrow(diagnostics_df))
         ), ]
+        diagnostics_df$variable_order <- NULL
         diagnostics_df$level_order <- NULL
     }
 

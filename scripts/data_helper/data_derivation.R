@@ -249,14 +249,14 @@ create_derived_variables <- function(data) {
             
             # Statistical summary variables (prevents analysis-time calculations)
             mfs_analysis_eligible = !is.na(biopsy1_gep) & 
-                                   !biopsy1_gep %in% c("Failed", "Unknown", "Other") &
+                                   !biopsy1_gep %in% c("GEP Failed/Indeterminate", "GEP Not Tested") &
                                    !is.na(tt_mets_months) & 
                                    !is.na(mets_event) &
                                    tt_mets_months >= 0 &
                                    biopsy1_gep_mfs >= 0 & biopsy1_gep_mfs <= 1,
-            
+
             mss_analysis_eligible = !is.na(biopsy1_gep) & 
-                                   !biopsy1_gep %in% c("Failed", "Unknown", "Other") &
+                                   !biopsy1_gep %in% c("GEP Failed/Indeterminate", "GEP Not Tested") &
                                    !is.na(tt_death_years) & 
                                    !is.na(melanoma_death_event) &
                                    !is.na(competing_death_event) &
@@ -265,7 +265,7 @@ create_derived_variables <- function(data) {
         ) %>%
         mutate(
             # Create missing data indicator variables
-            has_gep = !is.na(biopsy1_gep) & !biopsy1_gep %in% c("Failed", "Unknown", "Other"),
+            has_gep = !is.na(biopsy1_gep) & !biopsy1_gep %in% c("GEP Failed/Indeterminate", "GEP Not Tested"),
             has_gep_mfs = !is.na(biopsy1_gep_mfs),
             has_gep_mss = !is.na(biopsy1_gep_mss),
             has_prame = !is.na(prame_status) &

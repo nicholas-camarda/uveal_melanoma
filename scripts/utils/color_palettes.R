@@ -42,7 +42,9 @@ get_gep_class_palette <- function(levels) {
         "Class 1 PRAME Positive" = "#20854EFF", # green
         "Class 2 PRAME Negative" = "#E18727FF", # orange
         "Class 2 PRAME Positive" = "#BC3C29FF", # red
-        "No" = "#9E9E9EFF" # gray for No GEP
+        "GEP Not Tested" = "#9E9E9EFF", # gray
+        "GEP Failed/Indeterminate" = "#6F99ADFF",
+        "No" = "#9E9E9EFF" # legacy support
     )
     lv <- unique(as.character(levels))
     out <- mapping[lv]

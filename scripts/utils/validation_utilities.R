@@ -571,7 +571,7 @@ validate_single_cohort_comprehensive <- function(data, cohort_name) {
             
             # Calculate expected counts for patients with valid GEP data
             patients_with_valid_gep <- sum(!is.na(data$biopsy1_gep_mfs) & !is.na(data$biopsy1_gep_mss) & 
-                                          data$gep_class_simple %in% c("Class 1", "Class 2", "No"), na.rm = TRUE)
+                                          data$gep_class_simple %in% c("Class 1", "Class 2"), na.rm = TRUE)
             
             # Validation checks for gep_validation_set
             # Check 1: Ensure we have both Training and Testing sets

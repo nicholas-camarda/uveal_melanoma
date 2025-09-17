@@ -25,12 +25,12 @@ if (USE_LOGS) {
 
 # Uncomment the appropriate line below to run:
 # Run full analysis (all objectives, all datasets, merged tables)
-# main_execution()
+main_execution()
 
 # DEBUG: We are running specific objectives for all cohorts to debug each objective in isolation
 # Run specific objective for specific dataset and objective number
 # my_cohort <- "uveal_melanoma_full_cohort"
-my_cohort <- "uveal_melanoma_restricted_cohort"
+# my_cohort <- "uveal_melanoma_restricted_cohort"
 # # my_cohort <- "uveal_melanoma_gksrs_only_cohort"
 
 # # 0 for data processing
@@ -38,9 +38,9 @@ my_cohort <- "uveal_melanoma_restricted_cohort"
 #     run_specific_objective(my_cohort, 0)
 # }))
 # then, eg. 1 for primary outcomes, 2 for safety/toxicity, 3 for repeat radiation efficacy, 4 for GEP validation
-invisible(with_log_context(cohort = my_cohort, objective = "objective_1_primary_outcomes", subobjective = NULL, expr = {
-    run_specific_objective(my_cohort, 1)
-}))
+# invisible(with_log_context(cohort = my_cohort, objective = "objective_1_primary_outcomes", subobjective = NULL, expr = {
+#     run_specific_objective(my_cohort, 1)
+# }))
 
 # invisible(with_log_context(cohort = my_cohort, objective = "objective_2_safety_toxicity", subobjective = NULL, expr = {
 #     run_specific_objective(my_cohort, 2)
