@@ -9,16 +9,40 @@
 apply_criteria <- function(data) {
     logger::log_info("Applying inclusion/exclusion criteria to full cohort to generate restricted and GKSRS-only cohorts")
 
+    removal_details <- dplyr::tibble(
+        id = numeric(0),
+        removal_reason = character(0),
+        removal_step = character(0),
+        consort_group = character(0),
+        treatment_group = character(0),
+        initial_overall_stage = character(0)
+    )
+
     # Exclude Stage IV patients globally per spec (focus on localized treatment)
     total_before <- nrow(data)
     stage_iv_ids <- data$id[!is.na(data$initial_stage_binary) & data$initial_stage_binary == "Stage IV"]
     num_stage_iv <- length(stage_iv_ids)
     data_no_stage_iv <- data %>%
         filter(initial_stage_binary != "Stage IV" | is.na(initial_stage_binary))
+    if (num_stage_iv > 0) {
+        stage_iv_records <- data %>%
+            filter(id %in% stage_iv_ids) %>%
+            mutate(
+                removal_reason = "Stage IV disease excluded per protocol",
+                removal_step = "stage_iv_exclusion",
+                consort_group = as.character(consort_group),
+                treatment_group = as.character(treatment_group),
+                initial_overall_stage = as.character(initial_overall_stage)
+            ) %>%
+            select(id, removal_reason, removal_step, consort_group, treatment_group, initial_overall_stage)
+
+        removal_details <- dplyr::bind_rows(removal_details, stage_iv_records)
+    }
     logger::log_info(sprintf("Stage IV exclusion applied: removed %d patients%s",
         num_stage_iv,
         if (num_stage_iv > 0) sprintf(" (IDs: %s)", paste(stage_iv_ids, collapse = ", ")) else ""
     ))
+    logger::log_info(sprintf("Remaining after Stage IV exclusion: %d of %d patients", nrow(data_no_stage_iv), total_before))
 
     # Remove records with missing cohort-defining fields
     before_missing_filter <- nrow(data_no_stage_iv)
@@ -27,21 +51,62 @@ apply_criteria <- function(data) {
         filter(!is.na(treatment_group))
     num_missing_removed <- before_missing_filter - nrow(data_after_missing)
     if (num_missing_removed > 0) {
+        missing_ids <- setdiff(data_no_stage_iv$id, data_after_missing$id)
+        missing_records <- data_no_stage_iv %>%
+            filter(id %in% missing_ids) %>%
+            mutate(
+                removal_reason = "Missing consort_group or treatment_group",
+                removal_step = "missing_cohort_fields",
+                consort_group = as.character(consort_group),
+                treatment_group = as.character(treatment_group),
+                initial_overall_stage = as.character(initial_overall_stage)
+            ) %>%
+            select(id, removal_reason, removal_step, consort_group, treatment_group, initial_overall_stage)
+
+        removal_details <- dplyr::bind_rows(removal_details, missing_records)
+
         logger::log_info(sprintf(
-            "Removed %d patients due to missing consort_group or treatment_group",
-            num_missing_removed
+            "Missing consort/treatment filter removed %d patients (IDs: %s)",
+            num_missing_removed,
+            paste(missing_ids, collapse = ", ")
         ))
     } else {
         logger::log_info("No patients removed for missing consort_group or treatment_group")
     }
+    logger::log_info(sprintf("Remaining after consort/treatment filter: %d patients", nrow(data_after_missing)))
 
     # Remove any specifically excluded IDs
     before_specific_excl <- nrow(data_after_missing)
     data_after_specific <- data_after_missing %>%
         filter(!(id %in% SPECIFIC_PATIENTS_TO_EXCLUDE) | is.na(id))
     num_specific_removed <- before_specific_excl - nrow(data_after_specific)
-    logger::log_info(sprintf("IDs of patients removed by SPECIFIC_PATIENTS_TO_EXCLUDE: %s",
-        if (num_specific_removed > 0) paste(SPECIFIC_PATIENTS_TO_EXCLUDE, collapse = ", ") else "None"))
+    if (num_specific_removed > 0) {
+        specific_ids <- setdiff(data_after_missing$id, data_after_specific$id)
+        specific_records <- data_after_missing %>%
+            filter(id %in% specific_ids) %>%
+            mutate(
+                removal_reason = "Excluded per SPECIFIC_PATIENTS_TO_EXCLUDE configuration",
+                removal_step = "manual_exclusion",
+                consort_group = as.character(consort_group),
+                treatment_group = as.character(treatment_group),
+                initial_overall_stage = as.character(initial_overall_stage)
+            ) %>%
+            select(id, removal_reason, removal_step, consort_group, treatment_group, initial_overall_stage)
+
+        removal_details <- dplyr::bind_rows(removal_details, specific_records)
+
+        logger::log_info(sprintf(
+            "SPECIFIC_PATIENTS_TO_EXCLUDE removed %d patients (IDs: %s)",
+            num_specific_removed,
+            paste(specific_ids, collapse = ", ")
+        ))
+    } else {
+        logger::log_info("SPECIFIC_PATIENTS_TO_EXCLUDE removed 0 patients")
+    }
+    logger::log_info(sprintf("Remaining after specific exclusions: %d patients", nrow(data_after_specific)))
+
+    total_removed <- nrow(removal_details)
+    logger::log_info(sprintf("Total patients removed prior to cohort assignment: %d", total_removed))
 
     full_cohort <- data_after_specific %>%
         mutate(cohort = "All Patients")
@@ -66,7 +131,10 @@ apply_criteria <- function(data) {
     }
 
     # Data validation step now happens outside apply criteria
-    return(factored_filtered_data)
+    return(list(
+        cohorts = factored_filtered_data,
+        removal_log = removal_details
+    ))
 }
 
 #' Prepare factor levels for key variables

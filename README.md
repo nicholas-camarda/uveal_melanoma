@@ -71,9 +71,9 @@ source("scripts/load_all.R")
 main_execution()
 
 # Option 2: All objectives for a specific cohort
-run_my_analysis("uveal_melanoma_full_cohort")      # Full cohort (n=263)
-run_my_analysis("uveal_melanoma_restricted_cohort") # Restricted cohort (n=169)
-run_my_analysis("uveal_melanoma_gksrs_only_cohort") # GKSRS-only cohort (n=93)
+run_my_analysis("uveal_melanoma_full_cohort")      # Full cohort (n=260)
+run_my_analysis("uveal_melanoma_restricted_cohort") # Restricted cohort (n=167)
+run_my_analysis("uveal_melanoma_gksrs_only_cohort") # GKSRS-only cohort (n=92)
 
 # Option 3: Specific objectives for targeted analysis
 run_specific_objective("uveal_melanoma_full_cohort", 1)  # Efficacy analysis only
@@ -163,9 +163,9 @@ flowchart TD
     B --> C["Data Processing<br/>create_analytic_dataset()"]
     C --> D["Cohort Creation<br/>apply_criteria()"]
     
-    D --> I["Full Cohort<br/>(n=263 patients)"]
-    D --> J["Restricted Cohort<br/>(n=169 patients)"]
-    D --> K["GKSRS-Only Cohort<br/>(n=93 patients)"]
+    D --> I["Full Cohort<br/>(n=260 patients)"]
+    D --> J["Restricted Cohort<br/>(n=167 patients)"]
+    D --> K["GKSRS-Only Cohort<br/>(n=92 patients)"]
     
     I --> L["Save to RDS<br/>final_data/Analytic Dataset/"]
     J --> L
@@ -188,6 +188,7 @@ flowchart TD
 ```
 
 ### **Quality Assurance Checkpoints**
+- **Cohort Curation**: Stage IV cases (currently IDs 7, 116, 262) and manually excluded records (ID 271) are removed before cohort assignment; the pipeline logs these decisions and exports `removed_patients_summary.tsv` into each cohort's `00_General/` directory so reviewers can audit which patients were excluded and why.
 - **Data Validation**: Automatic checks for data integrity and completeness
 - **Factor Level Management**: Consistent handling of categorical variables
 - **Cohort Assignment**: Automated application of inclusion/exclusion criteria
@@ -222,12 +223,12 @@ Each research objective has a dedicated, optimized workflow script:
 
 The analysis employs three strategically designed patient cohorts to address different clinical questions and minimize treatment selection bias:
 
-### **Full Cohort** (n=263)
+### **Full Cohort** (n=260)
 **Definition:** All patients who received either GKSRS or PBT brachytherapy  
 **Purpose:** Real-world effectiveness comparison across the complete spectrum of tumor characteristics  
 **Clinical Value:** Provides comprehensive treatment effectiveness data for real-world decision making
 
-### **Restricted Cohort** (n=169) 
+### **Restricted Cohort** (n=167) 
 **Definition:** Patients eligible for **both** treatment modalities  
 **Eligibility Criteria:**
 - Tumor diameter ≤20mm
@@ -238,7 +239,7 @@ The analysis employs three strategically designed patient cohorts to address dif
 **Purpose:** Balanced comparison minimizing treatment selection bias  
 **Clinical Value:** Direct treatment comparison in patients where both options are clinically appropriate
 
-### **GKSRS-Only Cohort** (n=93)
+### **GKSRS-Only Cohort** (n=92)
 **Definition:** Patients **ineligible** for PBT brachytherapy  
 **Exclusion Criteria:**
 - Tumor diameter >20mm, OR
@@ -270,7 +271,7 @@ project_working_directory/
 ├── final_data/
 │   ├── Analytic Dataset/                       # Processed RDS files
 │   └── Analysis/                               # Analysis outputs by cohort
-│       ├── uveal_full/                         # Full cohort (n=263)
+│       ├── uveal_full/                         # Full cohort (n=260)
 │       │   ├── 00_General/                     # Baseline characteristics
 │       │   ├── 01_Efficacy/                    # Primary outcomes
 │       │   │   ├── a_recurrence/               # Local recurrence analysis
@@ -295,8 +296,8 @@ project_working_directory/
 │       │   └── 04_GEP_Validation/              # Biomarker validation
 │       │       ├── a_metastasis_free_survival/ # MFS validation
 │       │       └── b_melanoma_specific_survival/ # MSS validation
-│       ├── uveal_restricted/                   # Restricted cohort (n=169)
-│       └── gksrs/                              # GKSRS-only cohort (n=93)
+│       ├── uveal_restricted/                   # Restricted cohort (n=167)
+│       └── gksrs/                              # GKSRS-only cohort (n=92)
 ├── logs/                                       # Execution logs
 └── scripts/                                    # Analysis code
 ```
@@ -455,18 +456,18 @@ The analysis pipeline includes robust error handling for situations where data l
 
 ### **Cohort-Specific Limitations**
 
-#### **GKSRS-Only Cohort (n=93)**
+#### **GKSRS-Only Cohort (n=92)**
 - **Step 3 (PFS-2 Analysis):** Insufficient events for survival analysis
   - Only 13 patients with valid PFS-2 data
   - Only 3 total second recurrence events (minimum required: 5)
   - Events concentrated in only 2 treatment groups (GKSRS: 1, TTT: 2)
   - Summary tables are generated, but survival curves and Cox models are skipped
 
-#### **Restricted Cohort (n=169)**
+#### **Restricted Cohort (n=167)**
 - Generally sufficient sample size for most analyses
 - Occasional rare category handling in subgroup analyses due to smaller size than full cohort
 
-#### **Full Cohort (n=263)**
+#### **Full Cohort (n=260)**
 - Generally sufficient sample size for most analyses
 - Occasional rare category handling in subgroup analyses
 
