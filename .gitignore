@@ -26,3 +26,6 @@ old_results/*
 # Ignore test-generated data and directories
 test_output/*
 tests/*
+
+# Ignore agentic helper files
+AGENTS.md
