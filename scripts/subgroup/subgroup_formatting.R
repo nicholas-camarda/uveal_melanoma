@@ -173,7 +173,7 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
                 gt_tbl <- excel_table %>%
                     gt() %>%
                     tab_header(
-                        title = paste0(outcome_name, " — Subgroup Analysis (", effect_measure, ")")
+                        title = paste0(outcome_name, " - Subgroup Analysis (", effect_measure, ")")
                     ) %>%
                     cols_label(
                         Subgroup.Level = "Subgroup",

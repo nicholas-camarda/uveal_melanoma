@@ -42,7 +42,7 @@ save_table_outputs <- function(table_result, raw_output, model_fit, analysis_nam
     cat("  HTML path:", html_path, "\n")
     cat("  Diagnostics path:", diagnostics_path, "\n")
     logger::log_info(sprintf(
-        "DEBUG: save_table_outputs setup — analysis_name='%s' (safe='%s'), base_filename='%s', html_path='%s', diagnostics_path='%s'",
+        "DEBUG: save_table_outputs setup - analysis_name='%s' (safe='%s'), base_filename='%s', html_path='%s', diagnostics_path='%s'",
         analysis_name, safe_analysis_name, base_filename, html_path, diagnostics_path
     ))
 
@@ -66,7 +66,7 @@ save_table_outputs <- function(table_result, raw_output, model_fit, analysis_nam
         # Track row counts at each step to identify where content is lost
         initial_rows <- nrow(table_result$table_body)
         logger::log_info(sprintf(
-            "DEBUG: Pre-save checks — initial_rows=%d, table_has_content=%s (source=%s)",
+            "DEBUG: Pre-save checks - initial_rows=%d, table_has_content=%s (source=%s)",
             initial_rows, as.character(table_has_content), table_has_content_source
         ))
 

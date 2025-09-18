@@ -334,7 +334,7 @@ validate_factor_level_consistency <- function(cohort_list, phase = "data_process
                 cohort_levels[[cohort_name]] <- lvls
                 if (length(lvls) < 2) {
                     logger::log_warn(sprintf(
-                        "Cross-cohort check: %s has single level for '%s' (levels: %s) — skipping this cohort for strict comparison",
+                        "Cross-cohort check: %s has single level for '%s' (levels: %s) - skipping this cohort for strict comparison",
                         cohort_name, factor_name, paste(lvls, collapse = ", ")
                     ))
                 }

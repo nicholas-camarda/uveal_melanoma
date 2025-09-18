@@ -27,11 +27,11 @@ get_cutoff_value <- function(var_name, data, percentile_cut = 0.5) {
 #' @return Factor of bin labels
 create_clinical_bins <- function(values, cutoffs, var_name) {
     if (length(cutoffs) == 1) {
-        bin_labels <- c(paste0("< ", cutoffs), paste0("\u2265 ", cutoffs))
+        bin_labels <- c(paste0("< ", cutoffs), paste0("≥ ", cutoffs))
         bins <- ifelse(values < cutoffs, bin_labels[1], bin_labels[2])
     } else {
         bin_labels <- character(length(cutoffs) + 1)
-        bin_labels[1] <- paste0("\u2264 ", cutoffs[1])
+        bin_labels[1] <- paste0("≤ ", cutoffs[1])
         for (i in 2:length(cutoffs)) bin_labels[i] <- paste0(cutoffs[i - 1] + 0.1, "-", cutoffs[i])
         bin_labels[length(cutoffs) + 1] <- paste0("> ", cutoffs[length(cutoffs)])
         bins <- cut(values, breaks = c(-Inf, cutoffs, Inf), labels = bin_labels, include.lowest = TRUE)
@@ -46,7 +46,7 @@ get_subgroup_levels <- function(var_name) {
     if (USE_CLINICAL_BINNING_CONTINUOUS && var_name %in% c("initial_tumor_height", "initial_tumor_diameter")) {
         if (var_name == "initial_tumor_height") {
             return(c(
-                paste0("\u2264 ", T_STAGE_HEIGHT_CUTOFFS[1], " mm"),
+                paste0("≤ ", T_STAGE_HEIGHT_CUTOFFS[1], " mm"),
                 paste0(T_STAGE_HEIGHT_CUTOFFS[1] + 0.1, "-", T_STAGE_HEIGHT_CUTOFFS[2], " mm"),
                 paste0(T_STAGE_HEIGHT_CUTOFFS[2] + 0.1, "-", T_STAGE_HEIGHT_CUTOFFS[3], " mm"),
                 paste0(T_STAGE_HEIGHT_CUTOFFS[3] + 0.1, "-", T_STAGE_HEIGHT_CUTOFFS[4], " mm"),
@@ -55,7 +55,7 @@ get_subgroup_levels <- function(var_name) {
             ))
         } else {
             return(c(
-                paste0("\u2264 ", T_STAGE_DIAMETER_CUTOFFS[1], " mm"),
+                paste0("≤ ", T_STAGE_DIAMETER_CUTOFFS[1], " mm"),
                 paste0(T_STAGE_DIAMETER_CUTOFFS[1] + 0.1, "-", T_STAGE_DIAMETER_CUTOFFS[2], " mm"),
                 paste0(T_STAGE_DIAMETER_CUTOFFS[2] + 0.1, "-", T_STAGE_DIAMETER_CUTOFFS[3], " mm"),
                 paste0(T_STAGE_DIAMETER_CUTOFFS[3] + 0.1, "-", T_STAGE_DIAMETER_CUTOFFS[4], " mm"),
@@ -65,7 +65,7 @@ get_subgroup_levels <- function(var_name) {
             ))
         }
     } else if (var_name == "age_at_diagnosis") {
-        return(c(paste0("< ", LEGACY_CUTOFFS$age_at_diagnosis), paste0("\u2265 ", LEGACY_CUTOFFS$age_at_diagnosis)))
+        return(c(paste0("< ", LEGACY_CUTOFFS$age_at_diagnosis), paste0("≥ ", LEGACY_CUTOFFS$age_at_diagnosis)))
     } else {
         return(NULL)
     }
@@ -106,8 +106,8 @@ process_subgroup_data <- function(data, subgroup_var, confounders, include_basel
                 other_map <- list()
             } else {
                 processed_data[[subgroup_var_binned]] <- factor(
-                    ifelse(data[[subgroup_var]] < cutoff_val, paste0("< ", round(cutoff_val, 1)), paste0("\u2265 ", round(cutoff_val, 1))),
-                    levels = c(paste0("< ", round(cutoff_val, 1)), paste0("\u2265 ", round(cutoff_val, 1)))
+                    ifelse(data[[subgroup_var]] < cutoff_val, paste0("< ", round(cutoff_val, 1)), paste0("≥ ", round(cutoff_val, 1))),
+                    levels = c(paste0("< ", round(cutoff_val, 1)), paste0("≥ ", round(cutoff_val, 1)))
                 )
                 subgroup_var_to_use <- subgroup_var_binned
                 cutoff_value <- cutoff_val

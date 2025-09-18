@@ -421,9 +421,9 @@ build_professional_caption <- function(model_type, effect_measure, analysis_name
         remainder <- gsub("primary", "Primary analysis", remainder, ignore.case = TRUE)
         remainder <- gsub("sensitivity", "Sensitivity analysis", remainder, ignore.case = TRUE)
         remainder <- trimws(remainder)
-        analysis_label <- if (nzchar(remainder)) paste(primary_label, "—", tools::toTitleCase(remainder)) else primary_label
+        analysis_label <- if (nzchar(remainder)) paste(primary_label, "-", tools::toTitleCase(remainder)) else primary_label
     } else {
         analysis_label <- friendly
     }
-    paste0(model_label, " — ", analysis_label)
+    paste0(model_label, " - ", analysis_label)
 }
