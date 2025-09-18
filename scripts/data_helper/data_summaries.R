@@ -145,6 +145,22 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
 
         data <- data %>% select(all_of(vars_to_summarize), treatment_group)
 
+        # Add any missing variables so merged tables retain full structure
+        missing_vars <- setdiff(vars_to_summarize, names(data))
+        if (length(missing_vars) > 0) {
+            logger::log_info(sprintf("Adding %d missing baseline variables with NA placeholders: %s",
+                length(missing_vars), paste(missing_vars, collapse = ", ")))
+            baseline_continuous <- get0("BASELINE_CONTINUOUS_VARIABLES", ifnotfound = character(), inherits = TRUE)
+            for (var in missing_vars) {
+                if (var %in% baseline_continuous) {
+                    data[[var]] <- NA_real_
+                } else {
+                    data[[var]] <- factor(NA_character_)
+                }
+            }
+        }
+
+        # Ensure column order matches configuration
         logger::log_info("Checking variable levels for statistical testing")
         vars_with_insufficient_levels <- c()
         for (var in vars_to_summarize) {

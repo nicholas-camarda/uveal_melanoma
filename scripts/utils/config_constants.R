@@ -238,6 +238,7 @@ EXPECTED_COHORT_SIZES <- list(
 # Human-readable labels for all variables
 STANDARD_TABLE_LABELS <- list(
     # Demographics
+    age_at_diagnosis = "Age at Diagnosis (years)",
     age_at_diagnosis_binned = "Age at Diagnosis",
     sex = "Sex",
     race = "Race",
@@ -352,6 +353,7 @@ LEGACY_CUTOFFS <- list(
 # Variables to include in baseline characteristics tables
 BASELINE_VARIABLES_TO_SUMMARIZE <- c(
     # Demographics
+    "age_at_diagnosis",
     "age_at_diagnosis_binned", 
     "sex", "race", 
     # "ethnicity",
@@ -378,6 +380,14 @@ BASELINE_VARIABLES_TO_SUMMARIZE <- c(
 
     # Treatment
     "treatment_group"
+)
+
+# Variables treated as continuous in baseline summaries
+BASELINE_CONTINUOUS_VARIABLES <- c(
+    "age_at_diagnosis",
+    "initial_tumor_height",
+    "initial_tumor_diameter",
+    "initial_vision"
 )
 
 # =============================================================================
