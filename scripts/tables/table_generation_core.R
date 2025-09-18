@@ -122,8 +122,9 @@ detect_model_type <- function(model_fit) {
 #' @param event_var Character string for event variable (Cox models)
 #' @param other_map List containing mapping of what categories were collapsed into "Other"
 #' @param treatment_var Name of the treatment variable in the model (default: "treatment_group")
+#' @param other_level_details Data frame with details about "Other" levels (optional)
 #' @return List containing table result and diagnostics
-generate_regression_table <- function(data, outcome_var, predictor_vars, confounders, model_type, effect_measure, analysis_name, dataset_name, output_dir, prefix, time_var = NULL, event_var = NULL, other_map = NULL, treatment_var = "treatment_group") {
+generate_regression_table <- function(data, outcome_var, predictor_vars, confounders, model_type, effect_measure, analysis_name, dataset_name, output_dir, prefix, time_var = NULL, event_var = NULL, other_map = NULL, treatment_var = "treatment_group", other_level_details = NULL) {
     logger::log_info(sprintf("Generating regression table for %s", analysis_name))
 
     # Build model formula
@@ -155,7 +156,8 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
         outcome_type <- model_type_to_outcome_type(detect_model_type(model_fit))
         table_result <- create_gtsummary_table(
             model_fit, effect_measure, analysis_name, other_map,
-            data, outcome_var, confounders, outcome_type
+            data, outcome_var, confounders, outcome_type,
+            other_level_details = other_level_details
         )
         
         # DEBUG: Check table creation result
@@ -199,7 +201,8 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
             extreme_filtering_result$diagnostics,
             treatment_var = treatment_var,
             effect_measure = effect_measure,
-            table_result = table_result
+            table_result = table_result,
+            other_level_details = other_level_details
         )
 
         # Create raw_output from diagnostics for save_table_outputs
@@ -249,6 +252,10 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
                 stringsAsFactors = FALSE
             )
         )
+
+        if (!is.null(other_level_details)) {
+            diagnostics$other_level_details <- other_level_details
+        }
 
         # Still save diagnostics file even when model fails
         output_files <- tryCatch(

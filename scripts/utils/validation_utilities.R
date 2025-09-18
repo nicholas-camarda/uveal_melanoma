@@ -93,7 +93,7 @@ validate_cohort_integrity <- function(cohort_list) {
     }
 
     # Check 4: Verify eligibility criteria are correctly applied
-    # Restricted cohort: diameter ≤ 20, height ≤ 10, no optic nerve
+    # Restricted cohort: diameter <= 20, height <= 10, no optic nerve
     restricted_violations <- restricted_data %>%
         filter(
             initial_tumor_diameter > TUMOR_DIAMETER_THRESHOLD |

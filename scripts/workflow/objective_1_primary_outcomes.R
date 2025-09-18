@@ -6,7 +6,7 @@
 #' - 1c: Overall survival analysis (time-to-event, Kaplan-Meier + Cox regression)
 #' - 1d: Progression-free survival (time-to-event, Kaplan-Meier + Cox regression)
 #' - 1e: Tumor height changes (continuous outcome, linear regression)
-#' - 1f: Subgroup analyses by age (≤65 vs >65) and sex (Female vs Male)
+#' - 1f: Subgroup analyses by age (<=65 vs >65) and sex (Female vs Male)
 #'
 #' All analyses adjust for confounders: age_at_diagnosis, sex, location, initial_t_stage,
 #' initial_tumor_height, initial_tumor_diameter, biopsy1_gep, optic_nerve

@@ -104,6 +104,108 @@ handle_rare_categories <- function(data, vars, threshold = 5) {
     return(list(data = data, other_map = other_map))
 }
 
+#' Exclude "Other" categories prior to modeling
+#'
+#' Removes observations where specified variables take the value "Other" so that
+#' downstream models are not fitted on aggregated convenience categories. A
+#' summary of the exclusions is returned so diagnostics can describe what was
+#' removed alongside the collapsed level mappings in `other_map`.
+#'
+#' @param data Data frame that will be supplied to the model fitting routine.
+#' @param variables Character vector of column names to inspect. Defaults to all
+#'   factor or character columns in `data` when NULL.
+#' @param other_label Character string denoting the placeholder level (default:
+#'   "Other").
+#' @param other_map Optional named list describing which original levels were
+#'   collapsed into "Other" for each variable.
+#'
+#' @return List with the filtered data frame (`data`), a diagnostics data frame
+#'   (`other_level_details`), the indices of removed rows (`removed_row_indices`),
+#'   and the number of unique rows excluded (`removed_row_count`).
+exclude_other_categories <- function(data, variables = NULL, other_label = "Other", other_map = list()) {
+    if (is.null(variables)) {
+        variables <- names(data)[sapply(data, function(col) is.factor(col) || is.character(col))]
+    }
+
+    if (length(variables) == 0 || nrow(data) == 0) {
+        return(list(
+            data = data,
+            other_level_details = NULL,
+            removed_row_indices = integer(0),
+            removed_row_count = 0L
+        ))
+    }
+
+    removal_mask <- rep(FALSE, nrow(data))
+    details_list <- list()
+
+    for (var in variables) {
+        if (!var %in% names(data)) {
+            next
+        }
+
+        column <- data[[var]]
+        if (!(is.factor(column) || is.character(column))) {
+            next
+        }
+
+        is_other <- !is.na(column) & column == other_label
+        if (!any(is_other)) {
+            next
+        }
+
+        removal_mask <- removal_mask | is_other
+
+        mapped_levels <- if (!is.null(other_map) && length(other_map) > 0 && var %in% names(other_map) && length(other_map[[var]]) > 0) {
+            paste(other_map[[var]], collapse = ", ")
+        } else {
+            "Collapsed level details unavailable"
+        }
+
+        details_list[[length(details_list) + 1L]] <- data.frame(
+            variable = var,
+            has_other_level = TRUE,
+            other_categories = mapped_levels,
+            other_count = sum(is_other),
+            other_pct = round(sum(is_other) / nrow(data) * 100, 1),
+            stringsAsFactors = FALSE
+        )
+    }
+
+    if (!any(removal_mask)) {
+        return(list(
+            data = data,
+            other_level_details = NULL,
+            removed_row_indices = integer(0),
+            removed_row_count = 0L
+        ))
+    }
+
+    filtered_data <- data[!removal_mask, , drop = FALSE]
+    # Drop unused factor levels so removed categories do not persist in modeling outputs
+    factor_cols <- names(filtered_data)[sapply(filtered_data, is.factor)]
+    if (length(factor_cols) > 0) {
+        filtered_data[factor_cols] <- lapply(filtered_data[factor_cols], droplevels)
+    }
+    removed_indices <- which(removal_mask)
+    removed_count <- length(removed_indices)
+
+    other_level_details <- if (length(details_list) > 0) {
+        details_df <- do.call(rbind, details_list)
+        details_df$unique_rows_removed <- removed_count
+        details_df
+    } else {
+        NULL
+    }
+
+    list(
+        data = filtered_data,
+        other_level_details = other_level_details,
+        removed_row_indices = removed_indices,
+        removed_row_count = removed_count
+    )
+}
+
 #' Generate valid confounders
 #'
 #' Generates a list of valid confounders that have more than 1 level and at least THRESHOLD_RARITY counts per level.

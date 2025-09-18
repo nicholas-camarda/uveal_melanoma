@@ -55,6 +55,39 @@ create_forest_plot_diagnostics <- function(subgroup_results, other_map = NULL, e
                 header_reason <- paste("Missing interaction p-value:", var_data$interaction_diagnostics$failure_reason)
             }
         }
+        other_removal_note <- ""
+        if (!is.null(var_data$other_level_details) && is.data.frame(var_data$other_level_details) && nrow(var_data$other_level_details) > 0) {
+            detail_df <- var_data$other_level_details
+            unique_removed <- unique(detail_df$unique_rows_removed)
+            unique_removed <- unique_removed[!is.na(unique_removed)]
+            detail_lines <- vapply(seq_len(nrow(detail_df)), function(i) {
+                detail_row <- detail_df[i, , drop = FALSE]
+                count_removed <- detail_row$other_count
+                pct_removed <- detail_row$other_pct
+                pct_numeric <- suppressWarnings(as.numeric(pct_removed))
+                pct_text <- if (!is.null(pct_numeric) && !is.na(pct_numeric)) sprintf("%.1f%%", pct_numeric) else "n/a"
+                categories <- detail_row$other_categories
+                if (is.null(categories) || is.na(categories) || categories == "") {
+                    categories <- "Collapsed level details unavailable"
+                }
+                variable_label <- detail_row$variable
+                if (is.null(variable_label) || is.na(variable_label) || variable_label == "") {
+                    variable_label <- var_name
+                }
+                sprintf("%s: removed %s rows labelled 'Other' (%s of analytic input); categories: %s",
+                    variable_label,
+                    count_removed,
+                    pct_text,
+                    categories
+                )
+            }, character(1))
+            detail_lines <- unique(detail_lines)
+            if (length(unique_removed) > 0 && unique_removed[1] > 0) {
+                detail_lines <- c(detail_lines, sprintf("Total unique rows removed: %d", as.integer(unique_removed[1])))
+            }
+            other_removal_note <- paste(detail_lines, collapse = "; ")
+        }
+
         diagnostics_rows[[length(diagnostics_rows) + 1]] <- data.frame(
             variable = var_name,
             level = "__HEADER__",
@@ -69,7 +102,7 @@ create_forest_plot_diagnostics <- function(subgroup_results, other_map = NULL, e
             p_value = header_interaction_p,
             status = "header",
             reason = header_reason,
-            other_variable_contents = "",
+            other_variable_contents = other_removal_note,
             variable_order = var_index,
             level_order = -1,
             stringsAsFactors = FALSE
@@ -138,7 +171,7 @@ create_forest_plot_diagnostics <- function(subgroup_results, other_map = NULL, e
                                 ci_upper = row_data$ci_upper,
                                 p_value = row_data$p_value,
                                 status = "skipped_non_positive",
-                                reason = "Treatment effect or CI bounds ≤ 0 (invalid for ratio measures)",
+                                reason = "Treatment effect or CI bounds <= 0 (invalid for ratio measures)",
                                 other_variable_contents = "",
                                 variable_order = var_index,
                                 level_order = level_idx,

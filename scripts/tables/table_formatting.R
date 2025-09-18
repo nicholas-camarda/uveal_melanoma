@@ -11,10 +11,11 @@
 #' @param confounders Character vector of confounders
 #' @param outcome_type Type of outcome ("binary", "survival", "continuous"). If NULL, will be detected from model_fit
 #' @param show_interaction_pvalues Logical, whether to show interaction p-values
+#' @param other_level_details Data frame with details about "Other" levels (optional)
 #' @return gtsummary table object
 create_gtsummary_table <- function(model_fit, effect_measure, analysis_name, other_map = NULL,
                                    data = NULL, outcome_var = NULL, confounders = NULL,
-                                   outcome_type = NULL) {
+                                   outcome_type = NULL, other_level_details = NULL) {
     # Determine model type for caption
     model_type <- detect_model_type(model_fit)
 
@@ -113,7 +114,7 @@ create_gtsummary_table <- function(model_fit, effect_measure, analysis_name, oth
     }
 
     # Add "Other" level details if present in the data
-    table <- add_other_level_details(table, data, other_map)
+    table <- add_other_level_details(table, data, other_map, other_level_details = other_level_details)
 
     return(table)
 }
@@ -181,7 +182,10 @@ modify_gt_table_pvalues <- function(gt_table, table_result, data, outcome_var, c
             if (!is_single_predictor_model) {
                 non_label_rows <- var_rows[table_data$row_type[var_rows] != "label"]
                 if (length(non_label_rows) > 0) {
-                    modified_table$table_body$p.value[non_label_rows] <- NA
+                    modified_table$table_body$p.value[non_label_rows] <- NA_real_
+                    if ("p.value_fmt" %in% names(modified_table$table_body)) {
+                        modified_table$table_body$p.value_fmt[non_label_rows] <- ""
+                    }
                 }
             }
             # Set overall p-value at the label row when available
@@ -189,6 +193,17 @@ modify_gt_table_pvalues <- function(gt_table, table_result, data, outcome_var, c
                 label_row <- var_rows[table_data$row_type[var_rows] == "label"][1]
                 if (!is.na(label_row)) {
                     modified_table$table_body$p.value[label_row] <- pval
+                    if ("p.value_fmt" %in% names(modified_table$table_body)) {
+                        modified_table$table_body$p.value_fmt[label_row] <- gtsummary::style_pvalue(pval)
+                    }
+                }
+            } else {
+                label_row <- var_rows[table_data$row_type[var_rows] == "label"][1]
+                if (!is.na(label_row)) {
+                    modified_table$table_body$p.value[label_row] <- NA_real_
+                    if ("p.value_fmt" %in% names(modified_table$table_body)) {
+                        modified_table$table_body$p.value_fmt[label_row] <- ""
+                    }
                 }
             }
         }
@@ -224,43 +239,67 @@ format_confidence_intervals_post <- function(x) {
 #' @param data Data frame used to create the table
 #' @param other_map List mapping variable names to categories collapsed into "Other" (optional)
 #' @return Modified table with source note containing "Other" category details
-add_other_level_details <- function(table, data, other_map = list()) {
-    # Check for variables with "Other" categories
-    other_details <- c()
+add_other_level_details <- function(table, data, other_map = list(), other_level_details = NULL) {
+    other_details <- character()
 
-    # Get variables that are actually present in the final table
-    table_variables <- unique(table$table_body$variable)
+    if (!is.null(other_level_details) && is.data.frame(other_level_details) && nrow(other_level_details) > 0) {
+        total_unique_removed <- unique(other_level_details$unique_rows_removed)
+        total_unique_removed <- total_unique_removed[!is.na(total_unique_removed)]
+        for (row_index in seq_len(nrow(other_level_details))) {
+            row <- other_level_details[row_index, , drop = FALSE]
+            var_name <- row$variable[1]
+            count_removed <- row$other_count[1]
+            pct_removed <- row$other_pct[1]
+            pct_text <- if (!is.null(pct_removed) && !is.na(pct_removed)) sprintf("%.1f%%", pct_removed) else "n/a"
+            categories <- row$other_categories[1]
+            if (is.na(categories) || categories == "") {
+                categories <- "Collapsed level details unavailable"
+            }
+            other_details <- c(other_details, sprintf(
+                "%s: removed %d rows labelled 'Other' (%s of analytic input); categories: %s",
+                var_name,
+                count_removed,
+                pct_text,
+                categories
+            ))
+        }
+        if (length(total_unique_removed) > 0 && total_unique_removed[1] > 0) {
+            other_details <- c(other_details, sprintf(
+                "Total unique rows removed prior to modeling: %d",
+                as.integer(total_unique_removed[1])
+            ))
+        }
+        other_details <- unique(other_details)
+    } else {
+        # Fallback to legacy behaviour that inspects the model data
+        table_variables <- unique(table$table_body$variable)
+        factor_vars <- names(data)[sapply(data, is.factor)]
+        table_factor_vars <- intersect(factor_vars, table_variables)
 
-    # Check only factor variables that are present in the table
-    factor_vars <- names(data)[sapply(data, is.factor)]
-    table_factor_vars <- intersect(factor_vars, table_variables)
-
-    for (var_name in table_factor_vars) {
-        if ("Other" %in% levels(data[[var_name]])) {
-            # Ensure "Other" actually appears in the final table content
-            table_var_data <- table$table_body[table$table_body$variable == var_name, ]
-            if (any(grepl("Other", table_var_data$label, ignore.case = TRUE))) {
-                if (var_name %in% names(other_map) && length(other_map[[var_name]]) > 0) {
-                    collapsed_cats <- other_map[[var_name]]
-                    other_details <- c(other_details, sprintf("%s: 'Other' category contains %s", var_name, paste(collapsed_cats, collapse = ", ")))
-                } else {
-                    other_details <- c(other_details, sprintf("%s: 'Other' category present (specific levels not mapped)", var_name))
+        for (var_name in table_factor_vars) {
+            if ("Other" %in% levels(data[[var_name]])) {
+                table_var_data <- table$table_body[table$table_body$variable == var_name, ]
+                if (any(grepl("Other", table_var_data$label, ignore.case = TRUE))) {
+                    if (var_name %in% names(other_map) && length(other_map[[var_name]]) > 0) {
+                        collapsed_cats <- other_map[[var_name]]
+                        other_details <- c(other_details, sprintf("%s: 'Other' category contains %s", var_name, paste(collapsed_cats, collapse = ", ")))
+                    } else {
+                        other_details <- c(other_details, sprintf("%s: 'Other' category present (specific levels not mapped)", var_name))
+                    }
                 }
             }
         }
     }
 
-    # Create source note with "Other" details (appears below the table)
-    source_note_parts <- c()
-    existing_source_note <- table$source_note
-    if (!is.null(existing_source_note) && existing_source_note != "") {
-        source_note_parts <- c(source_note_parts, existing_source_note)
-    }
-    if (length(other_details) > 0) {
+    should_append_note <- length(other_details) > 0 && is.null(other_level_details)
+    if (should_append_note) {
+        source_note_parts <- c()
+        existing_source_note <- table$source_note
+        if (!is.null(existing_source_note) && existing_source_note != "") {
+            source_note_parts <- c(source_note_parts, existing_source_note)
+        }
         other_note <- paste("Note:", paste(other_details, collapse = "; "))
         source_note_parts <- c(source_note_parts, other_note)
-    }
-    if (length(source_note_parts) > 0) {
         final_source_note <- paste(source_note_parts, collapse = "\n")
         table <- table %>% modify_source_note(final_source_note)
     }

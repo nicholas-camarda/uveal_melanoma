@@ -82,9 +82,39 @@ analyze_binary_outcome_rates <- function(
         }
     }
 
+    # Remove "Other" rows prior to model fitting while keeping summaries consistent
+    model_variables <- unique(c(group_var, confounders_to_use))
+    exclusion_result <- exclude_other_categories(
+        data = fix_event_data,
+        variables = model_variables[model_variables %in% names(fix_event_data)],
+        other_map = if (is.null(other_map)) list() else other_map
+    )
+
+    if (exclusion_result$removed_row_count > 0) {
+        logger::log_info(formatted(sprintf(
+            "Removed %d rows labelled 'Other' prior to logistic regression (%s)",
+            exclusion_result$removed_row_count,
+            paste(model_variables, collapse = ", ")
+        ), indent = 1))
+    }
+
+    model_data <- exclusion_result$data
+
+    if (nrow(model_data) == 0 || length(unique(stats::na.omit(model_data[[group_var]]))) < 2) {
+        logger::log_warn(formatted(
+            "Insufficient non-'Other' data available after exclusions; skipping logistic regression.",
+            indent = 1
+        ))
+        diagnostics_stub <- list(
+            other_level_details = exclusion_result$other_level_details,
+            raw_model_output = "Model skipped: insufficient data after removing 'Other' levels."
+        )
+        return(list(rates = rates, table = NULL, model = NULL, diagnostics = diagnostics_stub))
+    }
+
     # Run logistic regression and generate regression table
     result <- generate_regression_table(
-        data = fix_event_data,
+        data = model_data,
         outcome_var = outcome_var,
         predictor_vars = group_var,
         confounders = confounders_to_use,
@@ -97,7 +127,8 @@ analyze_binary_outcome_rates <- function(
         time_var = analysis_time_var,
         event_var = event_var,
         other_map = other_map,
-        treatment_var = group_var
+        treatment_var = group_var,
+        other_level_details = exclusion_result$other_level_details
     )
 
     # Return a list of results: rates, regression table, model object, and diagnostics

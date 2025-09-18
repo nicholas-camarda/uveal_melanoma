@@ -49,6 +49,47 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     new_data <- fix_event_data %>%
         dplyr::select(all_of(c(time_var, event_var, group_var, confounders_to_use)))
 
+    # Remove "Other" rows prior to survival modeling
+    survival_variables <- unique(c(group_var, confounders_to_use))
+    exclusion_result <- exclude_other_categories(
+        data = new_data,
+        variables = survival_variables[survival_variables %in% names(new_data)],
+        other_map = if (is.null(other_map)) list() else other_map
+    )
+
+    if (exclusion_result$removed_row_count > 0) {
+        logger::log_info(formatted(sprintf(
+            "Removed %d rows labelled 'Other' prior to survival modeling (%s)",
+            exclusion_result$removed_row_count,
+            paste(survival_variables, collapse = ", ")
+        ), indent = 1))
+    }
+
+    new_data <- exclusion_result$data
+
+    if (nrow(new_data) == 0 || length(unique(stats::na.omit(new_data[[group_var]]))) < 2) {
+        logger::log_warn(formatted(
+            "Insufficient non-'Other' data available after exclusions; skipping survival analysis.",
+            indent = 1
+        ))
+        empty_df <- data.frame()
+        return(list(
+            fit = NULL,
+            plot = NULL,
+            survival_rates = empty_df,
+            survival_rates_wide = empty_df,
+            rmst_analysis = empty_df,
+            rmst_plot = NULL,
+            cox_model = NULL,
+            cox_table = NULL,
+            ph_diagnostics = NULL,
+            diagnostics = list(
+                other_level_details = exclusion_result$other_level_details,
+                raw_model_output = "Model skipped: insufficient data after removing 'Other' levels."
+            )
+        ))
+    }
+
     # Fit Kaplan-Meier survival curves
     surv_fit <- survival::survfit(surv_formula, data = new_data)
     surv_fit$call$formula <- surv_formula
@@ -381,7 +422,8 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             time_var = time_var,
             event_var = event_var,
             other_map = other_map,
-            treatment_var = group_var
+            treatment_var = group_var,
+            other_level_details = exclusion_result$other_level_details
         )
     }, error = function(e) {
         logger::log_error(sprintf("ERROR in generate_regression_table: %s", e$message))

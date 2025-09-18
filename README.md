@@ -231,8 +231,8 @@ The analysis employs three strategically designed patient cohorts to address dif
 ### **Restricted Cohort** (n=167) 
 **Definition:** Patients eligible for **both** treatment modalities  
 **Eligibility Criteria:**
-- Tumor diameter ≤20mm
-- Tumor height ≤10mm  
+- Tumor diameter <=20mm
+- Tumor height <=10mm  
 - No optic nerve involvement
 - Suitable for both GKSRS and PBT
 
@@ -360,14 +360,14 @@ All primary efficacy analyses have been implemented with comprehensive outputs t
 The subgroup analysis implements rigorous filtering criteria to ensure statistical validity and publication-quality results:
 
 **Filtering Requirements:**
-- **Minimum sample size:** ≥2 patients in each treatment group
-- **Minimum events:** ≥1 event in each treatment group (for survival outcomes)
+- **Minimum sample size:** >=2 patients in each treatment group
+- **Minimum events:** >=1 event in each treatment group (for survival outcomes)
 - **Statistical stability:** Groups with insufficient events are excluded from analysis
 
 **Risk Comparison Stability:**
 - **Zero events in one group → Stable comparison** (risk vs no risk)
   - The Cox model can handle "no risk vs some risk" comparisons mathematically
-  - Example: ≥80 years group with 0 PBT events vs 2 GKSRS events produces stable HR
+  - Example: >=80 years group with 0 PBT events vs 2 GKSRS events produces stable HR
 - **Very few events vs many events → Unstable comparison** (unreliable relative risk estimation)
   - Extreme imbalances create statistical instability and infinite confidence intervals
   - Example: 50-59 years group with 1 PBT event vs 8 GKSRS events produces infinite HR
@@ -445,7 +445,7 @@ All safety endpoint analyses have been implemented through the workflow system:
 - **PRAME-Augmented Models:** Net reclassification index comparing GEP-only vs GEP+PRAME models
 - **Missing Data Assessment:** Multiple imputation sensitivity analysis and baseline comparison of GEP-tested vs missing patients
 - **Bootstrap Validation:** Optimism-corrected calibration slopes and intercepts (200 bootstrap iterations)
-- **Events-per-Endpoint Analysis:** Automatic assessment of statistical power (target: ≥100 events per timepoint)
+- **Events-per-Endpoint Analysis:** Automatic assessment of statistical power (target: >=100 events per timepoint)
 - **Output Consolidation:** All metrics (calibration + robust discrimination + clinical utility) displayed together in consolidated summaries
 
 ---
@@ -533,7 +533,7 @@ For each survival outcome, the analysis creates these files in the `h_proportion
 
 **1. Test Results (`*_proportional_hazards_tests.xlsx`)**
 - **P_Value**: Statistical test for each variable
-- **PH_Assumption**: "VIOLATED" if p < 0.05, "OK" if p ≥ 0.05
+- **PH_Assumption**: "VIOLATED" if p < 0.05, "OK" if p >= 0.05
 - **Interpretation**: Plain English explanation of the test result
 
 **2. Diagnostic Plots**
@@ -547,7 +547,7 @@ For each survival outcome, the analysis creates these files in the `h_proportion
 
 **Statistical Tests:**
 - **p < 0.05**: **VIOLATION** - The treatment effect changes significantly over time
-- **p ≥ 0.05**: **OK** - No evidence that treatment effect changes over time
+- **p >= 0.05**: **OK** - No evidence that treatment effect changes over time
 - **Global test**: Overall test across all variables in the model
 
 **Schoenfeld Residual Plots:**
@@ -582,6 +582,12 @@ If **treatment_group** violates the PH assumption:
 **Outputs Location:**
 - **Objective 1 (Efficacy)**: `{cohort}/01_Efficacy/h_proportional_hazards_diagnostics/`
 - **Objective 3 (PFS-2)**: `{cohort}/03_Repeat_Radiation/b_proportional_hazards_diagnostics/`
+
+---
+
+## **Regression Table P-Values**
+
+All regression tables produced by the pipeline (HTML and diagnostics workbooks) report global/factor p-values using **likelihood-ratio tests (LRTs)**. For each categorical predictor, the workflow refits the model with and without that variable and uses the resulting LRT statistic. This avoids the unstable Wald-style tests that `gtsummary` emits by default—especially in sparse settings or when separation warnings appear—and keeps the HTML and diagnostics outputs in sync.
 
 ---
 

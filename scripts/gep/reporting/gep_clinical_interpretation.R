@@ -85,7 +85,7 @@ create_discrimination_interpretation <- function(discrimination_data, outcome_ty
     discrimination_quality <- if (is.na(mean_harrell)) "unknown" else if (mean_harrell >= 0.9) "excellent" else if (mean_harrell >= 0.8) "very good" else if (mean_harrell >= 0.7) "good" else "moderate"
     
     interpretation <- sprintf(
-        "Discrimination performance is %s with mean Harrell's C-index = %.3f across timepoints. Clinical interpretation: Harrell's C-index ranges from 0.5 (no discrimination) to 1.0 (perfect discrimination). Values ≥ 0.8 indicate very good discrimination, while values ≥ 0.9 indicate excellent discrimination. The %s discrimination suggests the GEP model %s distinguish between high and low-risk patients.",
+        "Discrimination performance is %s with mean Harrell's C-index = %.3f across timepoints. Clinical interpretation: Harrell's C-index ranges from 0.5 (no discrimination) to 1.0 (perfect discrimination). Values >= 0.8 indicate very good discrimination, while values >= 0.9 indicate excellent discrimination. The %s discrimination suggests the GEP model %s distinguish between high and low-risk patients.",
         discrimination_quality, mean_harrell,
         discrimination_quality,
         if (is.na(discrimination_quality) || discrimination_quality == "unknown") "has unknown discrimination ability" else if (discrimination_quality %in% c("excellent", "very good")) "effectively" else "adequately"

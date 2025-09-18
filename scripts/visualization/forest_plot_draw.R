@@ -117,7 +117,7 @@ create_single_cohort_forest_plot <- function(subgroup_results,
     all_values <- all_values[!is.na(all_values)]
     use_log_scale <- length(all_values) > 0 && all(all_values > 0)
 
-    # Check for problematic values (≤ 0) when using log scale
+    # Check for problematic values (<= 0) when using log scale
     if (use_log_scale) {
         problematic_values <- any(
             !is.na(plot_data$est_values) & plot_data$est_values <= 0 |
@@ -126,7 +126,7 @@ create_single_cohort_forest_plot <- function(subgroup_results,
         )
 
         if (problematic_values) {
-            warning("Found values ≤ 0 in forest plot data. Switching to linear scale to avoid log transformation errors.")
+            warning("Found values <= 0 in forest plot data. Switching to linear scale to avoid log transformation errors.")
             use_log_scale <- FALSE
         }
     }

@@ -183,7 +183,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                                 ci_upper = row_data$ci_upper,
                                 p_value = row_data$p_value,
                                 status = "skipped_non_positive",
-                                reason = "Treatment effect or CI bounds ≤ 0 (invalid for ratio measures)",
+                                reason = "Treatment effect or CI bounds <= 0 (invalid for ratio measures)",
                                 stringsAsFactors = FALSE
                             )
                             next

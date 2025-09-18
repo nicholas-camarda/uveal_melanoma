@@ -16,7 +16,7 @@
 #' @param effect_measure Effect measure type (optional, auto-detected if NULL)
 #' @param table_result gtsummary table object (optional)
 #' @return List containing all diagnostic data frames
-create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predictor_vars, confounders, analysis_name, dataset_name, filtered_variables = NULL, other_map = list(), extreme_diagnostics = NULL, treatment_var = "treatment_group", effect_measure = NULL, table_result = NULL) {
+create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predictor_vars, confounders, analysis_name, dataset_name, filtered_variables = NULL, other_map = list(), extreme_diagnostics = NULL, treatment_var = "treatment_group", effect_measure = NULL, table_result = NULL, other_level_details = NULL) {
     # === UNIFIED MODEL EXTRACTION ===
     # Single model summary call - no redundancy
     model_summary <- summary(model_fit)
@@ -55,7 +55,7 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
     model_summary_tab <- create_model_summary_tab(model_fit, data, outcome_var, confounders, analysis_name, extreme_diagnostics, filtered_variables)
     model_diagnostics_tab <- create_model_diagnostics_tab(model_fit, dataset_name, analysis_name, effect_measure, coefs, extreme_diagnostics, filtered_variables)
     data_characteristics_tab <- create_data_characteristics_tab(dataset_name, analysis_name, predictor_vars, confounders, outcome_var, data)
-    other_level_details_tab <- create_other_level_details_tab(model_fit, other_map)
+    other_level_details_tab <- create_other_level_details_tab(model_fit, other_map, other_level_details)
 
     # === UNIFIED RAW MODEL OUTPUT ===
     raw_model_output_tab <- create_raw_model_output_tab(
@@ -206,7 +206,11 @@ create_data_characteristics_tab <- function(dataset_name, analysis_name, predict
 }
 
 #' Create other level details table
-create_other_level_details_tab <- function(model_fit, other_map) {
+create_other_level_details_tab <- function(model_fit, other_map, provided_details = NULL) {
+    if (!is.null(provided_details) && is.data.frame(provided_details) && nrow(provided_details) > 0) {
+        return(provided_details)
+    }
+
     other_level_details_list <- list()
     model_data <- model_fit$model
 

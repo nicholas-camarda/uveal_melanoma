@@ -339,8 +339,8 @@ STANDARD_LEVEL_LABELS <- list(
 AUTO_CLEAN_LEVELS <- TRUE
 
 # Evidence-based T-stage cutoffs for continuous variable binning
-T_STAGE_HEIGHT_CUTOFFS <- c(3.0, 6.0, 9.0, 12.0, 15.0) # Creates ranges: ≤3.0, 3.1-6.0, 6.1-9.0, 9.1-12.0, 12.1-15.0, >15.0
-T_STAGE_DIAMETER_CUTOFFS <- c(3.0, 6.0, 9.0, 12.0, 15.0, 18.0) # Creates ranges: ≤3.0, 3.1-6.0, 6.1-9.0, 9.1-12.0, 12.1-15.0, 15.1-18.0, >18.0
+T_STAGE_HEIGHT_CUTOFFS <- c(3.0, 6.0, 9.0, 12.0, 15.0) # Creates ranges: <=3.0, 3.1-6.0, 6.1-9.0, 9.1-12.0, 12.1-15.0, >15.0
+T_STAGE_DIAMETER_CUTOFFS <- c(3.0, 6.0, 9.0, 12.0, 15.0, 18.0) # Creates ranges: <=3.0, 3.1-6.0, 6.1-9.0, 9.1-12.0, 12.1-15.0, 15.1-18.0, >18.0
 
 # Legacy median-based cutoffs (for backward compatibility)
 LEGACY_CUTOFFS <- list(

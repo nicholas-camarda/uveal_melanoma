@@ -126,7 +126,7 @@ get_interaction_coefficient_name <- function(model, treatment_var, subgroup_var,
 
     # Look for interaction coefficient
     # Pattern: treatment_var + level:subgroup_var + level (e.g., "treatment_groupGKSRS:age_at_diagnosis")
-    # or treatment_var + level:subgroup_var + level (e.g., "treatment_groupGKSRS:age_at_diagnosis_binned≥65")
+    # or treatment_var + level:subgroup_var + level (e.g., "treatment_groupGKSRS:age_at_diagnosis_binned>=65")
 
     # First, try to find the treatment level
     treatment_pattern <- paste0("^", treatment_var, "[A-Z]")

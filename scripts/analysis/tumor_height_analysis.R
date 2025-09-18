@@ -34,8 +34,29 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders,
     # Use height_change variable that was already calculated in data_processing.R
     data_with_height_change <- enforce_unordered_factors(data)
 
+    height_model_vars <- unique(c("treatment_group", confounders, "initial_tumor_height"))
+    exclusion_result <- exclude_other_categories(
+        data = data_with_height_change,
+        variables = height_model_vars[height_model_vars %in% names(data_with_height_change)],
+        other_map = if (is.null(other_map)) list() else other_map
+    )
+
+    if (exclusion_result$removed_row_count > 0) {
+        logger::log_info(sprintf(
+            "Removed %d rows labelled 'Other' prior to tumor height modeling",
+            exclusion_result$removed_row_count
+        ))
+    }
+
+    data_model_ready <- exclusion_result$data
+    sufficient_height_data <- nrow(data_model_ready) > 0 && length(unique(stats::na.omit(data_model_ready$treatment_group))) >= 2
+
+    if (!sufficient_height_data) {
+        logger::log_warn("Insufficient non-'Other' data available after exclusions; regression models will be skipped.")
+    }
+
     # Summary statistics (grouped)
-    height_changes <- data_with_height_change %>%
+    height_changes <- data_model_ready %>%
         group_by(treatment_group) %>%
         summarise(
             n = n(),
@@ -46,13 +67,13 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders,
             .groups = "drop"
         )
 
-    plaque <- data_with_height_change %>% filter(treatment_group == "PBT")
-    gk <- data_with_height_change %>% filter(treatment_group == "GKSRS")
-    wilcox.test(height_change ~ treatment_group, data = data_with_height_change)
+    plaque <- data_model_ready %>% filter(treatment_group == "PBT")
+    gk <- data_model_ready %>% filter(treatment_group == "GKSRS")
+    wilcox.test(height_change ~ treatment_group, data = data_model_ready)
 
     # Table for publication (row-level input)
     # Custom for this because we are showing something simple
-    tbl_summary_obj <- data_with_height_change %>%
+    tbl_summary_obj <- data_model_ready %>%
         select(treatment_group, height_change) %>%
         tbl_summary(
             by = treatment_group,
@@ -87,20 +108,31 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders,
     logger::log_info("Fitting PRIMARY linear regression model for tumor height changes (without baseline height adjustment)")
 
     # Use the unified table generation system for primary analysis
-    primary_result <- generate_regression_table(
-        data = data_with_height_change,
-        outcome_var = "height_change",
-        predictor_vars = "treatment_group",
-        confounders = confounders,
-        model_type = "linear",
-        effect_measure = "MD", # Mean Difference for continuous outcome
-        analysis_name = "height_change_primary",
-        dataset_name = "tumor_height",
-        output_dir = output_dirs$obj1_height_primary,
-        prefix = prefix,
-        # handle_rare = TRUE, # REMOVED
-        other_map = other_map
-    )
+    primary_result <- if (sufficient_height_data) {
+        generate_regression_table(
+            data = data_model_ready,
+            outcome_var = "height_change",
+            predictor_vars = "treatment_group",
+            confounders = confounders,
+            model_type = "linear",
+            effect_measure = "MD", # Mean Difference for continuous outcome
+            analysis_name = "height_change_primary",
+            dataset_name = "tumor_height",
+            output_dir = output_dirs$obj1_height_primary,
+            prefix = prefix,
+            other_map = other_map,
+            other_level_details = exclusion_result$other_level_details
+        )
+    } else {
+        list(
+            table = NULL,
+            model = NULL,
+            diagnostics = list(
+                other_level_details = exclusion_result$other_level_details,
+                raw_model_output = "Model skipped: insufficient data after removing 'Other' levels."
+            )
+        )
+    }
 
     primary_height_lm <- primary_result$model
     primary_height_lm_tbl <- primary_result$table
@@ -109,20 +141,31 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders,
     logger::log_info("Fitting SENSITIVITY linear regression model for tumor height changes (with baseline height adjustment)")
 
     # Use the unified table generation system for sensitivity analysis
-    sensitivity_result <- generate_regression_table(
-        data = data_with_height_change,
-        outcome_var = "height_change",
-        predictor_vars = "treatment_group",
-        confounders = c(confounders, "initial_tumor_height"),
-        model_type = "linear",
-        effect_measure = "MD", # Mean Difference for continuous outcome
-        analysis_name = "height_change_sensitivity",
-        dataset_name = "tumor_height",
-        output_dir = output_dirs$obj1_height_sensitivity,
-        prefix = prefix,
-        # handle_rare = TRUE, # REMOVED
-        other_map = other_map
-    )
+    sensitivity_result <- if (sufficient_height_data) {
+        generate_regression_table(
+            data = data_model_ready,
+            outcome_var = "height_change",
+            predictor_vars = "treatment_group",
+            confounders = c(confounders, "initial_tumor_height"),
+            model_type = "linear",
+            effect_measure = "MD", # Mean Difference for continuous outcome
+            analysis_name = "height_change_sensitivity",
+            dataset_name = "tumor_height",
+            output_dir = output_dirs$obj1_height_sensitivity,
+            prefix = prefix,
+            other_map = other_map,
+            other_level_details = exclusion_result$other_level_details
+        )
+    } else {
+        list(
+            table = NULL,
+            model = NULL,
+            diagnostics = list(
+                other_level_details = exclusion_result$other_level_details,
+                raw_model_output = "Model skipped: insufficient data after removing 'Other' levels."
+            )
+        )
+    }
 
     sensitivity_height_lm <- sensitivity_result$model
     sensitivity_height_lm_tbl <- sensitivity_result$table

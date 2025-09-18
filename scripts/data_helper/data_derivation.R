@@ -329,7 +329,7 @@ create_binned_continuous_variables <- function(data) {
                     TRUE ~ NA_character_
                 ),
                 levels = c(
-                    "< 40 years", "40-49 years", "50-59 years", 
+                    "< 40 years", "40-49 years", "50-59 years",
                     "60-69 years", "70-79 years", "≥ 80 years"
                 )
             ),
