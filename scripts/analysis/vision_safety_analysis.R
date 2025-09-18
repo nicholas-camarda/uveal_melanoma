@@ -36,8 +36,26 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, other_map =
     # Ensure consistent factor contrasts for modeling
     data_with_vision_change <- enforce_unordered_factors(data_with_vision_change)
 
+    # Remove "Other" levels prior to modeling and summarisation
+    confounders_for_model <- confounders
+    exclusion_vars <- unique(c("treatment_group", confounders_for_model))
+    exclusion_result <- exclude_other_categories(
+        data_with_vision_change,
+        variables = exclusion_vars[exclusion_vars %in% names(data_with_vision_change)],
+        other_map = other_map
+    )
+
+    if (exclusion_result$removed_row_count > 0) {
+        logger::log_info(sprintf(
+            "Removed %d rows labelled 'Other' prior to vision change analysis",
+            exclusion_result$removed_row_count
+        ))
+    }
+
+    vision_model_data <- exclusion_result$data
+
     # Summary statistics (grouped)
-    vision_changes <- data_with_vision_change %>%
+    vision_changes <- vision_model_data %>%
         group_by(treatment_group) %>%
         summarise(
             n = n(),
@@ -49,10 +67,10 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, other_map =
         )
 
     # Statistical test
-    wilcox.test(vision_change ~ treatment_group, data = data_with_vision_change)
+    wilcox.test(vision_change ~ treatment_group, data = vision_model_data)
 
     # Table for publication (row-level input)
-    tbl_summary_obj <- data_with_vision_change %>%
+    tbl_summary_obj <- vision_model_data %>%
         select(treatment_group, vision_change) %>%
         tbl_summary(
             missing = "no",
@@ -84,10 +102,10 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, other_map =
     # Use the unified table generation system for linear regression
     # Use the same standardized confounders as all other analyses
     vision_result <- generate_regression_table(
-        data = data_with_vision_change,
+        data = vision_model_data,
         outcome_var = "vision_change",
         predictor_vars = "treatment_group",
-        confounders = confounders,
+        confounders = confounders_for_model,
         model_type = "linear",
         effect_measure = "MD", # Mean Difference for continuous outcome
         analysis_name = "vision_change_linear",
@@ -95,7 +113,8 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, other_map =
         output_dir = output_dirs$obj2_vision,
         prefix = prefix,
         # handle_rare = FALSE, # REMOVED
-        other_map = other_map
+        other_map = other_map,
+        other_level_details = exclusion_result$other_level_details
     )
 
     vision_lm <- vision_result$model
@@ -161,6 +180,25 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
     # Ensure consistent factor contrasts for modeling
     data <- enforce_unordered_factors(data)
 
+    # Remove "Other" categories prior to summarization/modeling
+    confounders_for_model <- if (is.null(confounders)) character() else confounders
+    exclusion_vars <- unique(c("treatment_group", confounders_for_model))
+    exclusion_result <- exclude_other_categories(
+        data,
+        variables = exclusion_vars[exclusion_vars %in% names(data)],
+        other_map = other_map
+    )
+
+    if (exclusion_result$removed_row_count > 0) {
+        logger::log_info(sprintf(
+            "Removed %d rows labelled 'Other' prior to %s analysis",
+            exclusion_result$removed_row_count,
+            sequela_type
+        ))
+    }
+
+    model_data <- exclusion_result$data
+
     # Check if outcome variable exists
     outcome_var <- sequela_type
     if (!outcome_var %in% names(data)) {
@@ -173,7 +211,7 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
     logger::log_info(sprintf("Analyzing %s rates (binary outcome)", toupper(sequela_type)))
 
     # Convert to binary if needed and ensure it's numeric for glm
-    data <- data %>%
+    model_data <- model_data %>%
         mutate(
             !!outcome_var := case_when(
                 .data[[outcome_var]] == "Y" ~ 1,
@@ -184,7 +222,7 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
         )
 
     # Calculate rates by treatment group
-    sequela_rates <- data %>%
+    sequela_rates <- model_data %>%
         group_by(treatment_group) %>%
         summarise(
             n_total = n(),
@@ -208,7 +246,7 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
     )
 
     # Create summary table
-    tbl_summary_obj <- data %>%
+    tbl_summary_obj <- model_data %>%
         select(treatment_group, all_of(outcome_var)) %>%
         tbl_summary(
             by = treatment_group,
@@ -233,24 +271,11 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
         modify_caption(paste("Rates of", tools::toTitleCase(sequela_type), "by Treatment Group"))
 
     # Convert to gt table and save
-    other_caption <- ""
-    if ("Other" %in% levels(data[[outcome_var]]) && !is.null(other_map[[outcome_var]]) && length(other_map[[outcome_var]]) > 0) {
-        other_caption <- sprintf("\n\n'Other' includes: %s", paste(other_map[[outcome_var]], collapse = ", "))
-    }
     tbl <- tbl_summary_obj %>%
         as_gt() %>%
         tab_source_note(
-            source_note = md(paste0("Summary table generated automatically.", other_caption))
+            source_note = md("Summary table generated automatically.")
         )
-
-    # Add caption for 'Other' if present
-    if ("Other" %in% levels(data[[outcome_var]]) && !is.null(other_map[[outcome_var]]) && length(other_map[[outcome_var]]) > 0) {
-        tbl <- tbl %>%
-            tab_footnote(
-                footnote = md(sprintf("'Other' includes: %s", paste(other_map[[outcome_var]], collapse = ", "))),
-                locations = cells_title(groups = "title")
-            )
-    }
 
     # Save summary table
     save_gt_html(
@@ -260,14 +285,14 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
 
     # Fit logistic regression if there are enough events and confounders
     model_result <- NULL
-    if (sum(data[[outcome_var]] == 1, na.rm = TRUE) >= 10) { # Require at least 10 events
+    if (sum(model_data[[outcome_var]] == 1, na.rm = TRUE) >= 10) { # Require at least 10 events
 
         # Use the unified table generation system for logistic regression
         # Use standardized confounders from centralized configuration
-        srd_confounders <- confounders
+        srd_confounders <- confounders_for_model
 
         regression_result <- generate_regression_table(
-            data = data,
+            data = model_data,
             outcome_var = outcome_var,
             predictor_vars = "treatment_group",
             confounders = srd_confounders,
@@ -278,7 +303,8 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
             output_dir = output_dir,
             prefix = prefix,
             # handle_rare = FALSE, # REMOVED
-            other_map = other_map
+            other_map = other_map,
+            other_level_details = exclusion_result$other_level_details
         )
 
         # Extract the model and table from the result

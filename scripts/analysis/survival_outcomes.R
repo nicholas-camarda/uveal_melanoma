@@ -497,10 +497,73 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, other_ma
         ))
     }
 
-    # Show treatment distribution
+    # Capture raw salvage treatment distribution before filtering
+    pfs2_data_raw <- pfs2_data
+    raw_primary_vs_salvage <- pfs2_data_raw %>%
+        mutate(
+            primary_treatment = as.character(treatment_group),
+            salvage_treatment = dplyr::case_when(
+                is.na(recurrence1_treatment) | recurrence1_treatment == "" ~ "No Salvage Treatment Recorded",
+                TRUE ~ as.character(recurrence1_treatment)
+            )
+        ) %>%
+        group_by(primary_treatment, salvage_treatment) %>%
+        summarise(
+            n = n(),
+            events = sum(pfs2_event, na.rm = TRUE),
+            event_rate_pct = ifelse(n > 0, round(100 * events / n, 1), NA_real_),
+            .groups = "drop"
+        ) %>%
+        arrange(primary_treatment, desc(n))
+
+    # Remove "Other" categories prior to analysis
+    exclusion_vars <- unique(c("recurrence1_treatment_clean", confounders))
+    exclusion_result <- exclude_other_categories(
+        pfs2_data,
+        variables = exclusion_vars[exclusion_vars %in% names(pfs2_data)],
+        other_map = other_map
+    )
+    if (exclusion_result$removed_row_count > 0) {
+        logger::log_info(sprintf(
+            "Removed %d rows labelled 'Other' prior to PFS-2 analysis",
+            exclusion_result$removed_row_count
+        ))
+    }
+    pfs2_data <- exclusion_result$data
+
+    # Summarise treatment distribution and write to file
     treatment_counts <- table(pfs2_data$recurrence1_treatment_clean)
     logger::log_info("Treatment distribution:")
     print(treatment_counts)
+
+    model_primary_vs_salvage <- pfs2_data %>%
+        mutate(
+            primary_treatment = as.character(treatment_group),
+            salvage_treatment = dplyr::case_when(
+                is.na(recurrence1_treatment_clean) | recurrence1_treatment_clean == "" ~ "No Salvage Treatment Recorded",
+                TRUE ~ as.character(recurrence1_treatment_clean)
+            )
+        ) %>%
+        group_by(primary_treatment, salvage_treatment) %>%
+        summarise(
+            n = n(),
+            events = sum(pfs2_event, na.rm = TRUE),
+            event_rate_pct = ifelse(n > 0, round(100 * events / n, 1), NA_real_),
+            .groups = "drop"
+        ) %>%
+        arrange(primary_treatment, desc(n))
+
+    if (!is.null(output_dirs) && !is.null(output_dirs$obj3_pfs2)) {
+        summary_path <- file.path(output_dirs$obj3_pfs2, paste0(prefix, "pfs2_treatment_summary.xlsx"))
+        writexl::write_xlsx(
+            list(
+                raw_primary_vs_salvage = raw_primary_vs_salvage,
+                model_primary_vs_salvage = model_primary_vs_salvage
+            ),
+            summary_path
+        )
+        logger::log_info(sprintf("PFS-2 treatment summary saved to %s", summary_path))
+    }
 
     logger::log_info(sprintf("Final PFS-2 analysis dataset: %d patients", nrow(pfs2_data)))
     logger::log_info(sprintf("PFS-2 events (2nd recurrence): %d", sum(pfs2_data$pfs2_event)))
@@ -583,7 +646,6 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, other_ma
             ylab = "PFS-2 Probability (Freedom from 2nd Recurrence)",
             analysis_type = "all_patients", # PFS-2 analysis includes all recurrent patients
             dataset_name = paste0(dataset_name, "_pfs2_recurrent"),
-            legend_labels = levels(pfs2_data$recurrence1_treatment_clean),
             other_map = other_map,
             output_dirs = output_dirs,
             prefix = prefix
@@ -610,6 +672,8 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, other_ma
         pfs2_data = pfs2_data,
         survival_analysis = pfs2_survival,
         summary_table = pfs2_survival$cox_table, # Use the standardized table from generate_regression_table
+        raw_primary_vs_salvage = raw_primary_vs_salvage,
+        model_primary_vs_salvage = model_primary_vs_salvage,
         ph_diagnostics = ph_diag_result
     ))
 }
