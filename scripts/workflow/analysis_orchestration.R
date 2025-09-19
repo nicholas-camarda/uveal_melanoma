@@ -202,7 +202,12 @@ merge_baseline_tables_with_data <- function(full_data, restricted_data) {
     logger::log_info(formatted(sprintf("Merging tables will be saved to: %s", MERGED_TABLES_DIR)))
 
     # Create merged baseline characteristics table using the correct function
-    merge_cohort_tables(full_data, restricted_data, MERGED_TABLES_DIR)
+    merge_cohort_tables(full_data, restricted_data, MERGED_TABLES_DIR,
+        dataset_names = list(
+            full = "uveal_melanoma_full_cohort",
+            restricted = "uveal_melanoma_restricted_cohort"
+        )
+    )
     logger::log_info("=== COMPLETED BASELINE TABLE MERGING ===")
     logger::log_info(formatted(sprintf("Merged baseline characteristics table saved to: %s", MERGED_TABLES_DIR)))
     logger::log_info("Files created: merged_baseline_characteristics.xlsx and merged_baseline_characteristics.html")
@@ -241,7 +246,12 @@ merge_baseline_tables <- function() {
     restricted_data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_restricted_cohort.rds"))
 
     # Create merged baseline characteristics table using the correct function
-    merge_cohort_tables(full_data, restricted_data, MERGED_TABLES_DIR)
+    merge_cohort_tables(full_data, restricted_data, MERGED_TABLES_DIR,
+        dataset_names = list(
+            full = "uveal_melanoma_full_cohort",
+            restricted = "uveal_melanoma_restricted_cohort"
+        )
+    )
     logger::log_info("=== COMPLETED BASELINE TABLE MERGING ===")
     logger::log_info(formatted(sprintf("Merged baseline characteristics table saved to: %s", MERGED_TABLES_DIR)))
     logger::log_info("Files created: merged_baseline_characteristics.xlsx and merged_baseline_characteristics.html")

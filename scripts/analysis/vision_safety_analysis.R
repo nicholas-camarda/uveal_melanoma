@@ -156,26 +156,27 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
         ))
     }
 
-    # For SRD, filter to only radiation-induced cases as per objectives
-    if (sequela_type == "srd") {
-        logger::log_info("Filtering SRD to only radiation-induced causes")
-        original_n <- nrow(data)
-        # Check what values exist in srd_cause
-        if ("srd_cause" %in% names(data)) {
-            logger::log_info("Available srd_cause values:")
-            print(table(data$srd_cause, useNA = "ifany"))
-        }
+    # # For SRD, filter to only radiation-induced cases as per objectives
+    # Per discussion with Tim, we are no longer restricting to radiation-induced SRD only
+    # if (sequela_type == "srd") {
+    #     logger::log_info("Filtering SRD to only radiation-induced causes")
+    #     original_n <- nrow(data)
+    #     # Check what values exist in srd_cause
+    #     if ("srd_cause" %in% names(data)) {
+    #         logger::log_info("Available srd_cause values:")
+    #         print(table(data$srd_cause, useNA = "ifany"))
+    #     }
 
-        # Filter for radiation-induced SRD analysis: exclude patients with mass-induced SRD
-        data <- data %>%
-            filter(
-                # Keep patients without SRD
-                srd == "N" | is.na(srd) |
-                    # Keep patients with radiation-induced SRD (exclude mass-induced)
-                    (srd == "Y" & srd_cause == "Radiation")
-            )
-        logger::log_info(sprintf("Data filtered for radiation-induced SRD: %d -> %d patients", original_n, nrow(data)))
-    }
+    #     # Filter for radiation-induced SRD analysis: exclude patients with mass-induced SRD
+    #     data <- data %>%
+    #         filter(
+    #             # Keep patients without SRD
+    #             srd == "N" | is.na(srd) |
+    #                 # Keep patients with radiation-induced SRD (exclude mass-induced)
+    #                 (srd == "Y" & srd_cause == "Radiation")
+    #         )
+    #     logger::log_info(sprintf("Data filtered for radiation-induced SRD: %d -> %d patients", original_n, nrow(data)))
+    # }
 
     # Ensure consistent factor contrasts for modeling
     data <- enforce_unordered_factors(data)

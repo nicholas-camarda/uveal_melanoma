@@ -67,6 +67,58 @@ create_output_structure <- function(cohort_dir) {
     return(dirs)
 }
 
+#' Apply standardized level formatting to categorical display variables
+#'
+#' Ensures merged tables reuse the same label mappings and underscore cleanup
+#' applied when individual cohort tables are generated.
+format_levels_for_display <- function(data) {
+    formatted <- data
+
+    if (exists("STANDARD_LEVEL_LABELS", inherits = TRUE)) {
+        label_maps <- get("STANDARD_LEVEL_LABELS", inherits = TRUE)
+        for (var in names(label_maps)) {
+            if (var %in% names(formatted) && (is.factor(formatted[[var]]) || is.character(formatted[[var]]))) {
+                current_levels <- levels(factor(formatted[[var]]))
+                rename_vec <- setNames(current_levels, current_levels)
+                for (lvl in names(label_maps[[var]])) {
+                    rename_vec[lvl] <- label_maps[[var]][[lvl]]
+                }
+                formatted[[var]] <- factor(rename_vec[as.character(formatted[[var]])], levels = unique(rename_vec))
+            }
+        }
+    }
+
+    if (exists("AUTO_CLEAN_LEVELS", inherits = TRUE) && isTRUE(get("AUTO_CLEAN_LEVELS", inherits = TRUE))) {
+        factor_cols <- names(formatted)[sapply(formatted, is.factor)]
+        for (col in factor_cols) {
+            levels(formatted[[col]]) <- gsub("_", " ", levels(formatted[[col]]))
+        }
+    }
+
+    formatted
+}
+
+#' Reapply pre-collapsed factor levels when available
+#'
+apply_precollapse_levels <- function(data, dataset_name = NULL) {
+    if (is.null(dataset_name) || !exists("PROCESSED_DATA_DIR", inherits = TRUE)) {
+        return(data)
+    }
+
+    precollapse_path <- file.path(PROCESSED_DATA_DIR, paste0(dataset_name, "_derived_precollapse.rds"))
+    if (file.exists(precollapse_path)) {
+        try({
+            precollapse_data <- readRDS(precollapse_path)
+            common_cols <- intersect(names(precollapse_data), names(data))
+            if (length(common_cols) > 0) {
+                data[common_cols] <- precollapse_data[common_cols]
+            }
+        }, silent = TRUE)
+    }
+
+    data
+}
+
 #' Merge baseline characteristics tables from full and restricted cohorts
 #'
 #' Creates a merged table comparing baseline characteristics between full and restricted cohorts
@@ -79,7 +131,7 @@ create_output_structure <- function(cohort_dir) {
 #'
 #' @examples
 #' merge_cohort_tables(full_data, restricted_data, "final_data/Analysis/merged_tables/")
-merge_cohort_tables <- function(full_cohort_data, restricted_cohort_data, output_path = NULL) {
+merge_cohort_tables <- function(full_cohort_data, restricted_cohort_data, output_path = NULL, dataset_names = list()) {
     logger::log_info("=== STARTING TABLE MERGING: Full and Restricted Cohorts ===")
 
     # Set default output path if not provided
@@ -137,12 +189,20 @@ merge_cohort_tables <- function(full_cohort_data, restricted_cohort_data, output
 
     tryCatch(
         {
+            # Restore pre-collapsed levels when files are available to mirror individual cohort tables
+            full_cohort_data <- apply_precollapse_levels(full_cohort_data, dataset_names$full)
+            restricted_cohort_data <- apply_precollapse_levels(restricted_cohort_data, dataset_names$restricted)
+
+            # Align factor display formatting with individual baseline tables
+            full_cohort_formatted <- format_levels_for_display(full_cohort_data)
+            restricted_cohort_formatted <- format_levels_for_display(restricted_cohort_data)
+
             # Filter variables with sufficient variation for full cohort
-            full_available <- intersect(vars_to_summarize, names(full_cohort_data))
-            full_available_filtered <- filter_variables_with_variation(full_cohort_data, full_available)
-            
+            full_available <- intersect(vars_to_summarize, names(full_cohort_formatted))
+            full_available_filtered <- filter_variables_with_variation(full_cohort_formatted, full_available)
+
             # Create baseline table for full cohort
-            full_baseline <- full_cohort_data %>%
+            full_baseline <- full_cohort_formatted %>%
                 select(any_of(c(full_available_filtered, "treatment_group"))) %>%
                 tbl_summary(
                     by = treatment_group,
@@ -166,9 +226,12 @@ merge_cohort_tables <- function(full_cohort_data, restricted_cohort_data, output
                 full_baseline <- full_baseline %>%
                     modify_header(
                         label = "**Characteristic**",
-                        stat_0 = "**Overall**\nN = {N}",
-                        stat_1 = "**PBT**\nN = {n}",
-                        stat_2 = "**GKSRS**\nN = {n}",
+                        stat_0 = "**Overall**
+N = {N}",
+                        stat_1 = "**PBT**
+N = {n}",
+                        stat_2 = "**GKSRS**
+N = {n}",
                         p.value = "**p-value**"
                     )
             }, error = function(e) {
@@ -177,9 +240,9 @@ merge_cohort_tables <- function(full_cohort_data, restricted_cohort_data, output
             })
 
             # Create baseline table for restricted cohort
-            restricted_available <- intersect(vars_to_summarize, names(restricted_cohort_data))
-            restricted_available_filtered <- filter_variables_with_variation(restricted_cohort_data, restricted_available)
-            restricted_baseline <- restricted_cohort_data %>%
+            restricted_available <- intersect(vars_to_summarize, names(restricted_cohort_formatted))
+            restricted_available_filtered <- filter_variables_with_variation(restricted_cohort_formatted, restricted_available)
+            restricted_baseline <- restricted_cohort_formatted %>%
                 select(any_of(c(restricted_available_filtered, "treatment_group"))) %>%
                 tbl_summary(
                     by = treatment_group,
@@ -615,6 +678,60 @@ merge_recurrence_metastatic_progression_tables <- function(full_cohort_data, res
 #'
 #' @examples
 #' merge_adverse_events_tables(full_data, restricted_data, "final_data/Analysis/merged_tables/")
+#' Format count (n) and percent strings without trailing decimals
+format_count_percent_stat <- function(values) {
+    if (is.null(values)) {
+        return(values)
+    }
+
+    vapply(values, function(val) {
+        if (is.na(val) || !nzchar(val)) {
+            return(val)
+        }
+
+        match <- regexec("^([0-9]+)(?:\\.[0-9]+)? \\(([^)]*)\\)$", val)
+        captured <- regmatches(val, match)[[1]]
+
+        if (length(captured) == 0) {
+            return(val)
+        }
+
+        count <- sub("\\.[0-9]+$", "", captured[2])
+        percent <- captured[3]
+        percent <- sub("(\\.0+)(?=%)", "", percent, perl = TRUE)
+
+        sprintf("%s (%s)", count, percent)
+    }, character(1), USE.NAMES = FALSE)
+}
+
+collapse_binary_outcomes_to_cases <- function(tbl) {
+    tbl %>%
+        modify_table_body(function(body) {
+            case_rows <- body %>%
+                filter(row_type == "level", label %in% c("Y", "Yes")) %>%
+                select(variable, stat_0, stat_1, stat_2, estimate, conf.low, conf.high, p.value)
+
+            case_rows <- case_rows %>%
+                mutate(across(starts_with("stat_"), format_count_percent_stat))
+
+            label_rows <- body %>%
+                filter(row_type == "label") %>%
+                left_join(case_rows, by = "variable", suffix = c("", "_cases")) %>%
+                mutate(
+                    stat_0 = coalesce(stat_0_cases, stat_0),
+                    stat_1 = coalesce(stat_1_cases, stat_1),
+                    stat_2 = coalesce(stat_2_cases, stat_2),
+                    estimate = coalesce(estimate_cases, estimate),
+                    conf.low = coalesce(conf.low_cases, conf.low),
+                    conf.high = coalesce(conf.high_cases, conf.high),
+                    p.value = coalesce(p.value_cases, p.value)
+                ) %>%
+                select(names(body))
+
+            label_rows
+        })
+}
+
 merge_adverse_events_tables <- function(full_cohort_data, restricted_cohort_data, output_path = NULL) {
     logger::log_info("=== STARTING TABLE MERGING: Adverse Events ===")
 
@@ -636,100 +753,77 @@ merge_adverse_events_tables <- function(full_cohort_data, restricted_cohort_data
 
     tryCatch(
         {
-            # Create vision change variable (logMAR difference) for both cohorts
-            full_cohort_data <- full_cohort_data %>%
-                mutate(vision_change = last_vision - initial_vision)
-            
-            restricted_cohort_data <- restricted_cohort_data %>%
-                mutate(vision_change = last_vision - initial_vision)
+            labels <- get_variable_labels()
 
-            # Variables to summarize for adverse events
-            outcome_vars <- c("vision_change", "retinopathy", "nvg", "srd")
+            add_vision_change <- function(df) {
+                required_cols <- c("initial_vision", "last_vision")
+                if (all(required_cols %in% names(df))) {
+                    df %>% mutate(vision_change = last_vision - initial_vision)
+                } else {
+                    df
+                }
+            }
 
-            # Create baseline table for full cohort
-            full_outcomes <- full_cohort_data %>%
-                select(any_of(c(outcome_vars, "treatment_group"))) %>%
-                tbl_summary(
-                    by = treatment_group,
-                    missing = "no",
-                    label = variable_labels[intersect(names(variable_labels), outcome_vars)],
-                    statistic = list(
-                        all_continuous() ~ "{median} ({min}, {max})",
-                        all_categorical() ~ "{n} ({p}%)"
-                    ),
-                    digits = list(all_continuous() ~ 1, all_categorical() ~ 0)
-                ) %>%
-                add_overall() %>%
-                add_p(
-                    test = list(all_continuous() ~ "wilcox.test", all_categorical() ~ "fisher.test"),
-                    test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))
-                ) %>%
-                bold_labels()
+            full_cohort_prepared <- add_vision_change(full_cohort_data)
+            restricted_cohort_prepared <- add_vision_change(restricted_cohort_data)
 
-            # Add header modification with error handling for full cohort
-            tryCatch({
-                full_outcomes <- full_outcomes %>%
+            continuous_vars <- c("vision_change")
+            binary_vars <- c("retinopathy", "nvg", "srd")
+            outcome_vars <- c(continuous_vars, binary_vars)
+
+            available_full <- intersect(outcome_vars, names(full_cohort_prepared))
+            available_restricted <- intersect(outcome_vars, names(restricted_cohort_prepared))
+
+            summarise_adverse_outcomes <- function(data, available_vars) {
+                if (length(available_vars) == 0) {
+                    stop("No adverse event variables available for summarization")
+                }
+
+                data %>%
+                    select(treatment_group, all_of(available_vars)) %>%
+                    tbl_summary(
+                        by = treatment_group,
+                        missing = "no",
+                        label = labels[available_vars],
+                        statistic = list(
+                            all_continuous() ~ "{median} ({min}, {max})",
+                            all_categorical() ~ "{n} ({p}%)"
+                        ),
+                        digits = list(all_continuous() ~ 1, all_categorical() ~ 1)
+                    ) %>%
+                    add_overall() %>%
+                    add_p(
+                        test = list(
+                            all_continuous() ~ "wilcox.test",
+                            all_categorical() ~ "fisher.test"
+                        ),
+                        test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))
+                    ) %>%
+                    bold_labels() %>%
                     modify_header(
                         label = "**Adverse Event**",
-                        stat_0 = "**Overall**\nN = {N}",
-                        stat_1 = "**PBT**\nN = {n}",
-                        stat_2 = "**GKSRS**\nN = {n}",
+                        stat_0 = "**Overall (N = {N})**",
+                        stat_1 = "**PBT (N = {n})**",
+                        stat_2 = "**GKSRS (N = {n})**",
                         p.value = "**p-value**"
-                    )
-            }, error = function(e) {
-                logger::log_warn(sprintf("Warning: Could not modify headers for full cohort table: %s", e$message))
-                logger::log_info("Proceeding with default headers for full cohort")
-            })
+                    ) %>%
+                    collapse_binary_outcomes_to_cases()
+            }
 
-            # Create baseline table for restricted cohort
-            restricted_outcomes <- restricted_cohort_data %>%
-                select(any_of(c(outcome_vars, "treatment_group"))) %>%
-                tbl_summary(
-                    by = treatment_group,
-                    missing = "no",
-                    label = variable_labels[intersect(names(variable_labels), outcome_vars)],
-                    statistic = list(
-                        all_continuous() ~ "{median} ({min}, {max})",
-                        all_categorical() ~ "{n} ({p}%)"
-                    ),
-                    digits = list(all_continuous() ~ 1, all_categorical() ~ 0)
-                ) %>%
-                add_overall() %>%
-                add_p(
-                    test = list(all_continuous() ~ "wilcox.test", all_categorical() ~ "fisher.test"),
-                    test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))
-                ) %>%
-                bold_labels()
+            full_outcomes <- summarise_adverse_outcomes(full_cohort_prepared, available_full)
+            restricted_outcomes <- summarise_adverse_outcomes(restricted_cohort_prepared, available_restricted)
 
-            # Add header modification with error handling for restricted cohort
-            tryCatch({
-                restricted_outcomes <- restricted_outcomes %>%
-                    modify_header(
-                        label = "**Adverse Event**",
-                        stat_0 = "**Overall**\nN = {N}",
-                        stat_1 = "**PBT**\nN = {n}",
-                        stat_2 = "**GKSRS**\nN = {n}",
-                        p.value = "**p-value**"
-                    )
-            }, error = function(e) {
-                logger::log_warn(sprintf("Warning: Could not modify headers for restricted cohort table: %s", e$message))
-                logger::log_info("Proceeding with default headers for restricted cohort")
-            })
-
-            # Merge tables side by side (exact same approach as merge_cohort_tables)
             merged_table <- tbl_merge(
                 tbls = list(full_outcomes, restricted_outcomes),
                 tab_spanner = c("**Full Cohort**", "**Restricted Cohort**")
             ) %>%
                 modify_caption("**Table 3: Adverse Events**")
 
-            # Save as HTML (same approach as merge_cohort_tables)
             save_gt_html(
                 merged_table,
                 filename = file.path(output_path, "merged_adverse_events.html")
             )
 
-            # Save as Excel (same approach as merge_cohort_tables)
             merged_table %>%
                 as_tibble() %>%
                 writexl::write_xlsx(
