@@ -92,7 +92,31 @@ save_table_outputs <- function(table_result, raw_output, model_fit, analysis_nam
                     cat("  Outcome var:", outcome_var, "\n")
                     cat("  Confounders:", paste(confounders, collapse = ", "), "\n")
 
-                    modified_table <- modify_gt_table_pvalues(table_result %>% as_gt(), table_result, data, outcome_var, confounders, model_fit, treatment_var = treatment_var)
+                    factor_label_map <- NULL
+                    if (!is.null(diagnostics) && !is.null(diagnostics$raw_model_output)) {
+                        try({
+                            raw_output_df <- diagnostics$raw_model_output
+                            if (is.data.frame(raw_output_df) && "row_type" %in% names(raw_output_df)) {
+                                factor_rows <- raw_output_df %>%
+                                    dplyr::filter(row_type == "Factor Label", !is.na(p_value)) %>%
+                                    dplyr::select(variable_base, p_value)
+                                if (nrow(factor_rows) > 0) {
+                                    factor_label_map <- setNames(factor_rows$p_value, factor_rows$variable_base)
+                                }
+                            }
+                        }, silent = TRUE)
+                    }
+
+                    modified_table <- modify_gt_table_pvalues(
+                        table_result %>% as_gt(),
+                        table_result,
+                        data,
+                        outcome_var,
+                        confounders,
+                        model_fit,
+                        treatment_var = treatment_var,
+                        factor_label_pvalue_map = factor_label_map
+                    )
 
                     cat("DEBUG: After modify_gt_table_pvalues\n")
                     cat("  Modified table class:", class(modified_table), "\n")

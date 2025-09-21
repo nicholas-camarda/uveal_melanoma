@@ -128,7 +128,7 @@ create_gtsummary_table <- function(model_fit, effect_measure, analysis_name, oth
 #' @param confounders Character vector of confounders
 #' @param treatment_var Name of the treatment variable in the model (default: "treatment_group")
 #' @return Modified gt table object
-modify_gt_table_pvalues <- function(gt_table, table_result, data, outcome_var, confounders, model_fit = NULL, treatment_var = "treatment_group") {
+modify_gt_table_pvalues <- function(gt_table, table_result, data, outcome_var, confounders, model_fit = NULL, treatment_var = "treatment_group", factor_label_pvalue_map = NULL) {
     # Get the original table data to understand the structure
     table_data <- table_result$table_body
 
@@ -149,8 +149,12 @@ modify_gt_table_pvalues <- function(gt_table, table_result, data, outcome_var, c
     if (!is.null(model_fit)) {
         # Use the new unified approach with model type detection
         for (var_name in variables) {
-            pval <- calculate_factor_label_pvalue(model_fit, var_name, data, outcome_var, filtered_confounders, treatment_var = treatment_var)
-            factor_label_pvalues[[var_name]] <- pval
+            if (!is.null(factor_label_pvalue_map) && var_name %in% names(factor_label_pvalue_map)) {
+                pval <- factor_label_pvalue_map[[var_name]]
+            } else {
+                pval <- calculate_factor_label_pvalue(model_fit, var_name, data, outcome_var, filtered_confounders, treatment_var = treatment_var)
+            }
+                factor_label_pvalues[[var_name]] <- pval
         }
     } else {
         # Fallback to old approach for backward compatibility
