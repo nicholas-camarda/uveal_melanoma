@@ -226,12 +226,9 @@ merge_cohort_tables <- function(full_cohort_data, restricted_cohort_data, output
                 full_baseline <- full_baseline %>%
                     modify_header(
                         label = "**Characteristic**",
-                        stat_0 = "**Overall**
-N = {N}",
-                        stat_1 = "**PBT**
-N = {n}",
-                        stat_2 = "**GKSRS**
-N = {n}",
+                        stat_0 = "**Overall**\nN = {N}",
+                        stat_1 = "**PBT**\nN = {n}",
+                        stat_2 = "**GKSRS**\nN = {n}",
                         p.value = "**p-value**"
                     )
             }, error = function(e) {
