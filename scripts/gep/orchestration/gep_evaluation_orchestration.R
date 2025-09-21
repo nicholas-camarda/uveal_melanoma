@@ -50,10 +50,40 @@ analyze_gep_mfs_validation <- function(data, dataset_name = NULL, timepoints = G
         logger::log_error(formatted("These variables should have been created in data_processing.R", indent = 1))
         stop("GEP validation cannot proceed without required variables")
     }
-    # Use pre-processed analysis eligibility for consistency
+    # Use pre-processed analysis eligibility for consistency in risk-based metrics
     analysis_data <- data %>%
         filter(mfs_analysis_eligible)
     logger::log_info(formatted(sprintf("Analysis dataset: %d patients with valid GEP and MFS data", nrow(analysis_data)), indent = 1))
+
+    # Create an expanded dataset for KM curves and PH diagnostics that retains "GEP Not Tested"
+    km_ph_data <- data %>%
+        filter(
+            !is.na(biopsy1_gep),
+            !is.na(tt_mets_months),
+            !is.na(mets_event),
+            tt_mets_months >= 0
+        )
+    logger::log_info(formatted(sprintf(
+        "KM/PH dataset: %d patients after including GEP Not Tested",
+        nrow(km_ph_data)
+    ), indent = 1))
+    if (nrow(km_ph_data) > 0) {
+        km_summary <- km_ph_data %>%
+            group_by(biopsy1_gep) %>%
+            summarise(
+                n = n(),
+                events = sum(mets_event == 1, na.rm = TRUE),
+                .groups = "drop"
+            )
+        for (i in seq_len(nrow(km_summary))) {
+            logger::log_info(formatted(sprintf(
+                "%s: n = %d, metastasis events = %d",
+                km_summary$biopsy1_gep[i],
+                km_summary$n[i],
+                km_summary$events[i]
+            ), indent = 2))
+        }
+    }
     # Use pre-processed time-specific event indicators for consistency
     events_per_timepoint <- sapply(timepoints, function(tp) {
         sum(analysis_data[[paste0("mfs_event_", tp, "yr")]])
@@ -191,7 +221,7 @@ analyze_gep_mfs_validation <- function(data, dataset_name = NULL, timepoints = G
             tryCatch({
                 create_mfs_gep_visuals(
                     mfs_results = validation_results,
-                    mfs_data = analysis_data,
+                    mfs_data = km_ph_data,
                     output_dir = mfs_output_dir,
                     prefix = prefix,
                     group_var = "biopsy1_gep",
@@ -206,9 +236,9 @@ analyze_gep_mfs_validation <- function(data, dataset_name = NULL, timepoints = G
             # Create proportional hazards diagnostics for MFS
             logger::log_info(formatted("Creating MFS proportional hazards diagnostics", indent = 1))
             tryCatch({
-                if (length(unique(analysis_data$biopsy1_gep)) >= 2) {
+                if (length(unique(km_ph_data$biopsy1_gep)) >= 2) {
                     mfs_cox_formula <- as.formula("Surv(tt_mets_months, mets_event) ~ biopsy1_gep")
-                    mfs_cox_model <- survival::coxph(mfs_cox_formula, data = analysis_data)
+                    mfs_cox_model <- survival::coxph(mfs_cox_formula, data = km_ph_data)
                     
                     test_proportional_hazards_assumption(
                         cox_model = mfs_cox_model,
@@ -288,6 +318,38 @@ analyze_gep_mss_validation <- function(data, dataset_name = NULL, timepoints = G
     analysis_data <- data %>%
         filter(mss_analysis_eligible)
     logger::log_info(formatted(sprintf("Analysis dataset: %d patients with valid GEP and MSS data", nrow(analysis_data)), indent = 1))
+
+    mss_visual_data <- data %>%
+        filter(
+            !is.na(biopsy1_gep),
+            !is.na(tt_death_years),
+            !is.na(melanoma_death_event),
+            !is.na(competing_death_event),
+            tt_death_years >= 0
+        )
+    logger::log_info(formatted(sprintf(
+        "MSS visual dataset: %d patients (including GEP Not Tested / Failed)",
+        nrow(mss_visual_data)
+    ), indent = 1))
+    if (nrow(mss_visual_data) > 0) {
+        mss_visual_summary <- mss_visual_data %>%
+            group_by(biopsy1_gep) %>%
+            summarise(
+                n = n(),
+                melanoma_deaths = sum(melanoma_death_event == 1, na.rm = TRUE),
+                other_deaths = sum(competing_death_event == 1, na.rm = TRUE),
+                .groups = "drop"
+            )
+        for (i in seq_len(nrow(mss_visual_summary))) {
+            logger::log_info(formatted(sprintf(
+                "%s: n = %d (melanoma deaths = %d, competing deaths = %d)",
+                mss_visual_summary$biopsy1_gep[i],
+                mss_visual_summary$n[i],
+                mss_visual_summary$melanoma_deaths[i],
+                mss_visual_summary$other_deaths[i]
+            ), indent = 2))
+        }
+    }
     # Use pre-processed time-specific event indicators for consistency
     events_per_timepoint <- sapply(timepoints, function(tp) {
         sum(analysis_data[[paste0("mss_event_", tp, "yr")]])
@@ -335,7 +397,7 @@ analyze_gep_mss_validation <- function(data, dataset_name = NULL, timepoints = G
     tryCatch({
         create_mss_gep_visuals(
             mss_results = list(standard_validation = standard_results, competing_risk_validation = competing_results),
-            mss_data = analysis_data,
+            mss_data = mss_visual_data,
             output_dir = mss_output_dir,
             prefix = prefix,
             group_var = "biopsy1_gep",

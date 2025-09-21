@@ -799,9 +799,9 @@ merge_adverse_events_tables <- function(full_cohort_data, restricted_cohort_data
                     bold_labels() %>%
                     modify_header(
                         label = "**Adverse Event**",
-                        stat_0 = "**Overall (N = {N})**",
-                        stat_1 = "**PBT (N = {n})**",
-                        stat_2 = "**GKSRS (N = {n})**",
+                        stat_0 = "**Overall**\nN = {N}",
+                        stat_1 = "**PBT**\nN = {n}",
+                        stat_2 = "**GKSRS**\nN = {n}",
                         p.value = "**p-value**"
                     ) %>%
                     collapse_binary_outcomes_to_cases()

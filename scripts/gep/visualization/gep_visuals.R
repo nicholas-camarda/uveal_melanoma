@@ -844,11 +844,8 @@ create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, 
     group_var_char <- as.character(group_var)
 
     # Prepare data for competing risk analysis using pre-processed variables
-    # CRITICAL: Apply eligibility filters to prevent segmentation fault
-    logger::log_info("Applying MSS analysis eligibility filter for cumulative incidence curves")
-    surv_data <- data %>% dplyr::filter(mss_analysis_eligible)
-    logger::log_info(sprintf("Before MSS eligibility filter: %d rows", nrow(data)))
-    logger::log_info(sprintf("After MSS eligibility filter: %d rows", nrow(surv_data)))
+    logger::log_info("Preparing MSS visual dataset for cumulative incidence curves")
+    surv_data <- data
 
     # Use pre-processed variables instead of recreating them
     # For 5-year analysis, use the specific 5-year time variable
@@ -873,7 +870,9 @@ create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, 
     surv_data <- surv_data %>%
         dplyr::filter(!is.na(.data[[group_var_char]]), !is.na(.data[[time_var_char]])) %>%
         as.data.frame() # Convert to data.frame to avoid tibble subsetting issues
-    
+
+    melanoma_death_total <- sum(surv_data[[event_type_var_char]] == 1, na.rm = TRUE)
+
     # Convert event variable to factor for tidycmprsk compatibility
     # tidycmprsk expects first level to be censored (0), then competing events (1, 2, etc.)
     surv_data[[event_type_var_char]] <- factor(
@@ -963,7 +962,7 @@ create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, 
             subtitle = sprintf(
                 "Competing Risks Analysis: %d patients, %d melanoma deaths",
                 nrow(surv_data),
-                sum(surv_data[[event_type_var_char]] == 1)
+                melanoma_death_total
             ),
             x = "Time (years)",
             y = "Cumulative Incidence of Melanoma Death",
@@ -985,13 +984,12 @@ create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, 
         ggplot2::scale_color_manual(values = get_palette_by_variable(group_var_char, unique(surv_data[[group_var_char]]))) +
         ggplot2::coord_cartesian(xlim = c(0, timepoint)) # Limit to timepoint in years
 
-    # Add annotation text with competing risks statistics if available
-    annotation_text <- ""
+    caption_lines <- character()
 
     if (!is.null(competing_results)) {
         # Add Fine-Gray results
         if (!is.null(competing_results$fine_gray) && nrow(competing_results$fine_gray) > 0) {
-            annotation_text <- paste0(annotation_text, "Fine-Gray Models:\n")
+            caption_lines <- c(caption_lines, "Fine-Gray models:")
             for (i in seq_len(min(3, nrow(competing_results$fine_gray)))) {
                 result <- competing_results$fine_gray[i, ]
                 sig_indicator <- if (result$p_value < 0.05) " *" else ""
@@ -1003,21 +1001,21 @@ create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, 
                     sprintf("%.3f", result$p_value)
                 }
 
-                annotation_text <- paste0(
-                    annotation_text,
+                caption_lines <- c(
+                    caption_lines,
                     sprintf(
-                        "%s: SHR = %.2f (%.2f-%.2f), p %s%s\n",
+                        " • %s: SHR = %.2f (%.2f-%.2f), p %s%s",
                         result$GEP_Class, result$SHR, result$CI_Lower, result$CI_Upper, p_formatted, sig_indicator
                     )
                 )
             }
         } else {
-            annotation_text <- paste0(annotation_text, "Fine-Gray Model: Not fitted due to insufficient data quality\n")
+            caption_lines <- c(caption_lines, "Fine-Gray model: not fitted (insufficient data quality)")
         }
 
         # Add cause-specific Cox results
         if (!is.null(competing_results$cause_specific_cox) && nrow(competing_results$cause_specific_cox) > 0) {
-            annotation_text <- paste0(annotation_text, "\nCause-Specific Cox Models:\n")
+            caption_lines <- c(caption_lines, "Cause-specific Cox models:")
             for (i in seq_len(min(3, nrow(competing_results$cause_specific_cox)))) {
                 result <- competing_results$cause_specific_cox[i, ]
                 sig_indicator <- if (result$p_value < 0.05) " *" else ""
@@ -1029,46 +1027,46 @@ create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, 
                     sprintf("%.3f", result$p_value)
                 }
 
-                annotation_text <- paste0(
-                    annotation_text,
+                caption_lines <- c(
+                    caption_lines,
                     sprintf(
-                        "%s: HR = %.2f (%.2f-%.2f), p %s%s\n",
+                        " • %s: HR = %.2f (%.2f-%.2f), p %s%s",
                         result$GEP_Class, result$HR, result$CI_Lower, result$CI_Upper, p_formatted, sig_indicator
                     )
                 )
             }
         } else {
-            annotation_text <- paste0(annotation_text, "\nCause-Specific Cox Model: Not fitted due to insufficient data quality\n")
+            caption_lines <- c(caption_lines, "Cause-specific Cox model: not fitted (insufficient data quality)")
         }
 
-        # Add explanation for why models weren't fitted
-        if (is.null(competing_results$fine_gray) && is.null(competing_results$cause_specific_cox)) {
-            annotation_text <- paste0(
-                annotation_text, "\nNote: Competing risks models require:\n",
-                "• Minimum 10 patients per group\n",
-                "• At least one event per group\n",
-                "• Sufficient event distribution"
+        if ((is.null(competing_results$fine_gray) || nrow(competing_results$fine_gray) == 0) &&
+            (is.null(competing_results$cause_specific_cox) || nrow(competing_results$cause_specific_cox) == 0)) {
+            caption_lines <- c(
+                caption_lines,
+                "Note: Competing risks models require >=10 patients per group with observed events."
             )
         }
     } else {
-        annotation_text <- "No competing risks results available\n\nNote: Models require sufficient data quality and event distribution"
+        caption_lines <- c(
+            "Competing risks models not available.",
+            "Note: Models require sufficient data quality and event distribution."
+        )
     }
 
-    # Add annotation to plot
-    p <- p + ggplot2::annotate(
-        "text",
-        x = timepoint * 0.7, # Move left to 70% of x-axis to avoid cutoff
-        y = 0.7, # Move down to 70% of y-axis for better positioning
-        label = annotation_text,
-        size = 3,
-        color = "darkred",
-        fontface = "bold",
-        hjust = 0, # Left-align text to prevent cutoff
-        vjust = 0.5
-    ) +
-    ggplot2::theme(
-        plot.margin = ggplot2::unit(c(1, 2, 1, 1), "cm") # Increase right margin to accommodate annotation
-    )
+    caption_text <- paste(caption_lines, collapse = "\n")
+
+    legend_levels <- unique(stats::na.omit(surv_data[[group_var_char]]))
+    legend_cols <- if (length(legend_levels) > 4) 2 else 1
+
+    p <- p +
+        ggplot2::guides(color = ggplot2::guide_legend(ncol = legend_cols, byrow = TRUE)) +
+        ggplot2::theme(legend.box = "vertical", legend.justification = "center") +
+        ggplot2::scale_y_continuous(labels = scales::label_percent(accuracy = 1)) +
+        ggplot2::theme(
+            plot.margin = ggplot2::unit(c(1, 1, 1.5, 1), "cm"),
+            plot.caption = ggplot2::element_text(hjust = 0, size = 9, color = "grey40", lineheight = 1.1)
+        ) +
+        ggplot2::labs(caption = caption_text)
 
     plot_path <- file.path(output_dir, paste0(prefix, "mss_cumulative_incidence_curves.png"))
     ggplot2::ggsave(plot_path, p, width = SURVIVAL_PLOT_WIDTH, height = SURVIVAL_PLOT_HEIGHT, dpi = PLOT_DPI, bg = "white")

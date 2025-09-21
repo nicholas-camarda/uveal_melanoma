@@ -105,6 +105,8 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         legend_labels <- levels(factor(new_data[[group_var]]))
     }
     color_palette <- get_palette_by_variable(group_var, legend_labels)
+    # Identify strata requiring de-emphasis (thinner line/partial transparency)
+    deemphasised_levels <- intersect(legend_labels, c("GEP Failed/Indeterminate"))
 
     # Generate Kaplan-Meier plot with risk table
     surv_plot <- survminer::ggsurvplot(
@@ -128,6 +130,67 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         tables.y.text = TRUE,
         risk.table.title = "Number at risk"
     )
+
+    legend_override <- NULL
+    if (length(deemphasised_levels) > 0) {
+        clean_strata <- function(x) {
+            ifelse(grepl("=", x), sub("^[^=]*=", "", x), x)
+        }
+
+        if (!is.null(surv_plot$plot$data)) {
+            surv_plot$plot$data <- surv_plot$plot$data %>%
+                dplyr::mutate(
+                    line_alpha = ifelse(clean_strata(as.character(strata)) %in% deemphasised_levels, 0.6, 1),
+                    line_size = ifelse(clean_strata(as.character(strata)) %in% deemphasised_levels, 0.7, 1)
+                )
+        }
+        if (length(surv_plot$plot$layers) > 0) {
+            for (layer_idx in seq_along(surv_plot$plot$layers)) {
+                layer_data <- surv_plot$plot$layers[[layer_idx]]$data
+                if (!is.null(layer_data) && "strata" %in% names(layer_data)) {
+                    surv_plot$plot$layers[[layer_idx]]$data <- layer_data %>%
+                        dplyr::mutate(
+                            line_alpha = ifelse(clean_strata(as.character(strata)) %in% deemphasised_levels, 0.6, 1),
+                            line_size = ifelse(clean_strata(as.character(strata)) %in% deemphasised_levels, 0.7, 1)
+                        )
+                }
+            }
+        }
+
+        surv_plot$plot <- surv_plot$plot +
+            ggplot2::aes(alpha = line_alpha, size = line_size) +
+            ggplot2::scale_color_manual(values = color_palette) +
+            ggplot2::scale_alpha_identity(guide = "none") +
+            ggplot2::scale_size_identity(guide = "none")
+
+        legend_override_alpha <- ifelse(legend_labels %in% deemphasised_levels, 0.6, 1)
+        legend_override_size <- ifelse(legend_labels %in% deemphasised_levels, 0.7, 1)
+        legend_override <- list(
+            alpha = legend_override_alpha,
+            size = legend_override_size,
+            colour = color_palette[legend_labels]
+        )
+    } else {
+        surv_plot$plot <- surv_plot$plot + ggplot2::scale_color_manual(values = color_palette)
+    }
+
+    legend_cols <- if (length(legend_labels) > 4) 2 else 1
+    has_linetype <- "linetype" %in% names(surv_plot$plot$mapping) || any(vapply(surv_plot$plot$layers, function(layer) "linetype" %in% names(layer$mapping), logical(1)))
+    guide_params <- list(ncol = legend_cols, byrow = TRUE)
+    if (!is.null(legend_override)) {
+        legend_override$colour <- color_palette[legend_labels]
+        guide_params$override.aes <- legend_override
+    }
+    guide_args <- list(color = do.call(ggplot2::guide_legend, guide_params))
+    if (has_linetype) {
+        guide_args$linetype <- ggplot2::guide_legend(ncol = legend_cols, byrow = TRUE)
+    }
+    surv_plot$plot <- surv_plot$plot +
+        do.call(ggplot2::guides, guide_args) +
+        ggplot2::theme(
+            legend.position = "bottom",
+            legend.box = "vertical"
+        )
     # Format y-axis as percent
     surv_plot$plot <- surv_plot$plot +
         scale_y_continuous(
@@ -711,7 +774,156 @@ test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Surv
         dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
     }
 
-    tryCatch(
+    build_ph_failure_note <- function(error_obj) {
+        note_filename <- paste0(file_prefix, "proportional_hazards_unavailable.txt")
+        note_path <- file.path(output_dir, note_filename)
+        dataset_label <- ifelse(is.null(dataset_name), "Not specified", dataset_name)
+        model_terms <- tryCatch(attr(cox_model$terms, "term.labels"), error = function(...) character())
+        model_formula <- tryCatch(paste(stats::deparse(stats::formula(cox_model)), collapse = " "), error = function(...) "Unavailable")
+        total_patients <- tryCatch(cox_model$n, error = function(...) NA_integer_)
+        total_events <- tryCatch(cox_model$nevent, error = function(...) NA_integer_)
+
+        note_lines <- c(
+            "PROPORTIONAL HAZARDS DIAGNOSTICS NOT AVAILABLE",
+            "",
+            paste0("Outcome: ", outcome_name),
+            paste0("Dataset: ", dataset_label),
+            paste0("Error: ", error_obj$message),
+            "",
+            paste0("Model formula: ", model_formula)
+        )
+
+        if (!is.na(total_patients)) {
+            note_lines <- c(note_lines, paste0("Patients included: ", total_patients))
+        }
+        if (!is.na(total_events)) {
+            note_lines <- c(note_lines, paste0("Events observed: ", total_events))
+        }
+        if (length(model_terms) > 0) {
+            note_lines <- c(note_lines, paste0("Variables in model: ", paste(model_terms, collapse = ", ")))
+        }
+
+        model_frame <- tryCatch(stats::model.frame(cox_model), error = function(...) NULL)
+        reason_lines <- character()
+        event_section_added <- FALSE
+
+        if (!is.null(model_frame)) {
+            response <- model_frame[[1]]
+            status <- NULL
+            time_values <- NULL
+            if (inherits(response, "Surv")) {
+                status <- as.numeric(response[, "status"])
+                time_values <- as.numeric(response[, "time"])
+            }
+
+            if (!is.null(time_values) && length(time_values) > 0 && any(!is.na(time_values))) {
+                note_lines <- c(note_lines, paste0(
+                    "Follow-up time range (months): ",
+                    sprintf("%.2f to %.2f", min(time_values, na.rm = TRUE), max(time_values, na.rm = TRUE))
+                ))
+            }
+
+            if (!is.null(status) && length(model_terms) > 0) {
+                for (term in model_terms) {
+                    if (!term %in% names(model_frame)) next
+                    var_data <- model_frame[[term]]
+                    if (is.null(var_data)) next
+
+                    if (is.factor(var_data) || is.character(var_data) || length(unique(var_data)) <= 10) {
+                        if (!event_section_added) {
+                            note_lines <- c(note_lines, "", "Event distribution by predictor level:")
+                            event_section_added <- TRUE
+                        }
+
+                        var_factor <- factor(var_data, exclude = NULL)
+                        level_counts <- table(var_factor, useNA = "ifany")
+                        event_counts <- tapply(status, var_factor, function(x) sum(x == 1, na.rm = TRUE))
+                        event_counts <- event_counts[names(level_counts)]
+                        event_counts[is.na(event_counts)] <- 0
+
+                        note_lines <- c(note_lines, paste0("  ", term, ":"))
+                        for (lvl in names(level_counts)) {
+                            lvl_label <- ifelse(is.na(lvl) || lvl == "", "<Missing>", lvl)
+                            note_lines <- c(note_lines, sprintf(
+                                "    - %s: n = %d, events = %d",
+                                lvl_label,
+                                level_counts[[lvl]],
+                                event_counts[[lvl]]
+                            ))
+                        }
+
+                        zero_evt <- names(level_counts)[event_counts == 0]
+                        if (length(zero_evt) > 0) {
+                            cleaned <- ifelse(zero_evt == "" | is.na(zero_evt), "<Missing>", zero_evt)
+                            reason_lines <- c(reason_lines, sprintf(
+                                "  * %s has zero events for: %s",
+                                term,
+                                paste(cleaned, collapse = ", ")
+                            ))
+                        }
+
+                        saturated_levels <- names(level_counts)[event_counts == level_counts]
+                        if (length(saturated_levels) > 0) {
+                            cleaned <- ifelse(saturated_levels == "" | is.na(saturated_levels), "<Missing>", saturated_levels)
+                            reason_lines <- c(reason_lines, sprintf(
+                                "  * %s has events in every patient for: %s",
+                                term,
+                                paste(cleaned, collapse = ", ")
+                            ))
+                        }
+                    } else {
+                        if (!event_section_added) {
+                            note_lines <- c(note_lines, "", "Event distribution by predictor level:")
+                            event_section_added <- TRUE
+                        }
+                        unique_vals <- length(unique(stats::na.omit(var_data)))
+                        note_lines <- c(note_lines, paste0(
+                            "  ", term, ": numeric predictor with ", unique_vals, " unique values"
+                        ))
+                        reason_lines <- c(reason_lines, sprintf(
+                            "  * %s may contribute to singularity (numeric predictor with limited variability)",
+                            term
+                        ))
+                    }
+                }
+            }
+        } else {
+            reason_lines <- c(reason_lines, "  * Unable to reconstruct the model frame to summarise predictor levels.")
+        }
+
+        coef_values <- tryCatch(stats::coef(cox_model), error = function(...) numeric())
+        if (length(coef_values) > 0) {
+            non_finite_coefs <- names(coef_values)[!is.finite(coef_values)]
+            if (length(non_finite_coefs) > 0) {
+                reason_lines <- c(reason_lines, sprintf(
+                    "  * Non-finite coefficient estimates detected for: %s",
+                    paste(non_finite_coefs, collapse = ", ")
+                ))
+            }
+        }
+
+        note_lines <- c(note_lines, "", "Why diagnostics failed:")
+        if (length(reason_lines) > 0) {
+            note_lines <- c(note_lines, reason_lines)
+        } else {
+            note_lines <- c(note_lines, "  * Schoenfeld residual diagnostics require an invertible variance matrix. The fitted Cox model resulted in a singular matrix, typically triggered by sparse events or redundant predictors.")
+        }
+
+        note_lines <- c(
+            note_lines,
+            "",
+            "Suggested follow-up actions:",
+            "  * Collapse or remove levels with zero events to stabilise the variance matrix.",
+            "  * Simplify the model or consider time-varying effects when events are sparse.",
+            "  * Verify that each GEP group has at least one event and adequate sample size."
+        )
+
+        writeLines(note_lines, note_path)
+        logger::log_warn(formatted(sprintf("PH diagnostics unavailable note saved: %s", note_path), indent = 1))
+    }
+
+    ph_error <- NULL
+    ph_results <- tryCatch(
         {
             # Perform Schoenfeld residuals test
             logger::log_info(formatted("Computing Schoenfeld residuals and correlation tests", indent = 1))
@@ -960,7 +1172,7 @@ test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Surv
 
             logger::log_info("Proportional hazards assumption testing completed")
 
-            return(list(
+            list(
                 schoenfeld_test = schoenfeld_test,
                 individual_tests = p_values,
                 ph_summary = ph_summary_with_global,
@@ -969,11 +1181,18 @@ test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Surv
                     combined = combined_plot_filename
                 ),
                 summary_file = summary_filename
-            ))
+            )
         },
         error = function(e) {
             logger::log_error(sprintf("Error in PH assumption testing: %s", e$message))
-            return(NULL)
+            ph_error <<- e
+            NULL
         }
     )
+
+    if (!is.null(ph_error)) {
+        try(build_ph_failure_note(ph_error), silent = TRUE)
+    }
+
+    return(ph_results)
 }
