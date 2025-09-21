@@ -29,3 +29,4 @@ tests/*
 
 # Ignore agentic helper files
 AGENTS.md
+scripts/main.R
