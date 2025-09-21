@@ -36,6 +36,9 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, other_map =
     # Ensure consistent factor contrasts for modeling
     data_with_vision_change <- enforce_unordered_factors(data_with_vision_change)
 
+    # Preserve the full analytic set for descriptive summaries/tests (no location filtering)
+    summary_data <- data_with_vision_change
+
     # Remove "Other" levels prior to modeling and summarisation
     confounders_for_model <- confounders
     exclusion_vars <- unique(c("treatment_group", confounders_for_model))
@@ -55,7 +58,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, other_map =
     vision_model_data <- exclusion_result$data
 
     # Summary statistics (grouped)
-    vision_changes <- vision_model_data %>%
+    vision_changes <- summary_data %>%
         group_by(treatment_group) %>%
         summarise(
             n = n(),
@@ -67,10 +70,10 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, other_map =
         )
 
     # Statistical test
-    wilcox.test(vision_change ~ treatment_group, data = vision_model_data)
+    wilcox.test(vision_change ~ treatment_group, data = summary_data)
 
     # Table for publication (row-level input)
-    tbl_summary_obj <- vision_model_data %>%
+    tbl_summary_obj <- summary_data %>%
         select(treatment_group, vision_change) %>%
         tbl_summary(
             missing = "no",
@@ -80,7 +83,11 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, other_map =
             digits = list(all_continuous() ~ 1, all_categorical() ~ 0),
             label = list(vision_change ~ "Vision Change (logMAR)")
         ) %>%
-        add_p(test = list(all_continuous() ~ "wilcox.test")) %>%
+        add_p(
+            test = list(
+                all_continuous() ~ "wilcox.test"
+            )
+        ) %>%
         add_overall() %>%
         bold_labels() %>% # Built-in gtsummary function for bold variable labels!
         modify_header(
@@ -156,6 +163,28 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
         ))
     }
 
+    collapse_binary_summary_to_cases <- function(tbl) {
+        tbl %>%
+            modify_table_body(function(body) {
+                case_rows <- body %>%
+                    filter(row_type == "level", label %in% c("Y", "Yes")) %>%
+                    select(variable, dplyr::starts_with("stat_"), dplyr::any_of("p.value"))
+
+                label_rows <- body %>%
+                    filter(row_type == "label") %>%
+                    left_join(case_rows, by = "variable", suffix = c("", "_cases")) %>%
+                    mutate(
+                        stat_0 = coalesce(stat_0_cases, stat_0),
+                        stat_1 = coalesce(stat_1_cases, stat_1),
+                        stat_2 = coalesce(stat_2_cases, stat_2),
+                        p.value = coalesce(p.value_cases, p.value)
+                    ) %>%
+                    select(names(body))
+
+                label_rows
+            })
+    }
+
     # # For SRD, filter to only radiation-induced cases as per objectives
     # Per discussion with Tim, we are no longer restricting to radiation-induced SRD only
     # if (sequela_type == "srd") {
@@ -181,7 +210,10 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
     # Ensure consistent factor contrasts for modeling
     data <- enforce_unordered_factors(data)
 
-    # Remove "Other" categories prior to summarization/modeling
+    # Retain a copy without additional filtering for descriptive outputs
+    summary_data <- data
+
+    # Remove "Other" categories prior to modeling only (retain original data for summaries)
     confounders_for_model <- if (is.null(confounders)) character() else confounders
     exclusion_vars <- unique(c("treatment_group", confounders_for_model))
     exclusion_result <- exclude_other_categories(
@@ -222,8 +254,18 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
             )
         )
 
+    summary_rates_data <- summary_data %>%
+        mutate(
+            !!outcome_var := case_when(
+                .data[[outcome_var]] == "Y" ~ 1,
+                .data[[outcome_var]] == "N" ~ 0,
+                is.na(.data[[outcome_var]]) ~ 0,
+                TRUE ~ 0
+            )
+        )
+
     # Calculate rates by treatment group
-    sequela_rates <- model_data %>%
+    sequela_rates <- summary_rates_data %>%
         group_by(treatment_group) %>%
         summarise(
             n_total = n(),
@@ -247,7 +289,7 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
     )
 
     # Create summary table
-    tbl_summary_obj <- model_data %>%
+    tbl_summary_obj <- summary_data %>%
         select(treatment_group, all_of(outcome_var)) %>%
         tbl_summary(
             by = treatment_group,
@@ -260,7 +302,13 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
             digits = list(all_continuous() ~ 1, all_categorical() ~ 0)
         ) %>%
         add_overall() %>%
-        add_p(test = list(all_continuous() ~ "wilcox.test")) %>%
+        add_p(
+            test = list(
+                all_categorical() ~ "fisher.test",
+                all_continuous() ~ "wilcox.test"
+            ),
+            test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))
+        ) %>%
         bold_labels() %>%
         modify_header(
             label = "**Characteristic**",
@@ -269,7 +317,8 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
             stat_2 = "**GKSRS**\nN = {n}",
             p.value = "**p-value**"
         ) %>%
-        modify_caption(paste("Rates of", tools::toTitleCase(sequela_type), "by Treatment Group"))
+        modify_caption(paste("Rates of", tools::toTitleCase(sequela_type), "by Treatment Group")) %>%
+        collapse_binary_summary_to_cases()
 
     # Convert to gt table and save
     tbl <- tbl_summary_obj %>%
