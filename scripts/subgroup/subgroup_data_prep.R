@@ -169,10 +169,10 @@ fit_subgroup_model <- function(data, outcome_config, subgroup_var_to_use, confou
             sample_ok <- n_plaque >= 2 && n_gksrs >= 2
             events_ok <- !is.null(event_var) && !is.na(plaque_events) && !is.na(gksrs_events) && plaque_events >= 1 && gksrs_events >= 1
             if (!sample_ok) {
-                reason_parts <- c(reason_parts, sprintf("Requires ≥2 patients per arm; observed PBT=%d, GKSRS=%d", n_plaque, n_gksrs))
+                reason_parts <- c(reason_parts, sprintf("Sample size: Requires ≥2 patients per arm; observed PBT=%d, GKSRS=%d", n_plaque, n_gksrs))
             }
             if (!events_ok) {
-                reason_parts <- c(reason_parts, sprintf("Requires ≥1 event per arm; observed PBT events=%s, GKSRS events=%s",
+                reason_parts <- c(reason_parts, sprintf("Event count: Requires ≥1 event per arm; observed PBT events=%s, GKSRS events=%s",
                     ifelse(is.na(plaque_events), "NA", plaque_events), ifelse(is.na(gksrs_events), "NA", gksrs_events)))
             }
             if (sample_ok && events_ok) {
@@ -205,12 +205,12 @@ fit_subgroup_model <- function(data, outcome_config, subgroup_var_to_use, confou
             if (!is.na(plaque_events) || !is.na(gksrs_events)) {
                 events_ok <- (is.na(plaque_events) || plaque_events >= 1) && (is.na(gksrs_events) || gksrs_events >= 1)
                 if (!events_ok) {
-                    reason_parts <- c(reason_parts, sprintf("Low events; PBT events=%s, GKSRS events=%s",
+                    reason_parts <- c(reason_parts, sprintf("Event count: Low events; PBT events=%s, GKSRS events=%s",
                         ifelse(is.na(plaque_events), "NA", plaque_events), ifelse(is.na(gksrs_events), "NA", gksrs_events)))
                 }
             }
             if (!sample_ok) {
-                reason_parts <- c(reason_parts, sprintf("Requires ≥2 patients per arm; observed PBT=%d, GKSRS=%d", n_plaque, n_gksrs))
+                reason_parts <- c(reason_parts, sprintf("Sample size: Requires ≥2 patients per arm; observed PBT=%d, GKSRS=%d", n_plaque, n_gksrs))
             }
             if (sample_ok && events_ok) {
                 valid_levels <- c(valid_levels, level)
