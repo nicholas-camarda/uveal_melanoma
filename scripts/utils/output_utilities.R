@@ -95,6 +95,12 @@ format_levels_for_display <- function(data) {
         }
     }
 
+    # Drop unused factor levels (especially Stage 4 which has 0 patients)
+    factor_cols <- names(formatted)[sapply(formatted, is.factor)]
+    for (col in factor_cols) {
+        formatted[[col]] <- droplevels(formatted[[col]])
+    }
+
     formatted
 }
 

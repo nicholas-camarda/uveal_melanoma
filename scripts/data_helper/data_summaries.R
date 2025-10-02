@@ -213,6 +213,14 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
             }
         }
 
+        # Drop unused factor levels (especially Stage 4 which has 0 patients)
+        logger::log_info("Dropping unused factor levels for baseline table")
+        for (v in names(data)) {
+            if (is.factor(data[[v]])) {
+                data[[v]] <- droplevels(data[[v]])
+            }
+        }
+
         logger::log_info("Creating summary table")
         tbl <- data %>%
             tbl_summary(
