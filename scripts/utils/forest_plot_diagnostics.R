@@ -58,34 +58,37 @@ create_forest_plot_diagnostics <- function(subgroup_results, other_map = NULL, e
         other_removal_note <- ""
         if (!is.null(var_data$other_level_details) && is.data.frame(var_data$other_level_details) && nrow(var_data$other_level_details) > 0) {
             detail_df <- var_data$other_level_details
-            unique_removed <- unique(detail_df$unique_rows_removed)
-            unique_removed <- unique_removed[!is.na(unique_removed)]
-            detail_lines <- vapply(seq_len(nrow(detail_df)), function(i) {
-                detail_row <- detail_df[i, , drop = FALSE]
-                count_removed <- detail_row$other_count
-                pct_removed <- detail_row$other_pct
-                pct_numeric <- suppressWarnings(as.numeric(pct_removed))
-                pct_text <- if (!is.null(pct_numeric) && !is.na(pct_numeric)) sprintf("%.1f%%", pct_numeric) else "n/a"
-                categories <- detail_row$other_categories
-                if (is.null(categories) || is.na(categories) || categories == "") {
-                    categories <- "Collapsed level details unavailable"
+            
+            # Filter to only show details for the current variable
+            # This prevents showing "location: removed X rows" on all header rows
+            detail_df <- detail_df[detail_df$variable == var_name, , drop = FALSE]
+            
+            if (nrow(detail_df) > 0) {
+                unique_removed <- unique(detail_df$unique_rows_removed)
+                unique_removed <- unique_removed[!is.na(unique_removed)]
+                detail_lines <- vapply(seq_len(nrow(detail_df)), function(i) {
+                    detail_row <- detail_df[i, , drop = FALSE]
+                    count_removed <- detail_row$other_count
+                    pct_removed <- detail_row$other_pct
+                    pct_numeric <- suppressWarnings(as.numeric(pct_removed))
+                    pct_text <- if (!is.null(pct_numeric) && !is.na(pct_numeric)) sprintf("%.1f%%", pct_numeric) else "n/a"
+                    categories <- detail_row$other_categories
+                    if (is.null(categories) || is.na(categories) || categories == "") {
+                        categories <- "Collapsed level details unavailable"
+                    }
+                    # No need to include variable label in the message since it's in the header row already
+                    sprintf("Removed %s rows labelled 'Other' (%s of analytic input); categories: %s",
+                        count_removed,
+                        pct_text,
+                        categories
+                    )
+                }, character(1))
+                detail_lines <- unique(detail_lines)
+                if (length(unique_removed) > 0 && unique_removed[1] > 0) {
+                    detail_lines <- c(detail_lines, sprintf("Total unique rows removed: %d", as.integer(unique_removed[1])))
                 }
-                variable_label <- detail_row$variable
-                if (is.null(variable_label) || is.na(variable_label) || variable_label == "") {
-                    variable_label <- var_name
-                }
-                sprintf("%s: removed %s rows labelled 'Other' (%s of analytic input); categories: %s",
-                    variable_label,
-                    count_removed,
-                    pct_text,
-                    categories
-                )
-            }, character(1))
-            detail_lines <- unique(detail_lines)
-            if (length(unique_removed) > 0 && unique_removed[1] > 0) {
-                detail_lines <- c(detail_lines, sprintf("Total unique rows removed: %d", as.integer(unique_removed[1])))
+                other_removal_note <- paste(detail_lines, collapse = "; ")
             }
-            other_removal_note <- paste(detail_lines, collapse = "; ")
         }
 
         diagnostics_rows[[length(diagnostics_rows) + 1]] <- data.frame(
