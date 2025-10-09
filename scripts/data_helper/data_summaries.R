@@ -142,6 +142,12 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
 
         logger::log_info("Preparing variables for table")
         vars_to_summarize <- BASELINE_VARIABLES_TO_SUMMARIZE
+        
+        # Exclude optic_nerve from restricted cohort (always "N" by eligibility criteria)
+        if (grepl("restricted", cohort_name, ignore.case = TRUE)) {
+            vars_to_summarize <- setdiff(vars_to_summarize, "optic_nerve")
+            logger::log_info("Excluded 'optic_nerve' from restricted cohort baseline table (all patients have optic_nerve='N' by eligibility)")
+        }
 
         data <- data %>% select(all_of(vars_to_summarize), treatment_group)
 

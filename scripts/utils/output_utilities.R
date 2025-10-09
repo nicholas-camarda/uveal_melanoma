@@ -243,7 +243,9 @@ merge_cohort_tables <- function(full_cohort_data, restricted_cohort_data, output
             })
 
             # Create baseline table for restricted cohort
+            # Exclude optic_nerve from restricted cohort (always "N" by eligibility criteria)
             restricted_available <- intersect(vars_to_summarize, names(restricted_cohort_formatted))
+            restricted_available <- setdiff(restricted_available, "optic_nerve")
             restricted_available_filtered <- filter_variables_with_variation(restricted_cohort_formatted, restricted_available)
             restricted_baseline <- restricted_cohort_formatted %>%
                 select(any_of(c(restricted_available_filtered, "treatment_group"))) %>%
