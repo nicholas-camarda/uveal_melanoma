@@ -95,9 +95,19 @@ create_derived_variables <- function(data) {
             tt_recurrence_months_analysis = if_else(tt_recurrence_months < 0, 0, tt_recurrence_months),
             tt_death_months_analysis = if_else(tt_death_months < 0, 0, tt_death_months),
             tt_pfs_months_analysis = pmin(tt_recurrence_months_analysis, tt_death_months_analysis, na.rm = FALSE),
+            # Tumor height change: Per project goals 1e
+            # Formula: last_height - initial_tumor_height (or recurrence1_pretreatment_height - initial)
+            # Negative = tumor decreased/shrank (good), Positive = tumor increased/grew (bad)
             height_change = case_when(
-                recurrence1 == "Y" ~ initial_tumor_height - recurrence1_pretreatment_height,
-                TRUE ~ initial_tumor_height - last_height
+                recurrence1 == "Y" ~ recurrence1_pretreatment_height - initial_tumor_height,
+                TRUE ~ last_height - initial_tumor_height
+            ),
+            # Vision change: Per project goals 2a
+            # Formula: initial_vision - last_vision (or recurrence1_pretreatment_vision)
+            # Negative = vision worsened (higher logMAR), Positive = vision improved
+            vision_change = case_when(
+                recurrence1 == "Y" ~ initial_vision - recurrence1_pretreatment_vision,
+                TRUE ~ initial_vision - last_vision
             ),
         ) %>%
         mutate(

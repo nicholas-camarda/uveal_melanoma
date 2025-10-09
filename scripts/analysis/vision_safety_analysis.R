@@ -22,19 +22,11 @@
 #' analyze_visual_acuity_changes(data, output_dirs, prefix)
 analyze_visual_acuity_changes <- function(data, output_dirs, prefix, other_map = list()) {
     # Calculate vision changes (row-level)
-    data_with_vision_change <- data %>%
-        mutate(
-            # Calculate vision change as the difference between the initial
-            # vision and the vision at the time of recurrence *or* last follow-up
-            # Post treatment1 vision = recurrence1 pretreatment vision
-            vision_change = case_when(
-                recurrence1 == "Y" ~ initial_vision - recurrence1_pretreatment_vision,
-                TRUE ~ initial_vision - last_vision
-            )
-        )
-
+    # Vision change is already calculated in data derivation (Objective 0)
+    # Positive values = vision worsening (higher logMAR), negative = improvement
+    
     # Ensure consistent factor contrasts for modeling
-    data_with_vision_change <- enforce_unordered_factors(data_with_vision_change)
+    data_with_vision_change <- enforce_unordered_factors(data)
 
     # Preserve the full analytic set for descriptive summaries/tests (no location filtering)
     summary_data <- data_with_vision_change

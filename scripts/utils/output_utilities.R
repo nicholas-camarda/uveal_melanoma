@@ -758,17 +758,10 @@ merge_adverse_events_tables <- function(full_cohort_data, restricted_cohort_data
         {
             labels <- get_variable_labels()
 
-            add_vision_change <- function(df) {
-                required_cols <- c("initial_vision", "last_vision")
-                if (all(required_cols %in% names(df))) {
-                    df %>% mutate(vision_change = last_vision - initial_vision)
-                } else {
-                    df
-                }
-            }
-
-            full_cohort_prepared <- add_vision_change(full_cohort_data)
-            restricted_cohort_prepared <- add_vision_change(restricted_cohort_data)
+            # Vision change is already calculated in data derivation (Objective 0)
+            # No need to recalculate - use the pre-calculated column
+            full_cohort_prepared <- full_cohort_data
+            restricted_cohort_prepared <- restricted_cohort_data
 
             continuous_vars <- c("vision_change")
             binary_vars <- c("retinopathy", "nvg", "srd")
