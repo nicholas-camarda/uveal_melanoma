@@ -116,6 +116,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         risk.table = TRUE,
         conf.int = FALSE,
         pval = TRUE,
+        pval.size = 6,                    # Larger p-value text
         title = paste("Kaplan-Meier Survival Curves:", ylab),
         subtitle = if (!is.null(dataset_name)) paste("Cohort:", dataset_name) else NULL,
         xlab = "Time (months)",
@@ -128,7 +129,11 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         legend.labs = legend_labels,
         risk.table.y.text = TRUE,
         tables.y.text = TRUE,
-        risk.table.title = "Number at risk"
+        risk.table.title = "Number at risk",
+        font.x = 14,                      # Larger x-axis label
+        font.y = 14,                      # Larger y-axis label
+        font.tickslab = 12,               # Larger axis tick labels
+        font.legend = 14                  # Larger legend text
     )
 
     legend_override <- NULL
@@ -416,7 +421,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         time_label <- paste0(rmst_results$Time_Point_Years[i], "-year")
         rmst_diff <- rmst_results$RMST_Difference[i]
         if (time_label %in% names(surv_rates_wide)) {
-            rmst_diff_row[[time_label]] <- if (is.na(rmst_diff)) "NA" else sprintf("%.1f", rmst_diff)
+            rmst_diff_row[[time_label]] <- if (is.na(rmst_diff)) "NA" else sprintf("%.2f", rmst_diff)
         }
     }
     surv_rates_wide_with_rmst <- dplyr::bind_rows(
