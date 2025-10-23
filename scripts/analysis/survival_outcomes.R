@@ -108,7 +108,10 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     # Identify strata requiring de-emphasis (thinner line/partial transparency)
     deemphasised_levels <- intersect(legend_labels, c("GEP Failed/Indeterminate"))
 
-    # Generate Kaplan-Meier plot with risk table
+    # Get plot scaling factor from config (allows global adjustment via SURVIVAL_PLOT_SCALE)
+    plot_scale <- SURVIVAL_PLOT_SCALE
+
+    # Generate Kaplan-Meier plot with risk table (all sizes scaled proportionally)
     surv_plot <- survminer::ggsurvplot(
         fit = surv_fit,
         data = new_data,
@@ -116,12 +119,12 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         risk.table = TRUE,
         conf.int = FALSE,
         pval = TRUE,
-        pval.size = 6,                    # Larger p-value text
+        pval.size = 6 * plot_scale,       # p-value text (scaled)
         title = paste("Kaplan-Meier Survival Curves:", ylab),
         subtitle = if (!is.null(dataset_name)) paste("Cohort:", dataset_name) else NULL,
         xlab = "Time (months)",
         ylab = ylab,
-        risk.table.height = 0.10,
+        risk.table.height = 0.12,
         ggtheme = theme_minimal(),
         break.time.by = base_by,
         xlim = c(0, max(x_breaks)),
@@ -130,10 +133,12 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         risk.table.y.text = TRUE,
         tables.y.text = TRUE,
         risk.table.title = "Number at risk",
-        font.x = 14,                      # Larger x-axis label
-        font.y = 14,                      # Larger y-axis label
-        font.tickslab = 12,               # Larger axis tick labels
-        font.legend = 14                  # Larger legend text
+        font.x = 14 * plot_scale,         # x-axis label (scaled)
+        font.y = 14 * plot_scale,         # y-axis label (scaled)
+        font.tickslab = 12 * plot_scale,  # axis tick labels (scaled)
+        font.legend = 14 * plot_scale,    # legend text (scaled)
+        censor.size = 7 * plot_scale,     # censor tick marks (scaled larger)
+        size = 1.2 * plot_scale           # survival line thickness (scaled larger)
     )
 
     legend_override <- NULL
@@ -164,7 +169,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
 
         surv_plot$plot <- surv_plot$plot +
             ggplot2::aes(alpha = line_alpha, size = line_size) +
-            ggplot2::scale_color_manual(values = color_palette) +
+            ggplot2::scale_color_manual(values = color_palette, guide = "none") +
             ggplot2::scale_alpha_identity(guide = "none") +
             ggplot2::scale_size_identity(guide = "none")
 
@@ -176,7 +181,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             colour = color_palette[legend_labels]
         )
     } else {
-        surv_plot$plot <- surv_plot$plot + ggplot2::scale_color_manual(values = color_palette)
+        surv_plot$plot <- surv_plot$plot + ggplot2::scale_color_manual(values = color_palette, guide = "none")
     }
 
     legend_cols <- if (length(legend_labels) > 4) 2 else 1
@@ -196,15 +201,51 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             legend.position = "bottom",
             legend.box = "vertical"
         )
-    # Format y-axis as percent
+    # Further increase text sizes for clarity in publication figures
     surv_plot$plot <- surv_plot$plot +
-        scale_y_continuous(
+        ggplot2::theme(
+            legend.text = ggplot2::element_text(size = 16 * plot_scale, color = "black"),
+            legend.title = ggplot2::element_text(size = 16 * plot_scale, color = "black"),
+            axis.title = ggplot2::element_text(size = 18 * plot_scale, color = "black"),
+            axis.title.x = ggplot2::element_text(size = 18 * plot_scale, color = "black", face = "bold", 
+                                                  margin = ggplot2::margin(t = 15, r = 0, b = 0, l = 0)),  # Push x-axis title further away
+            axis.title.y = ggplot2::element_text(size = 18 * plot_scale, color = "black", face = "bold",
+                                                  margin = ggplot2::margin(t = 0, r = -10, b = 0, l = 10)),   # Shift y-axis title left (away from plot)
+            axis.text = ggplot2::element_text(size = 14 * plot_scale, color = "black"),
+            axis.text.x = ggplot2::element_text(color = "black"),
+            axis.text.y = ggplot2::element_text(color = "black"),
+            axis.line = ggplot2::element_blank(),      # Remove axis lines
+            axis.ticks = ggplot2::element_blank(),     # Remove tick marks
+            plot.title = ggplot2::element_text(size = 18 * plot_scale, face = "bold"),
+            plot.subtitle = ggplot2::element_text(size = 14 * plot_scale)
+        )
+    # Format y-axis as percent (keep after theme to preserve colors)
+    surv_plot$plot <- surv_plot$plot +
+        ggplot2::scale_y_continuous(
             limits = c(0, 1),
             breaks = seq(0, 1, by = 0.1),
             labels = function(x) x * 100,
             name = paste0(ylab, " (%)")
+        ) +
+        ggplot2::labs(x = "Time (months)") +  # Explicitly set x-axis label with black color via theme
+        ggplot2::geom_hline(yintercept = 0.5, linetype = "solid", color = "black", size = 0.9)  # 50% reference line
+    # Make risk table text larger and easier to read
+    surv_plot$table <- surv_plot$table + theme_minimal() +
+        ggplot2::theme(
+            axis.title = ggplot2::element_text(size = 14 * plot_scale, color = "black"),
+            axis.text.y = ggplot2::element_text(size = 14 * plot_scale, color = "black"),  # Strata labels (PBT, GKSRS)
+            axis.text.x = ggplot2::element_text(size = 14 * plot_scale, color = "black"),  # Time labels
+            strip.text = ggplot2::element_text(size = 14 * plot_scale, color = "black")
         )
-    surv_plot$table <- surv_plot$table + theme_minimal()
+    
+    # Increase the size of the actual numbers in the risk table
+    if (length(surv_plot$table$layers) > 0) {
+        for (i in seq_along(surv_plot$table$layers)) {
+            if ("GeomText" %in% class(surv_plot$table$layers[[i]]$geom)) {
+                surv_plot$table$layers[[i]]$aes_params$size <- 4 * plot_scale
+            }
+        }
+    }
     
     # Save KM plot if output_dirs are provided
     if (!is.null(output_dirs)) {

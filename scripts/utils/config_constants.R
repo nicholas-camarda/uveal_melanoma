@@ -399,6 +399,8 @@ BASELINE_CONTINUOUS_VARIABLES <- c(
 # - RMST_PLOT_WIDTH/HEIGHT: Dimensions for RMST plots
 # - PLOT_DPI: Resolution for all saved figures (300 DPI for publication quality)
 
+SURVIVAL_PLOT_SCALE <- 1.4 # Scale factor for survival plots
+
 # Variable order for forest plots and subgroup analyses
 FOREST_PLOT_VARIABLE_ORDER <- c(
     # "age_at_diagnosis_binned", 
@@ -428,15 +430,15 @@ FORESTPLOT_NAME_MAPPING <- list(
 # Plot dimensions and settings for all output figures
 FOREST_PLOT_WIDTH <- 10 # inches (reasonable width)
 FOREST_PLOT_HEIGHT <- 12 # inches (increased height for all subgroup levels)
-SURVIVAL_PLOT_WIDTH <- 10 # inches
-SURVIVAL_PLOT_HEIGHT <- 8 # inches
-PFS2_PLOT_HEIGHT <- 9 # inches (PFS-2 needs a bit more vertical space for risk table text)
+SURVIVAL_PLOT_WIDTH <- 14 # inches (increased to accommodate scaled text - was 10)
+SURVIVAL_PLOT_HEIGHT <- 11 # inches (increased to accommodate scaled text - was 8)
+PFS2_PLOT_HEIGHT <- 13 # inches (increased to accommodate scaled text - was 9, PFS-2 needs a bit more vertical space for risk table text)
 # KM x-axis cap (months) to match legacy visual range and avoid empty tails
 SURVIVAL_XAXIS_MAX_MONTHS <- 216
 # Dynamic sizing for KM plots based on number of strata (groups)
 KM_BASE_HEIGHT <- SURVIVAL_PLOT_HEIGHT       # base height for ~2 strata
 KM_HEIGHT_PER_STRATUM <- 0.5                 # extra inches per stratum beyond 2
-KM_MAX_HEIGHT <- 13                          # upper bound to avoid overly tall figures
+KM_MAX_HEIGHT <- 16                          # upper bound to avoid overly tall figures (was 13)
 RMST_PLOT_WIDTH <- 10 # inches
 RMST_PLOT_HEIGHT <- 6 # inches
 PLOT_DPI <- 300 # resolution
