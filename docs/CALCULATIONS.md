@@ -90,17 +90,26 @@ vision_change = case_when(
 )
 ```
 
-### **Sign Convention**
-
-- **Negative value** = vision worsened (logMAR increased)
-- **Positive value** = vision improved (logMAR decreased)
-
 ### **Understanding logMAR Scale**
 
+**CRITICAL: Lower logMAR = Better Vision**
+
 - **logMAR 0.0** = 20/20 vision (normal)
-- **Positive logMAR** = worse than 20/20 (e.g., +0.3 = 20/40 vision)
+- **Positive logMAR** = worse than 20/20 (e.g., +0.3 = 20/40 vision, +1.0 = 20/200 vision)
 - **Negative logMAR** = better than 20/20 (e.g., -0.1 = 20/16 vision)
-- **Higher logMAR = worse vision**
+- **Higher logMAR number = worse vision**
+- **Lower logMAR number = better vision**
+
+### **Sign Convention for CHANGE**
+
+**Formula:** `vision_change = initial_vision - follow_up_vision`
+
+**Interpretation (CONFUSING but standard in ophthalmology):**
+
+- **Negative vision_change** = vision **WORSENED** (logMAR increased from initial to follow-up)
+  - Example: 0.2 → 0.5 gives -0.3 (vision got worse ✗)
+- **Positive vision_change** = vision **IMPROVED** (logMAR decreased from initial to follow-up)
+  - Example: 0.5 → 0.2 gives +0.3 (vision got better ✓)
 
 ### **Example**
 
