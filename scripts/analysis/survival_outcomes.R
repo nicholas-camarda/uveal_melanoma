@@ -329,7 +329,9 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         rmst_results <- data.frame(
             Time_Point_Years = numeric(),
             Time_Point_Months = numeric(),
+            Group1_Name = character(),
             RMST_Group1 = numeric(),
+            Group2_Name = character(),
             RMST_Group2 = numeric(),
             RMST_Difference = numeric(),
             RMST_P_Value = numeric(),
@@ -351,7 +353,9 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         rmst_results <- data.frame(
             Time_Point_Years = numeric(),
             Time_Point_Months = numeric(),
+            Group1_Name = character(),
             RMST_Group1 = numeric(),
+            Group2_Name = character(),
             RMST_Group2 = numeric(),
             RMST_Difference = numeric(),
             RMST_P_Value = numeric(),
@@ -394,12 +398,19 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
                 }
             )
             if (!is.null(rmst_result)) {
+                # Get group names for clear labeling
+                unique_groups <- unique(new_data[[group_var]])
+                group1_name <- as.character(unique_groups[1])
+                group2_name <- as.character(unique_groups[2])
+                
                 rmst_results <- rbind(
                     rmst_results,
                     data.frame(
                         Time_Point_Years = time_years,
                         Time_Point_Months = time_point,
+                        Group1_Name = group1_name,
                         RMST_Group1 = round(rmst_result$RMST.arm0$rmst[1], 2),
+                        Group2_Name = group2_name,
                         RMST_Group2 = round(rmst_result$RMST.arm1$rmst[1], 2),
                         RMST_Difference = round(rmst_result$unadjusted.result[1, 1], 2),
                         RMST_P_Value = round(rmst_result$unadjusted.result[1, 4], 4),
@@ -422,7 +433,9 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
                     data.frame(
                         Time_Point_Years = time_years,
                         Time_Point_Months = time_point,
+                        Group1_Name = NA_character_,
                         RMST_Group1 = NA,
+                        Group2_Name = NA_character_,
                         RMST_Group2 = NA,
                         RMST_Difference = NA,
                         RMST_P_Value = NA,
