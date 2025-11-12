@@ -8,6 +8,7 @@ This document provides detailed technical information about the implementation, 
 
 - [Workflow Orchestration System](#workflow-orchestration-system)
 - [Cohort Definitions](#cohort-definitions)
+  - [Vital Status and Follow-up Classification](#vital-status-and-follow-up-classification)
 - [Directory Structure](#directory-structure)
 - [Data Processing Workflow](#data-processing-workflow)
 - [Quality Assurance](#quality-assurance)
@@ -90,6 +91,32 @@ This three-cohort design addresses key clinical and methodological challenges:
 - **Real-World Applicability:** Full cohort reflects actual clinical practice
 - **Treatment Limitations:** GKSRS-only cohort shows effectiveness in challenging cases
 - **Statistical Power:** Adequate sample sizes for robust statistical analysis
+
+### Vital Status and Follow-up Classification
+
+**Data Cutoff:** March 4, 2025 (per data dictionary)
+
+Patients are classified into three vital status categories for summary reporting:
+
+| Status | Definition | Criterion |
+|--------|------------|-----------|
+| **Dead** | Death occurred | `death_event = 1` |
+| **Alive** | Under active follow-up | `death_event = 0` AND last contact ≤450 days (~15 months) from cutoff |
+| **Lost to Follow-up** | No recent contact | `death_event = 0` AND last contact >450 days from cutoff |
+
+**Rationale for 450-Day Cutoff:**
+- Accounts for typical ophthalmology follow-up intervals (6-12 months)
+- Balances clinical reality of scheduled monitoring versus true loss to follow-up
+- Empirically determined to best separate actively followed versus lost patients
+
+**Survival Analysis Treatment:**
+- Both "alive" and "lost to follow-up" patients are censored at `last_known_alive_date`
+- Lost to follow-up does not indicate missing data; these patients contributed valid follow-up time
+- Total person-years of follow-up includes all patients up to their last documented contact
+
+**Implementation:** `scripts/utils/cohort_summary_export.R`
+
+**See also:** [Lost to Follow-up Classification](CALCULATIONS.md#lost-to-follow-up-classification) for detailed calculation methodology
 
 ---
 

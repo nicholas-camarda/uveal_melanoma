@@ -12,6 +12,9 @@ This document explains how key derived variables are calculated in the analysis 
 - [Event Indicators](#event-indicators)
 - [Age Calculations](#age-calculations)
 - [Follow-up Duration](#follow-up-duration)
+  - [Total Follow-up Time](#total-follow-up-time)
+  - [Lost to Follow-up Classification](#lost-to-follow-up-classification)
+- [Consolidation Notes](#consolidation-notes)
 
 ---
 
@@ -376,6 +379,57 @@ last_known_alive_date = pmax(
 - Takes the **maximum** date across all follow-up events
 - Ensures we capture the most recent patient contact
 - Critical for censoring in survival analyses
+
+---
+
+### **Lost to Follow-up Classification**
+
+**Purpose:** Distinguish between patients actively followed (alive with recent contact) versus those lost to follow-up (alive but no recent contact).
+
+**Data Cutoff Date:** March 4, 2025 (per data dictionary: "ALL DATA IS CURRENT AS OF 3/4/2025")
+
+**Formula:**
+
+```r
+# Calculate days since last contact
+days_since_last_contact = difftime(data_cutoff_date, last_known_alive_date, units = "days")
+
+# Classify follow-up status
+followup_status = case_when(
+    death_event == 1 ~ "dead",
+    days_since_last_contact <= 450 ~ "alive",
+    TRUE ~ "lost_to_followup"
+)
+```
+
+**Classification Criteria:**
+
+- **Dead:** `death_event = 1` (death occurred)
+- **Alive:** `death_event = 0` AND last contact ≤450 days (~15 months) from data cutoff
+- **Lost to Follow-up:** `death_event = 0` AND last contact >450 days from data cutoff
+
+**Cutoff Rationale:**
+
+The 450-day (15-month) cutoff was empirically determined to best represent patients who were truly lost to follow-up versus those with scheduled but less frequent monitoring. This threshold:
+
+- Accounts for typical follow-up intervals (patients may have 6-12 month visit schedules)
+- Balances clinical reality (some patients may have intentional gaps in care)
+- Provides meaningful separation between "actively followed" and "lost" patients
+
+**Clinical Interpretation:**
+
+- **Alive patients:** Under active surveillance with recent documentation
+- **Lost to follow-up patients:** Censored in survival analyses but considered non-compliant with follow-up protocol
+- These patients contribute follow-up time up to their last known contact date
+
+**Implementation:**
+
+Lost to follow-up status is calculated in `scripts/utils/cohort_summary_export.R` for summary statistics reporting. For survival analyses, all non-dead patients (both "alive" and "lost to follow-up") are treated as censored at their `last_known_alive_date`.
+
+**Example Counts (Full Cohort, n=260):**
+
+- PBT: 73 alive, 15 lost to follow-up, 33 dead
+- GKSRS: 90 alive, 25 lost to follow-up, 24 dead
 
 ---
 

@@ -61,6 +61,10 @@ run_specific_objective("uveal_melanoma_full_cohort", 1)  # Efficacy only
 
 **Eligibility criteria for restricted cohort:** Tumor diameter ≤20mm, height ≤10mm, no optic nerve involvement
 
+**Current cohort counts:** Automatically updated counts are tracked in `final_data/Analytic Dataset/cohort_summary_statistics.json`, regenerated with each analysis run.
+
+**Vital status classification:** Patients are categorized as dead (event occurred), alive (recent follow-up within 15 months), or lost to follow-up (no contact >15 months from data cutoff). See [detailed methodology →](docs/CALCULATIONS.md#lost-to-follow-up-classification)
+
 📖 **[Full cohort definitions and rationale →](docs/TECHNICAL.md#cohort-definitions)**
 
 ---
@@ -126,20 +130,26 @@ The pipeline runs through structured objectives:
 ## Output Organization
 
 ```
-final_data/Analysis/
-├── uveal_full/              # Full cohort (n=260)
-│   ├── 00_General/          # Baseline characteristics
-│   ├── 01_Efficacy/         # Primary outcomes
-│   │   ├── a_recurrence/
-│   │   ├── c_overall_survival/
-│   │   ├── d_progression_free_survival/
-│   │   ├── e_tumor_height_primary/
-│   │   └── g_subgroup_analysis/forest_plots/
-│   ├── 02_Safety/           # Vision & complications
-│   ├── 03_Repeat_Radiation/ # PFS-2 analysis
-│   └── 04_GEP_Validation/   # 🚧 Under construction
-├── uveal_restricted/        # Restricted cohort (n=167)
-└── gksrs/                   # GKSRS-only cohort (n=92)
+final_data/
+├── Analytic Dataset/           # Processed cohort data
+│   ├── cohort_summary_statistics.json  # ← Auto-updated cohort counts & outcomes
+│   ├── uveal_melanoma_full_cohort.rds
+│   ├── uveal_melanoma_restricted_cohort.rds
+│   └── uveal_melanoma_gksrs_only_cohort.rds
+├── Analysis/
+│   ├── uveal_full/              # Full cohort (n=260)
+│   │   ├── 00_General/          # Baseline characteristics
+│   │   ├── 01_Efficacy/         # Primary outcomes
+│   │   │   ├── a_recurrence/
+│   │   │   ├── c_overall_survival/
+│   │   │   ├── d_progression_free_survival/
+│   │   │   ├── e_tumor_height_primary/
+│   │   │   └── g_subgroup_analysis/forest_plots/
+│   │   ├── 02_Safety/           # Vision & complications
+│   │   ├── 03_Repeat_Radiation/ # PFS-2 analysis
+│   │   └── 04_GEP_Validation/   # 🚧 Under construction
+│   ├── uveal_restricted/        # Restricted cohort (n=167)
+│   └── gksrs/                   # GKSRS-only cohort (n=92)
 ```
 
 📖 **[Complete directory structure →](docs/TECHNICAL.md#directory-structure)**

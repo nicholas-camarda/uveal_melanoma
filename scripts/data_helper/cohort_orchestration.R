@@ -140,6 +140,13 @@ create_analytic_dataset <- function(output_dirs = NULL) {
     saveRDS(other_map, file.path(PROCESSED_DATA_DIR, "other_map.rds"))
     logger::log_info("Saved combined other_map information for all cohorts")
 
+    logger::log_info("Exporting cohort summary statistics to JSON")
+    export_cohort_summary(
+        cohort_list = factored_filtered_data,
+        removal_log = removal_log,
+        output_path = file.path(PROCESSED_DATA_DIR, "cohort_summary_statistics.json")
+    )
+
     logger::log_info("Validating cohorts after saving")
     # Validate after files are saved and that they meet all the criteria for analytic dataset
     generate_validation_report(factored_filtered_data)
