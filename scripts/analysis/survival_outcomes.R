@@ -1,5 +1,82 @@
 # Survival Outcomes Analysis
 
+#' Build combined RMST and survival summary table
+#'
+#' Joins RMST outputs with Kaplan-Meier survival percentages for each time point
+#' and treatment arm, producing a single table suitable for supplementary tables.
+#'
+#' @param rmst_results Data frame returned from the RMST calculation loop, containing
+#'   RMST estimates for each time point and treatment arm.
+#' @param surv_rates Data frame of survival percentages generated from `surv_summary`
+#'   (long format with one row per treatment/time combination).
+#' @return A data frame where each row corresponds to a time point and includes
+#'   survival percentages, RMST in years for both arms, the difference metrics, and
+#'   the associated p-value. Returns an empty data frame if inputs are missing.
+build_rmst_survival_summary <- function(rmst_results, surv_rates) {
+    if (is.null(rmst_results) || nrow(rmst_results) == 0) {
+        return(data.frame())
+    }
+    if (is.null(surv_rates) || nrow(surv_rates) == 0) {
+        return(data.frame())
+    }
+
+    survival_lookup <- surv_rates %>%
+        dplyr::transmute(
+            Treatment_Group = as.character(Treatment_Group),
+            Time_Point_Years = Time_Years,
+            Survival_Percent = as.numeric(surv_pct)
+        )
+
+    summary_df <- rmst_results %>%
+        dplyr::mutate(
+            Group1_Name = as.character(Group1_Name),
+            Group2_Name = as.character(Group2_Name)
+        ) %>%
+        dplyr::left_join(
+            survival_lookup,
+            by = c("Group1_Name" = "Treatment_Group", "Time_Point_Years" = "Time_Point_Years")
+        ) %>%
+        dplyr::rename(Group1_Survival_Percent = Survival_Percent)
+
+    survival_lookup_group2 <- survival_lookup %>%
+        dplyr::rename(
+            Group2_Name = Treatment_Group,
+            Group2_Survival_Percent = Survival_Percent
+        )
+
+    summary_df <- summary_df %>%
+        dplyr::left_join(
+            survival_lookup_group2,
+            by = c("Group2_Name", "Time_Point_Years" = "Time_Point_Years")
+        ) %>%
+        dplyr::mutate(
+            Group1_Survival_Percent = round(Group1_Survival_Percent, 1),
+            Group2_Survival_Percent = round(Group2_Survival_Percent, 1),
+            RMST_Group1_Years = round(RMST_Group1_Years, 2),
+            RMST_Group2_Years = round(RMST_Group2_Years, 2),
+            RMST_Difference_Months = round(RMST_Difference_Months, 2),
+            RMST_Difference_Years = round(RMST_Difference_Years, 2),
+            RMST_P_Value = round(RMST_P_Value, 4),
+            Time_Point_Label = paste0(Time_Point_Years, "-year")
+        ) %>%
+        dplyr::select(
+            Time_Point_Label,
+            Group1_Name,
+            Group1_Survival_Percent,
+            RMST_Group1_Years,
+            Group2_Name,
+            Group2_Survival_Percent,
+            RMST_Group2_Years,
+            RMST_Difference_Months,
+            RMST_Difference_Years,
+            RMST_P_Value,
+            Analysis_Type
+        ) %>%
+        rename(Time_Point = Time_Point_Label)
+
+    summary_df
+}
+
 #' Analyze time-to-event outcomes (KM + Cox)
 #' @param data Data frame
 #' @param time_var Time variable
@@ -341,6 +418,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             Analysis_Type = character(),
             stringsAsFactors = FALSE
         )
+        rmst_survival_summary <- data.frame()
     } else {
         surv_rates <- as.data.frame(surv_summary[c("strata", "time", "surv", "lower", "upper")]) %>%
             dplyr::mutate(
@@ -507,6 +585,11 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             }
         }
     }
+    rmst_survival_summary <- if (exists("rmst_results", inherits = FALSE)) {
+        build_rmst_survival_summary(rmst_results, surv_rates)
+    } else {
+        data.frame()
+    }
 
     # Prepare wide-format survival rates for reporting
     surv_rates_wide <- surv_rates %>%
@@ -593,6 +676,11 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         } else {
             logger::log_info(sprintf("Skipping RMST file creation - no valid RMST data available for %s", ylab))
         }
+        if (nrow(rmst_survival_summary) > 0) {
+            combined_path <- file.path(output_dir, paste0(prefix, make_filename_safe(ylab), "_survival_rmst_summary.xlsx"))
+            writexl::write_xlsx(rmst_survival_summary, path = combined_path)
+            logger::log_info(sprintf("Survival + RMST summary saved: %s", basename(combined_path)))
+        }
     }
 
     # Run Cox regression and generate regression table
@@ -638,6 +726,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         survival_rates = surv_rates,
         survival_rates_wide = surv_rates_wide_with_rmst,
         rmst_analysis = rmst_results,
+        rmst_survival_summary = rmst_survival_summary,
         rmst_plot = tryCatch({
             # Only generate RMST plot if there's valid RMST data
             rmst_has_data <- nrow(rmst_results) > 0 && any(!is.na(rmst_results$RMST_P_Value) & !grepl("Not applicable", rmst_results$Analysis_Type))
