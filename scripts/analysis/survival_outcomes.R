@@ -55,7 +55,7 @@ build_rmst_survival_summary <- function(rmst_results, surv_rates) {
             RMST_Group1_Years = round(RMST_Group1_Years, 2),
             RMST_Group2_Years = round(RMST_Group2_Years, 2),
             RMST_Difference_Months = round(RMST_Difference_Months, 2),
-            RMST_Difference_Years = round(RMST_Difference_Years, 2),
+            RMST_Difference_Years = round(RMST_Difference_Years, 3),
             RMST_P_Value = round(RMST_P_Value, 4),
             Time_Point_Label = paste0(Time_Point_Years, "-year")
         ) %>%
@@ -71,10 +71,33 @@ build_rmst_survival_summary <- function(rmst_results, surv_rates) {
             RMST_Difference_Years,
             RMST_P_Value,
             Analysis_Type
-        ) %>%
-        rename(Time_Point = Time_Point_Label)
+        )
 
-    summary_df
+    # Check that Group 1 and Groups 2 are consistently labeled as PBT and GKSRS respectively
+    if (!all(sort(unique(summary_df$Group1_Name)) == c("PBT")) || !all(sort(unique(summary_df$Group2_Name)) == c("GKSRS"))) {
+        logger::log_warn(format("Unexpected treatment group names in RMST summary; expected 'PBT' for Group 1 and 'GKSRS' for Group 2.", indent = 1))
+        stop("Aborting RMST summary generation due to unexpected treatment group names. Investigate upstream analysis for inconsistencies.")
+    } else {
+        logger::log_info(format("RMST summary treatment groups correctly labeled as 'PBT' (Group 1) and 'GKSRS' (Group 2).", indent = 1))
+    }
+
+    summary_df_final <- summary_df %>%
+        dplyr::select(-Group1_Name, -Group2_Name, -RMST_Difference_Months, -Analysis_Type) %>%
+        dplyr::rename(
+            `Time Point` = Time_Point_Label,
+            # `Group 1` = Group1_Name,
+            `PBT Survival (%)` = Group1_Survival_Percent,
+            `PBT RMST (Years)` = RMST_Group1_Years,
+            # `Group 2` = Group2_Name,
+            `GKSRS Survival (%)` = Group2_Survival_Percent,
+            `GKSRS RMST (Years)` = RMST_Group2_Years,
+            # `RMST Difference (Months)` = RMST_Difference_Months,
+            `RMST Diff (Years)` = RMST_Difference_Years,
+            `RMST P-Value` = RMST_P_Value
+            # `Analysis Type` = Analysis_Type
+        ) 
+
+    return(summary_df_final)
 }
 
 #' Analyze time-to-event outcomes (KM + Cox)
@@ -535,7 +558,10 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
                 rmst_group1_months <- round(rmst_result$RMST.arm0$rmst[1], 2)
                 rmst_group2_months <- round(rmst_result$RMST.arm1$rmst[1], 2)
                 rmst_diff_months <- round(rmst_result$unadjusted.result[1, 1], 2)
-                
+                rmst_diff_months <- ifelse(abs(rmst_diff_months) < 1e-10, 0, rmst_diff_months)
+                rmst_diff_years <- round(rmst_diff_months / 12, 3)
+                rmst_diff_years <- ifelse(abs(rmst_diff_years) < 1e-10, 0, rmst_diff_years)
+
                 rmst_results <- rbind(
                     rmst_results,
                     data.frame(
@@ -548,7 +574,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
                         RMST_Group2_Months = rmst_group2_months,
                         RMST_Group2_Years = round(rmst_group2_months / 12, 2),
                         RMST_Difference_Months = rmst_diff_months,
-                        RMST_Difference_Years = round(rmst_diff_months / 12, 2),
+                        RMST_Difference_Years = rmst_diff_years,
                         RMST_P_Value = round(rmst_result$unadjusted.result[1, 4], 4),
                         Analysis_Type = paste0("Mean survival up to ", time_years, " years"),
                         stringsAsFactors = FALSE
