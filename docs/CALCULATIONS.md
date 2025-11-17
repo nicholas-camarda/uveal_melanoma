@@ -154,6 +154,18 @@ Vision loss is **expected** after radiation treatment due to:
 
 `scripts/data_helper/data_derivation.R`, lines ~106-111
 
+### **Snellen-line Conversion & Reporting**
+
+- **Step 1: LogMAR delta** — derive $\Delta_\text{logMAR} = \text{initial logMAR} - \text{follow-up logMAR}$ (or the pre-salvage value for recurrence patients). Positive deltas therefore indicate improved acuity (lower logMAR at follow-up); negative deltas indicate vision loss.
+- **Step 2: Snellen lines** — convert logMAR deltas into integer line counts via $\text{lines} = \operatorname{round}(\Delta_\text{logMAR} / 0.1)$. One Snellen line equals 0.1 logMAR, so `+3` reflects a three-line improvement and `-3` reflects a three-line loss.
+- **Step 3: Labels & buckets** — translate counts into ordered labels through `vision_helpers.R::categorize_line_change()` and bucket them with `assign_line_change_bucket()`. Bucket levels are centrally defined in `config_constants.R::VISION_LINE_CHANGE_CATEGORY_LEVELS` (≥3-, 2-, 1-line improvement; Stable ±1; 1-, 2-, ≥3-line loss).
+
+**Outputs (Objective 2 / `a_vision_changes/` subfolder):**
+
+1. `*_vision_changes.html` — combined HTML with (a) logMAR summary, (b) Snellen-line summary, (c) bucketed line-change table (≥3-, 2-, 1-line improvement/loss plus Stable ±1).
+2. `*_vision_line_change_summary.html` — stacked Snellen-line summary, bucketed table, and full per-line distribution (also embedded inside the merged adverse-events deliverable).
+3. `*_vision_line_change_distribution.xlsx` and `*_vision_line_change_bucket_summary.xlsx` — Excel mirrors for QA and manuscript supplements.
+
 ---
 
 ## Time-to-Event Variables

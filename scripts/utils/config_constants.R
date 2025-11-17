@@ -455,6 +455,23 @@ SMALL_PLOT_HEIGHT <- 6 # inches
 # Centralized survival summary timepoints (years) used for KM summaries and RMST
 SURVIVAL_SUMMARY_TIMEPOINTS_YEARS <- c(1, 3, 5, 10, 15)
 
+
+#=============================================================================
+# Vision helper utilities
+# Provides shared functions for working with visual acuity changes.
+#=============================================================================
+# Vision change categorization settings
+VISION_LINE_CHANGE_STEP <- 0.1
+VISION_LINE_CHANGE_CATEGORY_LEVELS <- c(
+    "≥3-line improvement",
+    "2-line improvement",
+    "1-line improvement",
+    "Stable (0-line change)",
+    "1-line loss",
+    "2-line loss",
+    "≥3-line loss"
+)
+
 # =============================================================================
 # GEP VALIDATION CONFIGURATION (OBJECTIVE 4)
 # =============================================================================

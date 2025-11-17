@@ -29,7 +29,40 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, other_map =
     data_with_vision_change <- enforce_unordered_factors(data)
 
     # Preserve the full analytic set for descriptive summaries/tests (no location filtering)
-    summary_data <- data_with_vision_change
+    summary_data <- data_with_vision_change %>%
+        mutate(
+            vision_line_change = compute_line_change_lines(vision_change),
+            vision_line_change_label = categorize_line_change(vision_change),
+            vision_line_change_bucket = assign_line_change_bucket(vision_line_change)
+        )
+
+    line_levels <- line_change_label_levels(summary_data$vision_line_change)
+    line_values <- if (length(line_levels) > 0) {
+        seq(
+            min(summary_data$vision_line_change, na.rm = TRUE),
+            max(summary_data$vision_line_change, na.rm = TRUE)
+        )
+    } else {
+        numeric()
+    }
+
+    if (length(line_levels) > 0) {
+        summary_data <- summary_data %>%
+            mutate(
+                vision_line_change_label = factor(vision_line_change_label, levels = line_levels, ordered = TRUE)
+            )
+    }
+
+    if (!is.null(summary_data$vision_line_change_bucket)) {
+        summary_data <- summary_data %>%
+            mutate(
+                vision_line_change_bucket = factor(
+                    vision_line_change_bucket,
+                    levels = VISION_LINE_CHANGE_CATEGORY_LEVELS,
+                    ordered = TRUE
+                )
+            )
+    }
 
     # Remove "Other" levels prior to modeling and summarisation
     confounders_for_model <- confounders
@@ -61,6 +94,86 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, other_map =
             .groups = "drop"
         )
 
+    line_change_distribution <- tibble()
+    line_change_bucket_distribution <- tibble()
+
+    if (length(line_levels) > 0) {
+        level_lookup <- tibble(
+            vision_line_change_label = factor(line_levels, levels = line_levels, ordered = TRUE),
+            line_change_lines = line_values
+        )
+
+        by_group <- summary_data %>%
+            filter(!is.na(vision_line_change_label)) %>%
+            count(treatment_group, vision_line_change_label, name = "count") %>%
+            tidyr::complete(
+                treatment_group,
+                vision_line_change_label = level_lookup$vision_line_change_label,
+                fill = list(count = 0)
+            ) %>%
+            group_by(treatment_group) %>%
+            mutate(
+                total = sum(count),
+                percent = dplyr::if_else(total > 0, round(100 * count / total, 1), NA_real_)
+            ) %>%
+            ungroup()
+
+        overall_distribution <- summary_data %>%
+            filter(!is.na(vision_line_change_label)) %>%
+            mutate(treatment_group = factor("Overall", levels = "Overall")) %>%
+            count(treatment_group, vision_line_change_label, name = "count") %>%
+            tidyr::complete(
+                treatment_group,
+                vision_line_change_label = level_lookup$vision_line_change_label,
+                fill = list(count = 0)
+            ) %>%
+            group_by(treatment_group) %>%
+            mutate(
+                total = sum(count),
+                percent = dplyr::if_else(total > 0, round(100 * count / total, 1), NA_real_)
+            ) %>%
+            ungroup()
+
+        line_change_distribution <- bind_rows(by_group, overall_distribution) %>%
+            left_join(level_lookup, by = "vision_line_change_label") %>%
+            arrange(line_change_lines)
+    }
+
+    if (!all(is.na(summary_data$vision_line_change_bucket))) {
+        bucket_counts <- summary_data %>%
+            filter(!is.na(vision_line_change_bucket)) %>%
+            count(treatment_group, vision_line_change_bucket, name = "count") %>%
+            tidyr::complete(
+                treatment_group,
+                vision_line_change_bucket = factor(VISION_LINE_CHANGE_CATEGORY_LEVELS, levels = VISION_LINE_CHANGE_CATEGORY_LEVELS, ordered = TRUE),
+                fill = list(count = 0)
+            ) %>%
+            group_by(treatment_group) %>%
+            mutate(
+                total = sum(count),
+                percent = dplyr::if_else(total > 0, round(100 * count / total, 1), NA_real_)
+            ) %>%
+            ungroup()
+
+        overall_bucket_counts <- summary_data %>%
+            filter(!is.na(vision_line_change_bucket)) %>%
+            mutate(treatment_group = factor("Overall", levels = "Overall")) %>%
+            count(treatment_group, vision_line_change_bucket, name = "count") %>%
+            tidyr::complete(
+                treatment_group,
+                vision_line_change_bucket = factor(VISION_LINE_CHANGE_CATEGORY_LEVELS, levels = VISION_LINE_CHANGE_CATEGORY_LEVELS, ordered = TRUE),
+                fill = list(count = 0)
+            ) %>%
+            group_by(treatment_group) %>%
+            mutate(
+                total = sum(count),
+                percent = dplyr::if_else(total > 0, round(100 * count / total, 1), NA_real_)
+            ) %>%
+            ungroup()
+
+        line_change_bucket_distribution <- bind_rows(bucket_counts, overall_bucket_counts)
+    }
+
     # Statistical test
     wilcox.test(vision_change ~ treatment_group, data = summary_data)
 
@@ -86,14 +199,147 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, other_map =
             label = "**Characteristic**",
             stat_0 = "**Overall**\nN = {N}"
         ) %>%
-        modify_caption("Vision Changes Analysis") %>%
-        as_gt()
+        modify_caption("Vision change (logMAR)")
 
-    # Save table
+
+    line_change_bucket_tbl <- NULL
+    line_change_tbl <- NULL
+    if (length(line_levels) > 0) {
+        line_change_tbl <- summary_data %>%
+            filter(!is.na(vision_line_change_label)) %>%
+            select(treatment_group, vision_line_change_label) %>%
+            tbl_summary(
+                missing = "no",
+                by = treatment_group,
+                type = list(vision_line_change_label ~ "categorical"),
+                statistic = list(all_categorical() ~ "{n} ({p}%)"),
+                digits = list(all_categorical() ~ 1),
+                label = list(vision_line_change_label ~ "Snellen Line Change Distribution")
+            ) %>%
+            add_p(
+                test = list(
+                    all_categorical() ~ "fisher.test"
+                ),
+                test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))
+            ) %>%
+            add_overall() %>%
+            format_count_percent_columns() %>%
+            bold_labels() %>%
+            modify_header(
+                label = "**Snellen Line Change**",
+                stat_0 = "**Overall**\nN = {N}",
+                stat_1 = "**PBT**\nN = {n}",
+                stat_2 = "**GKSRS**\nN = {n}",
+                p.value = "**p-value**"
+            ) %>%
+            modify_caption("Snellen Line-Change Distribution")
+    }
+
+    if (!all(is.na(summary_data$vision_line_change_bucket))) {
+        line_change_bucket_tbl <- summary_data %>%
+            filter(!is.na(vision_line_change_bucket)) %>%
+            select(treatment_group, vision_line_change_bucket) %>%
+            tbl_summary(
+                missing = "no",
+                by = treatment_group,
+                type = list(vision_line_change_bucket ~ "categorical"),
+                statistic = list(all_categorical() ~ "{n} ({p}%)"),
+                digits = list(all_categorical() ~ 1),
+                label = list(vision_line_change_bucket ~ "Snellen Line Change Distribution (Bucketed)")
+            ) %>%
+            add_p(
+                test = list(
+                    all_categorical() ~ "fisher.test"
+                ),
+                test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))
+            ) %>%
+            add_overall() %>%
+            format_count_percent_columns() %>%
+            bold_labels() %>%
+            modify_header(
+                label = "**Snellen Line Change (Bucketed)**",
+                stat_0 = "**Overall**\nN = {N}",
+                stat_1 = "**PBT**\nN = {n}",
+                stat_2 = "**GKSRS**\nN = {n}",
+                p.value = "**p-value**"
+            ) %>%
+            modify_caption("Snellen Line-Change Summary (Bucketed)")
+    }
+
+    line_change_summary_tbl <- summary_data %>%
+        select(treatment_group, vision_line_change) %>%
+        tbl_summary(
+            missing = "no",
+            by = treatment_group,
+            type = list(vision_line_change ~ "continuous"),
+            statistic = list(vision_line_change ~ "{median} ({min}, {max})"),
+            digits = list(vision_line_change ~ 0),
+            label = list(vision_line_change ~ "Snellen Line Change (Lines)")
+        ) %>%
+        add_p(
+            test = list(
+                all_continuous() ~ "wilcox.test"
+            )
+        ) %>%
+        add_overall() %>%
+        bold_labels() %>%
+        modify_header(
+            label = "**Characteristic**",
+            stat_0 = "**Overall**\nN = {N}"
+        ) %>%
+    modify_caption("Snellen Line Change Summary")
+
+    # Save tables
+    stacked_tbls <- Filter(
+        Negate(is.null),
+        list(tbl_summary_obj, line_change_summary_tbl, line_change_bucket_tbl)
+    )
+
+    combined_tbl <- tbl_stack(tbls = stacked_tbls) %>%
+        modify_caption("Vision changes overview") %>%
+        modify_table_styling(
+            columns = "p.value",
+            rows = .data$row_type == "label",
+            footnote = NA_character_
+        ) %>%
+        modify_table_styling(
+            columns = "p.value",
+            footnote = "Wilcoxon rank-sum test for continuous rows; Fisher's exact test (simulated p-value) for categorical rows."
+        )
+
     save_gt_html(
-        tbl_summary_obj,
+        combined_tbl,
         filename = file.path(output_dirs$obj2_vision, paste0(prefix, "vision_changes.html"))
     )
+
+    if (nrow(line_change_distribution) > 0) {
+        writexl::write_xlsx(
+            line_change_distribution,
+            path = file.path(output_dirs$obj2_vision, paste0(prefix, "vision_line_change_distribution.xlsx"))
+        )
+    }
+
+    if (nrow(line_change_bucket_distribution) > 0) {
+        writexl::write_xlsx(
+            line_change_bucket_distribution,
+            path = file.path(output_dirs$obj2_vision, paste0(prefix, "vision_line_change_bucket_summary.xlsx"))
+        )
+    }
+
+    snellen_section_tbls <- Filter(
+        Negate(is.null),
+        list(line_change_summary_tbl, line_change_bucket_tbl, line_change_tbl)
+    )
+
+    if (length(snellen_section_tbls) > 0) {
+        snellen_combo_tbl <- tbl_stack(snellen_section_tbls) %>%
+            modify_caption("Snellen Line-Change Summary")
+
+        save_gt_html(
+            snellen_combo_tbl,
+            filename = file.path(output_dirs$obj2_vision, paste0(prefix, "vision_line_change_summary.html"))
+        )
+    }
 
     # Linear regression model
     logger::log_info("Fitting linear regression model for vision changes")
@@ -124,6 +370,11 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, other_map =
     return(list(
         changes = vision_changes,
         table = tbl_summary_obj,
+        line_change_distribution = line_change_distribution,
+        line_change_bucket_distribution = line_change_bucket_distribution,
+        line_change_table = line_change_tbl,
+        line_change_bucket_table = line_change_bucket_tbl,
+        line_change_summary_table = line_change_summary_tbl,
         regression_model = vision_lm,
         regression_table = vision_lm_tbl
     ))

@@ -709,6 +709,25 @@ format_count_percent_stat <- function(values) {
     }, character(1), USE.NAMES = FALSE)
 }
 
+format_count_percent_columns <- function(tbl) {
+    if (!inherits(tbl, "tbl_summary")) {
+        return(tbl)
+    }
+
+    stat_cols <- names(tbl$table_body)
+    stat_cols <- stat_cols[grepl("^stat_", stat_cols)]
+
+    if (length(stat_cols) == 0) {
+        return(tbl)
+    }
+
+    tbl %>%
+        modify_table_body(function(body) {
+            body %>%
+                mutate(across(all_of(stat_cols), format_count_percent_stat))
+        })
+}
+
 collapse_binary_outcomes_to_cases <- function(tbl) {
     tbl %>%
         modify_table_body(function(body) {
@@ -737,6 +756,20 @@ collapse_binary_outcomes_to_cases <- function(tbl) {
         })
 }
 
+
+#' Merge adverse events tables from full and restricted cohorts
+#'
+#' Creates a merged table comparing adverse events between full and restricted cohorts
+#' using gtsummary's built-in functions for clean, publication-ready output.
+#' Follows the exact same pattern as merge_cohort_tables.
+#'
+#' @param full_cohort_data Data frame containing full cohort data
+#' @param restricted_cohort_data Data frame containing restricted cohort data
+#' @param output_path Directory where merged tables should be saved
+#' @return Invisibly returns NULL
+#'
+#' @examples
+#' merge_adverse_events_tables(full_data, restricted_data, "final_data/Analysis/merged_tables/")
 merge_adverse_events_tables <- function(full_cohort_data, restricted_cohort_data, output_path = NULL) {
     logger::log_info("=== STARTING TABLE MERGING: Adverse Events ===")
 
@@ -777,35 +810,167 @@ merge_adverse_events_tables <- function(full_cohort_data, restricted_cohort_data
                     stop("No adverse event variables available for summarization")
                 }
 
-                data %>%
-                    select(treatment_group, all_of(available_vars)) %>%
-                    tbl_summary(
-                        by = treatment_group,
-                        missing = "no",
-                        label = labels[available_vars],
-                        statistic = list(
-                            all_continuous() ~ "{median} ({min}, {max})",
-                            all_categorical() ~ "{n} ({p}%)"
-                        ),
-                        digits = list(all_continuous() ~ 1, all_categorical() ~ 1)
-                    ) %>%
-                    add_overall() %>%
-                    add_p(
-                        test = list(
-                            all_continuous() ~ "wilcox.test",
-                            all_categorical() ~ "fisher.test"
-                        ),
-                        test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))
-                    ) %>%
-                    bold_labels() %>%
-                    modify_header(
-                        label = "**Adverse Event**",
-                        stat_0 = "**Overall**\nN = {N}",
-                        stat_1 = "**PBT**\nN = {n}",
-                        stat_2 = "**GKSRS**\nN = {n}",
-                        p.value = "**p-value**"
-                    ) %>%
-                    collapse_binary_outcomes_to_cases()
+                has_vision_change <- "vision_change" %in% available_vars
+                base_vars <- setdiff(available_vars, "vision_change")
+
+                base_tbl <- NULL
+                if (length(base_vars) > 0) {
+                    base_tbl <- data %>%
+                        select(treatment_group, all_of(base_vars)) %>%
+                        tbl_summary(
+                            by = treatment_group,
+                            missing = "no",
+                            label = labels[base_vars],
+                            statistic = list(
+                                all_continuous() ~ "{median} ({min}, {max})",
+                                all_categorical() ~ "{n} ({p}%)"
+                            ),
+                            digits = list(all_continuous() ~ 1, all_categorical() ~ 1)
+                        ) %>%
+                        add_overall() %>%
+                        add_p(
+                            test = list(
+                                all_continuous() ~ "wilcox.test",
+                                all_categorical() ~ "fisher.test"
+                            ),
+                            test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))
+                        ) %>%
+                        format_count_percent_columns() %>%
+                        bold_labels() %>%
+                        modify_header(
+                            label = "**Adverse Event**",
+                            stat_0 = "**Overall**\nN = {N}",
+                            stat_1 = "**PBT**\nN = {n}",
+                            stat_2 = "**GKSRS**\nN = {n}",
+                            p.value = "**p-value**"
+                        ) %>%
+                        modify_table_styling(
+                            columns = "p.value",
+                            footnote = "Wilcoxon rank-sum test for continuous rows; Fisher's exact test (simulated p-value) for categorical rows."
+                        ) %>%
+                        collapse_binary_outcomes_to_cases()
+                }
+
+                if (has_vision_change) {
+                    line_counts <- compute_line_change_lines(data$vision_change)
+                    line_levels <- line_change_label_levels(line_counts)
+                    bucket_levels <- VISION_LINE_CHANGE_CATEGORY_LEVELS
+
+                    vision_change_tbl <- NULL
+                    line_change_tbl <- NULL
+                    line_change_bucket_tbl <- NULL
+                    line_change_summary_tbl <- NULL
+
+                    vision_change_tbl <- data %>%
+                        select(treatment_group, vision_change) %>%
+                        tbl_summary(
+                            by = treatment_group,
+                            missing = "no",
+                            label = list(vision_change ~ "Vision Change (logMAR)"),
+                            statistic = list(vision_change ~ "{median} ({min}, {max})"),
+                            digits = list(vision_change ~ 1)
+                        ) %>%
+                        add_overall() %>%
+                        add_p(test = list(all_continuous() ~ "wilcox.test")) %>%
+                        bold_labels() %>%
+                        modify_header(
+                            label = "**Characteristic**",
+                            stat_0 = "**Overall**\nN = {N}"
+                        )
+
+                    if (length(line_levels) > 0) {
+                        line_change_tbl <- data %>%
+                            mutate(
+                                vision_line_change_category = format_line_change_label(line_counts),
+                                vision_line_change_category = factor(vision_line_change_category, levels = line_levels, ordered = TRUE)
+                            ) %>%
+                            filter(!is.na(vision_line_change_category)) %>%
+                            select(treatment_group, vision_line_change_category) %>%
+                            tbl_summary(
+                                by = treatment_group,
+                                missing = "no",
+                                type = list(vision_line_change_category ~ "categorical"),
+                                statistic = list(all_categorical() ~ "{n} ({p}%)"),
+                                digits = list(all_categorical() ~ 1),
+                                label = list(vision_line_change_category ~ "Snellen Line Change Distribution")
+                            ) %>%
+                            add_overall() %>%
+                            add_p(
+                                test = list(all_categorical() ~ "fisher.test"),
+                                test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))
+                            ) %>%
+                            format_count_percent_columns() %>%
+                            bold_labels() %>%
+                            modify_header(
+                                label = "**Snellen Line Change**",
+                                stat_0 = "**Overall**\nN = {N}",
+                                stat_1 = "**PBT**\nN = {n}",
+                                stat_2 = "**GKSRS**\nN = {n}",
+                                p.value = "**p-value**"
+                            )
+                    }
+
+                    if (any(!is.na(line_counts))) {
+                        line_change_bucket_tbl <- data %>%
+                            mutate(
+                                vision_line_change_bucket = assign_line_change_bucket(line_counts),
+                                vision_line_change_bucket = factor(vision_line_change_bucket, levels = bucket_levels, ordered = TRUE)
+                            ) %>%
+                            filter(!is.na(vision_line_change_bucket)) %>%
+                            select(treatment_group, vision_line_change_bucket) %>%
+                            tbl_summary(
+                                by = treatment_group,
+                                missing = "no",
+                                type = list(vision_line_change_bucket ~ "categorical"),
+                                statistic = list(all_categorical() ~ "{n} ({p}%)"),
+                                digits = list(all_categorical() ~ 1),
+                                label = list(vision_line_change_bucket ~ "Snellen Line Change Distribution (Bucketed)")
+                            ) %>%
+                            add_overall() %>%
+                            add_p(
+                                test = list(all_categorical() ~ "fisher.test"),
+                                test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))
+                            ) %>%
+                            format_count_percent_columns() %>%
+                            bold_labels() %>%
+                            modify_header(
+                                label = "**Snellen Line Change (Bucketed)**",
+                                stat_0 = "**Overall**\nN = {N}",
+                                stat_1 = "**PBT**\nN = {n}",
+                                stat_2 = "**GKSRS**\nN = {n}",
+                                p.value = "**p-value**"
+                            )
+
+                        line_change_summary_tbl <- data %>%
+                            mutate(vision_line_change = line_counts) %>%
+                            filter(!is.na(vision_line_change)) %>%
+                            select(treatment_group, vision_line_change) %>%
+                            tbl_summary(
+                                by = treatment_group,
+                                missing = "no",
+                                type = list(vision_line_change ~ "continuous"),
+                                statistic = list(vision_line_change ~ "{median} ({min}, {max})"),
+                                digits = list(vision_line_change ~ 0),
+                                label = list(vision_line_change ~ "Snellen Line Change (Lines)")
+                            ) %>%
+                            add_overall() %>%
+                            add_p(test = list(all_continuous() ~ "wilcox.test")) %>%
+                            bold_labels() %>%
+                            modify_header(
+                                label = "**Characteristic**",
+                                stat_0 = "**Overall**\nN = {N}"
+                            )
+                    }
+
+                    stacked_tables <- Filter(
+                        Negate(is.null),
+                        c(list(vision_change_tbl, line_change_summary_tbl, line_change_bucket_tbl), list(base_tbl))
+                    )
+
+                    return(tbl_stack(stacked_tables))
+                }
+
+                base_tbl
             }
 
             full_outcomes <- summarise_adverse_outcomes(full_cohort_prepared, available_full)
@@ -815,7 +980,11 @@ merge_adverse_events_tables <- function(full_cohort_data, restricted_cohort_data
                 tbls = list(full_outcomes, restricted_outcomes),
                 tab_spanner = c("**Full Cohort**", "**Restricted Cohort**")
             ) %>%
-                modify_caption("**Table 3: Adverse Events**")
+                modify_caption("**Table 3: Adverse Events**") %>%
+                modify_table_styling(
+                    columns = starts_with("p.value"),
+                    footnote = "Wilcoxon rank-sum test for continuous rows; Fisher's exact test (simulated p-value) for categorical rows."
+                )
 
             save_gt_html(
                 merged_table,

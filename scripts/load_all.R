@@ -113,14 +113,19 @@ use("mice") # Multiple imputation by chained equations
 
 # Source the split configuration and utility files
 source(here("scripts", "utils", "config_constants.R"))
+source(here("scripts", "utils", "output_utilities.R"))
 source(here("scripts", "utils", "logging_utilities.R"))
 source(here("scripts", "utils", "validation_utilities.R"))
 source(here("scripts", "utils", "model_utilities.R"))
 source(here("scripts", "utils", "color_palettes.R"))
 source(here("scripts", "utils", "cohort_summary_export.R"))
+source(here("scripts", "utils", "vision_helpers.R"))
  
  # Source the extreme estimate handling utilities
 source(here("scripts", "utils", "extreme_estimate_handling.R"))
+
+# Source the forest plot diagnostics script
+source(here("scripts", "utils", "forest_plot_diagnostics.R"))
 
 # Source the table generation utilities (modularized)
 source(here("scripts", "tables", "table_generation_core.R"))
@@ -138,7 +143,6 @@ source(here("scripts", "data_helper", "cohort_orchestration.R"))
 
 # Source the utility and helper scripts
 source(here("scripts", "data_helper", "data_utilities.R"))
-source(here("scripts", "utils", "output_utilities.R"))
 
 # Source the main analysis function scripts
 source(here("scripts", "analysis", "tumor_height_analysis.R"))
@@ -178,9 +182,6 @@ source(here("scripts", "gep", "orchestration", "gep_evaluation_orchestration.R")
 source(here("scripts", "visualization", "forest_plot_data.R"))
 source(here("scripts", "visualization", "forest_plot_draw.R"))
 source(here("scripts", "visualization", "forest_plot_formatting.R"))
-
-# Source the forest plot diagnostics script
-source(here("scripts", "utils", "forest_plot_diagnostics.R"))
 
 # Workflow scripts
 source(here("scripts", "workflow", "analysis_orchestration.R"))
