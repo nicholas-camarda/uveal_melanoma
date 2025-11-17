@@ -13,11 +13,19 @@
 #' @param group2_name Character string for the second group (coded as 1 in RMST)
 #' @return ggplot object
 plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dirs, prefix, group1_name = "Group 1", group2_name = "Group 2") {
+    diff_column <- if ("RMST_Difference_Months" %in% names(rmst_results)) {
+        "RMST_Difference_Months"
+    } else if ("RMST_Difference" %in% names(rmst_results)) {
+        "RMST_Difference"
+    } else {
+        NULL
+    }
     # Pre-filter to exclude failed RMST analyses before creating plot data
     # This addresses the root cause rather than filtering NA values after they're created
     plot_data <- rmst_results %>%
         filter(!is.na(RMST_P_Value), !is.na(Time_Point_Years)) %>%
         mutate(
+            RMST_Diff_Value = if (!is.null(diff_column)) (!!rlang::sym(diff_column)) else NA_real_,
             Significant = RMST_P_Value < 0.05,
             Log_P_Value = -log10(RMST_P_Value),
             # RMST_Difference direction depends on group comparison
@@ -25,8 +33,9 @@ plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dir
             # For multi-group: positive = others advantage, negative = first group advantage
             Direction = case_when(
                 !Significant ~ "Not significant",
-                RMST_Difference > 0 ~ sprintf("%s advantage", group2_name),
-                RMST_Difference < 0 ~ sprintf("%s advantage", group1_name),
+                is.na(RMST_Diff_Value) ~ "Direction unavailable",
+                RMST_Diff_Value > 0 ~ sprintf("%s advantage", group2_name),
+                RMST_Diff_Value < 0 ~ sprintf("%s advantage", group1_name),
                 TRUE ~ "Not significant"
             ),
             Significance_Level = case_when(
@@ -115,9 +124,14 @@ plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dir
         vjust = -2.0, hjust = 0.5, size = 3.5, color = "black", fontface = "bold"
     ) +
     geom_text(
-        aes(label = sprintf("%s%.1f mo", 
-                           ifelse(RMST_Difference > 0, "+", ""), 
-                           RMST_Difference)),
+        aes(label = ifelse(
+            is.na(RMST_Diff_Value),
+            "NA",
+            sprintf("%s%.1f mo",
+                ifelse(RMST_Diff_Value > 0, "+", ""),
+                RMST_Diff_Value
+            )
+        )),
         vjust = -0.8, hjust = 0.5, size = 3.5, color = "black", fontface = "bold"
     )
 

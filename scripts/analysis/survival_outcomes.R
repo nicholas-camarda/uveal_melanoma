@@ -330,10 +330,13 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             Time_Point_Years = numeric(),
             Time_Point_Months = numeric(),
             Group1_Name = character(),
-            RMST_Group1 = numeric(),
+            RMST_Group1_Months = numeric(),
+            RMST_Group1_Years = numeric(),
             Group2_Name = character(),
-            RMST_Group2 = numeric(),
-            RMST_Difference = numeric(),
+            RMST_Group2_Months = numeric(),
+            RMST_Group2_Years = numeric(),
+            RMST_Difference_Months = numeric(),
+            RMST_Difference_Years = numeric(),
             RMST_P_Value = numeric(),
             Analysis_Type = character(),
             stringsAsFactors = FALSE
@@ -354,10 +357,13 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             Time_Point_Years = numeric(),
             Time_Point_Months = numeric(),
             Group1_Name = character(),
-            RMST_Group1 = numeric(),
+            RMST_Group1_Months = numeric(),
+            RMST_Group1_Years = numeric(),
             Group2_Name = character(),
-            RMST_Group2 = numeric(),
-            RMST_Difference = numeric(),
+            RMST_Group2_Months = numeric(),
+            RMST_Group2_Years = numeric(),
+            RMST_Difference_Months = numeric(),
+            RMST_Difference_Years = numeric(),
             RMST_P_Value = numeric(),
             Analysis_Type = character(),
             stringsAsFactors = FALSE
@@ -375,9 +381,35 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
                     logger::log_info(sprintf("DEBUG: Unique groups for RMST: %s", paste(unique_groups, collapse = ", ")))
                     
                     if (length(unique_groups) == 2) {
-                        # Binary comparison: use 0/1 coding
-                        group_binary <- ifelse(new_data[[group_var]] == unique_groups[2], 1, 0)
-                        logger::log_info(sprintf("DEBUG: Running RMST for binary comparison: %s vs %s", unique_groups[1], unique_groups[2]))
+                        # Binary comparison: use 0/1 coding based on **treatment** factor levels
+                        # We know for this pipeline that treatment_group should always be
+                        # coded with PBT as reference and GKSRS as comparison. Any deviation
+                        # should be coerced back to that convention rather than inferred.
+
+                        if (group_var == "treatment_group") {
+                            new_data[[group_var]] <- factor(
+                                as.character(new_data[[group_var]]),
+                                levels = TREATMENT_FACTOR_LEVELS
+                            )
+                            factor_levels <- TREATMENT_FACTOR_LEVELS
+                        } else {
+                            # For non-treatment groupings (e.g., GEP strata), fall back to
+                            # simple factor coercion but keep the natural ordering.
+                            new_data[[group_var]] <- factor(new_data[[group_var]])
+                            factor_levels <- levels(new_data[[group_var]])
+                        }
+
+                        # Require at least two levels before proceeding
+                        if (length(factor_levels) < 2) {
+                            logger::log_warn(sprintf(
+                                "RMST: group_var '%s' has <2 levels after coercion; skipping RMST at time_point=%.1f months",
+                                group_var, time_point
+                            ))
+                            return(NULL)
+                        }
+
+                        group_binary <- ifelse(new_data[[group_var]] == factor_levels[2], 1, 0)
+                        logger::log_info(sprintf("DEBUG: Running RMST for binary comparison: %s (arm=0) vs %s (arm=1)", factor_levels[1], factor_levels[2]))
                         
                         rmst2(
                             time = new_data[[time_var]],
@@ -399,9 +431,32 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             )
             if (!is.null(rmst_result)) {
                 # Get group names for clear labeling
-                unique_groups <- unique(new_data[[group_var]])
-                group1_name <- as.character(unique_groups[1])
-                group2_name <- as.character(unique_groups[2])
+                if (group_var == "treatment_group") {
+                    # We know the correct order from config: PBT (arm 0), GKSRS (arm 1)
+                    factor_levels <- TREATMENT_FACTOR_LEVELS
+                } else {
+                    factor_levels <- levels(new_data[[group_var]])
+                    if (is.null(factor_levels) || length(factor_levels) == 0) {
+                        new_data[[group_var]] <- factor(new_data[[group_var]])
+                        factor_levels <- levels(new_data[[group_var]])
+                    }
+                }
+
+                if (length(factor_levels) < 2) {
+                    logger::log_warn(sprintf(
+                        "RMST row build: group_var '%s' has <2 levels; skipping RMST row for time_point=%.1f months",
+                        group_var, time_point
+                    ))
+                    next
+                }
+
+                group1_name <- as.character(factor_levels[1])  # arm=0 (reference, e.g., PBT)
+                group2_name <- as.character(factor_levels[2])  # arm=1 (comparison, e.g., GKSRS)
+                
+                # Calculate RMST values
+                rmst_group1_months <- round(rmst_result$RMST.arm0$rmst[1], 2)
+                rmst_group2_months <- round(rmst_result$RMST.arm1$rmst[1], 2)
+                rmst_diff_months <- round(rmst_result$unadjusted.result[1, 1], 2)
                 
                 rmst_results <- rbind(
                     rmst_results,
@@ -409,10 +464,13 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
                         Time_Point_Years = time_years,
                         Time_Point_Months = time_point,
                         Group1_Name = group1_name,
-                        RMST_Group1 = round(rmst_result$RMST.arm0$rmst[1], 2),
+                        RMST_Group1_Months = rmst_group1_months,
+                        RMST_Group1_Years = round(rmst_group1_months / 12, 2),
                         Group2_Name = group2_name,
-                        RMST_Group2 = round(rmst_result$RMST.arm1$rmst[1], 2),
-                        RMST_Difference = round(rmst_result$unadjusted.result[1, 1], 2),
+                        RMST_Group2_Months = rmst_group2_months,
+                        RMST_Group2_Years = round(rmst_group2_months / 12, 2),
+                        RMST_Difference_Months = rmst_diff_months,
+                        RMST_Difference_Years = round(rmst_diff_months / 12, 2),
                         RMST_P_Value = round(rmst_result$unadjusted.result[1, 4], 4),
                         Analysis_Type = paste0("Mean survival up to ", time_years, " years"),
                         stringsAsFactors = FALSE
@@ -434,10 +492,13 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
                         Time_Point_Years = time_years,
                         Time_Point_Months = time_point,
                         Group1_Name = NA_character_,
-                        RMST_Group1 = NA,
+                        RMST_Group1_Months = NA,
+                        RMST_Group1_Years = NA,
                         Group2_Name = NA_character_,
-                        RMST_Group2 = NA,
-                        RMST_Difference = NA,
+                        RMST_Group2_Months = NA,
+                        RMST_Group2_Years = NA,
+                        RMST_Difference_Months = NA,
+                        RMST_Difference_Years = NA,
                         RMST_P_Value = NA,
                         Analysis_Type = analysis_type_msg,
                         stringsAsFactors = FALSE
@@ -473,7 +534,14 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     rmst_diff_row <- data.frame(Treatment_Group = "RMST Difference (months)", stringsAsFactors = FALSE)
     for (i in seq_len(nrow(rmst_results))) {
         time_label <- paste0(rmst_results$Time_Point_Years[i], "-year")
-        rmst_diff <- rmst_results$RMST_Difference[i]
+        # Column renamed to RMST_Difference_Months; guard for backward compatibility
+        rmst_diff <- if ("RMST_Difference_Months" %in% names(rmst_results)) {
+            rmst_results$RMST_Difference_Months[i]
+        } else if ("RMST_Difference" %in% names(rmst_results)) {
+            rmst_results$RMST_Difference[i]
+        } else {
+            NA_real_
+        }
         if (time_label %in% names(surv_rates_wide)) {
             rmst_diff_row[[time_label]] <- if (is.na(rmst_diff)) "NA" else sprintf("%.2f", rmst_diff)
         }
@@ -515,7 +583,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             path = file.path(output_dir, paste0(prefix, make_filename_safe(ylab), "_survival_rates_wide.xlsx"))
         )
         # Only save RMST file if there's actual RMST data (not just "Not applicable" rows)
-        rmst_has_data <- any(!is.na(rmst_results$RMST_P_Value) & !grepl("Not applicable", rmst_results$Analysis_Type))
+        rmst_has_data <- nrow(rmst_results) > 0 && any(!is.na(rmst_results$RMST_P_Value) & !grepl("Not applicable", rmst_results$Analysis_Type))
         if (rmst_has_data) {
             writexl::write_xlsx(
                 rmst_results,
@@ -552,6 +620,17 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         return(NULL)
     })
 
+    logger::log_info(sprintf(
+        "DEBUG: RMST summary for %s - rows: %d, any valid p-values: %s",
+        ylab,
+        nrow(rmst_results),
+        if (nrow(rmst_results) > 0) {
+            any(!is.na(rmst_results$RMST_P_Value) & !grepl("Not applicable", rmst_results$Analysis_Type))
+        } else {
+            FALSE
+        }
+    ))
+
     # Return all results as a list
     list(
         fit = surv_fit,
@@ -561,12 +640,18 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         rmst_analysis = rmst_results,
         rmst_plot = tryCatch({
             # Only generate RMST plot if there's valid RMST data
-            rmst_has_data <- any(!is.na(rmst_results$RMST_P_Value) & !grepl("Not applicable", rmst_results$Analysis_Type))
+            rmst_has_data <- nrow(rmst_results) > 0 && any(!is.na(rmst_results$RMST_P_Value) & !grepl("Not applicable", rmst_results$Analysis_Type))
             if (rmst_has_data) {
-                # Get group names for RMST plot
-                unique_groups <- levels(new_data[[group_var]])
-                group1_name <- unique_groups[1]
-                group2_name <- unique_groups[2]
+                # Get group names for RMST plot - use levels() to match factor order
+                factor_levels <- levels(new_data[[group_var]])
+                
+                # If not a factor or no levels, fall back to unique values in sorted order
+                if (is.null(factor_levels) || length(factor_levels) == 0) {
+                    factor_levels <- sort(unique(new_data[[group_var]]))
+                }
+                
+                group1_name <- as.character(factor_levels[1])
+                group2_name <- as.character(factor_levels[2])
                 
                 plot_rmst_pvalue_progression(rmst_results, ylab, output_dirs, prefix, group1_name, group2_name)
             } else {
