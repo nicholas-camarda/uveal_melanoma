@@ -34,56 +34,88 @@ create_consolidated_gep_tables <- function(validation_results, outcome_type, out
         }
     }
 
-    # Build PRAME summary table when available
+    # Build PRAME summary table when available (handles enriched NRI/IDI outputs)
     prame_consolidated <- data.frame()
     if (!is.null(prame_results)) {
-        # MFS structure: list with element 'nri_results' (list per timepoint) containing 'nri_total'
+        interpret_nri <- function(nri_value, idi_value) {
+            if (is.na(nri_value)) {
+                return("Analysis failed - insufficient data")
+            }
+            if (nri_value > 0) {
+                return(sprintf("Improvement (IDI %.3f)", ifelse(is.na(idi_value), 0, idi_value)))
+            }
+            if (nri_value < 0) {
+                return(sprintf("Worsening (IDI %.3f)", ifelse(is.na(idi_value), 0, idi_value)))
+            }
+            return("No net change in risk classification")
+        }
+
+        # Preferred path: modern structure with nri_results list (used by both MFS and MSS flows)
         if (!is.null(prame_results$nri_results) && is.list(prame_results$nri_results)) {
-            rows <- lapply(names(prame_results$nri_results), function(tp) {
-                res <- prame_results$nri_results[[tp]]
-                nri_val <- suppressWarnings(as.numeric(res$nri_total))
-                nri_interpretation <- if (is.na(nri_val)) {
-                    "Analysis failed - insufficient data"
-                } else if (nri_val == 0) {
-                    "No improvement - PRAME doesn't add value beyond GEP alone"
-                } else if (nri_val > 0) {
-                    "Improvement - PRAME enhances risk stratification"
-                } else {
-                    "Worsening - PRAME reduces risk stratification accuracy"
-                }
+            rows <- lapply(names(prame_results$nri_results), function(tp_name) {
+                res <- prame_results$nri_results[[tp_name]]
+                counts <- res$reclassification_counts %||% list()
+                model_comp <- res$model_comparison %||% list()
+                nri_total <- suppressWarnings(as.numeric(res$nri_total))
+                idi_val <- suppressWarnings(as.numeric(res$idi))
                 data.frame(
-                    Timepoint = tp, 
-                    NRI = nri_val, 
-                    Interpretation = nri_interpretation,
+                    Timepoint = res$timepoint %||% tp_name,
+                    N = res$n %||% prame_results$n %||% NA,
+                    Events = res$events %||% NA,
+                    Non_Events = res$nonevents %||% NA,
+                    NRI_Total = nri_total,
+                    NRI_Events = suppressWarnings(as.numeric(res$nri_events)),
+                    NRI_NonEvents = suppressWarnings(as.numeric(res$nri_nonevents)),
+                    IDI = idi_val,
+                    McNemar_p = suppressWarnings(as.numeric(res$mcnemar_p)),
+                    Event_Up = counts$event_up %||% NA,
+                    Event_Down = counts$event_down %||% NA,
+                    NonEvent_Up = counts$nonevent_up %||% NA,
+                    NonEvent_Down = counts$nonevent_down %||% NA,
+                    Base_AUC = suppressWarnings(as.numeric(model_comp$base_auc)),
+                    Enhanced_AUC = suppressWarnings(as.numeric(model_comp$enhanced_auc)),
+                    AUC_Diff = suppressWarnings(as.numeric(model_comp$auc_difference)),
+                    Interpretation = interpret_nri(nri_total, idi_val),
                     stringsAsFactors = FALSE
                 )
             })
-            if (length(rows) > 0) prame_consolidated <- do.call(rbind, rows)
+            if (length(rows) > 0) {
+                prame_consolidated <- do.call(rbind, rows)
+            }
         } else if (is.list(prame_results)) {
-            # MSS structure: list per timepoint with data.frame having column 'nri'
+            # Legacy fallback: MSS exported data.frames with simple 'nri' column
             rows <- list()
             for (nm in names(prame_results)) {
                 val <- prame_results[[nm]]
-                if (is.data.frame(val) && "nri" %in% names(val)) {
-                    nri_val <- suppressWarnings(as.numeric(val$nri)[1])
-                    nri_interpretation <- if (is.na(nri_val)) {
-                        "Analysis failed - insufficient data"
-                    } else if (nri_val == 0) {
-                        "No improvement - PRAME doesn't add value beyond GEP alone"
-                    } else if (nri_val > 0) {
-                        "Improvement - PRAME enhances risk stratification"
-                    } else {
-                        "Worsening - PRAME reduces risk stratification accuracy"
-                    }
+                if (is.data.frame(val) && any(c("nri", "NRI") %in% names(val))) {
+                    nri_col <- intersect(c("nri", "NRI"), names(val))[1]
+                    nri_val <- suppressWarnings(as.numeric(val[[nri_col]][1]))
                     rows[[length(rows) + 1]] <- data.frame(
-                        Timepoint = nm, 
-                        NRI = nri_val, 
-                        Interpretation = nri_interpretation,
+                        Timepoint = nm,
+                        NRI_Total = nri_val,
+                        Interpretation = interpret_nri(nri_val, NA),
                         stringsAsFactors = FALSE
                     )
                 }
             }
             if (length(rows) > 0) prame_consolidated <- do.call(rbind, rows)
+        }
+
+        if (nrow(prame_consolidated) > 0) {
+            # Ensure deterministic column order for downstream Excel generation
+            desired_cols <- c(
+                "Timepoint", "N", "Events", "Non_Events",
+                "NRI_Total", "NRI_Events", "NRI_NonEvents", "IDI", "McNemar_p",
+                "Event_Up", "Event_Down", "NonEvent_Up", "NonEvent_Down",
+                "Base_AUC", "Enhanced_AUC", "AUC_Diff", "Interpretation"
+            )
+            missing_cols <- setdiff(desired_cols, names(prame_consolidated))
+            if (length(missing_cols) > 0) {
+                for (col in missing_cols) {
+                    prame_consolidated[[col]] <- NA
+                }
+            }
+            prame_consolidated <- prame_consolidated[, desired_cols, drop = FALSE]
         }
     }
 

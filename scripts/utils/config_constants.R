@@ -486,8 +486,8 @@ VISION_LINE_CHANGE_CATEGORY_LEVELS <- c(
 GEP_SAVE_RDS <- FALSE
 
 # Core GEP validation settings
-GEP_VALIDATION_TIMEPOINTS <- c(5, 7, 10) # years for validation analysis
-GEP_BOOTSTRAP_ITERATIONS <- 500
+GEP_VALIDATION_TIMEPOINTS <- c(3, 5, 7, 10, 15) # years for validation analysis
+GEP_BOOTSTRAP_ITERATIONS <- 1000
 
 # PRAME augmentation constants
 GEP_PRAME_ADJUSTMENT_FACTOR <- 1.3 # 30% increase in risk for PRAME positive patients
@@ -517,7 +517,7 @@ GEP_LOESS_SPAN <- 0.3 # Smoothing parameter for loess calibration curves
 
 # Sample size requirements for analysis
 GEP_MIN_SAMPLE_SIZE <- 20 # Minimum sample size for any analysis
-GEP_MIN_EVENTS_COMPETING_RISK <- 5 # Minimum events for competing risk analysis
+GEP_MIN_EVENTS_COMPETING_RISK <- 3 # Minimum events for competing risk analysis (lowered for exploratory cohorts)
 GEP_MIN_BOOTSTRAP_SAMPLE <- 30 # Minimum sample size for bootstrap analysis
 GEP_MAX_BOOTSTRAP_ITERATIONS <- 1000 # Maximum bootstrap iterations for production runs
 GEP_MISSING_DATA_THRESHOLD <- 10 # Minimum patients needed for missing data analysis

@@ -13,6 +13,8 @@ This guide helps researchers and clinicians interpret the analysis outputs, unde
 - [Reading Forest Plots](#reading-forest-plots)
 - [Understanding RMST Analysis](#understanding-rmst-analysis)
 - [Interpreting Proportional Hazards Diagnostics](#interpreting-proportional-hazards-diagnostics)
+- [Understanding GEP Analysis](#understanding-gep-analysis)
+- [Understanding PRAME Enhancement Outputs](#understanding-prame-enhancement-outputs)
 - [Clinical Significance vs Statistical Significance](#clinical-significance-vs-statistical-significance)
 - [Common Pitfalls](#common-pitfalls)
 - [Troubleshooting](#troubleshooting)
@@ -509,6 +511,66 @@ Global test          6.89     3      0.075
 - Cox HR as secondary (note violation)
 - Describe time-varying pattern
 - Consider time-stratified analysis
+
+---
+
+## Understanding GEP Analysis
+
+### Where to Find the Files
+
+- Objective 4 outputs live under `04_GEP_Validation/` inside each cohort directory.
+- Look for the consolidated workbook named `{cohort}_{outcome}_consolidated_summary.xlsx` (e.g., `uveal_full_mfs_consolidated_summary.xlsx`).
+- Unified cross-outcome summaries live alongside as `{cohort}_unified_gep_validation_summary.xlsx`.
+
+### Workbook Layout at a Glance
+
+| Sheet | Purpose | Where to find detailed metric definitions |
+|-------|---------|-------------------------------------------|
+| `Calibration_Summary` | Predicted vs observed agreement. | `docs/STATISTICAL_METHODS.md#gep-validation-metrics` (Calibration subsection) |
+| `Discrimination_Summary` | Rank-order performance across timepoints. | `STATISTICAL_METHODS.md` (Discrimination subsection) |
+| `Decision_Curve_Summary` | Net benefit across threshold probabilities. | `STATISTICAL_METHODS.md` (Clinical Utility subsection) |
+| `PRAME_Summary` | Base vs PRAME-augmented comparisons (see next section). | Same Clinical Utility subsection |
+| `Missing_Data_Summary` | QC signals that contextualize Objective 4. | `STATISTICAL_METHODS.md` (Missing Data diagnostics) |
+
+### How to Use the Sheets (No Redundancy Needed)
+
+1. **Check sample counts first.** When `N` or `Events` fall below the exploratory thresholds (20 total / 5 events), annotate results as preliminary.
+2. **Pull metric definitions from `STATISTICAL_METHODS.md#gep-validation-metrics`.** That section already documents formulas, interpretation ranges, and edge cases—avoid restating them here.
+3. **Summarize per timepoint:** Combine one calibration sentence, one discrimination sentence, and (if available) a decision-curve takeaway. Use the template below and cite the workbook filename.
+4. **Escalate flags:** If the Missing Data sheet lists significant baseline differences or non-random loss, note it in your write-up before quoting performance.
+
+### Suggested Interpretation Template
+
+> "For 5-year metastasis-free survival (`uveal_full_mfs_consolidated_summary.xlsx`), Harrell's C was 0.71 with calibration slope 0.98 and positive decision-curve net benefit at 10–30% thresholds (see `STATISTICAL_METHODS.md#gep-validation-metrics`)."
+
+Keep the narrative succinct in this guide and direct readers to the statistical reference for deeper dives.
+
+---
+
+## Understanding PRAME Enhancement Outputs
+
+### Why AUC Columns Sometimes Show `NA`
+
+- **Small event counts:** ROC/AUC comparisons for the PRAME-enhanced models require at least `GEP_MIN_EVENTS_COMPETING_RISK` events and non-events in the analytic cohort. The exploratory threshold is now 3 events per arm; cohorts below that limit will display `NA` for Base vs Enhanced AUC and log a skip note in the workbook footer.
+- **Missing `pROC` dependency:** AUC estimation relies on the `pROC` package. If it is absent, the pipeline records a warning (“AUC skipped – pROC missing”) and leaves those cells `NA`.
+- **Post-filter attrition:** When `exclude_other_categories()` removes “Other” levels or when PRAME status is missing, the effective sample can dip below the threshold even if raw cohort counts look adequate. Confirm the “evaluated_n” row at the top of the PRAME worksheet before interpreting discrimination columns.
+
+### Interpreting Reclassification Columns
+
+| Column | Description |
+|--------|-------------|
+| `Event_Up` | Event patients reclassified into a **higher** risk tier once PRAME is added (desired gain in sensitivity). |
+| `Event_Down` | Event patients reclassified into a **lower** risk tier after PRAME (undesired loss of sensitivity). |
+| `Nonevent_Up` | Event-free patients moved up to a higher tier (false-positive inflation). |
+| `Nonevent_Down` | Event-free patients moved down (desired gain in specificity). |
+
+Use these counts alongside the Net Reclassification Improvement (NRI) and Integrated Discrimination Improvement (IDI) rows to decide whether PRAME meaningfully improves risk categorization beyond the base GEP.
+
+### Practical Tips
+
+1. **Check banner messages:** The PRAME tab header repeats sample size, the minimum-event gate, and any warnings about skipped metrics.
+2. **Pair with AUC deltas:** When AUCs are available, examine `Enhanced_AUC - Base_AUC` to confirm reclassification gains translate into better overall discrimination.
+3. **Flag exploratory runs:** Document when thresholds are lowered for hypothesis generation; report resulting AUCs as preliminary until validated in larger cohorts.
 
 ---
 
