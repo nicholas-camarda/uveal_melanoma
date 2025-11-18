@@ -15,7 +15,13 @@ run_objective_4 <- function(data, dataset_name, output_dirs, prefix, other_map =
     # MFS GEP validation
     logger::log_info(formatted("Executing analyze_gep_mfs_validation: MFS GEP validation analysis", indent = 1))
     mfs_gep_results <- tryCatch({
-        analyze_gep_mfs_validation(data, dataset_name, other_map = other_map)
+        analyze_gep_mfs_validation(
+            data = data,
+            dataset_name = dataset_name,
+            other_map = other_map,
+            output_dirs = output_dirs,
+            prefix = prefix
+        )
     }, error = function(e) {
         logger::log_error(formatted(sprintf("MFS GEP validation failed: %s", e$message), indent = 2))
         logger::log_error(formatted("This will prevent complete GEP analysis completion", indent = 2))
@@ -32,7 +38,13 @@ run_objective_4 <- function(data, dataset_name, output_dirs, prefix, other_map =
     # MSS GEP validation
     logger::log_info(formatted("Executing analyze_gep_mss_validation: MSS GEP validation analysis", indent = 1))
     mss_gep_results <- tryCatch({
-        analyze_gep_mss_validation(data, dataset_name, other_map = other_map)
+        analyze_gep_mss_validation(
+            data = data,
+            dataset_name = dataset_name,
+            other_map = other_map,
+            output_dirs = output_dirs,
+            prefix = prefix
+        )
     }, error = function(e) {
         logger::log_error(formatted(sprintf("MSS GEP validation failed: %s", e$message), indent = 2))
         logger::log_error(formatted("This will prevent complete GEP analysis completion", indent = 2))

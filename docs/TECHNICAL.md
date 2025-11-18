@@ -401,9 +401,13 @@ The analysis pipeline includes robust error handling for situations where data l
 
 **Implementation:** `scripts/workflow/objective_4_gep_analysis.R`
 
-**Planned Outputs:** Calibration plots, discrimination metrics, clinical utility analyses
+**Current Outputs:**
+- Consolidated Excel workbooks (`*_validation_summary.xlsx`) with stacked observed/expected, calibration, discrimination, competing-risk, PRAME, and missing-data tabs
+- Comprehensive text summaries describing interpretation and data-quality flags
+- Unified summary tables combining MFS/MSS metrics under `04_GEP_Validation/unified_summary/`
+- Limited visuals: KM curves for MFS and CIF curves for MSS (no standalone calibration/decision/discrimination PNGs)
 
-See [STATISTICAL_METHODS.md](STATISTICAL_METHODS.md) for detailed GEP validation methodology.
+See [STATISTICAL_METHODS.md](STATISTICAL_METHODS.md) for the table-first GEP validation methodology.
 
 ---
 

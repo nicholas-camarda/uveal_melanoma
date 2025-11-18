@@ -12,9 +12,26 @@
 #' @param bootstrap_iterations Integer bootstrap iterations for calibration slope
 #' @param create_unified_at_base logical If TRUE, also write unified visuals at the parent objective dir
 #' @param other_map List containing treatment group mappings and categorical variable level mappings for consistent analysis
+#' @param output_dirs Named list of objective-specific output directories
+#' @param prefix Character prefix for all generated files
 #' @return A list with `validation_results`, `prame_analysis`, and `missing_data_analysis`.
-analyze_gep_mfs_validation <- function(data, dataset_name = NULL, timepoints = GEP_VALIDATION_TIMEPOINTS, bootstrap_iterations = GEP_BOOTSTRAP_ITERATIONS, create_unified_at_base = FALSE, other_map = NULL) {
+analyze_gep_mfs_validation <- function(data,
+                                       dataset_name = NULL,
+                                       timepoints = GEP_VALIDATION_TIMEPOINTS,
+                                       bootstrap_iterations = GEP_BOOTSTRAP_ITERATIONS,
+                                       create_unified_at_base = FALSE,
+                                       other_map = NULL,
+                                       output_dirs = NULL,
+                                       prefix = "") {
     logger::log_info("Starting GEP Metastasis-Free Survival validation analysis")
+
+    if (is.null(output_dirs) || is.null(output_dirs$obj4_mfs)) {
+        stop("analyze_gep_mfs_validation() requires an output_dirs list with obj4_mfs entry")
+    }
+
+    if (is.null(prefix)) {
+        prefix <- ""
+    }
     
     # Load other_map if not provided
     if (is.null(other_map)) {
@@ -162,19 +179,6 @@ analyze_gep_mfs_validation <- function(data, dataset_name = NULL, timepoints = G
                 # All information is consolidated into comprehensive Excel tables and text summaries
                 # This eliminates redundant plots while maintaining all statistical information
                 
-                # Create unified consolidated summary to eliminate redundancy
-                tryCatch({
-                    create_unified_gep_validation_summary(
-                        mfs_results = list(validation_results = validation_results, prame_analysis = prame_analysis),
-                        mss_results = NULL,
-                        dataset_name = dataset_name,
-                        output_dir = gep_base_dir,
-                        prefix = prefix
-                    )
-                    logger::log_info(formatted("Unified GEP validation summary created successfully", indent = 2))
-                }, error = function(e) {
-                    logger::log_warn(formatted(sprintf("Unified summary creation failed: %s", e$message), indent = 2))
-                })
                     },
                     error = function(e) {
                         logger::log_warn(sprintf("Visual creation failed (MFS outcome folder): %s", e$message))
@@ -282,11 +286,28 @@ analyze_gep_mfs_validation <- function(data, dataset_name = NULL, timepoints = G
 #' @param timepoints Numeric vector of years (default `GEP_VALIDATION_TIMEPOINTS`)
 #' @param bootstrap_iterations Integer bootstrap iterations for discrimination where applicable
 #' @param create_unified_at_base logical If TRUE, also write unified visuals at the parent objective dir
+#' @param output_dirs Named list of objective-specific output directories
+#' @param prefix Character prefix for generated files
 #' @return A list with `standard_results`, `competing_results`, `prame_results`,
 #'   `missing_data_analysis`.
-analyze_gep_mss_validation <- function(data, dataset_name = NULL, timepoints = GEP_VALIDATION_TIMEPOINTS, bootstrap_iterations = GEP_BOOTSTRAP_ITERATIONS, create_unified_at_base = FALSE, other_map = NULL) {
+analyze_gep_mss_validation <- function(data,
+                                       dataset_name = NULL,
+                                       timepoints = GEP_VALIDATION_TIMEPOINTS,
+                                       bootstrap_iterations = GEP_BOOTSTRAP_ITERATIONS,
+                                       create_unified_at_base = FALSE,
+                                       other_map = NULL,
+                                       output_dirs = NULL,
+                                       prefix = "") {
     logger::log_info("Starting GEP Melanoma-Specific Survival validation analysis")
     logger::log_info(formatted("DEBUG: Function entry point reached", indent = 1))
+
+    if (is.null(output_dirs) || is.null(output_dirs$obj4_mss)) {
+        stop("analyze_gep_mss_validation() requires an output_dirs list with obj4_mss entry")
+    }
+
+    if (is.null(prefix)) {
+        prefix <- ""
+    }
     
     # Load other_map if not provided
     if (is.null(other_map)) {
@@ -420,19 +441,6 @@ analyze_gep_mss_validation <- function(data, dataset_name = NULL, timepoints = G
                     output_dir = gep_base_dir,
                     prefix = prefix
                 )
-                # Create unified consolidated summary to eliminate redundancy
-                tryCatch({
-                    create_unified_gep_validation_summary(
-                        mfs_results = NULL,
-                        mss_results = list(standard_validation = standard_results, competing_risk_validation = competing_results, prame_results = prame_results),
-                        dataset_name = dataset_name,
-                        output_dir = gep_base_dir,
-                        prefix = prefix
-                    )
-                    logger::log_info(formatted("Unified GEP validation summary created successfully", indent = 2))
-                }, error = function(e) {
-                    logger::log_warn(formatted(sprintf("Unified summary creation failed: %s", e$message), indent = 2))
-                })
             },
             error = function(e) {
                 logger::log_warn(sprintf("Visual creation failed (MSS): %s", e$message))

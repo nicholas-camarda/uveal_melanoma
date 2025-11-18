@@ -517,35 +517,32 @@ Gene Expression Profiling (GEP) provides lab-reported probabilities of metastasi
 - Exclude patients with missing GEP data
 
 **Step 2: Calibration Analysis**
-- Generate calibration plots
-- Calculate calibration metrics
-- Test goodness-of-fit
+- Compute Nam–D’Agostino χ², Integrated Calibration Index (ICI), bootstrap slope/intercept
+- Record results in the consolidated workbook (no standalone calibration PNGs)
 
 **Step 3: Discrimination Analysis**
-- Calculate C-statistic with 95% CI
-- Generate time-dependent AUC curves
-- Compare to clinical factors alone
+- Calculate Harrell’s C, integrated AUC, cumulative/time-averaged discrimination
+- Store metrics in the discrimination tab; no time-dependent AUC plots are emitted
 
 **Step 4: Clinical Utility Analysis**
-- Perform decision curve analysis
-- Calculate reclassification metrics
-- Assess incremental predictive value
+- Perform decision-curve calculations and PRAME-based NRI/IDI comparisons
+- Capture net-benefit ranges and reclassification tables inside the workbook
 
 **Step 5: Reporting**
-- Summary tables with all metrics
-- Calibration and discrimination plots
-- Clinical recommendations
+- Export unified Excel summaries (`*_validation_summary.xlsx`) and companion text reports
+- Provide KM (MFS) or CIF (MSS) curves only; calibration/decision/discrimination visuals live in tables
+- Surface combined MFS/MSS summaries under `04_GEP_Validation/unified_summary/`
 
 ### Expected Outputs
 
 **Location:** `{cohort}/04_GEP_Validation/a_metastasis_free_survival/` or `b_melanoma_specific_survival/`
 
 **Files:**
-- `gep_calibration_plot.png` - Predicted vs observed probabilities
-- `gep_discrimination_auc.png` - Time-dependent AUC curves
-- `gep_decision_curve.png` - Clinical utility analysis
-- `gep_validation_metrics.xlsx` - Summary of all metrics
-- `gep_validation_report.html` - Comprehensive validation report
+- `*_validation_summary.xlsx` — stacked observed/expected, calibration, discrimination, competing-risk, PRAME, and missing-data sheets
+- `*_validation_summary.txt` (or consolidated text) — narrative interpretation of the same metrics
+- `*_simple_gep_validation.*` — optional actual-vs-expected summary exported by the simple checker
+- `unified_summary/*` — cross-outcome Excel/text digests
+- Limited PNGs: `*_mfs_km.png` (KM) or `*_mss_cif.png` (CIF) only when survival curves are generated
 
 ### Interpretation Example
 
