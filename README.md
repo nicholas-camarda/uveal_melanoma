@@ -83,6 +83,16 @@ run_specific_objective("uveal_melanoma_full_cohort", 1)  # Efficacy only
 
 ---
 
+## Vision Change Outputs
+
+Objective 2 tracks logMAR deltas (positive = improved vision) alongside Snellen-line changes for every cohort. For full derivations, signs, and bucket definitions, see [docs/CALCULATIONS.md → Vision Change](docs/CALCULATIONS.md#vision-change).
+
+- `*_vision_changes.html` now bundles the logMAR summary, Snellen-line summary, and the bucketed line-change table (≥3/±1-line categories) in one review-ready file.
+- `*_vision_line_change_summary.html` stacks the Snellen line-change summary, the bucketed table, and the full line-by-line distribution for downstream review and merged-table ingestion.
+- Excel exports (`*_vision_line_change_distribution.xlsx`, `*_vision_line_change_bucket_summary.xlsx`) mirror the HTML tables for downstream audit trails.
+
+---
+
 ## Usage
 
 ### Configuration
@@ -153,16 +163,6 @@ final_data/
 ```
 
 📖 **[Complete directory structure →](docs/TECHNICAL.md#directory-structure)**
-
----
-
-## Vision Change Outputs
-
-Objective 2 tracks logMAR deltas (positive = improved vision) alongside Snellen-line changes for every cohort. For full derivations, signs, and bucket definitions, see [docs/CALCULATIONS.md → Vision Change](docs/CALCULATIONS.md#vision-change).
-
-- `*_vision_changes.html` now bundles the logMAR summary, Snellen-line summary, and the bucketed line-change table (≥3/±1-line categories) in one review-ready file.
-- `*_vision_line_change_summary.html` stacks the Snellen line-change summary, the bucketed table, and the full line-by-line distribution for downstream review and merged-table ingestion.
-- Excel exports (`*_vision_line_change_distribution.xlsx`, `*_vision_line_change_bucket_summary.xlsx`) mirror the HTML tables for downstream audit trails.
 
 ---
 
