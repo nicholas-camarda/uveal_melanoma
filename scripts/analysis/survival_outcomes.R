@@ -702,10 +702,15 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         } else {
             logger::log_info(sprintf("Skipping RMST file creation - no valid RMST data available for %s", ylab))
         }
-        if (nrow(rmst_survival_summary) > 0) {
+        if (rmst_has_data && nrow(rmst_survival_summary) > 0) {
             combined_path <- file.path(output_dir, paste0(prefix, make_filename_safe(ylab), "_survival_rmst_summary.xlsx"))
             writexl::write_xlsx(rmst_survival_summary, path = combined_path)
             logger::log_info(sprintf("Survival + RMST summary saved: %s", basename(combined_path)))
+        } else if (!rmst_has_data) {
+            logger::log_info(sprintf(
+                "Skipping survival + RMST summary for %s - no valid RMST data (likely non-binary grouping)",
+                ylab
+            ))
         }
     }
 
