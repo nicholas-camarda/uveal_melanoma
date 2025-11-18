@@ -563,6 +563,25 @@ perform_discrimination_mss <- function(data, timepoint) {
     ), indent = 3))
     logger::log_info(formatted(sprintf("Methods used (MSS): Harrell=%s (Uno C-index and time-dependent AUC removed as fragile metrics)", harrell_method), indent = 3))
 
+    # Calculate IPA (Index of Prediction Accuracy) for clinical value assessment
+    ipa_result <- tryCatch({
+        calculate_ipa_survival(
+            data = disc_data,
+            predicted_var = "predicted_risk",
+            event_var = "observed_event",
+            time_var = "observed_time",
+            timepoint_months = timepoint_months
+        )
+    }, error = function(e) {
+        logger::log_warn(formatted(sprintf("IPA calculation failed (MSS): %s", e$message), indent = 3))
+        list(
+            ipa = NA_real_,
+            method_used = "calculation_failed",
+            fallback_triggered = FALSE,
+            calculation_notes = sprintf("Calculation failed: %s", e$message)
+        )
+    })
+
     return(list(
         n = nrow(disc_data),
         events = sum(disc_data$observed_event),
@@ -578,7 +597,11 @@ perform_discrimination_mss <- function(data, timepoint) {
         cumulative_discrimination = round(cumulative_discrimination, 3),
         cumulative_discrimination_method = cumulative_discrimination_method,
         time_averaged_discrimination = round(time_averaged_discrimination, 3),
-        time_averaged_discrimination_method = time_averaged_discrimination_method
+        time_averaged_discrimination_method = time_averaged_discrimination_method,
+        ipa = round(ipa_result$ipa, 4),
+        ipa_method = ipa_result$method_used,
+        ipa_fallback_used = ipa_result$fallback_triggered,
+        ipa_calculation_notes = ipa_result$calculation_notes
     ))
 }
 

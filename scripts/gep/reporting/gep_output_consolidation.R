@@ -127,6 +127,12 @@ create_consolidated_gep_tables <- function(validation_results, outcome_type, out
         n_sig <- tryCatch(missing_data$baseline_comparison$n_significant, error = function(e) NA)
         logrank_p <- tryCatch(missing_data$outcome_by_missing$logrank_p, error = function(e) NA)
         n_imputable <- tryCatch(missing_data$imputation_analysis$n_imputable, error = function(e) NA)
+        sanitize_value <- function(value) {
+            if (is.null(value) || length(value) == 0) {
+                return(NA)
+            }
+            value
+        }
         missing_consolidated <- data.frame(
             Metric = c(
                 "Total_Patients_n",
@@ -136,11 +142,11 @@ create_consolidated_gep_tables <- function(validation_results, outcome_type, out
                 "Imputable_Patients_n"
             ),
             Value = c(
-                tryCatch(missing_data$n_total, error = function(e) NA),
-                if (!is.null(patterns)) nrow(patterns) else NA,
-                n_sig,
-                logrank_p,
-                n_imputable
+                sanitize_value(tryCatch(missing_data$n_total, error = function(e) NA)),
+                sanitize_value(if (!is.null(patterns)) nrow(patterns) else NA),
+                sanitize_value(n_sig),
+                sanitize_value(logrank_p),
+                sanitize_value(n_imputable)
             ),
             stringsAsFactors = FALSE
         )

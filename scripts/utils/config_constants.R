@@ -486,7 +486,7 @@ VISION_LINE_CHANGE_CATEGORY_LEVELS <- c(
 GEP_SAVE_RDS <- FALSE
 
 # Core GEP validation settings
-GEP_VALIDATION_TIMEPOINTS <- c(3, 5, 7, 10, 15) # years for validation analysis
+GEP_VALIDATION_TIMEPOINTS <- c(5, 7, 10) # years for validation analysis
 GEP_BOOTSTRAP_ITERATIONS <- 1000
 
 # PRAME augmentation constants
