@@ -532,12 +532,88 @@ Global test          6.89     3      0.075
 | `PRAME_Summary` | Base vs PRAME-augmented comparisons (see next section). | Same Clinical Utility subsection |
 | `Missing_Data_Summary` | QC signals that contextualize Objective 4. | `STATISTICAL_METHODS.md` (Missing Data diagnostics) |
 
+### Workbook Naming & Refresh Cadence
+
+| Item | Details |
+| --- | --- |
+| Filename pattern | `<prefix><outcome>_consolidated_summary.xlsx` (for example, `uveal_full_mfs_consolidated_summary.xlsx`). |
+| Default directory | `final_data/Analysis/<cohort>/04_GEP_Validation/<subfolder>/` — each cohort keeps its own prefix (`a_metastasis_free_survival/`, `b_melanoma_specific_survival/`, `unified_summary/`). |
+| Outcomes covered | `outcome ∈ {"mfs", "mss"}`; unified workbooks stack both. |
+| Timepoints | Driven by `GEP_VALIDATION_TIMEPOINTS` (defaults: 5, 7, 10 years). Every sheet carries one row per timepoint requested. |
+| How to regenerate | Run Objective 4 via `run_specific_objective("uveal_melanoma_<cohort>", 4)` or the full pipeline. New runs overwrite existing workbooks after passing QC. |
+
+### Shared Conventions
+
+- **`N`** counts patients who contribute data at that horizon after censoring and predictor filtering.
+- **`Events` / `Non_Events`** always tie to the outcome being modeled (metastasis for MFS, melanoma-specific death for MSS). Non-events are censored survivors.
+- **`Timepoint`** corresponds to the year label in `GEP_VALIDATION_TIMEPOINTS`; interpretation tips should explicitly quote it.
+- **Fallback + method columns** (`*_Fallback_Used`, `*_Method`) surface whenever the preferred estimator fails; cite them whenever they read `TRUE` to explain unexpected `NA`s.
+- **Missing = `NA`** means "metric skipped" rather than "zero." Cross-check the run log (`logs/json/*.jsonl`) for warnings before imputing values.
+
+### Sheet Dictionary (Quick Reference)
+
+Metric formulas remain in `STATISTICAL_METHODS.md`; the notes below clarify what each column represents inside the workbook.
+
+#### `Calibration_Summary`
+
+- `Timepoint`, `N`: context columns described above.
+- `Nam_D_Agostino_p`: p-value from the Nam–D'Agostino χ² goodness-of-fit test (flag low values as miscalibration).
+- `ICI`: Integrated Calibration Index — lower is better.
+- `Slope`: Bootstrap calibration slope (ideal = 1.0).
+- `Brier_Score`: Timepoint-specific Brier score; compare against the cohort event rate to assess accuracy.
+- `Brier_Method` + `Brier_Fallback_Used`: record which estimator supplied the score (`pec`, KM fallback, etc.).
+
+#### `Discrimination_Summary`
+
+- `Events`: Number of outcome events accumulated by that year.
+- `Harrell_C`: Concordance index from the survival model.
+- `Integrated_AUC`: Dynamic AUC integrated over follow-up.
+- `Cumulative_Discrimination` / `Time_averaged_Discrimination`: Alternate views of rank-order performance through time.
+- `IPA`, `IPA_Method`, `IPA_Fallback_Used`: Index of Prediction Accuracy and bookkeeping for when we revert to the simplified estimator.
+
+#### `Decision_Curve_Summary`
+
+- `Event_Rate`: Observed event rate at the horizon (use it to sanity-check IPA swings).
+- `Optimal_Threshold`: Probability threshold delivering maximum net benefit; mirrors `Net_Benefit_Threshold` when present.
+- `Optimal_Net_Benefit`: Net benefit at the optimal threshold relative to treat-all/none.
+- `Threshold_Range_Min` / `Threshold_Range_Max`: Boundaries for clinically reasonable thresholds configured when building the decision curves.
+- `Area_Between_Curves`: Integral of the net-benefit gain vs treat-none across the range.
+
+#### `PRAME_Summary`
+
+- `N`, `Events`, `Non_Events`: Sample sizes for the PRAME-complete subset.
+- `NRI_Total`, `NRI_Events`, `NRI_NonEvents`: Net Reclassification Improvement overall and stratified by outcome.
+- `IDI`: Integrated Discrimination Improvement.
+- `McNemar_p`: Paired test for risk-tier switches.
+- `Event_Up`, `Event_Down`, `NonEvent_Up`, `NonEvent_Down`: Raw counts describing direction of reclassification.
+- `Base_AUC`, `Enhanced_AUC`, `AUC_Diff`: Dynamic AUCs for the base GEP model and the PRAME-augmented model, plus their difference.
+- `Interpretation`: Auto-generated summary tying NRI/IDI into plain language.
+
+#### `Missing_Data_Summary`
+
+Single column dictionary:
+
+| Metric | Meaning |
+| --- | --- |
+| `Total_Patients_n` | Patients evaluated for missingness diagnostics inside this run. |
+| `Missingness_Groups_n` | Distinct missingness patterns detected (rows in the patterns table, when available). |
+| `Baseline_Variables_with_Significant_Differences_n` | Count of baseline covariates that differ across missingness groups (p < 0.05). |
+| `Survival_by_Missingness_Logrank_p` | Log-rank p-value comparing survival between missingness strata. |
+| `Imputable_Patients_n` | Patients that could be recovered through imputation diagnostics. |
+
+### Differences Between MFS and MSS Tabs
+
+- **Event definition:** MFS treats metastasis as the event and censors deaths without metastasis; MSS uses cause-specific death as the event.
+- **Modeling approach:** MSS inherits the competing-risk adjustments from `perform_discrimination_mss()` and `calculate_ipa_survival()`, so expect more `*_Fallback_Used` flags when events are scarce.
+- **Sample size:** MSS tables often have lower `N`, which in turn drives more `NA` metrics. Always sanity-check counts before comparing outcomes.
+
 ### How to Use the Sheets (No Redundancy Needed)
 
 1. **Check sample counts first.** When `N` or `Events` fall below the exploratory thresholds (20 total / 5 events), annotate results as preliminary.
-2. **Pull metric definitions from `STATISTICAL_METHODS.md#gep-validation-metrics`.** That section already documents formulas, interpretation ranges, and edge cases—avoid restating them here.
+2. **Reference `STATISTICAL_METHODS.md#gep-validation-metrics` for formulas.** Use this guide for workbook logistics and the statistics doc for the math.
 3. **Summarize per timepoint:** Combine one calibration sentence, one discrimination sentence, and (if available) a decision-curve takeaway. Use the template below and cite the workbook filename.
 4. **Escalate flags:** If the Missing Data sheet lists significant baseline differences or non-random loss, note it in your write-up before quoting performance.
+5. **Document fallbacks:** Whenever `*_Fallback_Used == TRUE`, mention that the simplified estimator supplied the metric.
 
 ### Suggested Interpretation Template
 

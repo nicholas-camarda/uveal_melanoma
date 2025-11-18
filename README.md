@@ -217,6 +217,10 @@ rms, pec, riskRegression, cmprsk, pROC, rmda
 - [Competing risks analysis for MSS](docs/STATISTICAL_METHODS.md#competing-risks-analysis)
 - [GEP validation metrics explained](docs/STATISTICAL_METHODS.md#gep-validation-metrics)
 
+**Interpreting Outputs:**
+
+- [GEP workbook logistics + sheet dictionary](docs/INTERPRETATION_GUIDE.md#understanding-gep-analysis)
+
 **Technical Implementation:**
 
 - [Complete workflow system](docs/TECHNICAL.md#workflow-orchestration-system)
