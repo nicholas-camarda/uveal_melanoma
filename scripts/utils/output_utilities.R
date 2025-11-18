@@ -924,7 +924,7 @@ merge_adverse_events_tables <- function(full_cohort_data, restricted_cohort_data
                                 type = list(vision_line_change_bucket ~ "categorical"),
                                 statistic = list(all_categorical() ~ "{n} ({p}%)"),
                                 digits = list(all_categorical() ~ 1),
-                                label = list(vision_line_change_bucket ~ "Snellen Line Change Distribution (Bucketed)")
+                                label = list(vision_line_change_bucket ~ "Snellen Line Change Distribution")
                             ) %>%
                             add_overall() %>%
                             add_p(
@@ -934,7 +934,7 @@ merge_adverse_events_tables <- function(full_cohort_data, restricted_cohort_data
                             format_count_percent_columns() %>%
                             bold_labels() %>%
                             modify_header(
-                                label = "**Snellen Line Change (Bucketed)**",
+                                label = "**Snellen Line Change Distribution**",
                                 stat_0 = "**Overall**\nN = {N}",
                                 stat_1 = "**PBT**\nN = {n}",
                                 stat_2 = "**GKSRS**\nN = {n}",
@@ -951,7 +951,7 @@ merge_adverse_events_tables <- function(full_cohort_data, restricted_cohort_data
                                 type = list(vision_line_change ~ "continuous"),
                                 statistic = list(vision_line_change ~ "{median} ({min}, {max})"),
                                 digits = list(vision_line_change ~ 0),
-                                label = list(vision_line_change ~ "Snellen Line Change (Lines)")
+                                label = list(vision_line_change ~ "Snellen Line Change")
                             ) %>%
                             add_overall() %>%
                             add_p(test = list(all_continuous() ~ "wilcox.test")) %>%
