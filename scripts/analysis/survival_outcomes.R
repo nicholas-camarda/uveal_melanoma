@@ -866,7 +866,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             analysis_label = ylab,
             model_label = "Unadjusted (KM data)",
             group_var = group_var,
-            data_source_label = "KM dataset (pre-'Other' exclusions)"
+            data_source_label = "KM dataset (before rare-category exclusions)"
         ),
         summarize_cox_hr(
             model = cox_unadjusted_model,
