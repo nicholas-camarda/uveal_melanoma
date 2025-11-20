@@ -148,28 +148,29 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     # Select relevant columns for analysis
     new_data <- fix_event_data %>%
         dplyr::select(all_of(c(time_var, event_var, group_var, confounders_to_use)))
+    cox_data <- new_data
 
     # Remove "Other" rows prior to survival modeling
     survival_variables <- unique(c(group_var, confounders_to_use))
     exclusion_result <- exclude_other_categories(
-        data = new_data,
+        data = cox_data,
         variables = survival_variables[survival_variables %in% names(new_data)],
         other_map = if (is.null(other_map)) list() else other_map
     )
 
     if (exclusion_result$removed_row_count > 0) {
         logger::log_info(formatted(sprintf(
-            "Removed %d rows labelled 'Other' prior to survival modeling (%s)",
+            "Removed %d rows labelled 'Other' prior to Cox modeling (%s)",
             exclusion_result$removed_row_count,
             paste(survival_variables, collapse = ", ")
         ), indent = 1))
     }
 
-    new_data <- exclusion_result$data
+    cox_data <- exclusion_result$data
 
     if (nrow(new_data) == 0 || length(unique(stats::na.omit(new_data[[group_var]]))) < 2) {
         logger::log_warn(formatted(
-            "Insufficient non-'Other' data available after exclusions; skipping survival analysis.",
+            "Insufficient data available for Kaplan-Meier fit (before 'Other' exclusions); skipping survival analysis.",
             indent = 1
         ))
         empty_df <- data.frame()
@@ -185,8 +186,16 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             ph_diagnostics = NULL,
             diagnostics = list(
                 other_level_details = exclusion_result$other_level_details,
-                raw_model_output = "Model skipped: insufficient data after removing 'Other' levels."
+                raw_model_output = "Model skipped: insufficient data for KM fit."
             )
+        ))
+    }
+
+    cox_ready <- nrow(cox_data) > 0 && length(unique(stats::na.omit(cox_data[[group_var]]))) >= 2
+    if (!cox_ready) {
+        logger::log_warn(formatted(
+            "Cox model will be skipped: insufficient non-'Other' data after exclusions.",
+            indent = 1
         ))
     }
 
@@ -715,29 +724,52 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     }
 
     # Run Cox regression and generate regression table
-    logger::log_info(sprintf("DEBUG: About to call generate_regression_table for %s", paste0(ylab, "_cox")))
-    cox_result <- tryCatch({
-        generate_regression_table(
-            data = new_data,
-            outcome_var = event_var,
-            predictor_vars = group_var,
-            confounders = confounders_to_use,
-            model_type = "cox",
-            effect_measure = "HR",
-            analysis_name = paste0(ylab, "_cox"),
-            dataset_name = dataset_name,
-            output_dir = if (!is.null(output_dirs)) output_dir else "test_output",
-            prefix = prefix,
-            time_var = time_var,
-            event_var = event_var,
-            other_map = other_map,
-            treatment_var = group_var,
-            other_level_details = exclusion_result$other_level_details
+    cox_result <- NULL
+    if (cox_ready) {
+        logger::log_info(sprintf("DEBUG: About to call generate_regression_table for %s", paste0(ylab, "_cox")))
+        cox_result <- tryCatch({
+            generate_regression_table(
+                data = cox_data,
+                outcome_var = event_var,
+                predictor_vars = group_var,
+                confounders = confounders_to_use,
+                model_type = "cox",
+                effect_measure = "HR",
+                analysis_name = paste0(ylab, "_cox"),
+                dataset_name = dataset_name,
+                output_dir = if (!is.null(output_dirs)) output_dir else "test_output",
+                prefix = prefix,
+                time_var = time_var,
+                event_var = event_var,
+                other_map = other_map,
+                treatment_var = group_var,
+                other_level_details = exclusion_result$other_level_details
+            )
+        }, error = function(e) {
+            logger::log_error(sprintf("ERROR in generate_regression_table: %s", e$message))
+            return(NULL)
+        })
+    } else {
+        cox_result <- list(
+            model = NULL,
+            table = NULL,
+            diagnostics = list(
+                other_level_details = exclusion_result$other_level_details,
+                raw_model_output = "Cox model skipped: insufficient data after removing 'Other' levels."
+            )
         )
-    }, error = function(e) {
-        logger::log_error(sprintf("ERROR in generate_regression_table: %s", e$message))
-        return(NULL)
-    })
+    }
+
+    if (is.null(cox_result)) {
+        cox_result <- list(
+            model = NULL,
+            table = NULL,
+            diagnostics = list(
+                other_level_details = exclusion_result$other_level_details,
+                raw_model_output = "Cox model failed to fit; see logs for details."
+            )
+        )
+    }
 
     logger::log_info(sprintf(
         "DEBUG: RMST summary for %s - rows: %d, any valid p-values: %s",
