@@ -725,6 +725,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
 
     # Run Cox regression and generate regression table
     cox_result <- NULL
+    cox_analysis_name <- paste0(ylab, "_cox")
     if (cox_ready) {
         logger::log_info(sprintf("DEBUG: About to call generate_regression_table for %s", paste0(ylab, "_cox")))
         cox_result <- tryCatch({
@@ -735,7 +736,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
                 confounders = confounders_to_use,
                 model_type = "cox",
                 effect_measure = "HR",
-                analysis_name = paste0(ylab, "_cox"),
+                analysis_name = cox_analysis_name,
                 dataset_name = dataset_name,
                 output_dir = if (!is.null(output_dirs)) output_dir else "test_output",
                 prefix = prefix,
@@ -743,31 +744,46 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
                 event_var = event_var,
                 other_map = other_map,
                 treatment_var = group_var,
-                other_level_details = exclusion_result$other_level_details
+                other_level_details = exclusion_result$other_level_details,
+                filter_stats = exclusion_result$filter_stats
             )
         }, error = function(e) {
             logger::log_error(sprintf("ERROR in generate_regression_table: %s", e$message))
             return(NULL)
         })
     } else {
+        diagnostics_stub <- list(
+            other_level_details = exclusion_result$other_level_details,
+            raw_model_output = "Cox model skipped: insufficient data after removing 'Other' levels."
+        )
+        diagnostics_stub$sample_size_summary <- build_sample_size_summary_tab(
+            filter_stats = exclusion_result$filter_stats,
+            dataset_name = dataset_name,
+            analysis_name = cox_analysis_name,
+            modeled_n = nrow(cox_data)
+        )
         cox_result <- list(
             model = NULL,
             table = NULL,
-            diagnostics = list(
-                other_level_details = exclusion_result$other_level_details,
-                raw_model_output = "Cox model skipped: insufficient data after removing 'Other' levels."
-            )
+            diagnostics = diagnostics_stub
         )
     }
 
     if (is.null(cox_result)) {
+        diagnostics_stub <- list(
+            other_level_details = exclusion_result$other_level_details,
+            raw_model_output = "Cox model failed to fit; see logs for details."
+        )
+        diagnostics_stub$sample_size_summary <- build_sample_size_summary_tab(
+            filter_stats = exclusion_result$filter_stats,
+            dataset_name = dataset_name,
+            analysis_name = cox_analysis_name,
+            modeled_n = nrow(cox_data)
+        )
         cox_result <- list(
             model = NULL,
             table = NULL,
-            diagnostics = list(
-                other_level_details = exclusion_result$other_level_details,
-                raw_model_output = "Cox model failed to fit; see logs for details."
-            )
+            diagnostics = diagnostics_stub
         )
     }
 

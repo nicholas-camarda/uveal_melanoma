@@ -123,8 +123,9 @@ detect_model_type <- function(model_fit) {
 #' @param other_map List containing mapping of what categories were collapsed into "Other"
 #' @param treatment_var Name of the treatment variable in the model (default: "treatment_group")
 #' @param other_level_details Data frame with details about "Other" levels (optional)
+#' @param filter_stats List summarizing pre- vs post-filter sample sizes (optional)
 #' @return List containing table result and diagnostics
-generate_regression_table <- function(data, outcome_var, predictor_vars, confounders, model_type, effect_measure, analysis_name, dataset_name, output_dir, prefix, time_var = NULL, event_var = NULL, other_map = NULL, treatment_var = "treatment_group", other_level_details = NULL) {
+generate_regression_table <- function(data, outcome_var, predictor_vars, confounders, model_type, effect_measure, analysis_name, dataset_name, output_dir, prefix, time_var = NULL, event_var = NULL, other_map = NULL, treatment_var = "treatment_group", other_level_details = NULL, filter_stats = NULL) {
     logger::log_info(sprintf("Generating regression table for %s", analysis_name))
 
     # Build model formula
@@ -202,7 +203,8 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
             treatment_var = treatment_var,
             effect_measure = effect_measure,
             table_result = table_result,
-            other_level_details = other_level_details
+            other_level_details = other_level_details,
+            filter_stats = filter_stats
         )
 
         # Create raw_output from diagnostics for save_table_outputs
@@ -256,6 +258,13 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
         if (!is.null(other_level_details)) {
             diagnostics$other_level_details <- other_level_details
         }
+
+        diagnostics$sample_size_summary <- build_sample_size_summary_tab(
+            filter_stats = filter_stats,
+            dataset_name = dataset_name,
+            analysis_name = analysis_name,
+            modeled_n = nrow(data)
+        )
 
         # Still save diagnostics file even when model fails
         output_files <- tryCatch(

@@ -123,6 +123,8 @@ handle_rare_categories <- function(data, vars, threshold = 5) {
 #'   (`other_level_details`), the indices of removed rows (`removed_row_indices`),
 #'   and the number of unique rows excluded (`removed_row_count`).
 exclude_other_categories <- function(data, variables = NULL, other_label = "Other", other_map = list()) {
+    initial_row_count <- nrow(data)
+
     if (is.null(variables)) {
         variables <- names(data)[sapply(data, function(col) is.factor(col) || is.character(col))]
     }
@@ -132,7 +134,14 @@ exclude_other_categories <- function(data, variables = NULL, other_label = "Othe
             data = data,
             other_level_details = NULL,
             removed_row_indices = integer(0),
-            removed_row_count = 0L
+            removed_row_count = 0L,
+            filter_stats = list(
+                initial_n = initial_row_count,
+                model_n = initial_row_count,
+                removed_n = 0L,
+                removed_pct = 0,
+                removal_reason = "No pre-model exclusions applied"
+            )
         ))
     }
 
@@ -172,15 +181,6 @@ exclude_other_categories <- function(data, variables = NULL, other_label = "Othe
         )
     }
 
-    if (!any(removal_mask)) {
-        return(list(
-            data = data,
-            other_level_details = NULL,
-            removed_row_indices = integer(0),
-            removed_row_count = 0L
-        ))
-    }
-
     filtered_data <- data[!removal_mask, , drop = FALSE]
     # Drop unused factor levels so removed categories do not persist in modeling outputs
     factor_cols <- names(filtered_data)[sapply(filtered_data, is.factor)]
@@ -192,17 +192,31 @@ exclude_other_categories <- function(data, variables = NULL, other_label = "Othe
 
     other_level_details <- if (length(details_list) > 0) {
         details_df <- do.call(rbind, details_list)
+        details_df <- details_df %>%
+            dplyr::mutate(
+                total_rows = initial_row_count,
+                retained_rows = nrow(filtered_data)
+            )
         details_df$unique_rows_removed <- removed_count
         details_df
     } else {
         NULL
     }
 
+    filter_stats <- list(
+        initial_n = initial_row_count,
+        model_n = nrow(filtered_data),
+        removed_n = removed_count,
+        removed_pct = if (initial_row_count > 0) round(removed_count / initial_row_count * 100, 1) else 0,
+        removal_reason = "Excluded rows labelled 'Other' before modeling"
+    )
+
     list(
         data = filtered_data,
         other_level_details = other_level_details,
         removed_row_indices = removed_indices,
-        removed_row_count = removed_count
+        removed_row_count = removed_count,
+        filter_stats = filter_stats
     )
 }
 

@@ -100,6 +100,8 @@ analyze_binary_outcome_rates <- function(
 
     model_data <- exclusion_result$data
 
+    analysis_label <- paste0(outcome_var, "_", analysis_type, "_logistic")
+
     if (nrow(model_data) == 0 || length(unique(stats::na.omit(model_data[[group_var]]))) < 2) {
         logger::log_warn(formatted(
             "Insufficient non-'Other' data available after exclusions; skipping logistic regression.",
@@ -108,6 +110,12 @@ analyze_binary_outcome_rates <- function(
         diagnostics_stub <- list(
             other_level_details = exclusion_result$other_level_details,
             raw_model_output = "Model skipped: insufficient data after removing 'Other' levels."
+        )
+        diagnostics_stub$sample_size_summary <- build_sample_size_summary_tab(
+            filter_stats = exclusion_result$filter_stats,
+            dataset_name = dataset_name,
+            analysis_name = analysis_label,
+            modeled_n = nrow(model_data)
         )
         return(list(rates = rates, table = NULL, model = NULL, diagnostics = diagnostics_stub))
     }
@@ -120,7 +128,7 @@ analyze_binary_outcome_rates <- function(
         confounders = confounders_to_use,
         model_type = "logistic",
         effect_measure = "OR",
-        analysis_name = paste0(outcome_var, "_", analysis_type, "_logistic"),
+        analysis_name = analysis_label,
         dataset_name = dataset_name,
         output_dir = if (!is.null(output_dirs)) output_dir else "test_output",
         prefix = prefix,
@@ -128,7 +136,8 @@ analyze_binary_outcome_rates <- function(
         event_var = event_var,
         other_map = other_map,
         treatment_var = group_var,
-        other_level_details = exclusion_result$other_level_details
+        other_level_details = exclusion_result$other_level_details,
+        filter_stats = exclusion_result$filter_stats
     )
 
     # Return a list of results: rates, regression table, model object, and diagnostics

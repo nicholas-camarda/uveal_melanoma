@@ -359,7 +359,8 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, other_map =
         prefix = prefix,
         # handle_rare = FALSE, # REMOVED
         other_map = other_map,
-        other_level_details = exclusion_result$other_level_details
+        other_level_details = exclusion_result$other_level_details,
+        filter_stats = exclusion_result$filter_stats
     )
 
     vision_lm <- vision_result$model
@@ -578,6 +579,9 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
 
     # Fit logistic regression if there are enough events and confounders
     model_result <- NULL
+    safety_diagnostics <- NULL
+    regression_table <- NULL
+    logistic_analysis_name <- paste0(sequela_type, "_logistic")
     if (sum(model_data[[outcome_var]] == 1, na.rm = TRUE) >= 10) { # Require at least 10 events
 
         # Use the unified table generation system for logistic regression
@@ -591,13 +595,14 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
             confounders = srd_confounders,
             model_type = "logistic",
             effect_measure = "OR",
-            analysis_name = paste0(sequela_type, "_logistic"),
+            analysis_name = logistic_analysis_name,
             dataset_name = dataset_name,
             output_dir = output_dir,
             prefix = prefix,
             # handle_rare = FALSE, # REMOVED
             other_map = other_map,
-            other_level_details = exclusion_result$other_level_details
+            other_level_details = exclusion_result$other_level_details,
+            filter_stats = exclusion_result$filter_stats
         )
 
         # Extract the model and table from the result
@@ -606,14 +611,27 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
         regression_table <- regression_result$table # Get the regression table
     } else {
         logger::log_warn(sprintf("Insufficient events for regression modeling (%d events)", sum(data[[outcome_var]] == "Y", na.rm = TRUE)))
+        safety_diagnostics <- list(
+            other_level_details = exclusion_result$other_level_details,
+            raw_model_output = sprintf(
+                "Model skipped: only %d events available after removing 'Other' levels.",
+                sum(model_data[[outcome_var]] == 1, na.rm = TRUE)
+            ),
+            sample_size_summary = build_sample_size_summary_tab(
+                filter_stats = exclusion_result$filter_stats,
+                dataset_name = dataset_name,
+                analysis_name = logistic_analysis_name,
+                modeled_n = nrow(model_data)
+            )
+        )
     }
 
     # Note: Diagnostics are now handled by the unified table generation system
 
     return(list(
         rates = sequela_rates,
-        table = if (exists("regression_table")) regression_table else tbl, # Return regression table if available, otherwise summary table
+        table = if (!is.null(regression_table)) regression_table else tbl, # Return regression table if available, otherwise summary table
         model = model_result,
-        diagnostics = if (exists("safety_diagnostics")) safety_diagnostics else NULL # Add diagnostics for consolidation
+        diagnostics = safety_diagnostics # Add diagnostics for consolidation
     ))
 }

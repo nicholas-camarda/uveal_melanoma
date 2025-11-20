@@ -15,8 +15,9 @@
 #' @param treatment_var Name of treatment variable (default: "treatment_group")
 #' @param effect_measure Effect measure type (optional, auto-detected if NULL)
 #' @param table_result gtsummary table object (optional)
+#' @param filter_stats List summarizing pre/post filtering sample sizes (optional)
 #' @return List containing all diagnostic data frames
-create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predictor_vars, confounders, analysis_name, dataset_name, filtered_variables = NULL, other_map = list(), extreme_diagnostics = NULL, treatment_var = "treatment_group", effect_measure = NULL, table_result = NULL, other_level_details = NULL) {
+create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predictor_vars, confounders, analysis_name, dataset_name, filtered_variables = NULL, other_map = list(), extreme_diagnostics = NULL, treatment_var = "treatment_group", effect_measure = NULL, table_result = NULL, other_level_details = NULL, filter_stats = NULL) {
     # === UNIFIED MODEL EXTRACTION ===
     # Single model summary call - no redundancy
     model_summary <- summary(model_fit)
@@ -56,6 +57,7 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
     model_diagnostics_tab <- create_model_diagnostics_tab(model_fit, dataset_name, analysis_name, effect_measure, coefs, extreme_diagnostics, filtered_variables)
     data_characteristics_tab <- create_data_characteristics_tab(dataset_name, analysis_name, predictor_vars, confounders, outcome_var, data)
     other_level_details_tab <- create_other_level_details_tab(model_fit, other_map, other_level_details)
+    sample_size_summary_tab <- build_sample_size_summary_tab(filter_stats, dataset_name, analysis_name, modeled_n = nrow(data))
 
     # === UNIFIED RAW MODEL OUTPUT ===
     raw_model_output_tab <- create_raw_model_output_tab(
@@ -86,8 +88,45 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
         excluded_rows = excluded_rows_tab,
         raw_model_output = raw_model_output_tab,
         filtering_summary = filtering_summary_tab,
-        reference_levels = reference_levels_tab
+        reference_levels = reference_levels_tab,
+        sample_size_summary = sample_size_summary_tab
     ))
+}
+
+#' Build a single-row sample size audit table used in diagnostics and HTML notes
+build_sample_size_summary_tab <- function(filter_stats, dataset_name, analysis_name, modeled_n) {
+    default_stats <- list(
+        initial_n = modeled_n,
+        model_n = modeled_n,
+        removed_n = 0L,
+        removed_pct = 0,
+        removal_reason = "No rows removed prior to modeling"
+    )
+
+    if (is.null(filter_stats)) {
+        stats <- default_stats
+    } else {
+        stats <- utils::modifyList(default_stats, filter_stats)
+    }
+
+    initial_n <- stats$initial_n %||% modeled_n
+    model_n <- stats$model_n %||% modeled_n
+    removed_n <- stats$removed_n %||% pmax(initial_n - modeled_n, 0)
+    removed_pct <- stats$removed_pct
+    if (is.null(removed_pct) || is.na(removed_pct)) {
+        removed_pct <- if (initial_n > 0) round((initial_n - model_n) / initial_n * 100, 1) else 0
+    }
+
+    data.frame(
+        dataset_name = dataset_name,
+        analysis_name = analysis_name,
+        initial_n = as.integer(initial_n),
+        modeled_n = as.integer(model_n),
+        removed_n = as.integer(removed_n),
+        removed_pct = removed_pct,
+        removal_reason = stats$removal_reason,
+        stringsAsFactors = FALSE
+    )
 }
 
 # === HELPER FUNCTIONS ===

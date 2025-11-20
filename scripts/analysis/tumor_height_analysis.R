@@ -121,17 +121,26 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders,
             output_dir = output_dirs$obj1_height_primary,
             prefix = prefix,
             other_map = other_map,
-            other_level_details = exclusion_result$other_level_details
+            other_level_details = exclusion_result$other_level_details,
+            filter_stats = exclusion_result$filter_stats
         )
     } else {
-        list(
+        diagnostics_stub <- list(
             table = NULL,
             model = NULL,
-            diagnostics = list(
-                other_level_details = exclusion_result$other_level_details,
-                raw_model_output = "Model skipped: insufficient data after removing 'Other' levels."
+            diagnostics = NULL
+        )
+        diagnostics_stub$diagnostics <- list(
+            other_level_details = exclusion_result$other_level_details,
+            raw_model_output = "Model skipped: insufficient data after removing 'Other' levels.",
+            sample_size_summary = build_sample_size_summary_tab(
+                filter_stats = exclusion_result$filter_stats,
+                dataset_name = "tumor_height",
+                analysis_name = "height_change_primary",
+                modeled_n = nrow(data_model_ready)
             )
         )
+        diagnostics_stub
     }
 
     primary_height_lm <- primary_result$model
@@ -154,17 +163,26 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders,
             output_dir = output_dirs$obj1_height_sensitivity,
             prefix = prefix,
             other_map = other_map,
-            other_level_details = exclusion_result$other_level_details
+            other_level_details = exclusion_result$other_level_details,
+            filter_stats = exclusion_result$filter_stats
         )
     } else {
-        list(
+        diagnostics_stub <- list(
             table = NULL,
             model = NULL,
-            diagnostics = list(
-                other_level_details = exclusion_result$other_level_details,
-                raw_model_output = "Model skipped: insufficient data after removing 'Other' levels."
+            diagnostics = NULL
+        )
+        diagnostics_stub$diagnostics <- list(
+            other_level_details = exclusion_result$other_level_details,
+            raw_model_output = "Model skipped: insufficient data after removing 'Other' levels.",
+            sample_size_summary = build_sample_size_summary_tab(
+                filter_stats = exclusion_result$filter_stats,
+                dataset_name = "tumor_height",
+                analysis_name = "height_change_sensitivity",
+                modeled_n = nrow(data_model_ready)
             )
         )
+        diagnostics_stub
     }
 
     sensitivity_height_lm <- sensitivity_result$model

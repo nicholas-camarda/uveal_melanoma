@@ -127,6 +127,11 @@ save_table_outputs <- function(table_result, raw_output, model_fit, analysis_nam
 
                     gt_table <- modified_table %>% as_gt()
 
+                    sample_note <- build_sample_size_source_note(diagnostics$sample_size_summary)
+                    if (!is.null(sample_note)) {
+                        gt_table <- gt_table %>% gt::tab_source_note(gt::md(sample_note))
+                    }
+
                     # Track row counts after gt conversion
                     gt_rows <- nrow(gt_table$table_body)
                     logger::log_info(sprintf("DEBUG: GT table has %d rows", gt_rows))
@@ -219,6 +224,10 @@ save_table_outputs <- function(table_result, raw_output, model_fit, analysis_nam
                     addWorksheet(wb, "Reference_Levels")
                     writeData(wb, "Reference_Levels", diagnostics$reference_levels)
                 }
+                if (!is.null(diagnostics$sample_size_summary)) {
+                    addWorksheet(wb, "Sample_size_summary")
+                    writeData(wb, "Sample_size_summary", diagnostics$sample_size_summary)
+                }
                 saveWorkbook(wb, diagnostics_path, overwrite = TRUE)
                 logger::log_info(sprintf("Comprehensive diagnostics saved to %s", diagnostics_path))
             },
@@ -234,4 +243,35 @@ save_table_outputs <- function(table_result, raw_output, model_fit, analysis_nam
         html_path = html_path,
         diagnostics_path = diagnostics_path
     ))
+}
+
+build_sample_size_source_note <- function(sample_size_summary) {
+    if (is.null(sample_size_summary) || !is.data.frame(sample_size_summary) || nrow(sample_size_summary) == 0) {
+        return(NULL)
+    }
+
+    row <- sample_size_summary[1, , drop = FALSE]
+    initial_n <- row$initial_n
+    modeled_n <- row$modeled_n
+    removed_n <- row$removed_n
+    removed_pct <- row$removed_pct
+    reason <- row$removal_reason %||% "Pre-model exclusions"
+
+    if (is.na(initial_n) || is.na(modeled_n) || is.na(removed_n)) {
+        return(NULL)
+    }
+
+    if (removed_n == 0) {
+        return(sprintf("Sample size audit: %d participants entered the model; no rows were excluded prior to fitting.", modeled_n))
+    }
+
+    pct_text <- if (!is.null(removed_pct) && !is.na(removed_pct)) sprintf("%.1f%%", removed_pct) else "n/a"
+    sprintf(
+        "Sample size audit: %d provided, %d modeled (%d removed; %s, %s).",
+        as.integer(initial_n),
+        as.integer(modeled_n),
+        as.integer(removed_n),
+        pct_text,
+        reason
+    )
 }
