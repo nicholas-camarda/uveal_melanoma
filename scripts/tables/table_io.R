@@ -228,6 +228,10 @@ save_table_outputs <- function(table_result, raw_output, model_fit, analysis_nam
                     addWorksheet(wb, "Sample_size_summary")
                     writeData(wb, "Sample_size_summary", diagnostics$sample_size_summary)
                 }
+                if (!is.null(diagnostics$covariate_variation)) {
+                    addWorksheet(wb, "Covariate_variation")
+                    writeData(wb, "Covariate_variation", diagnostics$covariate_variation)
+                }
                 saveWorkbook(wb, diagnostics_path, overwrite = TRUE)
                 logger::log_info(sprintf("Comprehensive diagnostics saved to %s", diagnostics_path))
             },

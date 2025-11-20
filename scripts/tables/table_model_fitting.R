@@ -1,5 +1,80 @@
 # Table Model Fitting
 
+#' Format a small set of unique values for logging/documentation
+format_unique_values <- function(values, max_display = 5) {
+    if (length(values) == 0) {
+        return("none")
+    }
+
+    unique_vals <- unique(as.character(values))
+    if (length(unique_vals) > max_display) {
+        unique_vals <- c(unique_vals[seq_len(max_display)], "...")
+    }
+
+    paste(unique_vals, collapse = ", ")
+}
+
+#' Remove predictors that lack post-filter variability
+prune_low_variability_terms <- function(formula, data, model_label = "Regression") {
+    if (is.null(formula) || is.null(data)) {
+        return(list(formula = formula, removed = list()))
+    }
+
+    terms_obj <- terms(formula)
+    predictor_terms <- attr(terms_obj, "term.labels")
+    if (length(predictor_terms) == 0) {
+        return(list(formula = formula, removed = list()))
+    }
+
+    kept_terms <- predictor_terms
+    removed_details <- list()
+
+    for (term in predictor_terms) {
+        if (!term %in% names(data)) {
+            next
+        }
+
+        term_values <- data[[term]]
+        non_missing <- term_values[!is.na(term_values)]
+        unique_values <- unique(non_missing)
+
+        insufficient_variation <- length(unique_values) <= 1
+        if (insufficient_variation) {
+            kept_terms <- setdiff(kept_terms, term)
+            reason <- if (length(unique_values) == 0) {
+                "all observations missing after filtering"
+            } else {
+                sprintf("only one unique value remains (%s)", format_unique_values(unique_values))
+            }
+            removed_details[[term]] <- list(
+                reason = reason,
+                unique_values = if (length(unique_values) == 0) "none" else format_unique_values(unique_values),
+                non_missing_n = length(non_missing)
+            )
+
+            logger::log_warn(sprintf(
+                "%s model: dropping covariate '%s' due to insufficient variation (%s).",
+                model_label,
+                term,
+                reason
+            ))
+        }
+    }
+
+    if (length(removed_details) > 0) {
+        outcome <- as.character(formula[[2]])
+        if (length(kept_terms) == 0) {
+            updated_formula <- as.formula(paste(outcome, "~ 1"))
+        } else {
+            updated_formula <- as.formula(paste(outcome, "~", paste(kept_terms, collapse = " + ")))
+        }
+        environment(updated_formula) <- environment(formula)
+        formula <- updated_formula
+    }
+
+    list(formula = formula, removed = removed_details)
+}
+
 #' Fit regression model
 #'
 #' @param data Data frame
@@ -12,6 +87,10 @@ fit_regression_model <- function(data, formula, model_type, time_var = NULL, eve
     tryCatch(
         {
             if (model_type == "logistic") {
+                pruning <- prune_low_variability_terms(formula, data, "Logistic")
+                formula <- pruning$formula
+                removed_covariates <- pruning$removed
+
                 # Check for perfect separation before fitting
                 formula_vars <- all.vars(formula)
                 outcome_var <- formula_vars[1]
@@ -59,9 +138,14 @@ fit_regression_model <- function(data, formula, model_type, time_var = NULL, eve
 
                 # Add perfect separation info to model
                 model$perfect_separation_vars <- perfect_separation_vars
+                model$removed_covariates <- removed_covariates
 
                 return(model)
             } else if (model_type == "cox") {
+                pruning <- prune_low_variability_terms(formula, data, "Cox")
+                formula <- pruning$formula
+                removed_covariates <- pruning$removed
+
                 if (is.null(time_var) || is.null(event_var)) {
                     stop("Cox models require time_var and event_var")
                 }
@@ -167,11 +251,18 @@ fit_regression_model <- function(data, formula, model_type, time_var = NULL, eve
                 # Add perfect separation info to model if it exists
                 if (!is.null(cox_model)) {
                     cox_model$perfect_separation_vars <- perfect_separation_vars
+                    cox_model$removed_covariates <- removed_covariates
                 }
 
                 return(cox_model)
             } else if (model_type == "linear") {
-                lm(formula, data = data)
+                pruning <- prune_low_variability_terms(formula, data, "Linear")
+                formula <- pruning$formula
+                removed_covariates <- pruning$removed
+
+                lm_model <- lm(formula, data = data)
+                lm_model$removed_covariates <- removed_covariates
+                lm_model
             } else {
                 stop("Unsupported model type: ", model_type)
             }

@@ -80,6 +80,12 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
     # === UNIFIED REFERENCE LEVELS ===
     reference_levels_tab <- create_reference_levels_tab(extreme_diagnostics)
 
+    covariate_variation_tab <- build_covariate_variation_tab(
+        removed_covariates = model_fit$removed_covariates %||% list(),
+        dataset_name = dataset_name,
+        analysis_name = analysis_name
+    )
+
     return(list(
         model_summary = model_summary_tab,
         model_diagnostics_tab = model_diagnostics_tab,
@@ -89,7 +95,8 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
         raw_model_output = raw_model_output_tab,
         filtering_summary = filtering_summary_tab,
         reference_levels = reference_levels_tab,
-        sample_size_summary = sample_size_summary_tab
+        sample_size_summary = sample_size_summary_tab,
+        covariate_variation = covariate_variation_tab
     ))
 }
 
@@ -288,6 +295,27 @@ create_other_level_details_tab <- function(model_fit, other_map, provided_detail
             stringsAsFactors = FALSE
         )
     }
+}
+
+build_covariate_variation_tab <- function(removed_covariates, dataset_name, analysis_name) {
+    if (is.null(removed_covariates) || length(removed_covariates) == 0) {
+        return(NULL)
+    }
+
+    rows <- lapply(names(removed_covariates), function(var_name) {
+        details <- removed_covariates[[var_name]]
+        data.frame(
+            dataset_name = dataset_name,
+            analysis_name = analysis_name,
+            variable = var_name,
+            reason = details$reason %||% "Insufficient variation",
+            retained_values = details$unique_values %||% "none",
+            non_missing_n = details$non_missing_n %||% 0,
+            stringsAsFactors = FALSE
+        )
+    })
+
+    do.call(rbind, rows)
 }
 
 #' Create raw model output table
