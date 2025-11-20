@@ -343,6 +343,17 @@ create_binned_continuous_variables <- function(data) {
                     "60-69 years", "70-79 years", "≥ 80 years"
                 )
             ),
+            age_at_diagnosis_general_pop_median = factor(
+                case_when(
+                    is.na(age_at_diagnosis) ~ NA_character_,
+                    age_at_diagnosis < GENERAL_POP_MEDIAN_AGE_CUTOFF ~ paste0("< ", GENERAL_POP_MEDIAN_AGE_CUTOFF, " years"),
+                    TRUE ~ paste0("≥ ", GENERAL_POP_MEDIAN_AGE_CUTOFF, " years")
+                ),
+                levels = c(
+                    paste0("< ", GENERAL_POP_MEDIAN_AGE_CUTOFF, " years"),
+                    paste0("≥ ", GENERAL_POP_MEDIAN_AGE_CUTOFF, " years")
+                )
+            ),
             initial_tumor_height_binned = if (USE_CLINICAL_BINNING_CONTINUOUS) {
                 factor(
                     case_when(

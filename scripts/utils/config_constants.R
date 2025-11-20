@@ -125,7 +125,7 @@ SEX_FACTOR_LEVELS <- c("Female", "Male")
 
 # Define confounders for adjustment in all models
 confounders <- c(
-    "age_at_diagnosis_binned", "sex", "location"
+    "age_at_diagnosis_general_pop_median", "sex", "location"
     # "internal_reflectivity",
     # "srf", "flashes_photopsia", "floaters",
     # "initial_overall_stage", "initial_t_stage",
@@ -141,7 +141,7 @@ confounders <- c(
 
 # Define subgroup variables for analysis
 subgroup_vars <- c(
-    "age_at_diagnosis_binned", "sex", "location", "initial_t_stage_simple",
+    "age_at_diagnosis_general_pop_median", "sex", "location", "initial_t_stage_simple",
     #"initial_t_stage",
     "initial_tumor_height", "initial_tumor_diameter",
     "initial_overall_stage", "biopsy1_gep", "gep_class_simple", "optic_nerve"
@@ -196,14 +196,16 @@ MAXIMUM_MISSING_DATA_PERCENTAGE <- 50 # Maximum allowed missing data percentage 
 
 # Critical variables that must exist in the dataset
 CRITICAL_VARIABLES <- c(
-    "id", "treatment_group", "age_at_diagnosis_binned", "sex", "location",
+    "id", "treatment_group", "age_at_diagnosis_binned", "age_at_diagnosis_general_pop_median",
+    "sex", "location",
     "initial_tumor_height", "initial_tumor_diameter", "initial_t_stage_simple", # "initial_t_stage",
     "recurrence1", "mets_progression", "last_known_alive_date"
 )
 
 # Variables created during data processing
 DERIVED_VARIABLES <- c(
-    "age_at_diagnosis_binned", "initial_tumor_height_binned",
+    "age_at_diagnosis_binned", "age_at_diagnosis_general_pop_median",
+    "initial_tumor_height_binned",
     "initial_tumor_diameter_binned", "initial_stage_binary",
     "gep_class_simple", "prame_status", "recurrence1_treatment_clean"
 )
@@ -216,7 +218,7 @@ CRITICAL_FACTORS <- c(
 
 # Variables to check for missing data
 MISSING_DATA_CHECK_VARIABLES <- c(
-    "age_at_diagnosis_binned", "sex", "location", "initial_tumor_height",
+    "age_at_diagnosis_general_pop_median", "sex", "location", "initial_tumor_height",
     "initial_tumor_diameter", "treatment_group", "recurrence1",
     "mets_progression", "last_known_alive_date"
 )
@@ -239,7 +241,8 @@ EXPECTED_COHORT_SIZES <- list(
 STANDARD_TABLE_LABELS <- list(
     # Demographics
     age_at_diagnosis = "Age at Diagnosis (years)",
-    age_at_diagnosis_binned = "Age at Diagnosis",
+    age_at_diagnosis_binned = "Age at Diagnosis (years)",
+    age_at_diagnosis_general_pop_median = "Age at Diagnosis (years)",
     sex = "Sex",
     race = "Race",
     ethnicity = "Ethnicity",
@@ -278,6 +281,11 @@ STANDARD_TABLE_LABELS <- list(
     internal_reflectivity = "Internal Reflectivity",
     optic_nerve = "Optic Nerve Abutment",
 
+    # Tumor size binned variables
+    initial_tumor_height_binned = "Initial Tumor Height (Binned)",
+    initial_tumor_diameter_binned = "Initial Tumor Diameter (Binned)",
+    initial_stage_binary = "Initial Stage (Binary)",
+
     # Staging
     n_stage = "N Stage",
     m_stage = "M Stage",
@@ -295,12 +303,6 @@ STANDARD_TABLE_LABELS <- list(
     retinopathy = "Radiation Retinopathy",
     nvg = "Neovascular Glaucoma",
     srd = "Serous Retinal Detachment",
-
-    # Derived variables
-    age_at_diagnosis_binned = "Age at Diagnosis (Binned)",
-    initial_tumor_height_binned = "Initial Tumor Height (Binned)",
-    initial_tumor_diameter_binned = "Initial Tumor Diameter (Binned)",
-    initial_stage_binary = "Initial Stage (Binary)",
 
     # GEP variables
     biopsy1_gep = "Gene Expression Profile",
@@ -350,11 +352,15 @@ LEGACY_CUTOFFS <- list(
     initial_tumor_diameter = 11.0 # Diameter cutoff for small vs large tumors (median-based)
 )
 
+# Dedicated cutoff for general population median age dichotomization (~63 years)
+GENERAL_POP_MEDIAN_AGE_CUTOFF <- 63
+
 # Variables to include in baseline characteristics tables
 BASELINE_VARIABLES_TO_SUMMARIZE <- c(
     # Demographics
     "age_at_diagnosis",
     "age_at_diagnosis_binned", 
+    "age_at_diagnosis_general_pop_median",
     "sex", "race", 
     # "ethnicity",
 
@@ -404,11 +410,11 @@ SURVIVAL_PLOT_SCALE <- 1.4 # Scale factor for survival plots
 # Variable order for forest plots and subgroup analyses
 FOREST_PLOT_VARIABLE_ORDER <- c(
     # "age_at_diagnosis_binned", 
-    "age_at_diagnosis_binned",
+    "age_at_diagnosis_general_pop_median",
     "sex", "location",
     "initial_t_stage_simple", # "initial_t_stage",
     # "initial_tumor_height", "initial_tumor_diameter", 
-    "biopsy1_gep", 
+    # "biopsy1_gep", 
     "optic_nerve"
 )
 
@@ -416,6 +422,7 @@ FOREST_PLOT_VARIABLE_ORDER <- c(
 FORESTPLOT_NAME_MAPPING <- list(
     "age_at_diagnosis" = "Age at Diagnosis",
     "age_at_diagnosis_binned" = "Age at Diagnosis",
+    "age_at_diagnosis_general_pop_median" = "Age at Diagnosis",
     "sex" = "Sex",
     "location" = "Location",
     "initial_overall_stage" = "Initial Overall Stage",
