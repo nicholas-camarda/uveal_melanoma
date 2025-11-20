@@ -208,7 +208,7 @@ exclude_other_categories <- function(data, variables = NULL, other_label = "Othe
         model_n = nrow(filtered_data),
         removed_n = removed_count,
         removed_pct = if (initial_row_count > 0) round(removed_count / initial_row_count * 100, 1) else 0,
-        removal_reason = "Excluded rows labelled 'Other' before modeling"
+        removal_reason = "Excluded rows (rare categories) before modeling"
     )
 
     list(
