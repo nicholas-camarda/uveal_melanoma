@@ -100,6 +100,81 @@ build_rmst_survival_summary <- function(rmst_results, surv_rates) {
     return(summary_df_final)
 }
 
+determine_survival_output_dir <- function(ylab, output_dirs) {
+    if (is.null(output_dirs)) {
+        return(getwd())
+    }
+
+    default_dir <- output_dirs$baseline_characteristics %||% getwd()
+
+    if (grepl("Overall Survival", ylab) && !is.null(output_dirs$obj1_os)) {
+        return(output_dirs$obj1_os)
+    }
+    if (grepl("Progression-Free Survival", ylab) && !is.null(output_dirs$obj1_pfs)) {
+        return(output_dirs$obj1_pfs)
+    }
+    if (grepl("PFS-2", ylab) && !is.null(output_dirs$obj3_pfs2)) {
+        return(output_dirs$obj3_pfs2)
+    }
+    if (grepl("Metastasis-Free Survival", ylab)) {
+        if (!is.null(output_dirs$obj4_mfs)) {
+            return(output_dirs$obj4_mfs)
+        }
+        if (!is.null(output_dirs$obj1_pfs)) {
+            return(output_dirs$obj1_pfs)
+        }
+        logger::log_warn("Output directory for Metastasis-Free Survival not provided; using baseline_characteristics as fallback")
+    }
+
+    default_dir
+}
+
+summarize_cox_hr <- function(model, dataset_name, analysis_label, model_label, group_var, data_source_label) {
+    if (is.null(model)) {
+        return(NULL)
+    }
+
+    model_summary <- tryCatch(summary(model), error = function(e) {
+        logger::log_warn(sprintf("Unable to summarise Cox model for %s: %s", analysis_label, e$message))
+        NULL
+    })
+    if (is.null(model_summary) || is.null(model_summary$coefficients)) {
+        return(NULL)
+    }
+
+    coef_rows <- rownames(model_summary$coefficients)
+    if (is.null(coef_rows)) {
+        return(NULL)
+    }
+
+    target_rows <- grepl(paste0("^", group_var), coef_rows)
+    if (!any(target_rows)) {
+        return(NULL)
+    }
+
+    ci_mat <- model_summary$conf.int
+    coeff_mat <- model_summary$coefficients
+    if (is.null(ci_mat)) {
+        return(NULL)
+    }
+
+    data.frame(
+        dataset = dataset_name %||% "unspecified_dataset",
+        analysis_label = analysis_label,
+        analysis_id = make_filename_safe(analysis_label),
+        model_label = model_label,
+        term = coef_rows[target_rows],
+        hazard_ratio = round(ci_mat[target_rows, "exp(coef)"], 3),
+        ci_lower = round(ci_mat[target_rows, "lower .95"], 3),
+        ci_upper = round(ci_mat[target_rows, "upper .95"], 3),
+        p_value = coeff_mat[target_rows, "Pr(>|z|)"],
+        n_patients = model_summary$n,
+        n_events = model_summary$nevent,
+        data_source = data_source_label,
+        stringsAsFactors = FALSE
+    )
+}
+
 #' Analyze time-to-event outcomes (KM + Cox)
 #' @param data Data frame
 #' @param time_var Time variable
@@ -197,6 +272,32 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             "Cox model will be skipped: insufficient non-'Other' data after exclusions.",
             indent = 1
         ))
+    }
+
+    km_unadjusted_cox_model <- NULL
+    unadjusted_ready <- length(unique(stats::na.omit(new_data[[group_var]]))) >= 2
+    if (unadjusted_ready) {
+        km_unadjusted_cox_model <- tryCatch({
+            survival::coxph(surv_formula, data = new_data)
+        }, error = function(e) {
+            logger::log_error(sprintf("Unadjusted Cox model failed for %s: %s", ylab, e$message))
+            NULL
+        })
+    } else {
+        logger::log_warn(formatted(
+            "Unadjusted Cox model skipped: insufficient groups in KM dataset.",
+            indent = 1
+        ))
+    }
+
+    cox_unadjusted_model <- NULL
+    if (cox_ready) {
+        cox_unadjusted_model <- tryCatch({
+            survival::coxph(surv_formula, data = cox_data)
+        }, error = function(e) {
+            logger::log_error(sprintf("Unadjusted Cox (Cox data) model failed for %s: %s", ylab, e$message))
+            NULL
+        })
     }
 
     # Fit Kaplan-Meier survival curves
@@ -358,17 +459,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     
     # Save KM plot if output_dirs are provided
     if (!is.null(output_dirs)) {
-        output_dir <- if (grepl("Overall Survival", ylab)) {
-            output_dirs$obj1_os
-        } else if (grepl("Progression-Free Survival", ylab)) {
-            output_dirs$obj1_pfs
-        } else if (grepl("PFS-2", ylab)) {
-            output_dirs$obj3_pfs2
-        } else if (grepl("Metastasis-Free Survival", ylab)) {
-            output_dirs$obj4_mfs
-        } else {
-            output_dirs$baseline_characteristics
-        }
+        output_dir <- determine_survival_output_dir(ylab, output_dirs)
         km_path <- file.path(output_dir, paste0(prefix, make_filename_safe(ylab), "_km.png"))
         # Combine main plot and risk table vertically so the saved image includes both
         combined_km <- cowplot::plot_grid(
@@ -672,26 +763,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
 
     # Write outputs to Excel files if output_dirs provided
     if (!is.null(output_dirs)) {
-        # Default fallback directory
-        output_dir <- output_dirs$baseline_characteristics
-        if (grepl("Overall Survival", ylab) && !is.null(output_dirs$obj1_os)) {
-            output_dir <- output_dirs$obj1_os
-        } else if (grepl("Progression-Free Survival", ylab) && !is.null(output_dirs$obj1_pfs)) {
-            output_dir <- output_dirs$obj1_pfs
-        } else if (grepl("PFS-2", ylab) && !is.null(output_dirs$obj3_pfs2)) {
-            output_dir <- output_dirs$obj3_pfs2
-        } else if (grepl("Metastasis-Free Survival", ylab)) {
-            # For MFS, prefer obj4_mfs when available; otherwise, gracefully fall back
-            if (!is.null(output_dirs$obj4_mfs)) {
-                output_dir <- output_dirs$obj4_mfs
-            } else if (!is.null(output_dirs$obj1_pfs)) {
-                # Secondary fallback to primary outcomes directory if present
-                output_dir <- output_dirs$obj1_pfs
-            } else {
-                # Keep baseline_characteristics as final fallback
-                logger::log_warn("Output directory for MFS not provided; using baseline_characteristics as fallback")
-            }
-        }
+        output_dir <- determine_survival_output_dir(ylab, output_dirs)
         writexl::write_xlsx(
             surv_rates,
             path = file.path(output_dir, paste0(prefix, make_filename_safe(ylab), "_survival_rates.xlsx"))
@@ -787,6 +859,42 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         )
     }
 
+    hr_rows <- list(
+        summarize_cox_hr(
+            model = km_unadjusted_cox_model,
+            dataset_name = dataset_name,
+            analysis_label = ylab,
+            model_label = "Unadjusted (KM data)",
+            group_var = group_var,
+            data_source_label = "KM dataset (pre-'Other' exclusions)"
+        ),
+        summarize_cox_hr(
+            model = cox_unadjusted_model,
+            dataset_name = dataset_name,
+            analysis_label = ylab,
+            model_label = "Unadjusted (Cox data)",
+            group_var = group_var,
+            data_source_label = "Cox dataset (post 'Other' exclusions, no covariates)"
+        ),
+        summarize_cox_hr(
+            model = cox_result$model,
+            dataset_name = dataset_name,
+            analysis_label = ylab,
+            model_label = "Adjusted Cox (confounders)",
+            group_var = group_var,
+            data_source_label = "Cox dataset (excludes 'Other' rows)"
+        )
+    )
+    hr_rows <- hr_rows[!vapply(hr_rows, is.null, logical(1))]
+    hazard_ratio_summary <- if (length(hr_rows) > 0) dplyr::bind_rows(hr_rows) else data.frame()
+
+    if (!is.null(output_dirs) && nrow(hazard_ratio_summary) > 0) {
+        hr_dir <- determine_survival_output_dir(ylab, output_dirs)
+        hr_filename <- paste0(prefix, make_filename_safe(ylab), "_hazard_ratio_summary.xlsx")
+        writexl::write_xlsx(hazard_ratio_summary, file.path(hr_dir, hr_filename))
+        logger::log_info(sprintf("Hazard ratio summary saved: %s", hr_filename))
+    }
+
     logger::log_info(sprintf(
         "DEBUG: RMST summary for %s - rows: %d, any valid p-values: %s",
         ylab,
@@ -833,7 +941,8 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         cox_model = cox_result$model,
         cox_table = cox_result$table,
         ph_diagnostics = NULL,
-        diagnostics = cox_result$diagnostics
+        diagnostics = cox_result$diagnostics,
+        hazard_ratio_summary = hazard_ratio_summary
     )
 }
 
