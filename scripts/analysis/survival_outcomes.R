@@ -100,6 +100,29 @@ build_rmst_survival_summary <- function(rmst_results, surv_rates) {
     return(summary_df_final)
 }
 
+# survRM2::rmst2 returns a 3x4 matrix with columns "Est.", "lower .95",
+# "upper .95", and "p" (verified via synthetic test data on 2025-11-21).
+# This helper grabs the requested CI bound while gracefully handling renamed
+# columns (e.g., if alpha changes and the "95" label shifts) and missing rows.
+extract_rmst_ci <- function(result_matrix, bound = c("lower", "upper")) {
+    bound <- match.arg(bound)
+    if (is.null(result_matrix) || nrow(result_matrix) == 0) {
+        return(NA_real_)
+    }
+
+    matched_cols <- grep(
+        pattern = paste0("^", bound),
+        x = colnames(result_matrix),
+        ignore.case = TRUE,
+        value = TRUE
+    )
+    if (length(matched_cols) == 0) {
+        return(NA_real_)
+    }
+
+    suppressWarnings(as.numeric(result_matrix[1, matched_cols[1]]))
+}
+
 determine_survival_output_dir <- function(ylab, output_dirs) {
     if (is.null(output_dirs)) {
         return(getwd())
@@ -537,10 +560,15 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             RMST_Group2_Years = numeric(),
             RMST_Difference_Months = numeric(),
             RMST_Difference_Years = numeric(),
+            RMST_Difference_Lower_Months = numeric(),
+            RMST_Difference_Upper_Months = numeric(),
+            RMST_Difference_Lower_Years = numeric(),
+            RMST_Difference_Upper_Years = numeric(),
             RMST_P_Value = numeric(),
             Analysis_Type = character(),
             stringsAsFactors = FALSE
         )
+
         rmst_survival_summary <- data.frame()
     } else {
         surv_rates <- as.data.frame(surv_summary[c("strata", "time", "surv", "lower", "upper")]) %>%
@@ -565,6 +593,10 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             RMST_Group2_Years = numeric(),
             RMST_Difference_Months = numeric(),
             RMST_Difference_Years = numeric(),
+            RMST_Difference_Lower_Months = numeric(),
+            RMST_Difference_Upper_Months = numeric(),
+            RMST_Difference_Lower_Years = numeric(),
+            RMST_Difference_Upper_Years = numeric(),
             RMST_P_Value = numeric(),
             Analysis_Type = character(),
             stringsAsFactors = FALSE
@@ -662,6 +694,19 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
                 rmst_diff_years <- round(rmst_diff_months / 12, 3)
                 rmst_diff_years <- ifelse(abs(rmst_diff_years) < 1e-10, 0, rmst_diff_years)
 
+                ci_lower_months <- extract_rmst_ci(rmst_result$unadjusted.result, bound = "lower")
+                ci_upper_months <- extract_rmst_ci(rmst_result$unadjusted.result, bound = "upper")
+                if (is.na(ci_lower_months)) {
+                    ci_lower_months <- rmst_diff_months
+                }
+                if (is.na(ci_upper_months)) {
+                    ci_upper_months <- rmst_diff_months
+                }
+                ci_lower_months <- round(ci_lower_months, 2)
+                ci_upper_months <- round(ci_upper_months, 2)
+                ci_lower_years <- round(ci_lower_months / 12, 3)
+                ci_upper_years <- round(ci_upper_months / 12, 3)
+
                 rmst_results <- rbind(
                     rmst_results,
                     data.frame(
@@ -675,6 +720,10 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
                         RMST_Group2_Years = round(rmst_group2_months / 12, 2),
                         RMST_Difference_Months = rmst_diff_months,
                         RMST_Difference_Years = rmst_diff_years,
+                        RMST_Difference_Lower_Months = ci_lower_months,
+                        RMST_Difference_Upper_Months = ci_upper_months,
+                        RMST_Difference_Lower_Years = ci_lower_years,
+                        RMST_Difference_Upper_Years = ci_upper_years,
                         RMST_P_Value = round(rmst_result$unadjusted.result[1, 4], 4),
                         Analysis_Type = paste0("Mean survival up to ", time_years, " years"),
                         stringsAsFactors = FALSE
@@ -703,6 +752,10 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
                         RMST_Group2_Years = NA,
                         RMST_Difference_Months = NA,
                         RMST_Difference_Years = NA,
+                        RMST_Difference_Lower_Months = NA,
+                        RMST_Difference_Upper_Months = NA,
+                        RMST_Difference_Lower_Years = NA,
+                        RMST_Difference_Upper_Years = NA,
                         RMST_P_Value = NA,
                         Analysis_Type = analysis_type_msg,
                         stringsAsFactors = FALSE

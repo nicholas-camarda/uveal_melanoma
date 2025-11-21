@@ -79,6 +79,7 @@ use("gt") # Table formatting
 use("cardx") # Extended statistical functions for gtsummary
 use("forestploter") # Forest plots
 use("grid") # grid::unit(), viewport helpers
+use("gridExtra") # Table grobs for inset RMST summaries
 use("cowplot") # Combining ggplots
 use("ggsurvfit") # For cumulative incidence plots
 use("tidycmprsk") # For cumulative incidence plots
