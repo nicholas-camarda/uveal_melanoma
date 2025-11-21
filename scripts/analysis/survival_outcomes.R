@@ -866,7 +866,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             analysis_label = ylab,
             model_label = "Unadjusted (KM data)",
             group_var = group_var,
-            data_source_label = "KM dataset (before rare-category exclusions)"
+            data_source_label = "KM dataset (before rare-category exclusions, no covariates)"
         ),
         summarize_cox_hr(
             model = cox_unadjusted_model,
@@ -874,7 +874,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             analysis_label = ylab,
             model_label = "Unadjusted (Cox data)",
             group_var = group_var,
-            data_source_label = "Cox dataset (post 'Other' exclusions, no covariates)"
+            data_source_label = "Cox dataset (after rare-category exclusions, no covariates)"
         ),
         summarize_cox_hr(
             model = cox_result$model,
@@ -882,7 +882,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             analysis_label = ylab,
             model_label = "Adjusted Cox (confounders)",
             group_var = group_var,
-            data_source_label = "Cox dataset (excludes 'Other' rows)"
+            data_source_label = "Cox dataset (after rare-category exclusions, includes covariates)"
         )
     )
     hr_rows <- hr_rows[!vapply(hr_rows, is.null, logical(1))]
