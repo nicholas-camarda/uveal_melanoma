@@ -100,6 +100,132 @@ build_rmst_survival_summary <- function(rmst_results, surv_rates) {
     return(summary_df_final)
 }
 
+#' Build a publication-style RMST table (e.g., Supplemental Table 1)
+#'
+#' Takes the long-form RMST results and reshapes them so each row corresponds to a
+#' metric (PBT RMST, GKSRS RMST, p-value, difference) and each column corresponds
+#' to a time horizon. The resulting data frame mirrors the layout of Supplemental
+#' Table 1 in the manuscript draft.
+#'
+#' @param rmst_results Data frame returned from RMST calculations, containing
+#'   per-horizon estimates. Must include the columns
+#'   `Time_Point_Years`, `RMST_Group1_Years`, `RMST_Group2_Years`,
+#'   `RMST_P_Value`, and `RMST_Difference_Months`.
+#' @param group1_label Display name for treatment group 1 (defaults to "PBT").
+#' @param group2_label Display name for treatment group 2 (defaults to "GKSRS").
+#' @param display_unit Unit used for RMST rows and the difference row. Accepted
+#'   values are "months" or "years"; the default is "months" so everything is
+#'   on the same scale as RMST Difference (months).
+#' @param digits_rmst Number of decimal places to show for RMST estimates.
+#' @param digits_diff Decimal places for the difference row.
+#' @param digits_p Decimal places for p-values. Values smaller than the
+#'   corresponding power-of-ten threshold are formatted as "<0.01", etc.
+#' @return A tibble where the first column is `Treatment Group` (row labels) and
+#'   subsequent columns correspond to horizons (`1-year`, `3-year`, ...). Returns
+#'   an empty tibble if rmst_results is NULL/empty.
+build_rmst_timepoint_table <- function(
+        rmst_results,
+        group1_label = "PBT",
+        group2_label = "GKSRS",
+        display_unit = c("months", "years"),
+        digits_rmst = 2,
+        digits_diff = 2,
+        digits_p = 2) {
+
+    display_unit <- match.arg(display_unit)
+    if (is.null(rmst_results) || nrow(rmst_results) == 0) {
+        return(tibble::tibble())
+    }
+
+    required_cols <- c(
+        "Time_Point_Years",
+        "RMST_Group1_Years",
+        "RMST_Group2_Years",
+        "RMST_Group1_Months",
+        "RMST_Group2_Months",
+        "RMST_P_Value",
+        "RMST_Difference_Months"
+    )
+    missing_cols <- setdiff(required_cols, names(rmst_results))
+    if (length(missing_cols) > 0) {
+        stop(sprintf(
+            "RMST table cannot be built; missing columns: %s",
+            paste(missing_cols, collapse = ", ")
+        ))
+    }
+
+    format_fixed <- function(values, digits) {
+        vapply(values, function(val) {
+            if (is.na(val)) {
+                return("NA")
+            }
+            formatC(round(val, digits), format = "f", digits = digits)
+        }, character(1))
+    }
+
+    format_p_value <- function(values, digits) {
+        cutoff <- 10^(-digits)
+        vapply(values, function(val) {
+            if (is.na(val)) {
+                return("NA")
+            }
+            if (val < cutoff) {
+                return(sprintf("<%.*f", digits, cutoff))
+            }
+            formatC(round(val, digits), format = "f", digits = digits)
+        }, character(1))
+    }
+
+    table_data <- rmst_results %>%
+        dplyr::arrange(Time_Point_Years) %>%
+        dplyr::mutate(
+            Time_Label = paste0(Time_Point_Years, "-year"),
+            Group1_Value = dplyr::case_when(
+                display_unit == "months" ~ RMST_Group1_Months,
+                TRUE ~ RMST_Group1_Years
+            ),
+            Group2_Value = dplyr::case_when(
+                display_unit == "months" ~ RMST_Group2_Months,
+                TRUE ~ RMST_Group2_Years
+            ),
+            Diff_Value = dplyr::case_when(
+                display_unit == "months" ~ RMST_Difference_Months,
+                TRUE ~ RMST_Difference_Months / 12
+            )
+        )
+
+    unit_label <- ifelse(display_unit == "months", "months", "years")
+    time_levels <- unique(table_data$Time_Label)
+
+    long_rows <- dplyr::bind_rows(
+        tibble::tibble(
+            Row_Label = sprintf("%s (%s)", group1_label, unit_label),
+            Time_Label = table_data$Time_Label,
+            Value = format_fixed(table_data$Group1_Value, digits_rmst)
+        ),
+        tibble::tibble(
+            Row_Label = sprintf("%s (%s)", group2_label, unit_label),
+            Time_Label = table_data$Time_Label,
+            Value = format_fixed(table_data$Group2_Value, digits_rmst)
+        ),
+        tibble::tibble(
+            Row_Label = sprintf("RMST Difference (%s)", unit_label),
+            Time_Label = table_data$Time_Label,
+            Value = format_fixed(table_data$Diff_Value, digits_diff)
+        ),
+        tibble::tibble(
+            Row_Label = "RMST P-Value",
+            Time_Label = table_data$Time_Label,
+            Value = format_p_value(table_data$RMST_P_Value, digits_p)
+        )
+    ) %>%
+        dplyr::mutate(Time_Label = factor(Time_Label, levels = time_levels))
+
+    long_rows %>%
+        tidyr::pivot_wider(names_from = Time_Label, values_from = Value) %>%
+        dplyr::rename(`Treatment Group` = Row_Label)
+}
+
 # survRM2::rmst2 returns a 3x4 matrix with columns "Est.", "lower .95",
 # "upper .95", and "p" (verified via synthetic test data on 2025-11-21).
 # This helper grabs the requested CI bound while gracefully handling renamed
@@ -243,32 +369,13 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         paste0("Surv(", time_var, ", ", event_var, ") ~ ", group_var)
     )
 
-    # Select relevant columns for analysis
+    # Select relevant columns for KM/RMST analysis (retain "Other" rows)
     new_data <- fix_event_data %>%
         dplyr::select(all_of(c(time_var, event_var, group_var, confounders_to_use)))
-    cox_data <- new_data
-
-    # Remove "Other" rows prior to survival modeling
-    survival_variables <- unique(c(group_var, confounders_to_use))
-    exclusion_result <- exclude_other_categories(
-        data = cox_data,
-        variables = survival_variables[survival_variables %in% names(new_data)],
-        other_map = if (is.null(other_map)) list() else other_map
-    )
-
-    if (exclusion_result$removed_row_count > 0) {
-        logger::log_info(formatted(sprintf(
-            "Removed %d rows labelled 'Other' prior to Cox modeling (%s)",
-            exclusion_result$removed_row_count,
-            paste(survival_variables, collapse = ", ")
-        ), indent = 1))
-    }
-
-    cox_data <- exclusion_result$data
 
     if (nrow(new_data) == 0 || length(unique(stats::na.omit(new_data[[group_var]]))) < 2) {
         logger::log_warn(formatted(
-            "Insufficient data available for Kaplan-Meier fit (before 'Other' exclusions); skipping survival analysis.",
+            "Insufficient data available for Kaplan-Meier fit; skipping survival analysis.",
             indent = 1
         ))
         empty_df <- data.frame()
@@ -283,11 +390,29 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             cox_table = NULL,
             ph_diagnostics = NULL,
             diagnostics = list(
-                other_level_details = exclusion_result$other_level_details,
+                other_level_details = list(),
                 raw_model_output = "Model skipped: insufficient data for KM fit."
             )
         ))
     }
+
+    cox_data <- new_data
+    survival_variables <- unique(c(group_var, confounders_to_use))
+    cox_exclusion_result <- exclude_other_categories(
+        data = cox_data,
+        variables = survival_variables[survival_variables %in% names(cox_data)],
+        other_map = if (is.null(other_map)) list() else other_map
+    )
+
+    if (cox_exclusion_result$removed_row_count > 0) {
+        logger::log_info(formatted(sprintf(
+            "Removed %d rows labelled 'Other' prior to Cox modeling (%s)",
+            cox_exclusion_result$removed_row_count,
+            paste(survival_variables, collapse = ", ")
+        ), indent = 1))
+    }
+
+    cox_data <- cox_exclusion_result$data
 
     cox_ready <- nrow(cox_data) > 0 && length(unique(stats::na.omit(cox_data[[group_var]]))) >= 2
     if (!cox_ready) {
@@ -770,6 +895,35 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         data.frame()
     }
 
+    rmst_timepoint_table <- tibble::tibble()
+    if (nrow(rmst_results) > 0) {
+        first_label <- function(values, fallback) {
+            valid_idx <- which(!is.na(values) & values != "")
+            if (length(valid_idx) == 0) {
+                return(fallback)
+            }
+            as.character(values[valid_idx[1]])
+        }
+        group1_label <- first_label(rmst_results$Group1_Name, "Group 1")
+        group2_label <- first_label(rmst_results$Group2_Name, "Group 2")
+
+        rmst_timepoint_table <- tryCatch(
+            build_rmst_timepoint_table(
+                rmst_results = rmst_results,
+                group1_label = group1_label,
+                group2_label = group2_label,
+                display_unit = "months",
+                digits_rmst = 2,
+                digits_diff = 2,
+                digits_p = 2
+            ),
+            error = function(e) {
+                logger::log_warn(sprintf("Unable to build RMST timepoint table: %s", e$message))
+                tibble::tibble()
+            }
+        )
+    }
+
     # Prepare wide-format survival rates for reporting
     surv_rates_wide <- surv_rates %>%
         dplyr::mutate(Time_Label = paste0(Time_Years, "-year")) %>%
@@ -846,6 +1000,11 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
                 ylab
             ))
         }
+        if (rmst_has_data && nrow(rmst_timepoint_table) > 0) {
+            rmst_table_path <- file.path(output_dir, paste0(prefix, make_filename_safe(ylab), "_rmst_timepoint_table.xlsx"))
+            writexl::write_xlsx(rmst_timepoint_table, path = rmst_table_path)
+            logger::log_info(sprintf("RMST timepoint table saved: %s", basename(rmst_table_path)))
+        }
     }
 
     # Run Cox regression and generate regression table
@@ -869,8 +1028,8 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
                 event_var = event_var,
                 other_map = other_map,
                 treatment_var = group_var,
-                other_level_details = exclusion_result$other_level_details,
-                filter_stats = exclusion_result$filter_stats
+                other_level_details = cox_exclusion_result$other_level_details,
+                filter_stats = cox_exclusion_result$filter_stats
             )
         }, error = function(e) {
             logger::log_error(sprintf("ERROR in generate_regression_table: %s", e$message))
@@ -878,11 +1037,11 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         })
     } else {
         diagnostics_stub <- list(
-            other_level_details = exclusion_result$other_level_details,
+            other_level_details = cox_exclusion_result$other_level_details,
             raw_model_output = "Cox model skipped: insufficient data after removing 'Other' levels."
         )
         diagnostics_stub$sample_size_summary <- build_sample_size_summary_tab(
-            filter_stats = exclusion_result$filter_stats,
+            filter_stats = cox_exclusion_result$filter_stats,
             dataset_name = dataset_name,
             analysis_name = cox_analysis_name,
             modeled_n = nrow(cox_data)
@@ -896,11 +1055,11 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
 
     if (is.null(cox_result)) {
         diagnostics_stub <- list(
-            other_level_details = exclusion_result$other_level_details,
+            other_level_details = cox_exclusion_result$other_level_details,
             raw_model_output = "Cox model failed to fit; see logs for details."
         )
         diagnostics_stub$sample_size_summary <- build_sample_size_summary_tab(
-            filter_stats = exclusion_result$filter_stats,
+            filter_stats = cox_exclusion_result$filter_stats,
             dataset_name = dataset_name,
             analysis_name = cox_analysis_name,
             modeled_n = nrow(cox_data)
@@ -967,6 +1126,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         survival_rates_wide = surv_rates_wide_with_rmst,
         rmst_analysis = rmst_results,
         rmst_survival_summary = rmst_survival_summary,
+        rmst_timepoint_table = rmst_timepoint_table,
         rmst_plot = tryCatch({
             # Only generate RMST plot if there's valid RMST data
             rmst_has_data <- nrow(rmst_results) > 0 && any(!is.na(rmst_results$RMST_P_Value) & !grepl("Not applicable", rmst_results$Analysis_Type))
