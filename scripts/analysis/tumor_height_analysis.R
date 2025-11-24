@@ -239,7 +239,8 @@ summarize_tumor_size_by_treatment <- function(data, size_var = "initial_tumor_he
             min = round(min(.data[[size_var]], na.rm = TRUE), 2),
             max = round(max(.data[[size_var]], na.rm = TRUE), 2),
             .groups = "drop"
-        )
+        ) %>%
+        dplyr::mutate(variable = size_var, .before = 1)
 
     # Wilcoxon rank-sum test for group difference
     wilcox_p <- tryCatch(
@@ -275,8 +276,9 @@ summarize_tumor_size_by_treatment <- function(data, size_var = "initial_tumor_he
         if (!dir.exists(output_dir)) {
             dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
         }
-        summary_path <- file.path(output_dir, paste0(prefix, "tumor_size_by_treatment_summary.xlsx"))
-        plot_path <- file.path(output_dir, paste0(prefix, "tumor_size_by_treatment.png"))
+        size_suffix <- paste0(make_filename_safe(size_var), "_")
+        summary_path <- file.path(output_dir, paste0(prefix, size_suffix, "tumor_size_by_treatment_summary.xlsx"))
+        plot_path <- file.path(output_dir, paste0(prefix, size_suffix, "tumor_size_by_treatment.png"))
         try(
             writexl::write_xlsx(
                 list(

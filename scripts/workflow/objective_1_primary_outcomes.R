@@ -171,6 +171,12 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         output_dir = output_dirs$obj1_height_primary,
         prefix = prefix
     )
+    baseline_diameter_summary <- summarize_tumor_size_by_treatment(
+        data = data,
+        size_var = "initial_tumor_diameter",
+        output_dir = output_dirs$obj1_height_primary,
+        prefix = prefix
+    )
     logger::log_info(formatted("Tumor size by treatment group outputs completed", indent = 1))
 
     # 1f. Subgroup analysis with interaction terms
