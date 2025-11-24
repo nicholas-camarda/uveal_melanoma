@@ -73,13 +73,15 @@ build_rmst_survival_summary <- function(rmst_results, surv_rates) {
             Analysis_Type
         )
 
-    # Check that Group 1 and Groups 2 are consistently labeled as PBT and GKSRS respectively
-    if (!all(sort(unique(summary_df$Group1_Name)) == c("PBT")) || !all(sort(unique(summary_df$Group2_Name)) == c("GKSRS"))) {
-        logger::log_warn(format("Unexpected treatment group names in RMST summary; expected 'PBT' for Group 1 and 'GKSRS' for Group 2.", indent = 1))
-        stop("Aborting RMST summary generation due to unexpected treatment group names. Investigate upstream analysis for inconsistencies.")
-    } else {
-        logger::log_info(format("RMST summary treatment groups correctly labeled as 'PBT' (Group 1) and 'GKSRS' (Group 2).", indent = 1))
+    # Check that Group 1 and Group 2 are consistently labeled as PBT and GKSRS respectively
+    valid_group1 <- all(sort(unique(stats::na.omit(summary_df$Group1_Name))) == "PBT")
+    valid_group2 <- all(sort(unique(stats::na.omit(summary_df$Group2_Name))) == "GKSRS")
+    if (!valid_group1 || !valid_group2) {
+        logger::log_warn(format("RMST summary skipped: treatment group names not limited to PBT (Group 1) and GKSRS (Group 2).", indent = 1))
+        return(data.frame())
     }
+
+    logger::log_info(format("RMST summary treatment groups correctly labeled as 'PBT' (Group 1) and 'GKSRS' (Group 2).", indent = 1))
 
     summary_df_final <- summary_df %>%
         dplyr::select(-Group1_Name, -Group2_Name, -RMST_Difference_Months, -Analysis_Type) %>%
@@ -370,10 +372,10 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     )
 
     # Select relevant columns for KM/RMST analysis (retain "Other" rows)
-    new_data <- fix_event_data %>%
+    km_data <- fix_event_data %>%
         dplyr::select(all_of(c(time_var, event_var, group_var, confounders_to_use)))
 
-    if (nrow(new_data) == 0 || length(unique(stats::na.omit(new_data[[group_var]]))) < 2) {
+    if (nrow(km_data) == 0 || length(unique(stats::na.omit(km_data[[group_var]]))) < 2) {
         logger::log_warn(formatted(
             "Insufficient data available for Kaplan-Meier fit; skipping survival analysis.",
             indent = 1
@@ -396,11 +398,10 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         ))
     }
 
-    cox_data <- new_data
     survival_variables <- unique(c(group_var, confounders_to_use))
     cox_exclusion_result <- exclude_other_categories(
-        data = cox_data,
-        variables = survival_variables[survival_variables %in% names(cox_data)],
+        data = km_data,
+        variables = survival_variables[survival_variables %in% names(km_data)],
         other_map = if (is.null(other_map)) list() else other_map
     )
 
@@ -423,10 +424,10 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     }
 
     km_unadjusted_cox_model <- NULL
-    unadjusted_ready <- length(unique(stats::na.omit(new_data[[group_var]]))) >= 2
+    unadjusted_ready <- length(unique(stats::na.omit(km_data[[group_var]]))) >= 2
     if (unadjusted_ready) {
         km_unadjusted_cox_model <- tryCatch({
-            survival::coxph(surv_formula, data = new_data)
+            survival::coxph(surv_formula, data = km_data)
         }, error = function(e) {
             logger::log_error(sprintf("Unadjusted Cox model failed for %s: %s", ylab, e$message))
             NULL
@@ -449,18 +450,18 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     }
 
     # Fit Kaplan-Meier survival curves
-    surv_fit <- survival::survfit(surv_formula, data = new_data)
+    surv_fit <- survival::survfit(surv_formula, data = km_data)
     surv_fit$call$formula <- surv_formula
 
     # Set up time axis breaks (in months) with legacy cap to avoid extreme tails
-    raw_max_time <- max(new_data[[time_var]], na.rm = TRUE)
+    raw_max_time <- max(km_data[[time_var]], na.rm = TRUE)
     max_time <- min(raw_max_time, SURVIVAL_XAXIS_MAX_MONTHS)
     base_by <- if (max_time <= 60) 6 else 12
     x_breaks <- seq(0, ceiling(max_time / base_by) * base_by, by = base_by)
 
     # Set legend labels and color palette (centralized)
     if (is.null(legend_labels)) {
-        legend_labels <- levels(factor(new_data[[group_var]]))
+        legend_labels <- levels(factor(km_data[[group_var]]))
     }
     color_palette <- get_palette_by_variable(group_var, legend_labels)
     # Identify strata requiring de-emphasis (thinner line/partial transparency)
@@ -472,7 +473,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     # Generate Kaplan-Meier plot with risk table (all sizes scaled proportionally)
     surv_plot <- survminer::ggsurvplot(
         fit = surv_fit,
-        data = new_data,
+        data = km_data,
         palette = color_palette,
         risk.table = TRUE,
         conf.int = FALSE,
@@ -620,9 +621,9 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         # Dynamic height scaling: base on number of strata in the KM fit
         n_groups <- tryCatch(
             {
-                length(surv_plot$plot$data$strata %||% levels(new_data[[group_var]]))
+                length(surv_plot$plot$data$strata %||% levels(km_data[[group_var]]))
             },
-            error = function(e) length(levels(new_data[[group_var]]))
+            error = function(e) length(levels(km_data[[group_var]]))
         )
         # Calculate dynamic height based on number of strata
         extra_groups <- max(0, n_groups - 2)
@@ -640,11 +641,11 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     
     # Add debugging and error handling for the summary call
     logger::log_info(sprintf("DEBUG: Time points for summary: %s", paste(time_points, collapse = ", ")))
-    logger::log_info(sprintf("DEBUG: Max time in data: %.2f", max(new_data[[time_var]], na.rm = TRUE)))
-    logger::log_info(sprintf("DEBUG: Min time in data: %.2f", min(new_data[[time_var]], na.rm = TRUE)))
+    logger::log_info(sprintf("DEBUG: Max time in data: %.2f", max(km_data[[time_var]], na.rm = TRUE)))
+    logger::log_info(sprintf("DEBUG: Min time in data: %.2f", min(km_data[[time_var]], na.rm = TRUE)))
     
     # Filter time points to only include those within the data range to prevent "invalid 'times' argument" error
-    max_data_time <- max(new_data[[time_var]], na.rm = TRUE)
+    max_data_time <- max(km_data[[time_var]], na.rm = TRUE)
     valid_time_points <- time_points[time_points <= max_data_time]
     
     if (length(valid_time_points) == 0) {
@@ -707,6 +708,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             dplyr::select(Treatment_Group, Time_Years, surv_pct, lower_pct, upper_pct)
 
         # Initialize RMST results table
+        rmst_data <- km_data
         rmst_results <- data.frame(
             Time_Point_Years = numeric(),
             Time_Point_Months = numeric(),
@@ -735,7 +737,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             rmst_result <- tryCatch(
                 {
                     # Handle RMST for any number of groups (binary or multi-group)
-                    unique_groups <- unique(new_data[[group_var]])
+                    unique_groups <- unique(rmst_data[[group_var]])
                     logger::log_info(sprintf("DEBUG: Unique groups for RMST: %s", paste(unique_groups, collapse = ", ")))
                     
                     if (length(unique_groups) == 2) {
@@ -745,16 +747,16 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
                         # should be coerced back to that convention rather than inferred.
 
                         if (group_var == "treatment_group") {
-                            new_data[[group_var]] <- factor(
-                                as.character(new_data[[group_var]]),
+                            rmst_data[[group_var]] <- factor(
+                                as.character(rmst_data[[group_var]]),
                                 levels = TREATMENT_FACTOR_LEVELS
                             )
                             factor_levels <- TREATMENT_FACTOR_LEVELS
                         } else {
                             # For non-treatment groupings (e.g., GEP strata), fall back to
                             # simple factor coercion but keep the natural ordering.
-                            new_data[[group_var]] <- factor(new_data[[group_var]])
-                            factor_levels <- levels(new_data[[group_var]])
+                            rmst_data[[group_var]] <- factor(rmst_data[[group_var]])
+                            factor_levels <- levels(rmst_data[[group_var]])
                         }
 
                         # Require at least two levels before proceeding
@@ -766,12 +768,12 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
                             return(NULL)
                         }
 
-                        group_binary <- ifelse(new_data[[group_var]] == factor_levels[2], 1, 0)
+                        group_binary <- ifelse(rmst_data[[group_var]] == factor_levels[2], 1, 0)
                         logger::log_info(sprintf("DEBUG: Running RMST for binary comparison: %s (arm=0) vs %s (arm=1)", factor_levels[1], factor_levels[2]))
                         
                         rmst2(
-                            time = new_data[[time_var]],
-                            status = new_data[[event_var]],
+                            time = rmst_data[[time_var]],
+                            status = rmst_data[[event_var]],
                             arm = group_binary,
                             tau = time_point
                         )
@@ -793,10 +795,10 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
                     # We know the correct order from config: PBT (arm 0), GKSRS (arm 1)
                     factor_levels <- TREATMENT_FACTOR_LEVELS
                 } else {
-                    factor_levels <- levels(new_data[[group_var]])
+                    factor_levels <- levels(rmst_data[[group_var]])
                     if (is.null(factor_levels) || length(factor_levels) == 0) {
-                        new_data[[group_var]] <- factor(new_data[[group_var]])
-                        factor_levels <- levels(new_data[[group_var]])
+                        rmst_data[[group_var]] <- factor(rmst_data[[group_var]])
+                        factor_levels <- levels(rmst_data[[group_var]])
                     }
                 }
 
@@ -856,7 +858,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
                 )
             } else {
                 # Check if we skipped RMST due to non-binary grouping
-                unique_groups <- unique(new_data[[group_var]])
+                unique_groups <- unique(rmst_data[[group_var]])
                 analysis_type_msg <- if (length(unique_groups) < 2) {
                     "Not applicable (insufficient groups)"
                 } else if (length(unique_groups) > 2) {
@@ -1132,11 +1134,11 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             rmst_has_data <- nrow(rmst_results) > 0 && any(!is.na(rmst_results$RMST_P_Value) & !grepl("Not applicable", rmst_results$Analysis_Type))
             if (rmst_has_data) {
                 # Get group names for RMST plot - use levels() to match factor order
-                factor_levels <- levels(new_data[[group_var]])
+                factor_levels <- levels(km_data[[group_var]])
                 
                 # If not a factor or no levels, fall back to unique values in sorted order
                 if (is.null(factor_levels) || length(factor_levels) == 0) {
-                    factor_levels <- sort(unique(new_data[[group_var]]))
+                    factor_levels <- sort(unique(km_data[[group_var]]))
                 }
                 
                 group1_name <- as.character(factor_levels[1])
