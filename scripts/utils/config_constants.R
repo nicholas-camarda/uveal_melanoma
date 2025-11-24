@@ -144,7 +144,7 @@ subgroup_vars <- c(
     "age_at_diagnosis_general_pop_median", "sex", "location", "initial_t_stage_simple",
     #"initial_t_stage",
     "initial_tumor_height", "initial_tumor_diameter",
-    "initial_overall_stage", "biopsy1_gep", "gep_class_simple", "optic_nerve"
+    "initial_overall_stage", "biopsy1_gep", "gep_class_simple", "gep12_prame_status", "optic_nerve"
 )
 
 # Define which subgroup variables are continuous and need binning
@@ -207,13 +207,13 @@ DERIVED_VARIABLES <- c(
     "age_at_diagnosis_binned", "age_at_diagnosis_general_pop_median",
     "initial_tumor_height_binned",
     "initial_tumor_diameter_binned", "initial_stage_binary",
-    "gep_class_simple", "prame_status", "recurrence1_treatment_clean"
+    "gep_class_simple", "prame_status", "gep12_prame_status", "recurrence1_treatment_clean"
 )
 
 # Factor variables that must have proper levels
 CRITICAL_FACTORS <- c(
     "treatment_group", "sex", "location",
-    "biopsy1_gep", "gep_class_simple", "prame_status"
+    "biopsy1_gep", "gep_class_simple", "prame_status", "gep12_prame_status"
 )
 
 # Variables to check for missing data
@@ -413,6 +413,8 @@ FOREST_PLOT_VARIABLE_ORDER <- c(
     "age_at_diagnosis_general_pop_median",
     "sex", "location",
     "initial_t_stage_simple", # "initial_t_stage",
+    "gep_class_simple", # gep_class_simple is just Class 1 vs Class 2
+    "gep12_prame_status", # prame status within Class 1/2 (so this gets a value when gep_class_simple is known Class 1 or 2)
     # "initial_tumor_height", "initial_tumor_diameter", 
     # "biopsy1_gep", 
     "optic_nerve"
@@ -431,6 +433,8 @@ FORESTPLOT_NAME_MAPPING <- list(
     "initial_tumor_height" = "Initial Tumor Height",
     "initial_tumor_diameter" = "Initial Tumor Diameter",
     "biopsy1_gep" = "GEP Class",
+    "gep_class_simple" = "GEP Class (Simple)",
+    "gep12_prame_status" = "PRAME Status (Class 1/2)",
     "optic_nerve" = "Optic Nerve Abutment"
 )
 

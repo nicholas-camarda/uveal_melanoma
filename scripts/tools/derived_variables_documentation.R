@@ -3,7 +3,7 @@
 # Description: Comprehensive documentation of all derived variables created during data processing
 # This script generates documentation for all derived variables and exports to Excel
 
-source("scripts/utils/load_all.R")
+source("scripts/load_all.R")
 
 # =============================================================================
 # DERIVED VARIABLE DOCUMENTATION
@@ -327,6 +327,13 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "character",
         units = "categorical"
     ),
+    gep12_prame_status = list(
+        description = "PRAME status restricted to tumors with Class 1 or Class 2 DecisionDx results",
+        calculation = "case_when(gep_class_simple %in% c('Class 1', 'Class 2') & prame_status %in% c('Positive', 'Negative') ~ prame_status, TRUE ~ NA)",
+        purpose = "Supports subgrouping on PRAME expression while implicitly filtering to definitive GEP classes",
+        data_type = "factor",
+        units = "categorical"
+    ),
 
     # ===== GEP VALIDATION SET =====
     gep_validation_set = list(
@@ -335,7 +342,7 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         purpose = "Random split for GEP validation (Objective 4)",
         data_type = "character",
         units = "categorical"
-    ),
+    )
 
     # # ===== MODIFIED STAGE VARIABLE =====
     # initial_overall_stage_modified = list(
@@ -594,41 +601,34 @@ generate_derived_variables_documentation <- function(include_timestamp = FALSE) 
 #' @examples
 #' validate_derived_variables_documentation(processed_data)
 validate_derived_variables_documentation <- function(processed_data) {
-    # Get all documented variables
     documented_vars <- names(DERIVED_VARIABLE_DOCUMENTATION)
-
-    # Get all variables from processed data
     actual_vars <- unique(unlist(lapply(processed_data, names)))
 
-    # Find missing documentation
-    missing_docs <- setdiff(actual_vars, documented_vars)
+    # Check that every documented derived variable actually exists in the data
+    missing_in_data <- setdiff(documented_vars, actual_vars)
 
-    # Find documented variables not in data
-    extra_docs <- setdiff(documented_vars, actual_vars)
+    # List other variables present in data but not part of the derived-variable catalog
+    undocumented_data <- setdiff(actual_vars, documented_vars)
 
-    # Create validation report
     validation_results <- list(
         documented_variables = length(documented_vars),
         actual_variables = length(actual_vars),
-        missing_documentation = missing_docs,
-        extra_documentation = extra_docs,
-        documentation_complete = length(missing_docs) == 0,
-        documentation_accurate = length(extra_docs) == 0
+        missing_in_data = missing_in_data,
+        undocumented_data = undocumented_data,
+        documentation_complete = length(missing_in_data) == 0
     )
 
-    # Print summary
     cat("=== DERIVED VARIABLES DOCUMENTATION VALIDATION ===\n")
     cat(sprintf("Documented variables: %d\n", validation_results$documented_variables))
     cat(sprintf("Actual variables: %d\n", validation_results$actual_variables))
-    cat(sprintf("Documentation complete: %s\n", validation_results$documentation_complete))
-    cat(sprintf("Documentation accurate: %s\n", validation_results$documentation_accurate))
+    cat(sprintf("All documented variables present in data: %s\n", validation_results$documentation_complete))
 
-    if (length(missing_docs) > 0) {
-        cat(sprintf("Missing documentation for: %s\n", paste(missing_docs, collapse = ", ")))
+    if (length(missing_in_data) > 0) {
+        cat(sprintf("Missing in data: %s\n", paste(missing_in_data, collapse = ", ")))
     }
 
-    if (length(extra_docs) > 0) {
-        cat(sprintf("Extra documentation for: %s\n", paste(extra_docs, collapse = ", ")))
+    if (length(undocumented_data) > 0) {
+        cat("Note:", length(undocumented_data), "data columns are not in the derived-variable catalog (expected for raw source fields).\n")
     }
 
     return(validation_results)
@@ -650,10 +650,10 @@ cat("Validating documentation against actual data...\n")
 data <- readRDS("final_data/Analytic Dataset/uveal_melanoma_full_cohort.rds")
 validation_results <- validate_derived_variables_documentation(list(full_cohort = data))
 
-if (validation_results$documentation_complete && validation_results$documentation_accurate) {
-    cat("✓ Documentation validation passed - all variables documented correctly\n")
+if (validation_results$documentation_complete) {
+    cat("✓ Documentation validation passed - all documented variables exist in the analytic dataset\n")
 } else {
-    cat("⚠ Documentation validation issues found - review missing/extra variables\n")
+    cat("⚠ Documentation validation found documented variables missing in the dataset\n")
 }
 
 cat("\n=== DOCUMENTATION GENERATION COMPLETE ===\n")

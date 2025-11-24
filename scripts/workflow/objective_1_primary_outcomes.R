@@ -581,6 +581,46 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     dev.off()
     logger::log_info(formatted("Progression-free survival subgroup analysis completed", indent = 1))
 
+    # Combined primary-outcome forest plot (2x2 layout)
+    combined_panel <- tryCatch(
+        combine_forest_plot_panels(
+            grobs = list(
+                recurrence_forest_plot,
+                mets_forest_plot,
+                os_forest_plot,
+                pfs_forest_plot
+            ),
+            panel_labels = c(
+                "a. Local Recurrence",
+                "b. Metastatic Progression",
+                "c. Overall Survival",
+                "d. Progression-Free Survival"
+            ),
+            ncol = 2
+        ),
+        error = function(e) {
+            logger::log_warn(formatted(sprintf("Unable to assemble composite forest plot: %s", e$message), indent = 1))
+            NULL
+        }
+    )
+
+    if (!is.null(combined_panel)) {
+        combined_png_path <- file.path(output_dirs$obj1_forest_plots, paste0(prefix, "primary_outcomes_composite_forest_plot.png"))
+        png(
+            combined_png_path,
+            width = FOREST_PLOT_WIDTH * 2,
+            height = FOREST_PLOT_HEIGHT * 2,
+            units = PLOT_UNITS,
+            res = PLOT_DPI
+        )
+        grid::grid.draw(combined_panel)
+        dev.off()
+        logger::log_info(formatted(sprintf("Composite primary-outcomes forest plot saved to %s", combined_png_path), indent = 1))
+        
+    } else {
+        logger::log_warn(formatted("Composite primary-outcomes forest plot skipped (missing inputs)", indent = 1))
+    }
+
     # FOREST PLOT DIAGNOSTICS COLLECTION
     diagnostics_list[["local_recurrence"]] <- create_forest_plot_diagnostics(
         subgroup_results = recurrence_subgroup_results,

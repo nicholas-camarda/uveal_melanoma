@@ -144,3 +144,48 @@ write_diagnostics_excel <- function(diagnostics_list, file_path) {
     }
     writexl::write_xlsx(diagnostics_list, file_path)
 }
+
+#' Combine multiple forest plots into a labelled grid grob
+#'
+#' @param grobs List of forestploter grobs (NULL entries are ignored)
+#' @param panel_labels Optional vector of labels ("a. ...") matching grobs
+#' @param ncol Number of columns in the output grid
+#' @return A grob suitable for grid::grid.draw(), or NULL if no valid grobs
+combine_forest_plot_panels <- function(grobs, panel_labels = NULL, ncol = 2) {
+    if (length(grobs) == 0) {
+        return(NULL)
+    }
+
+    valid_idx <- which(vapply(grobs, function(x) !is.null(x), logical(1)))
+    if (length(valid_idx) == 0) {
+        return(NULL)
+    }
+
+    grobs <- grobs[valid_idx]
+    if (!is.null(panel_labels)) {
+        panel_labels <- panel_labels[valid_idx]
+        if (length(panel_labels) != length(grobs)) {
+            stop("panel_labels must match the number of grobs when provided")
+        }
+    } else {
+        panel_labels <- rep("", length(grobs))
+    }
+
+    labelled_grobs <- Map(function(g, lbl) {
+        if (is.null(lbl) || lbl == "") {
+            return(g)
+        }
+        grid::grobTree(
+            g,
+            grid::textGrob(
+                lbl,
+                x = grid::unit(0, "npc") + grid::unit(4, "mm"),
+                y = grid::unit(1, "npc") - grid::unit(4, "mm"),
+                just = c("left", "top"),
+                gp = grid::gpar(fontface = "bold", cex = 1.05)
+            )
+        )
+    }, grobs, panel_labels)
+
+    do.call(gridExtra::arrangeGrob, c(labelled_grobs, list(ncol = ncol)))
+}

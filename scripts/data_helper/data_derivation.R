@@ -177,6 +177,14 @@ create_derived_variables <- function(data) {
                 str_detect(biopsy1_gep, "PRAME_not_reported|PRAME_Unknown") ~ "Unknown",
                 TRUE ~ "Not Available"
             ),
+            # Limit PRAME subgrouping to tumors with definitive Class 1/2 results
+            gep12_prame_status = factor(
+                case_when(
+                    gep_class_simple %in% c("Class 1", "Class 2") & prame_status %in% c("Positive", "Negative") ~ prame_status,
+                    TRUE ~ NA_character_
+                ),
+                levels = c("Negative", "Positive")
+            ),
             # Create GEP validation set with proper Training/Testing split
             # Use a simpler approach that doesn't rely on factor levels
             gep_validation_set = if_else(
