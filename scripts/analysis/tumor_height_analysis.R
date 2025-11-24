@@ -235,6 +235,8 @@ summarize_tumor_size_by_treatment <- function(data, size_var = "initial_tumor_he
             mean = round(mean(.data[[size_var]], na.rm = TRUE), 2),
             sd = round(sd(.data[[size_var]], na.rm = TRUE), 2),
             median = round(stats::median(.data[[size_var]], na.rm = TRUE), 2),
+            q1 = round(stats::quantile(.data[[size_var]], 0.25, na.rm = TRUE, type = 7), 2),
+            q3 = round(stats::quantile(.data[[size_var]], 0.75, na.rm = TRUE, type = 7), 2),
             iqr = round(stats::IQR(.data[[size_var]], na.rm = TRUE), 2),
             min = round(min(.data[[size_var]], na.rm = TRUE), 2),
             max = round(max(.data[[size_var]], na.rm = TRUE), 2),
