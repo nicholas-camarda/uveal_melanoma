@@ -197,3 +197,104 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders,
         sensitivity_regression_table = sensitivity_height_lm_tbl
     ))
 }
+
+#' Summarize baseline tumor size by treatment group and generate a box/violin plot
+#'
+#' Produces a tidy summary table and publication-style plot for baseline tumor size
+#' split by treatment group. Saves outputs only if an output directory is provided.
+#'
+#' @param data Data frame with `treatment_group` and size variable (default: `initial_tumor_height`)
+#' @param size_var Name of the tumor size column to summarise (e.g., "initial_tumor_height")
+#' @param output_dir Directory to write outputs (PNG and XLSX). If NULL, nothing is written.
+#' @param prefix Filename prefix (e.g., "full_cohort_")
+#' @return List with `summary`, `plot`, and `output_files` (paths may be NULL if not written)
+summarize_tumor_size_by_treatment <- function(data, size_var = "initial_tumor_height", output_dir = NULL, prefix = "") {
+    required_cols <- c("treatment_group", size_var)
+    if (!all(required_cols %in% names(data))) {
+        logger::log_warn(sprintf("Tumor size summary skipped: missing columns %s", paste(setdiff(required_cols, names(data)), collapse = ", ")))
+        return(list(summary = NULL, plot = NULL, output_files = list(summary = NULL, plot = NULL)))
+    }
+
+    tumor_df <- data %>%
+        enforce_unordered_factors() %>%
+        dplyr::select(treatment_group, dplyr::all_of(size_var)) %>%
+        dplyr::filter(!is.na(.data[[size_var]]))
+
+    if (nrow(tumor_df) == 0 || length(unique(tumor_df$treatment_group)) < 2) {
+        logger::log_warn("Tumor size summary skipped: insufficient data or only one treatment group present.")
+        return(list(summary = NULL, plot = NULL, output_files = list(summary = NULL, plot = NULL)))
+    }
+
+    palette <- get_palette_by_variable("treatment_group", levels(factor(tumor_df$treatment_group)))
+    size_label <- if (size_var == "initial_tumor_height") "Baseline tumor height (mm)" else size_var
+
+    summary_tbl <- tumor_df %>%
+        dplyr::group_by(treatment_group) %>%
+        dplyr::summarise(
+            n = dplyr::n(),
+            mean = round(mean(.data[[size_var]], na.rm = TRUE), 2),
+            sd = round(sd(.data[[size_var]], na.rm = TRUE), 2),
+            median = round(stats::median(.data[[size_var]], na.rm = TRUE), 2),
+            iqr = round(stats::IQR(.data[[size_var]], na.rm = TRUE), 2),
+            min = round(min(.data[[size_var]], na.rm = TRUE), 2),
+            max = round(max(.data[[size_var]], na.rm = TRUE), 2),
+            .groups = "drop"
+        )
+
+    # Wilcoxon rank-sum test for group difference
+    wilcox_p <- tryCatch(
+        stats::wilcox.test(
+            reformulate("treatment_group", response = size_var),
+            data = tumor_df
+        )$p.value,
+        error = function(e) NA_real_
+    )
+    test_table <- data.frame(
+        test = "Wilcoxon rank-sum",
+        p_value = wilcox_p,
+        significance = ifelse(is.na(wilcox_p), "Unavailable", ifelse(wilcox_p < 0.05, "Yes (p < 0.05)", "No")),
+        stringsAsFactors = FALSE
+    )
+
+    plot_obj <- ggplot2::ggplot(tumor_df, ggplot2::aes(x = treatment_group, y = .data[[size_var]], fill = treatment_group, color = treatment_group)) +
+        ggplot2::geom_boxplot(width = 0.35, alpha = 0.5, color = "black", outlier.shape = NA) +
+        ggplot2::geom_jitter(width = 0.12, alpha = 0.6, size = 2.4) +
+        ggplot2::scale_fill_manual(values = palette) +
+        ggplot2::scale_color_manual(values = palette) +
+        ggplot2::labs(
+            title = "Tumor size by treatment group",
+            x = "Treatment group",
+            y = size_label
+        ) +
+        ggplot2::theme_minimal(base_size = 14) +
+        ggplot2::theme(legend.position = "none")
+
+    summary_path <- NULL
+    plot_path <- NULL
+    if (!is.null(output_dir)) {
+        if (!dir.exists(output_dir)) {
+            dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+        }
+        summary_path <- file.path(output_dir, paste0(prefix, "tumor_size_by_treatment_summary.xlsx"))
+        plot_path <- file.path(output_dir, paste0(prefix, "tumor_size_by_treatment.png"))
+        try(
+            writexl::write_xlsx(
+                list(
+                    summary = summary_tbl,
+                    test = test_table
+                ),
+                summary_path
+            ),
+            silent = TRUE
+        )
+        ggplot2::ggsave(plot_path, plot_obj, width = DEFAULT_PLOT_WIDTH, height = DEFAULT_PLOT_HEIGHT, dpi = PLOT_DPI, bg = "white")
+        logger::log_info(sprintf("Tumor size summary written to %s and %s", basename(summary_path), basename(plot_path)))
+    }
+
+    list(
+        summary = summary_tbl,
+        test = test_table,
+        plot = plot_obj,
+        output_files = list(summary = summary_path, plot = plot_path)
+    )
+}

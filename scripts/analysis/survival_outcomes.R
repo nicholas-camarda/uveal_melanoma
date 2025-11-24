@@ -9,10 +9,11 @@
 #'   RMST estimates for each time point and treatment arm.
 #' @param surv_rates Data frame of survival percentages generated from `surv_summary`
 #'   (long format with one row per treatment/time combination).
+#' @param group_var Name of the grouping variable (used to enforce PBT/GKSRS only for treatment analyses)
 #' @return A data frame where each row corresponds to a time point and includes
 #'   survival percentages, RMST in years for both arms, the difference metrics, and
 #'   the associated p-value. Returns an empty data frame if inputs are missing.
-build_rmst_survival_summary <- function(rmst_results, surv_rates) {
+build_rmst_survival_summary <- function(rmst_results, surv_rates, group_var = "treatment_group") {
     if (is.null(rmst_results) || nrow(rmst_results) == 0) {
         return(data.frame())
     }
@@ -73,15 +74,16 @@ build_rmst_survival_summary <- function(rmst_results, surv_rates) {
             Analysis_Type
         )
 
-    # Check that Group 1 and Group 2 are consistently labeled as PBT and GKSRS respectively
-    valid_group1 <- all(sort(unique(stats::na.omit(summary_df$Group1_Name))) == "PBT")
-    valid_group2 <- all(sort(unique(stats::na.omit(summary_df$Group2_Name))) == "GKSRS")
-    if (!valid_group1 || !valid_group2) {
-        logger::log_warn(format("RMST summary skipped: treatment group names not limited to PBT (Group 1) and GKSRS (Group 2).", indent = 1))
-        return(data.frame())
+    # Enforce PBT/GKSRS labeling only for treatment-group analyses
+    if (identical(group_var, "treatment_group")) {
+        valid_group1 <- all(sort(unique(stats::na.omit(summary_df$Group1_Name))) == "PBT")
+        valid_group2 <- all(sort(unique(stats::na.omit(summary_df$Group2_Name))) == "GKSRS")
+        if (!valid_group1 || !valid_group2) {
+            logger::log_warn(format("RMST summary skipped: treatment group names not limited to PBT (Group 1) and GKSRS (Group 2).", indent = 1))
+            return(data.frame())
+        }
+        logger::log_info(format("RMST summary treatment groups correctly labeled as 'PBT' (Group 1) and 'GKSRS' (Group 2).", indent = 1))
     }
-
-    logger::log_info(format("RMST summary treatment groups correctly labeled as 'PBT' (Group 1) and 'GKSRS' (Group 2).", indent = 1))
 
     summary_df_final <- summary_df %>%
         dplyr::select(-Group1_Name, -Group2_Name, -RMST_Difference_Months, -Analysis_Type) %>%
@@ -892,7 +894,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         }
     }
     rmst_survival_summary <- if (exists("rmst_results", inherits = FALSE)) {
-        build_rmst_survival_summary(rmst_results, surv_rates)
+        build_rmst_survival_summary(rmst_results, surv_rates, group_var = group_var)
     } else {
         data.frame()
     }
@@ -982,7 +984,10 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             path = file.path(output_dir, paste0(prefix, make_filename_safe(ylab), "_survival_rates_wide.xlsx"))
         )
         # Only save RMST file if there's actual RMST data (not just "Not applicable" rows)
-        rmst_has_data <- nrow(rmst_results) > 0 && any(!is.na(rmst_results$RMST_P_Value) & !grepl("Not applicable", rmst_results$Analysis_Type))
+        rmst_has_data <- nrow(rmst_results) > 0 && any(
+            (!is.na(rmst_results$RMST_P_Value) & !grepl("Not applicable", rmst_results$Analysis_Type)) |
+                (!is.na(rmst_results$RMST_Group1_Months) & !is.na(rmst_results$RMST_Group2_Months))
+        )
         if (rmst_has_data) {
             writexl::write_xlsx(
                 rmst_results,
@@ -1110,11 +1115,14 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     }
 
     logger::log_info(sprintf(
-        "DEBUG: RMST summary for %s - rows: %d, any valid p-values: %s",
+        "DEBUG: RMST summary for %s - rows: %d, any valid RMST rows: %s",
         ylab,
         nrow(rmst_results),
         if (nrow(rmst_results) > 0) {
-            any(!is.na(rmst_results$RMST_P_Value) & !grepl("Not applicable", rmst_results$Analysis_Type))
+            any(
+                (!is.na(rmst_results$RMST_P_Value) & !grepl("Not applicable", rmst_results$Analysis_Type)) |
+                    (!is.na(rmst_results$RMST_Group1_Months) & !is.na(rmst_results$RMST_Group2_Months))
+            )
         } else {
             FALSE
         }
@@ -1130,25 +1138,25 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         rmst_survival_summary = rmst_survival_summary,
         rmst_timepoint_table = rmst_timepoint_table,
         rmst_plot = tryCatch({
-            # Only generate RMST plot if there's valid RMST data
-            rmst_has_data <- nrow(rmst_results) > 0 && any(!is.na(rmst_results$RMST_P_Value) & !grepl("Not applicable", rmst_results$Analysis_Type))
-            if (rmst_has_data) {
-                # Get group names for RMST plot - use levels() to match factor order
-                factor_levels <- levels(km_data[[group_var]])
-                
-                # If not a factor or no levels, fall back to unique values in sorted order
-                if (is.null(factor_levels) || length(factor_levels) == 0) {
-                    factor_levels <- sort(unique(km_data[[group_var]]))
-                }
-                
-                group1_name <- as.character(factor_levels[1])
-                group2_name <- as.character(factor_levels[2])
-                
-                plot_rmst_pvalue_progression(rmst_results, ylab, output_dirs, prefix, group1_name, group2_name)
-            } else {
-                logger::log_info(sprintf("Skipping RMST plot generation - no valid RMST data available for %s", ylab))
-                NULL
+            # Only generate RMST plot if we have any RMST rows; downstream handles missing pieces
+            rmst_has_rows <- nrow(rmst_results) > 0
+            if (!rmst_has_rows) {
+                logger::log_info(sprintf("Skipping RMST plot generation - no RMST rows available for %s", ylab))
+                return(NULL)
             }
+
+            # Get group names for RMST plot - use levels() to match factor order
+            factor_levels <- levels(km_data[[group_var]])
+            
+            # If not a factor or no levels, fall back to unique values in sorted order
+            if (is.null(factor_levels) || length(factor_levels) == 0) {
+                factor_levels <- sort(unique(km_data[[group_var]]))
+            }
+            
+            group1_name <- as.character(factor_levels[1])
+            group2_name <- as.character(factor_levels[2])
+            
+            plot_rmst_pvalue_progression(rmst_results, ylab, output_dirs, prefix, group1_name, group2_name)
         }, error = function(e) {
             logger::log_warn(sprintf("RMST plot generation failed: %s", e$message))
             NULL
@@ -1158,6 +1166,46 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         ph_diagnostics = NULL,
         diagnostics = cox_result$diagnostics,
         hazard_ratio_summary = hazard_ratio_summary
+    )
+}
+
+#' Overall survival stratified by local recurrence status (recurrence1)
+#'
+#' Thin wrapper around analyze_time_to_event_outcomes to keep recurrence-stratified
+#' KM and summary outputs within the recurrence objective folder.
+#'
+#' @param data Analytic dataset with recurrence1, tt_death_months, death_event
+#' @param dataset_name Cohort name for labeling
+#' @param output_dirs Output directory list (obj1_recurrence will be used for files)
+#' @param prefix File prefix (e.g., "full_cohort_")
+#' @return Result list from analyze_time_to_event_outcomes
+analyze_os_by_local_recurrence <- function(data, dataset_name, output_dirs, prefix, confounders = NULL, other_map = list()) {
+    required_cols <- c("recurrence1", "tt_death_months", "death_event")
+    if (!all(required_cols %in% names(data))) {
+        logger::log_warn(sprintf(
+            "Recurrence-stratified OS skipped: missing columns %s",
+            paste(setdiff(required_cols, names(data)), collapse = ", ")
+        ))
+        return(NULL)
+    }
+
+    recurrence_dir <- output_dirs$obj1_recurrence %||% output_dirs$obj1_os %||% getwd()
+    local_dirs <- output_dirs
+    local_dirs$obj1_os <- recurrence_dir
+    local_dirs$baseline_characteristics <- recurrence_dir
+
+    analyze_time_to_event_outcomes(
+        data = data,
+        time_var = "tt_death_months",
+        event_var = "death_event",
+        group_var = "recurrence1",
+        confounders = confounders,
+        ylab = "Overall Survival by Local Recurrence Status",
+        analysis_type = "post_treatment_only",
+        dataset_name = dataset_name,
+        other_map = other_map,
+        output_dirs = local_dirs,
+        prefix = paste0(prefix, "recurrence_stratified_")
     )
 }
 
