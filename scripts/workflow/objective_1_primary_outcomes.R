@@ -66,8 +66,8 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     )
     logger::log_info(formatted("Local recurrence analysis completed", indent = 1))
 
-    # 1a (supplement): Overall survival stratified by local recurrence status
-    logger::log_info(formatted("Executing recurrence-stratified overall survival (KM) to contextualize tumor size distribution", indent = 1))
+    # 1a1. Overall survival stratified by local recurrence status
+    logger::log_info(formatted("1a1: Recurrence-stratified overall survival (KM)", indent = 1))
     recurrence_os <- analyze_os_by_local_recurrence(
         data = data,
         dataset_name = dataset_name,
@@ -77,6 +77,18 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         other_map = other_map
     )
     logger::log_info(formatted("Recurrence-stratified overall survival completed", indent = 1))
+
+    # 1a2. Progression-free survival stratified by local recurrence status
+    logger::log_info(formatted("1a2: Recurrence-stratified progression-free survival (KM)", indent = 1))
+    recurrence_pfs <- analyze_pfs_by_local_recurrence(
+        data = data,
+        dataset_name = dataset_name,
+        output_dirs = output_dirs,
+        prefix = prefix,
+        confounders = confounders,
+        other_map = other_map
+    )
+    logger::log_info(formatted("Recurrence-stratified progression-free survival completed", indent = 1))
 
     # 1b. Rates of metastatic progression (post-treatment only)
     logger::log_info(formatted("Executing analyze_binary_outcome_rates: Metastatic progression rates analysis (post-treatment only)", indent = 1))
@@ -678,6 +690,8 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
 
     return(list(
         recurrence_rates = recurrence_rates,
+        recurrence_os = recurrence_os,
+        recurrence_pfs = recurrence_pfs,
         mets_rates = mets_rates,
         os_analysis = os_analysis,
         pfs_analysis = pfs_analysis,

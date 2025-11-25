@@ -341,8 +341,13 @@ plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dir
 
     output_dir <- switch(outcome_label,
         "Overall Survival Probability" = output_dirs$obj1_os,
-        "Overall Survival by Local Recurrence Status" = output_dirs$obj1_recurrence %||% output_dirs$obj1_os,
+        "Overall Survival by Local Recurrence Status" =
+            output_dirs$obj1_recurrence_1a1 %||%
+                output_dirs$obj1_recurrence,
         "Progression-Free Survival Probability" = output_dirs$obj1_pfs,
+        "Progression-Free Survival by Local Recurrence Status" =
+            output_dirs$obj1_recurrence_1a2 %||%
+                output_dirs$obj1_recurrence,
         "PFS-2 Probability (Freedom from 2nd Recurrence)" = output_dirs$obj3_pfs2,
         "PFS-2 Probability" = output_dirs$obj3_pfs2,
         "Metastasis-Free Survival Probability" = output_dirs$obj4_mfs,

@@ -1190,9 +1190,16 @@ analyze_os_by_local_recurrence <- function(data, dataset_name, output_dirs, pref
     }
 
     recurrence_dir <- output_dirs$obj1_recurrence %||% output_dirs$obj1_os %||% getwd()
+    os_subdir <- output_dirs$obj1_recurrence_1a1 %||% file.path(recurrence_dir, "1a1_recurrence_stratified_os")
+    if (!dir.exists(os_subdir)) {
+        dir.create(os_subdir, recursive = TRUE, showWarnings = FALSE)
+        if (exists("USE_LOGS") && USE_LOGS) {
+            logger::log_debug(formatted(sprintf("Created directory: %s", os_subdir)))
+        }
+    }
     local_dirs <- output_dirs
-    local_dirs$obj1_os <- recurrence_dir
-    local_dirs$baseline_characteristics <- recurrence_dir
+    local_dirs$obj1_os <- os_subdir
+    local_dirs$baseline_characteristics <- os_subdir
 
     analyze_time_to_event_outcomes(
         data = data,
@@ -1205,7 +1212,51 @@ analyze_os_by_local_recurrence <- function(data, dataset_name, output_dirs, pref
         dataset_name = dataset_name,
         other_map = other_map,
         output_dirs = local_dirs,
-        prefix = paste0(prefix, "recurrence_stratified_")
+        prefix = paste0(prefix, "1a1_recurrence_stratified_")
+    )
+}
+
+#' Progression-free survival stratified by local recurrence status (recurrence1)
+#'
+#' Mirrors analyze_os_by_local_recurrence but uses PFS endpoints to understand
+#' how recurrence status impacts progression-free survival curves.
+#'
+#' @inheritParams analyze_os_by_local_recurrence
+#' @return Result list from analyze_time_to_event_outcomes
+analyze_pfs_by_local_recurrence <- function(data, dataset_name, output_dirs, prefix, confounders = NULL, other_map = list()) {
+    required_cols <- c("recurrence1", "tt_pfs_months", "pfs_event")
+    if (!all(required_cols %in% names(data))) {
+        logger::log_warn(sprintf(
+            "Recurrence-stratified PFS skipped: missing columns %s",
+            paste(setdiff(required_cols, names(data)), collapse = ", ")
+        ))
+        return(NULL)
+    }
+
+    recurrence_dir <- output_dirs$obj1_recurrence %||% output_dirs$obj1_pfs %||% getwd()
+    pfs_subdir <- output_dirs$obj1_recurrence_1a2 %||% file.path(recurrence_dir, "1a2_recurrence_stratified_pfs")
+    if (!dir.exists(pfs_subdir)) {
+        dir.create(pfs_subdir, recursive = TRUE, showWarnings = FALSE)
+        if (exists("USE_LOGS") && USE_LOGS) {
+            logger::log_debug(formatted(sprintf("Created directory: %s", pfs_subdir)))
+        }
+    }
+    local_dirs <- output_dirs
+    local_dirs$obj1_pfs <- pfs_subdir
+    local_dirs$baseline_characteristics <- pfs_subdir
+
+    analyze_time_to_event_outcomes(
+        data = data,
+        time_var = "tt_pfs_months",
+        event_var = "pfs_event",
+        group_var = "recurrence1",
+        confounders = confounders,
+        ylab = "Progression-Free Survival by Local Recurrence Status",
+        analysis_type = "post_treatment_only",
+        dataset_name = dataset_name,
+        other_map = other_map,
+        output_dirs = local_dirs,
+        prefix = paste0(prefix, "1a2_recurrence_stratified_")
     )
 }
 

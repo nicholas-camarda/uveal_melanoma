@@ -21,6 +21,8 @@ create_output_structure <- function(cohort_dir) {
     dirs <- list(
         # OBJECTIVE 1: Efficacy of PBT vs GKSRS
         obj1_recurrence = file.path(cohort_dir, "01_Efficacy", "a_recurrence"),
+        obj1_recurrence_1a1 = file.path(cohort_dir, "01_Efficacy", "a_recurrence", "1a1_recurrence_stratified_os"),
+        obj1_recurrence_1a2 = file.path(cohort_dir, "01_Efficacy", "a_recurrence", "1a2_recurrence_stratified_pfs"),
         obj1_mets = file.path(cohort_dir, "01_Efficacy", "b_metastatic_progression"),
         obj1_os = file.path(cohort_dir, "01_Efficacy", "c_overall_survival"),
         obj1_pfs = file.path(cohort_dir, "01_Efficacy", "d_progression_free_survival"),
