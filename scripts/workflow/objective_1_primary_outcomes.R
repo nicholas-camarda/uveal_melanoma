@@ -318,7 +318,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
 
     # Save the PRIMARY forest plot
     png(file.path(output_dirs$obj1_forest_plots, paste0(prefix, "tumor_height_primary_subgroup_forest_plot.png")),
-        width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI
+        width = FOREST_PLOT_WIDTH, height = compute_forest_plot_height(primary_height_forest_plot), units = PLOT_UNITS, res = PLOT_DPI
     )
     plot(primary_height_forest_plot)
     dev.off()
@@ -347,7 +347,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
 
     # Save the SENSITIVITY forest plot
     png(file.path(output_dirs$obj1_forest_plots, paste0(prefix, "tumor_height_sensitivity_subgroup_forest_plot.png")),
-        width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI
+        width = FOREST_PLOT_WIDTH, height = compute_forest_plot_height(sensitivity_height_forest_plot), units = PLOT_UNITS, res = PLOT_DPI
     )
     plot(sensitivity_height_forest_plot)
     dev.off()
@@ -471,7 +471,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
 
     # Save the forest plot
     png(file.path(output_dirs$obj1_forest_plots, paste0(prefix, "local_recurrence_subgroup_forest_plot.png")),
-        width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI
+        width = FOREST_PLOT_WIDTH, height = compute_forest_plot_height(recurrence_forest_plot), units = PLOT_UNITS, res = PLOT_DPI
     )
     plot(recurrence_forest_plot)
     dev.off()
@@ -505,7 +505,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
 
     # Save the forest plot
     png(file.path(output_dirs$obj1_forest_plots, paste0(prefix, "metastatic_progression_subgroup_forest_plot.png")),
-        width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI
+        width = FOREST_PLOT_WIDTH, height = compute_forest_plot_height(mets_forest_plot), units = PLOT_UNITS, res = PLOT_DPI
     )
     plot(mets_forest_plot)
     dev.off()
@@ -540,7 +540,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
 
     # Save the forest plot
     png(file.path(output_dirs$obj1_forest_plots, paste0(prefix, "overall_survival_subgroup_forest_plot.png")),
-        width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI
+        width = FOREST_PLOT_WIDTH, height = compute_forest_plot_height(os_forest_plot), units = PLOT_UNITS, res = PLOT_DPI
     )
     plot(os_forest_plot)
     dev.off()
@@ -575,21 +575,22 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
 
     # Save the forest plot
     png(file.path(output_dirs$obj1_forest_plots, paste0(prefix, "progression_free_survival_subgroup_forest_plot.png")),
-        width = FOREST_PLOT_WIDTH, height = FOREST_PLOT_HEIGHT, units = PLOT_UNITS, res = PLOT_DPI
+        width = FOREST_PLOT_WIDTH, height = compute_forest_plot_height(pfs_forest_plot), units = PLOT_UNITS, res = PLOT_DPI
     )
     plot(pfs_forest_plot)
     dev.off()
     logger::log_info(formatted("Progression-free survival subgroup analysis completed", indent = 1))
 
     # Combined primary-outcome forest plot (2x2 layout)
+    combined_input_grobs <- list(
+        recurrence_forest_plot,
+        mets_forest_plot,
+        os_forest_plot,
+        pfs_forest_plot
+    )
     combined_panel <- tryCatch(
         combine_forest_plot_panels(
-            grobs = list(
-                recurrence_forest_plot,
-                mets_forest_plot,
-                os_forest_plot,
-                pfs_forest_plot
-            ),
+            grobs = combined_input_grobs,
             panel_labels = c(
                 "a. Local Recurrence",
                 "b. Metastatic Progression",
@@ -606,10 +607,22 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
 
     if (!is.null(combined_panel)) {
         combined_png_path <- file.path(output_dirs$obj1_forest_plots, paste0(prefix, "primary_outcomes_composite_forest_plot.png"))
+        panel_count <- sum(vapply(combined_input_grobs, function(x) !is.null(x), logical(1)))
+        col_count <- attr(combined_panel, "column_count")
+        if (is.null(col_count) || !is.finite(col_count) || col_count <= 0) {
+            col_count <- min(2, max(1, panel_count))
+        }
+        row_height_inches <- attr(combined_panel, "row_height_inches")
+        if (is.null(row_height_inches) || !all(is.finite(row_height_inches))) {
+            fallback_rows <- ceiling(panel_count / col_count)
+            row_height_inches <- rep(FOREST_PLOT_HEIGHT, fallback_rows)
+        }
+        # Add margins: top (0.1) + bottom (0.5) = 0.6
+        total_height_inches <- sum(row_height_inches) + 0.6
         png(
             combined_png_path,
-            width = FOREST_PLOT_WIDTH * 2,
-            height = FOREST_PLOT_HEIGHT * 2,
+            width = FOREST_PLOT_WIDTH * col_count,
+            height = total_height_inches,
             units = PLOT_UNITS,
             res = PLOT_DPI
         )

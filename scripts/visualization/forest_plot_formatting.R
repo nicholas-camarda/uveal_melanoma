@@ -145,6 +145,33 @@ write_diagnostics_excel <- function(diagnostics_list, file_path) {
     writexl::write_xlsx(diagnostics_list, file_path)
 }
 
+#' Compute dynamic height for a single forest plot grob
+#'
+#' Calculates height based on row count. Accounts for title, column headers,
+#' data rows, axis labels, and arrows.
+#'
+#' @param fp A forestploter grob (with forest_row_count attribute)
+#' @param min_height Minimum height in inches (default 4)
+#' @param max_height Maximum height in inches (default 14)
+#' @return Numeric height in inches
+compute_forest_plot_height <- function(fp, min_height = 4, max_height = 14) {
+    row_count <- attr(fp, "forest_row_count")
+    if (is.null(row_count) || !is.finite(row_count) || row_count <= 0) {
+        return(7) # Safe default
+    }
+    
+    # Components:
+    # - Title: ~0.4"
+    # - Column headers: ~0.35"
+    # - Data rows: ~0.28" each
+    # - X-axis ticks + labels: ~0.35"
+    # - Favors arrows/labels: ~0.4"
+    # Total overhead: ~1.5"
+    height <- 1.5 + row_count * 0.28
+    
+    max(min_height, min(max_height, height))
+}
+
 #' Combine multiple forest plots into a labelled grid grob
 #'
 #' @param grobs List of forestploter grobs (NULL entries are ignored)
@@ -171,21 +198,69 @@ combine_forest_plot_panels <- function(grobs, panel_labels = NULL, ncol = 2) {
         panel_labels <- rep("", length(grobs))
     }
 
+    # Use the shared helper for each panel
+    panel_heights <- vapply(grobs, compute_forest_plot_height, numeric(1))
+
     labelled_grobs <- Map(function(g, lbl) {
         if (is.null(lbl) || lbl == "") {
             return(g)
         }
-        grid::grobTree(
-            g,
-            grid::textGrob(
-                lbl,
-                x = grid::unit(0, "npc") + grid::unit(4, "mm"),
-                y = grid::unit(1, "npc") - grid::unit(4, "mm"),
-                just = c("left", "top"),
-                gp = grid::gpar(fontface = "bold", cex = 1.05)
+        # Place label in its own row above the forest plot
+        label_grob <- grid::textGrob(
+            lbl,
+            x = grid::unit(4, "mm"),
+            y = grid::unit(0, "npc"),
+            just = c("left", "bottom"),
+            gp = grid::gpar(fontface = "bold", cex = 1.5) # Panel label text size and formatting
+        )
+        gridExtra::arrangeGrob(
+            grobs = list(label_grob, g),
+            ncol = 1,
+            heights = grid::unit.c(
+                grid::unit(0.22, "inches"),
+                grid::unit(1, "null")
             )
         )
     }, grobs, panel_labels)
 
-    do.call(gridExtra::arrangeGrob, c(labelled_grobs, list(ncol = ncol)))
+    n_panels <- length(labelled_grobs)
+    grid_rows <- ceiling(n_panels / ncol)
+    
+    # Label adds 0.025" to each panel
+    label_overhead <- 0.025
+    
+    row_height_inches <- numeric(grid_rows)
+    for (r in seq_len(grid_rows)) {
+        idx <- which(((seq_len(n_panels) - 1) %/% ncol) + 1 == r)
+        # Row height = max forest plot height + label overhead
+        row_height_inches[r] <- max(panel_heights[idx], na.rm = TRUE) + label_overhead
+    }
+    if (any(!is.finite(row_height_inches))) {
+        row_height_inches[!is.finite(row_height_inches)] <- pmax(5, stats::median(row_height_inches[is.finite(row_height_inches)], na.rm = TRUE))
+    }
+    row_height_units <- grid::unit(row_height_inches, "inches")
+
+    base_combined <- do.call(
+        gridExtra::arrangeGrob,
+        c(labelled_grobs, list(ncol = ncol, heights = row_height_units, padding = grid::unit(0, "lines")))
+    )
+    attr(base_combined, "row_height_inches") <- row_height_inches
+    attr(base_combined, "column_count") <- min(ncol, n_panels)
+    attr(base_combined, "panel_heights") <- panel_heights
+
+    top_margin_inches <- 0.1
+    bottom_margin_inches <- 0.5
+    combined <- gridExtra::arrangeGrob(
+        grobs = list(grid::nullGrob(), base_combined, grid::nullGrob()),
+        ncol = 1,
+        heights = grid::unit.c(
+            grid::unit(top_margin_inches, "inches"),
+            grid::unit(1, "null"),
+            grid::unit(bottom_margin_inches, "inches")
+        )
+    )
+    attr(combined, "row_height_inches") <- attr(base_combined, "row_height_inches")
+    attr(combined, "column_count") <- attr(base_combined, "column_count")
+    attr(combined, "panel_heights") <- attr(base_combined, "panel_heights")
+    combined
 }

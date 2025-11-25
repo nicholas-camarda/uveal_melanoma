@@ -222,6 +222,7 @@ create_single_cohort_forest_plot <- function(subgroup_results,
 
     # Attach diagnostics for external retrieval
     attr(fp, "diagnostics") <- plot_data$diagnostics
+    attr(fp, "forest_row_count") <- nrow(plot_data$data_frame)
 
     return(fp)
 }
