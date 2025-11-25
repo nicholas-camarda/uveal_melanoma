@@ -98,6 +98,26 @@ get_treatment_palette <- function(levels) {
     out
 }
 
+#' Consistent colors for recurrence status (Yes/No)
+#' Uses colors distinct from treatment palette (blue/red)
+#' @param levels Character vector of recurrence levels (e.g., c("Yes","No"))
+#' @return Named vector mapping levels to colors
+get_recurrence_palette <- function(levels) {
+    mapping <- c(
+        "No"  = "#20854EFF", # green - no recurrence (good outcome)
+        "Yes" = "#7876B1FF"  # purple - recurrence
+    )
+    lv <- unique(as.character(levels))
+    out <- mapping[lv]
+    if (any(is.na(out))) {
+        needed <- sum(is.na(out))
+        fill <- setdiff(get_qualitative_palette(length(lv)), unname(mapping))
+        out[is.na(out)] <- head(fill, needed)
+    }
+    names(out) <- lv
+    out
+}
+
 #' Dispatcher to choose palette based on variable semantics
 #' @param variable_name Name of the variable being visualized (e.g., 'gep_class_simple','prame_status','treatment_group')
 #' @param levels Character vector of factor levels in plotting order
@@ -109,6 +129,7 @@ get_palette_by_variable <- function(variable_name, levels) {
         "biopsy1_gep" = get_gep_class_palette(lv),
         "prame_status" = get_prame_palette(lv),
         "treatment_group" = get_treatment_palette(lv),
+        "recurrence1" = get_recurrence_palette(lv),
         # default fallback
         get_qualitative_palette(length(lv))
     )
