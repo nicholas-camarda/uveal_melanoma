@@ -1197,6 +1197,7 @@ analyze_os_by_local_recurrence <- function(data, dataset_name, output_dirs, pref
             logger::log_debug(formatted(sprintf("Created directory: %s", os_subdir)))
         }
     }
+    logger::log_info(formatted(sprintf("Routing 1a1 recurrence OS outputs to %s", os_subdir), indent = 2))
     local_dirs <- output_dirs
     local_dirs$obj1_os <- os_subdir
     local_dirs$baseline_characteristics <- os_subdir
@@ -1241,6 +1242,7 @@ analyze_pfs_by_local_recurrence <- function(data, dataset_name, output_dirs, pre
             logger::log_debug(formatted(sprintf("Created directory: %s", pfs_subdir)))
         }
     }
+    logger::log_info(formatted(sprintf("Routing 1a2 recurrence PFS outputs to %s", pfs_subdir), indent = 2))
     local_dirs <- output_dirs
     local_dirs$obj1_pfs <- pfs_subdir
     local_dirs$baseline_characteristics <- pfs_subdir
@@ -1257,6 +1259,88 @@ analyze_pfs_by_local_recurrence <- function(data, dataset_name, output_dirs, pre
         other_map = other_map,
         output_dirs = local_dirs,
         prefix = paste0(prefix, "1a2_recurrence_stratified_")
+    )
+}
+
+#' Overall survival stratified by metastatic progression status
+#'
+#' Mirrors recurrence helper but isolates OS curves by mets progression status.
+analyze_os_by_metastatic_progression <- function(data, dataset_name, output_dirs, prefix, confounders = NULL, other_map = list()) {
+    required_cols <- c("mets_progression", "tt_death_months", "death_event")
+    if (!all(required_cols %in% names(data))) {
+        logger::log_warn(sprintf(
+            "Metastasis-stratified OS skipped: missing columns %s",
+            paste(setdiff(required_cols, names(data)), collapse = ", ")
+        ))
+        return(NULL)
+    }
+
+    mets_dir <- output_dirs$obj1_mets %||% output_dirs$obj1_os %||% getwd()
+    os_subdir <- output_dirs$obj1_mets_2a1 %||% file.path(mets_dir, "2a1_metastasis_stratified_os")
+    if (!dir.exists(os_subdir)) {
+        dir.create(os_subdir, recursive = TRUE, showWarnings = FALSE)
+        if (exists("USE_LOGS") && USE_LOGS) {
+            logger::log_debug(formatted(sprintf("Created directory: %s", os_subdir)))
+        }
+    }
+    logger::log_info(formatted(sprintf("Routing 2a1 metastasis OS outputs to %s", os_subdir), indent = 2))
+
+    local_dirs <- output_dirs
+    local_dirs$obj1_os <- os_subdir
+    local_dirs$baseline_characteristics <- os_subdir
+
+    analyze_time_to_event_outcomes(
+        data = data,
+        time_var = "tt_death_months",
+        event_var = "death_event",
+        group_var = "mets_progression",
+        confounders = confounders,
+        ylab = "Overall Survival by Metastatic Progression Status",
+        analysis_type = "post_treatment_only",
+        dataset_name = dataset_name,
+        other_map = other_map,
+        output_dirs = local_dirs,
+        prefix = paste0(prefix, "2a1_metastasis_stratified_")
+    )
+}
+
+#' Progression-free survival stratified by metastatic progression status
+analyze_pfs_by_metastatic_progression <- function(data, dataset_name, output_dirs, prefix, confounders = NULL, other_map = list()) {
+    required_cols <- c("mets_progression", "tt_pfs_months", "pfs_event")
+    if (!all(required_cols %in% names(data))) {
+        logger::log_warn(sprintf(
+            "Metastasis-stratified PFS skipped: missing columns %s",
+            paste(setdiff(required_cols, names(data)), collapse = ", ")
+        ))
+        return(NULL)
+    }
+
+    mets_dir <- output_dirs$obj1_mets %||% output_dirs$obj1_pfs %||% getwd()
+    pfs_subdir <- output_dirs$obj1_mets_2a2 %||% file.path(mets_dir, "2a2_metastasis_stratified_pfs")
+    if (!dir.exists(pfs_subdir)) {
+        dir.create(pfs_subdir, recursive = TRUE, showWarnings = FALSE)
+        if (exists("USE_LOGS") && USE_LOGS) {
+            logger::log_debug(formatted(sprintf("Created directory: %s", pfs_subdir)))
+        }
+    }
+    logger::log_info(formatted(sprintf("Routing 2a2 metastasis PFS outputs to %s", pfs_subdir), indent = 2))
+
+    local_dirs <- output_dirs
+    local_dirs$obj1_pfs <- pfs_subdir
+    local_dirs$baseline_characteristics <- pfs_subdir
+
+    analyze_time_to_event_outcomes(
+        data = data,
+        time_var = "tt_pfs_months",
+        event_var = "pfs_event",
+        group_var = "mets_progression",
+        confounders = confounders,
+        ylab = "Progression-Free Survival by Metastatic Progression Status",
+        analysis_type = "post_treatment_only",
+        dataset_name = dataset_name,
+        other_map = other_map,
+        output_dirs = local_dirs,
+        prefix = paste0(prefix, "2a2_metastasis_stratified_")
     )
 }
 

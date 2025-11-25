@@ -106,6 +106,30 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     )
     logger::log_info(formatted("Metastatic progression analysis completed", indent = 1))
 
+    # 2a1. Overall survival stratified by metastatic progression status
+    logger::log_info(formatted("2a1: Metastasis-stratified overall survival (KM)", indent = 1))
+    metastasis_os <- analyze_os_by_metastatic_progression(
+        data = data,
+        dataset_name = dataset_name,
+        output_dirs = output_dirs,
+        prefix = prefix,
+        confounders = confounders,
+        other_map = other_map
+    )
+    logger::log_info(formatted("Metastasis-stratified overall survival completed", indent = 1))
+
+    # 2a2. Progression-free survival stratified by metastatic progression status
+    logger::log_info(formatted("2a2: Metastasis-stratified progression-free survival (KM)", indent = 1))
+    metastasis_pfs <- analyze_pfs_by_metastatic_progression(
+        data = data,
+        dataset_name = dataset_name,
+        output_dirs = output_dirs,
+        prefix = prefix,
+        confounders = confounders,
+        other_map = other_map
+    )
+    logger::log_info(formatted("Metastasis-stratified progression-free survival completed", indent = 1))
+
     # 1c. Overall Survival (post-treatment only)
     logger::log_info(formatted("Executing analyze_time_to_event_outcomes: Overall survival analysis (Kaplan-Meier & Cox regression)", indent = 1))
     os_analysis <- analyze_time_to_event_outcomes(
@@ -693,6 +717,8 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         recurrence_os = recurrence_os,
         recurrence_pfs = recurrence_pfs,
         mets_rates = mets_rates,
+        metastasis_os = metastasis_os,
+        metastasis_pfs = metastasis_pfs,
         os_analysis = os_analysis,
         pfs_analysis = pfs_analysis,
         height_changes = height_changes,
