@@ -1156,7 +1156,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             group1_name <- as.character(factor_levels[1])
             group2_name <- as.character(factor_levels[2])
             
-            plot_rmst_pvalue_progression(rmst_results, ylab, output_dirs, prefix, group1_name, group2_name)
+            plot_rmst_pvalue_progression(rmst_results, ylab, output_dirs, prefix, group1_name, group2_name, group_var)
         }, error = function(e) {
             logger::log_warn(sprintf("RMST plot generation failed: %s", e$message))
             NULL

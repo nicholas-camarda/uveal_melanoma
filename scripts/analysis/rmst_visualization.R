@@ -10,8 +10,9 @@
 #' @param prefix Character string used as a file prefix for output files
 #' @param group1_name Character string for the first group (coded as 0 in RMST)
 #' @param group2_name Character string for the second group (coded as 1 in RMST)
+#' @param group_var Character string for the grouping variable name (used for palette selection)
 #' @return ggplot object
-plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dirs, prefix, group1_name = "Group 1", group2_name = "Group 2") {
+plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dirs, prefix, group1_name = "Group 1", group2_name = "Group 2", group_var = "treatment_group") {
     diff_column <- if ("RMST_Difference_Months" %in% names(rmst_results)) {
         "RMST_Difference_Months"
     } else if ("RMST_Difference" %in% names(rmst_results)) {
@@ -147,7 +148,7 @@ plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dir
 
     treatment_palette <- tryCatch(
         {
-            get_treatment_palette(c(group1_label, group2_label))
+            get_palette_by_variable(group_var, c(group1_label, group2_label))
         },
         error = function(e) {
             stats::setNames(
