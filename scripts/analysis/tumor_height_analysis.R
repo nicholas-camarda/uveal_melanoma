@@ -225,7 +225,8 @@ summarize_tumor_size_by_treatment <- function(data, size_var = "initial_tumor_he
         return(list(summary = NULL, plot = NULL, output_files = list(summary = NULL, plot = NULL)))
     }
 
-    palette <- get_palette_by_variable("treatment_group", levels(factor(tumor_df$treatment_group)))
+    treatment_levels <- levels(factor(tumor_df$treatment_group))
+    palette <- get_palette_by_variable("treatment_group", treatment_levels)
     size_label <- if (size_var == "initial_tumor_height") "Baseline tumor height (mm)" else size_var
 
     summary_tbl <- tumor_df %>%
@@ -259,6 +260,23 @@ summarize_tumor_size_by_treatment <- function(data, size_var = "initial_tumor_he
         stringsAsFactors = FALSE
     )
 
+    # Pre-compute formatted p-value label for annotation
+    format_p_for_label <- function(p) {
+        if (is.na(p)) return("p = NA")
+        if (p < 0.001) return("p < 0.001")
+        sprintf("p = %.3f", p)
+    }
+    y_max <- max(tumor_df[[size_var]], na.rm = TRUE)
+    y_min <- min(tumor_df[[size_var]], na.rm = TRUE)
+    y_span <- if (is.finite(y_max - y_min) && (y_max - y_min) > 0) y_max - y_min else max(abs(c(y_max, y_min)), na.rm = TRUE)
+    y_offset <- if (is.finite(y_span) && y_span > 0) y_span * 0.08 else 1
+    annotation_df <- data.frame(
+        group1 = treatment_levels[1],
+        group2 = treatment_levels[2],
+        y.position = y_max + y_offset,
+        label = format_p_for_label(wilcox_p)
+    )
+
     plot_obj <- ggplot2::ggplot(tumor_df, ggplot2::aes(x = treatment_group, y = .data[[size_var]], fill = treatment_group, color = treatment_group)) +
         ggplot2::geom_boxplot(width = 0.35, alpha = 0.5, color = "black", outlier.shape = NA) +
         ggplot2::geom_jitter(width = 0.12, alpha = 0.6, size = 2.4) +
@@ -271,6 +289,19 @@ summarize_tumor_size_by_treatment <- function(data, size_var = "initial_tumor_he
         ) +
         ggplot2::theme_minimal(base_size = 14) +
         ggplot2::theme(legend.position = "none")
+
+    if (!any(is.na(annotation_df$group1), is.na(annotation_df$group2))) {
+        plot_obj <- plot_obj + ggpubr::stat_pvalue_manual(
+            annotation_df,
+            label = "label",
+            xmin = "group1",
+            xmax = "group2",
+            y.position = "y.position",
+            bracket.size = 0.6,
+            tip.length = 0.01,
+            inherit.aes = FALSE
+        )
+    }
 
     summary_path <- NULL
     plot_path <- NULL
