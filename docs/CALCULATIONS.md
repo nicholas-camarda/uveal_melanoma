@@ -355,6 +355,35 @@ age_at_diagnosis_binned = case_when(
 - Binned age used for subgroup analysis
 - Categories chosen based on clinical relevance and sample size balance
 
+### **Age Dichotomized at the General-Population Median (63 years)**
+
+**Purpose:**
+
+- Mirror the CDC/SEER-reported U.S. median age (≈63 years) that clinicians use to quickly communicate “younger vs older” cohorts.
+- Provide a single binary covariate (`age_at_diagnosis_general_pop_median`) for subgroup plots and tables where finer-grained bins dilute signal.
+
+**Formula:**
+
+```r
+age_at_diagnosis_general_pop_median = factor(
+  case_when(
+    is.na(age_at_diagnosis) ~ NA_character_,
+    age_at_diagnosis < GENERAL_POP_MEDIAN_AGE_CUTOFF ~ paste0("< ", GENERAL_POP_MEDIAN_AGE_CUTOFF, " years"),
+    TRUE ~ paste0("≥ ", GENERAL_POP_MEDIAN_AGE_CUTOFF, " years")
+  ),
+  levels = c(
+    paste0("< ", GENERAL_POP_MEDIAN_AGE_CUTOFF, " years"),
+    paste0("≥ ", GENERAL_POP_MEDIAN_AGE_CUTOFF, " years")
+  )
+)
+```
+
+**Key Details:**
+
+- `GENERAL_POP_MEDIAN_AGE_CUTOFF` is defined in `config_constants.R` and currently equals **63**; changing it there automatically updates the derivation.
+- Output labels always render as “< 63 years” and “≥ 63 years” to match manuscript wording.
+- Used anywhere we need a dichotomous age term: baseline tables, subgroup forest plots (see `age_at_diagnosis_general_pop_median` rows), or model covariate adjustments meant to mimic “younger vs older” splits.
+
 ---
 
 ## Follow-up Duration

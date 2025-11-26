@@ -290,6 +290,65 @@ The 5-year overall survival was 75% for PBT and 82% for GKSRS (log-rank p=0.12).
 
 ---
 
+## Understanding RMST Analysis
+
+### What is RMST?
+
+**Restricted Mean Survival Time:** Average time survived up to a specified time point (τ)
+
+**Why Use RMST?**
+- Doesn't require proportional hazards assumption
+- Clinically interpretable ("months gained/lost")
+- Robust alternative when PH violated
+
+### RMST Difference Plots
+
+**File:** `*_rmst_difference.png`
+
+**Key Components:**
+
+**1. Survival Curves with Shaded Areas**
+- **Shaded regions:** Area under survival curve = RMST
+- **Larger area:** Longer average survival
+- **Compare shading:** Visual difference in survival time
+
+**2. RMST Estimates (Text)**
+```
+PBT RMST:    4.2 years (95% CI: 3.9-4.5)
+GKSRS RMST:  4.6 years (95% CI: 4.2-4.9)
+Difference:  0.4 years (95% CI: 0.1-0.7)
+P-value:     0.015
+```
+
+**How to Interpret:**
+
+**RMST Values:**
+- PBT patients survived an average of 4.2 years up to 5-year follow-up
+- GKSRS patients survived an average of 4.6 years
+- GKSRS patients lived 0.4 years (4.8 months) longer on average
+
+**Statistical Significance:**
+- p = 0.015: Difference is statistically significant
+- 95% CI (0.1-0.7): Difference likely between 1.2 and 8.4 months
+
+**Clinical Interpretation:**
+Within the first 5 years, GKSRS patients survived an average of 4.6 years compared to 4.2 years for PBT patients, representing a clinically meaningful gain of 4.8 months (RMST difference=0.4 years, 95% CI: 0.1-0.7, p=0.015).
+
+### Comparing RMST to Cox HR
+
+| Scenario | RMST Interpretation | Cox HR Interpretation |
+|----------|---------------------|----------------------|
+| **RMST diff = +0.5 years, HR = 0.70** | GKSRS patients gained 6 months on average | GKSRS reduced hazard by 30% |
+| **RMST diff = 0 years, HR = 1.00** | No survival difference | No hazard difference |
+| **PH violated** | RMST still valid | Cox HR may be misleading |
+
+**When Results Disagree:**
+- RMST significant, Cox not: Effect real but varying over time
+- Cox significant, RMST not: Effect consistent but small in absolute terms
+- Trust RMST when PH assumption violated
+
+---
+
 ## Reading Forest Plots
 
 ### Structure
@@ -356,65 +415,6 @@ Sex
 
 **Clinical Interpretation:**
 Overall, GKSRS reduces the hazard by 35% (HR=0.65, 95% CI: 0.45-0.95). Treatment effects are consistent across age groups (p-interaction=0.43) and sex (p-interaction=0.58), though point estimates suggest slightly stronger effects in younger patients and males. These subgroup differences are not statistically significant and likely reflect random variation.
-
----
-
-## Understanding RMST Analysis
-
-### What is RMST?
-
-**Restricted Mean Survival Time:** Average time survived up to a specified time point (τ)
-
-**Why Use RMST?**
-- Doesn't require proportional hazards assumption
-- Clinically interpretable ("months gained/lost")
-- Robust alternative when PH violated
-
-### RMST Difference Plots
-
-**File:** `*_rmst_difference.png`
-
-**Key Components:**
-
-**1. Survival Curves with Shaded Areas**
-- **Shaded regions:** Area under survival curve = RMST
-- **Larger area:** Longer average survival
-- **Compare shading:** Visual difference in survival time
-
-**2. RMST Estimates (Text)**
-```
-PBT RMST:    4.2 years (95% CI: 3.9-4.5)
-GKSRS RMST:  4.6 years (95% CI: 4.2-4.9)
-Difference:  0.4 years (95% CI: 0.1-0.7)
-P-value:     0.015
-```
-
-**How to Interpret:**
-
-**RMST Values:**
-- PBT patients survived an average of 4.2 years up to 5-year follow-up
-- GKSRS patients survived an average of 4.6 years
-- GKSRS patients lived 0.4 years (4.8 months) longer on average
-
-**Statistical Significance:**
-- p = 0.015: Difference is statistically significant
-- 95% CI (0.1-0.7): Difference likely between 1.2 and 8.4 months
-
-**Clinical Interpretation:**
-Within the first 5 years, GKSRS patients survived an average of 4.6 years compared to 4.2 years for PBT patients, representing a clinically meaningful gain of 4.8 months (RMST difference=0.4 years, 95% CI: 0.1-0.7, p=0.015).
-
-### Comparing RMST to Cox HR
-
-| Scenario | RMST Interpretation | Cox HR Interpretation |
-|----------|---------------------|----------------------|
-| **RMST diff = +0.5 years, HR = 0.70** | GKSRS patients gained 6 months on average | GKSRS reduced hazard by 30% |
-| **RMST diff = 0 years, HR = 1.00** | No survival difference | No hazard difference |
-| **PH violated** | RMST still valid | Cox HR may be misleading |
-
-**When Results Disagree:**
-- RMST significant, Cox not: Effect real but varying over time
-- Cox significant, RMST not: Effect consistent but small in absolute terms
-- Trust RMST when PH assumption violated
 
 ---
 
@@ -516,6 +516,8 @@ Global test          6.89     3      0.075
 
 ## Understanding GEP Analysis
 
+Gene Expression Profiling (GEP) is our molecular risk model for metastatic spread. Objective 4 recomputes the Castle-type 15-gene signature (Class 1 vs Class 2) on every cohort, then stress-tests it against long-term metastasis-free (MFS) and melanoma-specific survival (MSS) horizons. Each run reports how well the baseline signature calibrates, discriminates high- vs low-risk patients, and whether augmenting it with PRAME status or other enhancers improves clinical utility. This section is being used to describe the predictive accuracy of the molecular assay rather than the primary treatment comparisons tackled in Objective 1.
+
 ### Where to Find the Files
 
 - Objective 4 outputs live under `04_GEP_Validation/` inside each cohort directory.
@@ -607,7 +609,7 @@ Single column dictionary:
 - **Modeling approach:** MSS inherits the competing-risk adjustments from `perform_discrimination_mss()` and `calculate_ipa_survival()`, so expect more `*_Fallback_Used` flags when events are scarce.
 - **Sample size:** MSS tables often have lower `N`, which in turn drives more `NA` metrics. Always sanity-check counts before comparing outcomes.
 
-### How to Use the Sheets (No Redundancy Needed)
+### How to Use the Sheets
 
 1. **Check sample counts first.** When `N` or `Events` fall below the exploratory thresholds (20 total / 5 events), annotate results as preliminary.
 2. **Reference `STATISTICAL_METHODS.md#gep-validation-metrics` for formulas.** Use this guide for workbook logistics and the statistics doc for the math.
