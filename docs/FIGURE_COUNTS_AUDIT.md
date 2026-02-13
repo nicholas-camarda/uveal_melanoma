@@ -1,4 +1,4 @@
-# Figure Red-Box Counts Audit (Frozen Artifacts)
+# Confirm Consort Diagram Subcounts
 
 Date: 2026-02-13
 
