@@ -184,11 +184,25 @@ simple_gep_validation <- function(data, output_dirs, prefix) {
         )
     logger::log_info(sprintf("Analysis dataset: %d patients with valid GEP predictions", nrow(analysis_data)))
 
+    expected_mfs_col <- if ("expected_mfs_5yr" %in% names(analysis_data)) "expected_mfs_5yr" else "biopsy1_gep_mfs"
+    expected_mss_col <- if ("expected_mss_5yr" %in% names(analysis_data)) "expected_mss_5yr" else "biopsy1_gep_mss"
+    mfs_event_col <- if ("mfs_event_5yr" %in% names(analysis_data)) "mfs_event_5yr" else NULL
+    mss_event_col <- if ("mss_event_5yr" %in% names(analysis_data)) "mss_event_5yr" else NULL
+    mss_time_col <- dplyr::case_when(
+        "tt_death_months" %in% names(analysis_data) ~ "tt_death_months",
+        "tt_death_years" %in% names(analysis_data) ~ "tt_death_years",
+        TRUE ~ NA_character_
+    )
+
     mfs_data <- analysis_data %>%
-        filter(!is.na(tt_mets_months), !is.na(mets_event)) %>%
+        filter(
+            if ("mfs_analysis_eligible" %in% names(.)) mfs_analysis_eligible else !is.na(tt_mets_months) & !is.na(mets_event),
+            !is.na(.data[[expected_mfs_col]]),
+            !is.na(tt_mets_months)
+        ) %>%
         mutate(
-            expected_mfs_5yr = biopsy1_gep_mfs,
-            actual_mfs_5yr = ifelse(tt_mets_months > 60 | (tt_mets_months <= 60 & mets_event == 0), 1, 0),
+            expected_mfs_5yr = .data[[expected_mfs_col]],
+            actual_mfs_5yr = if (!is.null(mfs_event_col)) 1 - .data[[mfs_event_col]] else ifelse(tt_mets_months > 60 | (tt_mets_months <= 60 & mets_event == 0), 1, 0),
             time_to_5yr = pmin(tt_mets_months, 60)
         )
 
@@ -206,11 +220,21 @@ simple_gep_validation <- function(data, output_dirs, prefix) {
         )
 
     mss_data <- analysis_data %>%
-        filter(!is.na(tt_death_months), !is.na(death_event)) %>%
+        filter(
+            if ("mss_analysis_eligible" %in% names(.)) mss_analysis_eligible else !is.na(melanoma_death_event) & !is.na(.data[[mss_time_col]]),
+            !is.na(.data[[expected_mss_col]]),
+            !is.na(.data[[mss_time_col]])
+        ) %>%
         mutate(
-            expected_mss_5yr = biopsy1_gep_mss,
-            actual_mss_5yr = ifelse(tt_death_months > 60 | (tt_death_months <= 60 & death_event == 0), 1, 0),
-            time_to_5yr = pmin(tt_death_months, 60)
+            expected_mss_5yr = .data[[expected_mss_col]],
+            actual_mss_5yr = if (!is.null(mss_event_col)) {
+                1 - .data[[mss_event_col]]
+            } else if (mss_time_col == "tt_death_months") {
+                ifelse(tt_death_months > 60 | (tt_death_months <= 60 & melanoma_death_event == 0), 1, 0)
+            } else {
+                ifelse(tt_death_years > 5 | (tt_death_years <= 5 & melanoma_death_event == 0), 1, 0)
+            },
+            time_to_5yr = if (mss_time_col == "tt_death_months") pmin(tt_death_months, 60) else pmin(tt_death_years * 12, 60)
         )
 
     mss_results <- mss_data %>%
