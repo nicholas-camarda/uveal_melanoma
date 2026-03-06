@@ -148,12 +148,12 @@ source(here("scripts", "data_helper", "data_utilities.R"))
 # Source the main analysis function scripts
 source(here("scripts", "analysis", "tumor_height_analysis.R"))
 source(here("scripts", "analysis", "vision_safety_analysis.R"))
-# Source modular statistical analysis (override monolith definitions)
+# Source modular statistical analysis files
 source(here("scripts", "analysis", "binary_outcomes.R"))
 source(here("scripts", "analysis", "survival_outcomes.R"))
 source(here("scripts", "analysis", "rmst_visualization.R"))
 
-# Source modular subgroup analysis (override monolith definitions)
+# Source modular subgroup analysis files
 source(here("scripts", "subgroup", "subgroup_data_prep.R"))
 source(here("scripts", "subgroup", "subgroup_survival.R"))
 source(here("scripts", "subgroup", "subgroup_binary.R"))
@@ -179,7 +179,7 @@ source(here("scripts", "gep", "orchestration", "gep_evaluation_orchestration.R")
 
 # Source the forest plot script (commented out to use modular version)
 # source(here("scripts", "visualization", "forest_plot.R"))
-# Source modular forest plot (override monolith definitions)
+# Source modular forest plot helpers
 source(here("scripts", "visualization", "forest_plot_data.R"))
 source(here("scripts", "visualization", "forest_plot_draw.R"))
 source(here("scripts", "visualization", "forest_plot_formatting.R"))
