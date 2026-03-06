@@ -1,8 +1,55 @@
 # GEP Table Creation Functions
 # Table generation and formatting for GEP validation results
 
+#' Extract overall observed/expected metrics
+extract_overall_oe_metrics <- function(observed_expected) {
+    if (is.null(observed_expected)) {
+        return(NULL)
+    }
+
+    if (is.list(observed_expected) && !is.data.frame(observed_expected)) {
+        if (all(c("overall_observed", "overall_expected", "overall_oe_ratio") %in% names(observed_expected))) {
+            return(list(
+                n = observed_expected$overall_n %||% NA_real_,
+                observed = observed_expected$overall_observed %||% NA_real_,
+                expected = observed_expected$overall_expected %||% NA_real_,
+                oe_ratio = observed_expected$overall_oe_ratio %||% NA_real_,
+                poisson_ci_lower = observed_expected$overall_poisson_ci_lower %||% NA_real_,
+                poisson_ci_upper = observed_expected$overall_poisson_ci_upper %||% NA_real_,
+                chi_square_p = observed_expected$chisq_p_value %||% NA_real_
+            ))
+        }
+    }
+
+    if (is.data.frame(observed_expected)) {
+        if (all(c("observed", "expected") %in% names(observed_expected))) {
+            observed_total <- sum(observed_expected$observed, na.rm = TRUE)
+            expected_total <- sum(observed_expected$expected, na.rm = TRUE)
+        } else if (all(c("observed_rate", "expected_rate", "n") %in% names(observed_expected))) {
+            observed_total <- sum(observed_expected$observed_rate * observed_expected$n, na.rm = TRUE)
+            expected_total <- sum(observed_expected$expected_rate * observed_expected$n, na.rm = TRUE)
+        } else {
+            return(NULL)
+        }
+
+        n_total <- if ("n" %in% names(observed_expected)) sum(observed_expected$n, na.rm = TRUE) else NA_real_
+
+        return(list(
+            n = n_total,
+            observed = observed_total,
+            expected = expected_total,
+            oe_ratio = ifelse(expected_total > 0, observed_total / expected_total, NA_real_),
+            poisson_ci_lower = NA_real_,
+            poisson_ci_upper = NA_real_,
+            chi_square_p = NA_real_
+        ))
+    }
+
+    NULL
+}
+
 #' Create Detailed Metrics Table
-create_detailed_metrics_table <- function(validation_results, outcome_type) {
+create_detailed_metrics_table <- function(validation_results) {
     table_lines <- c()
     
     for (tp in names(validation_results)) {
@@ -33,14 +80,14 @@ create_detailed_metrics_table <- function(validation_results, outcome_type) {
                     harrell_val, integrated_auc_val, cumulative_disc_val))
         }
         
-        # Observed/Expected - with defensive programming
-        if (!is.null(result$observed_expected) && !is.null(result$observed_expected$overall)) {
-            oe <- result$observed_expected$overall
-            oe_ratio_val <- ifelse(is.null(oe$oe_ratio), NA_real_, oe$oe_ratio)
-            ci_lower_val <- ifelse(is.null(oe$poisson_ci_lower), NA_real_, oe$poisson_ci_lower)
-            ci_upper_val <- ifelse(is.null(oe$poisson_ci_upper), NA_real_, oe$poisson_ci_upper)
-            chi_square_val <- ifelse(is.null(oe$chi_square_p), NA_real_, oe$chi_square_p)
-            
+        # Observed/Expected - support both nested and tibble-based result shapes
+        oe <- extract_overall_oe_metrics(result$observed_expected)
+        if (!is.null(oe)) {
+            oe_ratio_val <- oe$oe_ratio %||% NA_real_
+            ci_lower_val <- oe$poisson_ci_lower %||% NA_real_
+            ci_upper_val <- oe$poisson_ci_upper %||% NA_real_
+            chi_square_val <- oe$chi_square_p %||% NA_real_
+
             table_lines <- c(table_lines,
                 sprintf("  Overall O/E: %.2f (%.2f-%.2f); Chi-square p=%.4f",
                     oe_ratio_val, ci_lower_val, ci_upper_val, chi_square_val))

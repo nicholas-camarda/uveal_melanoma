@@ -521,8 +521,10 @@ Gene Expression Profiling (GEP) is our molecular risk model for metastatic sprea
 ### Where to Find the Files
 
 - Objective 4 outputs live under `04_GEP_Validation/` inside each cohort directory.
-- Look for the consolidated workbook named `{cohort}_{outcome}_consolidated_summary.xlsx` (e.g., `uveal_full_mfs_consolidated_summary.xlsx`).
-- Unified cross-outcome summaries live alongside as `{cohort}_unified_gep_validation_summary.xlsx`.
+- Start with the outcome-specific consolidated workbook named `<prefix>MFS_consolidated_summary.xlsx` or `<prefix>MSS_consolidated_summary.xlsx`.
+- For MSS, the technical-detail workbook `<prefix>mss_validation_summary.xlsx` sits in `b_melanoma_specific_survival/`.
+- Unified cross-outcome summaries live at the root of `04_GEP_Validation/` as `<prefix>unified_gep_validation_summary.xlsx`.
+- Simple actual-vs-expected QC outputs live in `04_GEP_Validation/unified_summary/` as `<prefix>simple_gep_validation.xlsx`.
 
 ### Workbook Layout at a Glance
 
@@ -538,9 +540,12 @@ Gene Expression Profiling (GEP) is our molecular risk model for metastatic sprea
 
 | Item | Details |
 | --- | --- |
-| Filename pattern | `<prefix><outcome>_consolidated_summary.xlsx` (for example, `uveal_full_mfs_consolidated_summary.xlsx`). |
-| Default directory | `final_data/Analysis/<cohort>/04_GEP_Validation/<subfolder>/` — each cohort keeps its own prefix (`a_metastasis_free_survival/`, `b_melanoma_specific_survival/`, `unified_summary/`). |
-| Outcomes covered | `outcome ∈ {"mfs", "mss"}`; unified workbooks stack both. |
+| Primary workbook pattern | `<prefix>MFS_consolidated_summary.xlsx` or `<prefix>MSS_consolidated_summary.xlsx`. |
+| Technical MSS workbook | `<prefix>mss_validation_summary.xlsx` in `b_melanoma_specific_survival/`. |
+| Unified workbook | `<prefix>unified_gep_validation_summary.xlsx` at the root of `04_GEP_Validation/`. |
+| Simple QC workbook | `unified_summary/<prefix>simple_gep_validation.xlsx`. |
+| Default directory | `final_data/Analysis/<cohort>/04_GEP_Validation/` with `a_metastasis_free_survival/`, `b_melanoma_specific_survival/`, and `unified_summary/`. |
+| Outcomes covered | MFS and MSS; unified workbooks stack both. |
 | Timepoints | Driven by `GEP_VALIDATION_TIMEPOINTS` (defaults: 5, 7, 10 years). Every sheet carries one row per timepoint requested. |
 | How to regenerate | Run Objective 4 via `run_specific_objective("uveal_melanoma_<cohort>", 4)` or the full pipeline. New runs overwrite existing workbooks after passing QC. |
 

@@ -402,10 +402,19 @@ The analysis pipeline includes robust error handling for situations where data l
 **Implementation:** `scripts/workflow/objective_4_gep_analysis.R`
 
 **Current Outputs:**
-- Consolidated Excel workbooks (`*_validation_summary.xlsx`) with stacked observed/expected, calibration, discrimination, competing-risk, PRAME, and missing-data tabs
+- Outcome-specific consolidated workbooks:
+   - `a_metastasis_free_survival/*_MFS_consolidated_summary.xlsx`
+   - `b_melanoma_specific_survival/*_MSS_consolidated_summary.xlsx`
+- MSS technical workbook in `b_melanoma_specific_survival/`:
+   - `*mss_validation_summary.xlsx`
 - Comprehensive text summaries describing interpretation and data-quality flags
-- Unified summary tables combining MFS/MSS metrics under `04_GEP_Validation/unified_summary/`
+- Cross-outcome workbook at the root of `04_GEP_Validation/`:
+   - `*unified_gep_validation_summary.xlsx`
+- Simple QC workbook under `04_GEP_Validation/unified_summary/`:
+   - `*simple_gep_validation.xlsx`
 - Limited visuals: KM curves for MFS and CIF curves for MSS (no standalone calibration/decision/discrimination PNGs)
+
+**Important layout note:** cross-cutting cohort outputs such as baseline characteristics and treatment-duration summaries belong in `00_General/` inside each cohort folder, not in a shared top-level `Analysis/General/` directory.
 
 See [STATISTICAL_METHODS.md](STATISTICAL_METHODS.md) for the table-first GEP validation methodology.
 

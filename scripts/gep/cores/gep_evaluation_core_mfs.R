@@ -860,6 +860,8 @@ perform_prame_augmented_analysis_mfs <- function(data, timepoints) {
         risk_labels <- GEP_RISK_LABELS
         base_categories <- cut(base_predictions, breaks = risk_cutoffs, labels = risk_labels, include.lowest = TRUE)
         enhanced_categories <- cut(enhanced_predictions, breaks = risk_cutoffs, labels = risk_labels, include.lowest = TRUE)
+        base_category_codes <- as.integer(base_categories)
+        enhanced_category_codes <- as.integer(enhanced_categories)
 
         reclass_table <- table(
             Base = base_categories,
@@ -873,11 +875,11 @@ perform_prame_augmented_analysis_mfs <- function(data, timepoints) {
 
         if (n_events >= GEP_MIN_EVENTS_COMPETING_RISK && n_nonevents >= GEP_MIN_EVENTS_COMPETING_RISK) {
             event_indices <- which(events)
-            event_up <- sum(enhanced_categories[event_indices] > base_categories[event_indices], na.rm = TRUE)
-            event_down <- sum(enhanced_categories[event_indices] < base_categories[event_indices], na.rm = TRUE)
+            event_up <- sum(enhanced_category_codes[event_indices] > base_category_codes[event_indices], na.rm = TRUE)
+            event_down <- sum(enhanced_category_codes[event_indices] < base_category_codes[event_indices], na.rm = TRUE)
             nonevent_indices <- which(!events)
-            nonevent_up <- sum(enhanced_categories[nonevent_indices] > base_categories[nonevent_indices], na.rm = TRUE)
-            nonevent_down <- sum(enhanced_categories[nonevent_indices] < base_categories[nonevent_indices], na.rm = TRUE)
+            nonevent_up <- sum(enhanced_category_codes[nonevent_indices] > base_category_codes[nonevent_indices], na.rm = TRUE)
+            nonevent_down <- sum(enhanced_category_codes[nonevent_indices] < base_category_codes[nonevent_indices], na.rm = TRUE)
 
             nri_events <- (event_up / n_events) - (event_down / n_events)
             nri_nonevents <- (nonevent_down / n_nonevents) - (nonevent_up / n_nonevents)

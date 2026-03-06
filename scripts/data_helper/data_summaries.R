@@ -114,19 +114,31 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
             grepl("uveal_melanoma_gksrs_only_cohort", cohort_name) ~ "gksrs_only_cohort",
             TRUE ~ cohort_name
         )
+        cohort_dir_name <- case_when(
+            grepl("uveal_melanoma_full_cohort", cohort_name) ~ "uveal_full",
+            grepl("uveal_melanoma_restricted_cohort", cohort_name) ~ "uveal_restricted",
+            grepl("uveal_melanoma_gksrs_only_cohort", cohort_name) ~ "gksrs",
+            TRUE ~ cohort_name
+        )
 
-        if (!is.null(output_dirs) && !is.null(output_dirs[[cohort_dir_key]])) {
-            treatment_duration_dir <- output_dirs[[cohort_dir_key]]$treatment_duration
-            baseline_output_dir <- output_dirs[[cohort_dir_key]]$baseline_characteristics
+        cohort_output_dirs <- NULL
+        if (!is.null(output_dirs)) {
+            cohort_output_dirs <- output_dirs[[cohort_dir_key]] %||% output_dirs[[cohort_name]]
+        }
+
+        if (!is.null(cohort_output_dirs)) {
+            treatment_duration_dir <- cohort_output_dirs$treatment_duration
+            baseline_output_dir <- cohort_output_dirs$baseline_characteristics
             logger::log_info(sprintf(
                 "Using cohort-specific directories for %s (mapped to %s): treatment_duration=%s, baseline=%s",
                 cohort_name, cohort_dir_key, treatment_duration_dir, baseline_output_dir
             ))
         } else {
-            treatment_duration_dir <- file.path(DATA_DIR, "Analysis", "General", "treatment_duration")
-            baseline_output_dir <- file.path(DATA_DIR, "Analysis", "General", "baseline_characteristics")
+            derived_output_dirs <- create_output_structure(file.path(DATA_DIR, "Analysis", cohort_dir_name))
+            treatment_duration_dir <- derived_output_dirs$treatment_duration
+            baseline_output_dir <- derived_output_dirs$baseline_characteristics
             logger::log_warn(sprintf(
-                "Using fallback directories for %s (mapped to %s): treatment_duration=%s, baseline=%s",
+                "Output directories missing for %s (mapped to %s); reconstructed cohort-specific directories instead: treatment_duration=%s, baseline=%s",
                 cohort_name, cohort_dir_key, treatment_duration_dir, baseline_output_dir
             ))
         }

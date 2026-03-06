@@ -529,20 +529,26 @@ Gene Expression Profiling (GEP) provides lab-reported probabilities of metastasi
 - Capture net-benefit ranges and reclassification tables inside the workbook
 
 **Step 5: Reporting**
-- Export unified Excel summaries (`*_validation_summary.xlsx`) and companion text reports
+- Export outcome-specific consolidated Excel workbooks (`*_MFS_consolidated_summary.xlsx`, `*_MSS_consolidated_summary.xlsx`) and companion text reports
+- Export the MSS technical workbook (`*mss_validation_summary.xlsx`) for detailed observed/expected, calibration, discrimination, and competing-risk review
+- Export the root-level cross-outcome workbook `*unified_gep_validation_summary.xlsx`
+- Export the simple QC workbook `unified_summary/*simple_gep_validation.xlsx`
 - Provide KM (MFS) or CIF (MSS) curves only; calibration/decision/discrimination visuals live in tables
-- Surface combined MFS/MSS summaries under `04_GEP_Validation/unified_summary/`
 
 ### Expected Outputs
 
-**Location:** `{cohort}/04_GEP_Validation/a_metastasis_free_survival/` or `b_melanoma_specific_survival/`
+**Location:** `{cohort}/04_GEP_Validation/` with outcome-specific subfolders for MFS and MSS
 
 **Files:**
-- `*_validation_summary.xlsx` — stacked observed/expected, calibration, discrimination, competing-risk, PRAME, and missing-data sheets
-- `*_validation_summary.txt` (or consolidated text) — narrative interpretation of the same metrics
-- `*_simple_gep_validation.*` — optional actual-vs-expected summary exported by the simple checker
-- `unified_summary/*` — cross-outcome Excel/text digests
-- Limited PNGs: `*_mfs_km.png` (KM) or `*_mss_cif.png` (CIF) only when survival curves are generated
+- `a_metastasis_free_survival/*_MFS_consolidated_summary.xlsx` — primary MFS review workbook
+- `b_melanoma_specific_survival/*_MSS_consolidated_summary.xlsx` — primary MSS review workbook
+- `b_melanoma_specific_survival/*mss_validation_summary.xlsx` — MSS technical-detail workbook
+- `a_metastasis_free_survival/*mfs_validation_summary.txt` and `b_melanoma_specific_survival/*mss_validation_summary.txt` — narrative summaries
+- `*unified_gep_validation_summary.xlsx` at the root of `04_GEP_Validation/` — cross-outcome workbook
+- `unified_summary/*simple_gep_validation.*` — optional actual-vs-expected QC output from the simple checker
+- Limited PNGs: KM for MFS and CIF for MSS only when survival curves are generated
+
+**Schema note:** sparse cohorts may omit `PRAME_Summary` from some consolidated or unified workbooks when PRAME analysis is not supportable. This is expected rather than a write failure.
 
 ### Interpretation Example
 

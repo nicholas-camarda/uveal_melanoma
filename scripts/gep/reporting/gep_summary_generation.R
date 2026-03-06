@@ -90,29 +90,16 @@ create_comprehensive_gep_summary <- function(validation_results, outcome_type, p
             discrimination_data <- rbind(discrimination_data, new_disc_row)
         }
         
-        # Observed/Expected metrics - support both MFS (flat fields) and MSS (nested overall)
+        # Observed/Expected metrics - support both MFS list outputs and MSS tibble outputs
         if (!is.null(result$observed_expected)) {
-            # MSS-style: nested overall list
-            if (!is.null(result$observed_expected$overall)) {
-                oe <- result$observed_expected$overall
+            oe <- extract_overall_oe_metrics(result$observed_expected)
+            if (!is.null(oe)) {
                 new_oe_row <- data.frame(
                     Timepoint = tp,
-                    Overall_OE = ifelse(is.null(oe$oe_ratio), NA_real_, oe$oe_ratio),
-                    CI_Lower = ifelse(is.null(oe$poisson_ci_lower), NA_real_, oe$poisson_ci_lower),
-                    CI_Upper = ifelse(is.null(oe$poisson_ci_upper), NA_real_, oe$poisson_ci_upper),
-                    Chi_Square_p = ifelse(is.null(oe$chi_square_p), NA_real_, oe$chi_square_p),
-                    stringsAsFactors = FALSE
-                )
-                oe_data <- rbind(oe_data, new_oe_row)
-            } else {
-                # MFS-style: overall_* fields at top level
-                oe <- result$observed_expected
-                new_oe_row <- data.frame(
-                    Timepoint = tp,
-                    Overall_OE = ifelse(is.null(oe$overall_oe_ratio), NA_real_, oe$overall_oe_ratio),
-                    CI_Lower = ifelse(is.null(oe$overall_poisson_ci_lower), NA_real_, oe$overall_poisson_ci_lower),
-                    CI_Upper = ifelse(is.null(oe$overall_poisson_ci_upper), NA_real_, oe$overall_poisson_ci_upper),
-                    Chi_Square_p = ifelse(is.null(oe$chisq_p_value), NA_real_, oe$chisq_p_value),
+                    Overall_OE = oe$oe_ratio %||% NA_real_,
+                    CI_Lower = oe$poisson_ci_lower %||% NA_real_,
+                    CI_Upper = oe$poisson_ci_upper %||% NA_real_,
+                    Chi_Square_p = oe$chi_square_p %||% NA_real_,
                     stringsAsFactors = FALSE
                 )
                 oe_data <- rbind(oe_data, new_oe_row)
@@ -190,7 +177,7 @@ create_comprehensive_gep_summary <- function(validation_results, outcome_type, p
         "DETAILED METRICS BY TIMEPOINT",
         "=============================",
         tryCatch({
-            create_detailed_metrics_table(validation_results, outcome_type)
+            create_detailed_metrics_table(validation_results)
         }, error = function(e) {
             logger::log_warn(sprintf("Detailed metrics table creation failed: %s", e$message))
             "Detailed metrics table could not be generated due to data structure issues"

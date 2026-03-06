@@ -77,7 +77,7 @@ run_specific_objective("uveal_melanoma_full_cohort", 1)  # Efficacy only
 | **1. Efficacy**         | ✅ Complete    | Local recurrence, metastasis, survival (OS/PFS), tumor height, subgroups | Tables, survival curves, forest plots |
 | **2. Safety**           | ✅ Complete    | Vision changes, retinopathy, glaucoma, retinal detachment                | Tables, regression models             |
 | **3. Repeat Radiation** | ✅ Complete    | PFS-2 analysis for salvage treatment                                     | Survival curves, Cox models           |
-| **4. GEP Validation**   | 🚧 In Progress | Calibration, discrimination, clinical utility                            | Validation reports, calibration plots |
+| **4. GEP Validation**   | 🚧 In Progress | Calibration, discrimination, clinical utility, PRAME augmentation        | Cohort-specific workbooks, text summaries, KM/CIF plots |
 
 📖 **[Detailed objectives and sub-analyses →](docs/TECHNICAL.md#research-objectives)**
 
@@ -132,6 +132,23 @@ The pipeline runs through structured objectives:
 3. **Objective 2:** Safety analysis (vision, complications)
 4. **Objective 3:** PFS-2 analysis for salvage treatment
 5. **Objective 4:** GEP biomarker validation (in progress)
+
+### Cohort-first output layout
+
+All analysis outputs are written inside each cohort folder under `final_data/Analysis/`.
+
+- General cohort summaries live in `00_General/` inside each cohort, for example:
+    - `final_data/Analysis/uveal_full/00_General/baseline_characteristics/`
+    - `final_data/Analysis/uveal_restricted/00_General/treatment_duration/`
+    - `final_data/Analysis/gksrs/00_General/baseline_characteristics/`
+- Objective 4 outputs live in `04_GEP_Validation/` inside each cohort.
+
+For Objective 4, the current artifact hierarchy is:
+
+1. outcome-specific consolidated workbooks: `*_MFS_consolidated_summary.xlsx`, `*_MSS_consolidated_summary.xlsx`
+2. MSS technical workbook: `*mss_validation_summary.xlsx`
+3. cross-outcome workbook at the root of `04_GEP_Validation/`: `*unified_gep_validation_summary.xlsx`
+4. simple QC workbook in `04_GEP_Validation/unified_summary/`: `*simple_gep_validation.xlsx`
 
 📖 **[Detailed workflow documentation →](docs/TECHNICAL.md#workflow-orchestration-system)**
 
