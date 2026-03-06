@@ -602,10 +602,3 @@ forest_format_p_value <- function(p_value) {
     }
 }
 
-#' Determine whether a numeric value is invalid for diagnostics
-#' Accepts numeric or character "Inf" entries and flags them as invalid
-#' @param x numeric or character
-#' @return TRUE if NA, non-finite, or string "Inf"
-diagnostics_invalid_numeric <- function(x) {
-    is.na(x) || !is.finite(x) || (is.character(x) && x == "Inf")
-}
