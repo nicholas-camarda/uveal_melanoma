@@ -441,17 +441,19 @@ FORESTPLOT_NAME_MAPPING <- list(
 # Plot dimensions and settings for all output figures
 FOREST_PLOT_WIDTH <- 10 # inches (reasonable width)
 FOREST_PLOT_HEIGHT <- 12 # inches (increased height for all subgroup levels)
-SURVIVAL_PLOT_WIDTH <- 14 # inches (increased to accommodate scaled text - was 10)
-SURVIVAL_PLOT_HEIGHT <- 11 # inches (increased to accommodate scaled text - was 8)
-PFS2_PLOT_HEIGHT <- 13 # inches (increased to accommodate scaled text - was 9, PFS-2 needs a bit more vertical space for risk table text)
+SURVIVAL_PLOT_WIDTH <- 16 # inches (prefer a wider KM layout so long legends/titles fit without making the figure overly tall)
+SURVIVAL_PLOT_HEIGHT <- 9.5 # inches (base height lowered so standard KM figures save wider than tall)
+PFS2_PLOT_HEIGHT <- 11.5 # inches (PFS-2 still needs extra vertical room for the risk table)
 # KM x-axis cap (months) to match legacy visual range and avoid empty tails
 SURVIVAL_XAXIS_MAX_MONTHS <- 216
 # Dynamic sizing for KM plots based on number of strata (groups)
 KM_BASE_HEIGHT <- SURVIVAL_PLOT_HEIGHT       # base height for ~2 strata
-KM_HEIGHT_PER_STRATUM <- 0.5                 # extra inches per stratum beyond 2
-KM_MAX_HEIGHT <- 16                          # upper bound to avoid overly tall figures (was 13)
-RMST_PLOT_WIDTH <- 10 # inches
-RMST_PLOT_HEIGHT <- 6 # inches
+KM_HEIGHT_PER_STRATUM <- 0.4                 # extra inches per stratum beyond 2
+KM_MAX_HEIGHT <- 14.5                        # upper bound to avoid overly tall figures
+RMST_PLOT_WIDTH <- 11.5 # inches
+RMST_PLOT_HEIGHT <- 6.25 # inches
+CIF_PLOT_WIDTH <- 12 # inches (tighter than KM plots to reduce empty space for MSS cumulative incidence figures)
+CIF_PLOT_HEIGHT <- 7 # inches
 PLOT_DPI <- 300 # resolution
 PLOT_UNITS <- "in" # units
 

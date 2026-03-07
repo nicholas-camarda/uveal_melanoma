@@ -485,7 +485,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         subtitle = if (!is.null(dataset_name)) paste("Cohort:", dataset_name) else NULL,
         xlab = "Time (months)",
         ylab = ylab,
-        risk.table.height = 0.12,
+        risk.table.height = 0.18,
         ggtheme = theme_minimal(),
         break.time.by = base_by,
         xlim = c(0, max(x_breaks)),
@@ -571,14 +571,15 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             axis.title.x = ggplot2::element_text(size = 18 * plot_scale, color = "black", face = "bold", 
                                                   margin = ggplot2::margin(t = 15, r = 0, b = 0, l = 0)),  # Push x-axis title further away
             axis.title.y = ggplot2::element_text(size = 18 * plot_scale, color = "black", face = "bold",
-                                                  margin = ggplot2::margin(t = 0, r = -10, b = 0, l = 10)),   # Shift y-axis title left (away from plot)
+                                                  margin = ggplot2::margin(t = 0, r = 6, b = 0, l = 0)),
             axis.text = ggplot2::element_text(size = 14 * plot_scale, color = "black"),
             axis.text.x = ggplot2::element_text(color = "black"),
             axis.text.y = ggplot2::element_text(color = "black"),
             axis.line = ggplot2::element_blank(),      # Remove axis lines
             axis.ticks = ggplot2::element_blank(),     # Remove tick marks
             plot.title = ggplot2::element_text(size = 18 * plot_scale, face = "bold"),
-            plot.subtitle = ggplot2::element_text(size = 14 * plot_scale)
+            plot.subtitle = ggplot2::element_text(size = 14 * plot_scale),
+            plot.margin = ggplot2::margin(t = 8, r = 8, b = 0, l = 0)
         )
     # Format y-axis as percent (keep after theme to preserve colors)
     surv_plot$plot <- surv_plot$plot +
@@ -593,20 +594,27 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     # Make risk table text larger and easier to read
     surv_plot$table <- surv_plot$table + theme_minimal() +
         ggplot2::theme(
-            axis.title = ggplot2::element_text(size = 14 * plot_scale, color = "black"),
-            axis.text.y = ggplot2::element_text(size = 14 * plot_scale, color = "black"),  # Strata labels (PBT, GKSRS)
-            axis.text.x = ggplot2::element_text(size = 14 * plot_scale, color = "black"),  # Time labels
-            strip.text = ggplot2::element_text(size = 14 * plot_scale, color = "black")
+            axis.title = ggplot2::element_text(size = 12 * plot_scale, color = "black"),
+            axis.text.y = ggplot2::element_text(size = 12 * plot_scale, color = "black"),
+            axis.text.x = ggplot2::element_text(size = 12 * plot_scale, color = "black"),
+            strip.text = ggplot2::element_text(size = 12 * plot_scale, color = "black"),
+            plot.margin = ggplot2::margin(t = 8, r = 8, b = 0, l = 8)
         )
     
     # Increase the size of the actual numbers in the risk table
     if (length(surv_plot$table$layers) > 0) {
         for (i in seq_along(surv_plot$table$layers)) {
             if ("GeomText" %in% class(surv_plot$table$layers[[i]]$geom)) {
-                surv_plot$table$layers[[i]]$aes_params$size <- 4 * plot_scale
+                surv_plot$table$layers[[i]]$aes_params$size <- 3.4 * plot_scale
             }
         }
     }
+
+    surv_plot$table <- surv_plot$table +
+        ggplot2::scale_y_discrete(
+            limits = rev(legend_labels),
+            expand = ggplot2::expansion(mult = c(0.18, 0.18))
+        )
     
     # Save KM plot if output_dirs are provided
     if (!is.null(output_dirs)) {
@@ -618,7 +626,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             surv_plot$table,
             ncol = 1,
             align = "v",
-            rel_heights = c(0.86, 0.14)
+            rel_heights = c(0.78, 0.22)
         )
         # Dynamic height scaling: base on number of strata in the KM fit
         n_groups <- tryCatch(

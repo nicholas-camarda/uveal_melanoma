@@ -13,6 +13,10 @@
 #' @param group_var Character string for the grouping variable name (used for palette selection)
 #' @return ggplot object
 plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dirs, prefix, group1_name = "Group 1", group2_name = "Group 2", group_var = "treatment_group") {
+    wrap_plot_text <- function(text, width) {
+        paste(strwrap(text, width = width), collapse = "\n")
+    }
+
     diff_column <- if ("RMST_Difference_Months" %in% names(rmst_results)) {
         "RMST_Difference_Months"
     } else if ("RMST_Difference" %in% names(rmst_results)) {
@@ -23,6 +27,41 @@ plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dir
 
     group1_label <- ifelse(is.null(group1_name) || is.na(group1_name) || group1_name == "", "Group 1", group1_name)
     group2_label <- ifelse(is.null(group2_name) || is.na(group2_name) || group2_name == "", "Group 2", group2_name)
+
+    status_comparison_outcomes <- c(
+        "Overall Survival by Local Recurrence Status",
+        "Overall Survival by Metastatic Progression Status",
+        "Progression-Free Survival by Local Recurrence Status",
+        "Progression-Free Survival by Metastatic Progression Status"
+    )
+    use_status_wording <- outcome_label %in% status_comparison_outcomes &&
+        identical(sort(c(group1_label, group2_label)), c("No", "Yes"))
+
+    subtitle_text <- if (use_status_wording) {
+        wrap_plot_text(
+            paste(
+                "Values below 0 indicate longer survival for patients without the event;",
+                "values above 0 indicate longer survival for patients with the event"
+            ),
+            width = 80
+        )
+    } else {
+        wrap_plot_text(
+            sprintf("%s advantage when above zero; %s advantage when below", group2_label, group1_label),
+            width = 60
+        )
+    }
+
+    y_axis_text <- if (use_status_wording) {
+        "RMST Difference\n(Yes minus No, mo)"
+    } else {
+        sprintf("RMST Difference\n(%s minus %s, mo)", group2_label, group1_label)
+    }
+
+    title_text <- wrap_plot_text(
+        paste("RMST Difference vs Time:", outcome_label),
+        width = 72
+    )
 
     format_sigfig <- function(values, digits = 4, force_sign = FALSE) {
         vapply(values, function(val) {
@@ -227,22 +266,23 @@ plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dir
             labels = scales::label_number(accuracy = 0.5)
         ) +
         labs(
-            title = paste("RMST Difference vs Time:", outcome_label),
-            subtitle = sprintf("%s advantage when above zero; %s advantage when below", group2_label, group1_label),
+            title = title_text,
+            subtitle = subtitle_text,
             x = NULL,
-            y = sprintf("%s - %s RMST (months)", group2_label, group1_label),
+            y = y_axis_text,
             caption = "Whiskers reflect 95% Wald CI from survRM2::rmst2"
         ) +
         theme_minimal(base_size = 13) +
         theme(
             plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
-            plot.subtitle = element_text(size = 12, hjust = 0.5, margin = margin(b = 5)),
+            plot.subtitle = element_text(size = 10.5, hjust = 0.5, lineheight = 0.98, margin = margin(b = 8)),
             axis.title = element_text(face = "bold"),
             axis.title.x = element_text(margin = margin(t = 8)),
+            axis.title.y = element_text(margin = margin(r = 10), lineheight = 0.95),
             legend.title = element_text(face = "bold"),
             panel.grid.minor = element_blank(),
             plot.caption = element_text(size = 9, hjust = 0.5, margin = margin(t = 6)),
-            plot.margin = margin(t = 10, r = 24, b = 45, l = 24)
+            plot.margin = margin(t = 12, r = 28, b = 45, l = 28)
         ) +
         guides(
             color = guide_legend(

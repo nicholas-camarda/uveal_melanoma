@@ -973,16 +973,21 @@ create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, 
         ggplot2::theme(
             plot.background = ggplot2::element_rect(fill = "white"),
             panel.background = ggplot2::element_rect(fill = "white"),
-            plot.title = ggplot2::element_text(size = 12, face = "bold"),
-            plot.subtitle = ggplot2::element_text(size = 10, color = "darkgray"),
-            plot.caption = ggplot2::element_text(size = 9, color = "darkgray", hjust = 0),
+            plot.title = ggplot2::element_text(size = 16, face = "bold", lineheight = 1.05),
+            plot.subtitle = ggplot2::element_text(size = 12, color = "darkgray"),
+            plot.caption = ggplot2::element_text(size = 10.5, color = "darkgray", hjust = 0, lineheight = 1.1),
             legend.position = "bottom",
-            legend.title = ggplot2::element_text(face = "bold"),
+            legend.title = ggplot2::element_text(face = "bold", size = 12),
+            legend.text = ggplot2::element_text(size = 11),
+            axis.title = ggplot2::element_text(size = 13.5),
+            axis.text = ggplot2::element_text(size = 11.5),
             axis.text.x = ggplot2::element_text(angle = 0, hjust = 0.5),
             axis.ticks.x = ggplot2::element_line(color = "black", linewidth = 0.5)
         ) +
         ggplot2::scale_color_manual(values = get_palette_by_variable(group_var_char, unique(surv_data[[group_var_char]]))) +
-        ggplot2::coord_cartesian(xlim = c(0, timepoint)) # Limit to timepoint in years
+        ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = c(0, 0.02))) +
+        ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0.04))) +
+        ggplot2::coord_cartesian(xlim = c(0, timepoint), expand = FALSE) # Limit to timepoint in years with tighter margins
 
     caption_lines <- character()
 
@@ -1063,13 +1068,22 @@ create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, 
         ggplot2::theme(legend.box = "vertical", legend.justification = "center") +
         ggplot2::scale_y_continuous(labels = scales::label_percent(accuracy = 1)) +
         ggplot2::theme(
-            plot.margin = ggplot2::unit(c(1, 1, 1.5, 1), "cm"),
-            plot.caption = ggplot2::element_text(hjust = 0, size = 9, color = "grey40", lineheight = 1.1)
+            plot.margin = ggplot2::unit(c(0.45, 0.45, 0.7, 0.45), "cm"),
+            plot.caption = ggplot2::element_text(hjust = 0, size = 10.5, color = "grey40", lineheight = 1.1)
         ) +
         ggplot2::labs(caption = caption_text)
 
+    if (length(p$layers) > 0) {
+        for (i in seq_along(p$layers)) {
+            geom_classes <- class(p$layers[[i]]$geom)
+            if ("GeomStep" %in% geom_classes || "GeomLine" %in% geom_classes) {
+                p$layers[[i]]$aes_params$linewidth <- 1.15
+            }
+        }
+    }
+
     plot_path <- file.path(output_dir, paste0(prefix, "mss_cumulative_incidence_curves.png"))
-    ggplot2::ggsave(plot_path, p, width = SURVIVAL_PLOT_WIDTH, height = SURVIVAL_PLOT_HEIGHT, dpi = PLOT_DPI, bg = "white")
+    ggplot2::ggsave(plot_path, p, width = CIF_PLOT_WIDTH, height = CIF_PLOT_HEIGHT, dpi = PLOT_DPI, bg = "white")
     logger::log_info(sprintf("MSS cumulative incidence curves saved: %s", plot_path))
 
     # Log competing risks analysis summary if available
