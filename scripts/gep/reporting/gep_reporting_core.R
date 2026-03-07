@@ -11,8 +11,9 @@
 #' @param prame_analysis PRAME-augmented analysis results (may be NULL)
 #' @param output_dir Directory path to save artifacts
 #' @param prefix Filename prefix for saved files
+#' @param dataset_name Optional dataset label for saved narrative summaries
 #' @return Invisibly returns NULL after writing files
-save_mfs_validation_results <- function(validation_results, missing_data_analysis, prame_analysis, output_dir, prefix) {
+save_mfs_validation_results <- function(validation_results, missing_data_analysis, prame_analysis, output_dir, prefix, dataset_name = NULL) {
     logger::log_info(formatted("Saving MFS validation results", indent = 1))
     tryCatch(
         {
@@ -72,13 +73,12 @@ save_mfs_validation_results <- function(validation_results, missing_data_analysi
     }
 
     # Create comprehensive, interpretable summary instead of repetitive per-timepoint approach
-    # Pass a safe dataset_name (NULL uses internal default handling)
     comprehensive_summary <- create_comprehensive_gep_summary(
         validation_results = validation_results,
         outcome_type = "MFS",
         prame_analysis = prame_analysis,
         missing_data_analysis = missing_data_analysis,
-        dataset_name = NULL
+        dataset_name = dataset_name
     )
     
     summary_path <- file.path(output_dir, paste0(prefix, "mfs_validation_summary.txt"))
@@ -122,10 +122,11 @@ save_mfs_validation_results <- function(validation_results, missing_data_analysi
 #' @param output_dir Directory path to save artifacts
 #' @param prefix Filename prefix for saved files
 #' @param group_var Variable name for grouping (default: "biopsy1_gep")
+#' @param dataset_name Optional dataset label for saved narrative summaries
 #' @return Invisibly returns NULL after writing files
 save_mss_validation_results <- function(standard_results, competing_results,
                                         missing_data, prame_results, output_dir, prefix,
-                                        group_var = "biopsy1_gep") {
+                                        group_var = "biopsy1_gep", dataset_name = NULL) {
     logger::log_info("Saving MSS validation results")
     if (GEP_SAVE_RDS) {
         saveRDS(standard_results, file.path(output_dir, paste0(prefix, "mss_standard_validation_results.rds")))
@@ -153,7 +154,8 @@ save_mss_validation_results <- function(standard_results, competing_results,
         prame_results = prame_results,
         output_dir = output_dir,
         prefix = prefix,
-        group_var = group_var
+        group_var = group_var,
+        dataset_name = dataset_name
     )
 }
 
@@ -262,7 +264,7 @@ create_mss_validation_excel_files <- function(standard_results, competing_result
 #' Create MSS validation summary text
 create_mss_validation_summary_text <- function(standard_results, competing_results,
                                                missing_data, prame_results, output_dir, prefix,
-                                               group_var = "biopsy1_gep") {
+                                               group_var = "biopsy1_gep", dataset_name = NULL) {
     logger::log_info("Creating MSS validation summary text file")
     
     # Create comprehensive, interpretable summary instead of repetitive per-timepoint approach
@@ -274,7 +276,7 @@ create_mss_validation_summary_text <- function(standard_results, competing_resul
         outcome_type = "MSS",
         prame_analysis = prame_results,
         missing_data_analysis = missing_data,
-        dataset_name = NULL
+        dataset_name = dataset_name
     )
     
     # Save comprehensive summary

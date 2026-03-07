@@ -449,15 +449,16 @@ Gene Expression Profiling (GEP) provides lab-reported probabilities of metastasi
 **Goal:** Assess whether GEP probabilities accurately predict patient outcomes
 
 **Analyses:**
-1. **Calibration:** Agreement between predicted and observed probabilities
+1. **Observed vs Expected / Calibration:** Agreement between lab-reported and realized event rates
 2. **Discrimination:** Ability to separate patients with vs without events
 3. **Clinical Utility:** Impact on clinical decision-making
+4. **Competing-risk MSS sensitivity analysis:** Separate accounting for non-melanoma death when evaluating MSS
 
 ### Calibration Assessment
 
 **Purpose:** Do predicted probabilities match observed rates?
 
-**Method:** Calibration plot (predicted vs observed)
+**Method:** Table-first validation at 5, 7, and 10 years using grouped observed-vs-expected comparisons plus calibration diagnostics.
 
 **Interpretation:**
 - **Perfect calibration:** Points lie on 45° diagonal line
@@ -465,9 +466,17 @@ Gene Expression Profiling (GEP) provides lab-reported probabilities of metastasi
 - **Underestimation:** Points above diagonal (predicted < observed)
 
 **Metrics:**
-- **Calibration slope:** Should be close to 1.0
-- **Calibration intercept:** Should be close to 0.0
-- **Hosmer-Lemeshow test:** p > 0.05 indicates good calibration
+- **Overall O/E ratio:** Total observed events divided by total expected events across GEP classes
+- **Exact Poisson CI for overall O/E:** Quantifies uncertainty around the overall observed-to-expected ratio
+- **Pearson goodness-of-fit p-value:** Tests whether grouped observed counts depart materially from grouped expected counts across GEP classes
+- **Nam-D'Agostino statistic:** Grouped calibration test reported in the consolidated workbook
+- **Integrated Calibration Index (ICI):** Average absolute difference between predicted and observed risk
+- **Calibration slope:** Should be close to 1.0; reported as the primary slope summary across timepoints
+
+**Endpoint note:**
+- MFS uses metastasis events.
+- MSS standard validation uses melanoma-specific death as the event.
+- Non-melanoma death is handled separately in competing-risk analyses rather than being treated as an MSS event.
 
 ### Discrimination Assessment
 
@@ -484,10 +493,10 @@ Gene Expression Profiling (GEP) provides lab-reported probabilities of metastasi
   - 0.80-0.90: Excellent
   - 0.90-1.00: Outstanding
 
-**2. Time-Dependent AUC**
-- C-statistic at specific time points (e.g., 3-year, 5-year)
-- Accounts for censored data
-- Preferred for survival outcomes
+**2. Integrated and Time-Aggregated Discrimination**
+- **Integrated AUC:** Averages discrimination over follow-up rather than at a single timepoint
+- **Cumulative discrimination:** Summarizes separation across prespecified follow-up windows
+- **Time-averaged discrimination:** Averages discrimination across the evaluation horizon while accounting for censoring
 
 ### Clinical Utility Assessment
 
@@ -513,11 +522,15 @@ Gene Expression Profiling (GEP) provides lab-reported probabilities of metastasi
 
 **Step 1: Data Preparation**
 - Load GEP predictions (lab-reported probabilities)
-- Link to survival outcomes (MFS, MSS)
+- Link to 5-, 7-, and 10-year survival outcomes (MFS, MSS)
 - Exclude patients with missing GEP data
+- For MSS, define the primary event as melanoma-specific death and retain competing death indicators for companion competing-risk analyses
 
 **Step 2: Calibration Analysis**
-- Compute Nam–D’Agostino χ², Integrated Calibration Index (ICI), bootstrap slope/intercept
+- Compute grouped observed and expected events by GEP class
+- Derive overall O/E ratios with exact Poisson confidence intervals
+- Compute Pearson goodness-of-fit p-values across GEP classes
+- Compute Nam–D’Agostino χ², Integrated Calibration Index (ICI), and calibration slope
 - Record results in the consolidated workbook (no standalone calibration PNGs)
 
 **Step 3: Discrimination Analysis**
@@ -533,6 +546,7 @@ Gene Expression Profiling (GEP) provides lab-reported probabilities of metastasi
 - Export outcome-specific technical workbooks (`*mfs_validation_summary.xlsx`, `*mss_validation_summary.xlsx`) for lower-level observed/expected and competing-risk detail that complements, rather than duplicates, the consolidated summaries
 - Export the root-level cross-outcome workbook `*unified_gep_validation_summary.xlsx`
 - Export the simple QC workbook `unified_summary/*simple_gep_validation.xlsx`
+- Ensure narrative summaries preserve the cohort label used for the run and print the overall O/E ratio with its Poisson CI and Pearson goodness-of-fit p-value
 - Provide KM (MFS) or CIF (MSS) curves only; calibration/decision/discrimination visuals live in tables
 
 ### Expected Outputs
@@ -544,11 +558,11 @@ Gene Expression Profiling (GEP) provides lab-reported probabilities of metastasi
 - `b_melanoma_specific_survival/*_MSS_consolidated_summary.xlsx` — primary MSS review workbook, including `Observed_Expected_Summary`
 - `a_metastasis_free_survival/*mfs_validation_summary.xlsx` and `b_melanoma_specific_survival/*mss_validation_summary.xlsx` — technical-detail workbooks without duplicated high-level calibration/discrimination summary sheets
 - `a_metastasis_free_survival/*mfs_validation_summary.txt` and `b_melanoma_specific_survival/*mss_validation_summary.txt` — narrative summaries
-- `*unified_gep_validation_summary.xlsx` at the root of `04_GEP_Validation/` — cross-outcome workbook
+- `*unified_gep_validation_summary.xlsx` at the root of `04_GEP_Validation/` — comparison-only cross-outcome workbook
 - `unified_summary/*simple_gep_validation.*` — optional actual-vs-expected QC output from the simple checker
 - Limited PNGs: KM for MFS and CIF for MSS only when survival curves are generated
 
-**Schema note:** `PRAME_Summary` is always written in consolidated and unified workbooks. Sparse cohorts may receive an explanatory placeholder row instead of full PRAME reclassification results.
+**Schema note:** `PRAME_Summary` is always written in consolidated workbooks, and `PRAME_Comparison` is always written in unified workbooks. Sparse cohorts may receive explanatory placeholder rows instead of full PRAME reclassification results.
 
 ### Interpretation Example
 

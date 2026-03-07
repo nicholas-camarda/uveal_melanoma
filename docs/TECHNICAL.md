@@ -401,6 +401,13 @@ The analysis pipeline includes robust error handling for situations where data l
 
 **Implementation:** `scripts/workflow/objective_4_gep_analysis.R`
 
+**Current methods:**
+- Validate lab-reported GEP probabilities at 5, 7, and 10 years.
+- Use metastasis events for MFS and melanoma-specific death for MSS.
+- Run companion competing-risk MSS analyses so non-melanoma death is handled explicitly rather than folded into the primary MSS endpoint.
+- Summarize observed-vs-expected performance by GEP class and as an overall O/E ratio with exact Poisson confidence intervals and a Pearson goodness-of-fit p-value across classes.
+- Summarize calibration with Nam-D'Agostino, ICI, and calibration slope; summarize discrimination with Harrell's C and integrated/time-aggregated AUC-style metrics.
+
 **Current Outputs:**
 - Outcome-specific consolidated workbooks:
    - `a_metastasis_free_survival/*_MFS_consolidated_summary.xlsx`
@@ -417,7 +424,7 @@ The analysis pipeline includes robust error handling for situations where data l
    - `*simple_gep_validation.xlsx`
 - Limited visuals: KM curves for MFS and CIF curves for MSS (no standalone calibration/decision/discrimination PNGs)
 
-**Current workbook rule:** the consolidated outcome workbook is the primary review-facing artifact. Technical workbooks preserve lower-level sheets only, and no longer repeat summary calibration/discrimination tables already present in the consolidated workbook. `PRAME_Summary` is always written even when only an explanatory row is available.
+**Current workbook rule:** the consolidated outcome workbook is the primary review-facing artifact. Technical workbooks preserve lower-level sheets only, and no longer repeat summary calibration/discrimination tables already present in the consolidated workbook. Narrative summaries carry the cohort label used at runtime and report the overall O/E ratio with its exact Poisson interval and Pearson goodness-of-fit p-value. The root unified workbook is comparison-only and uses `*_Comparison` sheet names to distinguish it from the outcome-specific summaries. `PRAME_Summary` remains the consolidated-workbook sheet name, while the unified workbook uses `PRAME_Comparison`.
 
 **Important layout note:** cross-cutting cohort outputs such as baseline characteristics and treatment-duration summaries belong in `00_General/` inside each cohort folder, not in a shared top-level `Analysis/General/` directory.
 

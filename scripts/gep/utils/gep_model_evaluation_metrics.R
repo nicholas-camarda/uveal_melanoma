@@ -11,19 +11,76 @@
 calculate_observed_expected_rates <- function(data, expected_var, event_var, time_var, group_var = "biopsy1_gep") {
     logger::log_debug("Calculating observed vs expected rates")
     if (!group_var %in% names(data)) stop(sprintf("Grouping variable '%s' not found in data", group_var))
-    results <- data %>%
+    results_raw <- data %>%
         dplyr::group_by(.data[[group_var]]) %>%
         dplyr::summarise(
             n = dplyr::n(),
             observed = sum(.data[[event_var]]),
             expected = sum(1 - .data[[expected_var]]),
             .groups = "drop"
-        ) %>%
+        )
+
+    poisson_ci_lower <- vapply(seq_len(nrow(results_raw)), function(i) {
+        expected_events <- results_raw$expected[i]
+        observed_events <- results_raw$observed[i]
+
+        if (is.na(expected_events) || expected_events <= 0) {
+            return(NA_real_)
+        }
+
+        stats::poisson.test(observed_events)$conf.int[1] / expected_events
+    }, numeric(1))
+
+    poisson_ci_upper <- vapply(seq_len(nrow(results_raw)), function(i) {
+        expected_events <- results_raw$expected[i]
+        observed_events <- results_raw$observed[i]
+
+        if (is.na(expected_events) || expected_events <= 0) {
+            return(NA_real_)
+        }
+
+        stats::poisson.test(observed_events)$conf.int[2] / expected_events
+    }, numeric(1))
+
+    results <- results_raw %>%
         dplyr::mutate(
             oe_ratio = ifelse(expected > 0, observed / expected, NA_real_),
             expected_rate = ifelse(n > 0, expected / n, NA_real_),
-            observed_rate = ifelse(n > 0, observed / n, NA_real_)
+            observed_rate = ifelse(n > 0, observed / n, NA_real_),
+            poisson_ci_lower = round(poisson_ci_lower, 3),
+            poisson_ci_upper = round(poisson_ci_upper, 3)
         )
+
+    observed_total <- sum(results_raw$observed, na.rm = TRUE)
+    expected_total <- sum(results_raw$expected, na.rm = TRUE)
+    overall_oe_ratio <- ifelse(expected_total > 0, observed_total / expected_total, NA_real_)
+
+    overall_poisson_ci_lower <- NA_real_
+    overall_poisson_ci_upper <- NA_real_
+    if (!is.na(expected_total) && expected_total > 0) {
+        overall_poisson <- stats::poisson.test(observed_total)
+        overall_poisson_ci_lower <- overall_poisson$conf.int[1] / expected_total
+        overall_poisson_ci_upper <- overall_poisson$conf.int[2] / expected_total
+    }
+
+    expected_vec <- results_raw$expected
+    observed_vec <- results_raw$observed
+    chisq_p_value <- NA_real_
+    chisq_statistic <- NA_real_
+    if (length(expected_vec) > 1 && all(expected_vec > 0) && sum(expected_vec) > 0) {
+        chisq_statistic <- sum((observed_vec - expected_vec)^2 / expected_vec)
+        chisq_p_value <- stats::pchisq(chisq_statistic, df = length(expected_vec) - 1, lower.tail = FALSE)
+    }
+
+    attr(results, "overall_n") <- sum(results_raw$n, na.rm = TRUE)
+    attr(results, "overall_observed") <- observed_total
+    attr(results, "overall_expected") <- round(expected_total, 2)
+    attr(results, "overall_oe_ratio") <- round(overall_oe_ratio, 3)
+    attr(results, "overall_poisson_ci_lower") <- round(overall_poisson_ci_lower, 3)
+    attr(results, "overall_poisson_ci_upper") <- round(overall_poisson_ci_upper, 3)
+    attr(results, "chisq_p_value") <- round(chisq_p_value, 4)
+    attr(results, "chisq_statistic") <- round(chisq_statistic, 3)
+
     return(results)
 }
 

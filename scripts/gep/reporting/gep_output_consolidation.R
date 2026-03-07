@@ -516,10 +516,10 @@ create_comprehensive_text_summary <- function(validation_results, outcome_type,
     return(paste(summary_lines, collapse = "\n"))
 }
 
-#' Create unified GEP validation summary across outcomes
+#' Create unified GEP validation comparison workbook across outcomes
 #'
-#' Creates a single comprehensive summary that combines MFS and MSS results
-#' to eliminate redundancy while maintaining all information.
+#' Creates a cross-outcome comparison workbook that is intentionally distinct
+#' from the outcome-specific consolidated summaries.
 #'
 #' @param mfs_results MFS validation results
 #' @param mss_results MSS validation results
@@ -597,12 +597,13 @@ create_unified_gep_validation_summary <- function(mfs_results, mss_results, outp
         silent = TRUE
     )
 
-    # Combine into single workbook
+    # Combine into a comparison-only workbook so this file is not mistaken for
+    # another outcome-level summary export.
     unified_workbook <- list()
-    if (nrow(unified_cal) > 0) unified_workbook[["Unified_Calibration"]] <- unified_cal
-    if (nrow(unified_disc) > 0) unified_workbook[["Unified_Discrimination"]] <- unified_disc
-    if (nrow(unified_prame) > 0) unified_workbook[["PRAME_Summary"]] <- unified_prame
-    if (nrow(unified_missing) > 0) unified_workbook[["Missing_Data_Summary"]] <- unified_missing
+    if (nrow(unified_cal) > 0) unified_workbook[["Calibration_Comparison"]] <- unified_cal
+    if (nrow(unified_disc) > 0) unified_workbook[["Discrimination_Comparison"]] <- unified_disc
+    if (nrow(unified_prame) > 0) unified_workbook[["PRAME_Comparison"]] <- unified_prame
+    if (nrow(unified_missing) > 0) unified_workbook[["Missing_Data_Comparison"]] <- unified_missing
 
     # Save unified workbook
     if (length(unified_workbook) > 0) {

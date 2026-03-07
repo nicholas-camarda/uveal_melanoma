@@ -137,7 +137,7 @@ analyze_gep_mfs_validation <- function(data,
     
     # NEW: Use comprehensive GEP summary system instead of old repetitive reports
     # The save_mfs_validation_results function now creates comprehensive summaries automatically
-    save_mfs_validation_results(validation_results, missing_data_analysis, prame_analysis, mfs_output_dir, prefix)
+    save_mfs_validation_results(validation_results, missing_data_analysis, prame_analysis, mfs_output_dir, prefix, dataset_name = dataset_name)
 
     # Optionally create unified visuals at the GEP objective root directory
     if (create_unified_at_base) {
@@ -410,7 +410,8 @@ analyze_gep_mss_validation <- function(data,
     # The save_mss_validation_results function now creates comprehensive summaries automatically
     save_mss_validation_results(
         standard_results, competing_results,
-        missing_data_analysis, prame_results, mss_output_dir, prefix
+        missing_data_analysis, prame_results, mss_output_dir, prefix,
+        dataset_name = dataset_name
     )
 
     # ALWAYS generate per-cohort MSS visuals (CIF curves, calibration, discrimination)

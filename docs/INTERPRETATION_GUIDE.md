@@ -524,7 +524,7 @@ Gene Expression Profiling (GEP) is our molecular risk model for metastatic sprea
 - Start with the outcome-specific consolidated workbook named `<prefix>MFS_consolidated_summary.xlsx` or `<prefix>MSS_consolidated_summary.xlsx`.
 - Technical-detail workbooks `<prefix>mfs_validation_summary.xlsx` and `<prefix>mss_validation_summary.xlsx` sit in the matching outcome folders. They are now companion detail files rather than alternate summary workbooks.
 - Narrative text summaries `<prefix>mfs_validation_summary.txt` and `<prefix>mss_validation_summary.txt` sit alongside those technical workbooks.
-- Unified cross-outcome summaries live at the root of `04_GEP_Validation/` as `<prefix>unified_gep_validation_summary.xlsx`.
+- Unified cross-outcome summaries live at the root of `04_GEP_Validation/` as `<prefix>unified_gep_validation_summary.xlsx`. This workbook is comparison-only rather than a second outcome-summary workbook.
 - Simple actual-vs-expected QC outputs live in `04_GEP_Validation/unified_summary/` as `<prefix>simple_gep_validation.xlsx`.
 
 ### Workbook Layout at a Glance
@@ -545,7 +545,7 @@ Gene Expression Profiling (GEP) is our molecular risk model for metastatic sprea
 | Primary workbook pattern | `<prefix>MFS_consolidated_summary.xlsx` or `<prefix>MSS_consolidated_summary.xlsx`. |
 | Technical workbooks | `<prefix>mfs_validation_summary.xlsx` and `<prefix>mss_validation_summary.xlsx` in the outcome folders; these keep lower-level detail and no longer repeat the consolidated summary calibration/discrimination tables. |
 | Narrative summaries | `<prefix>mfs_validation_summary.txt` and `<prefix>mss_validation_summary.txt`. |
-| Unified workbook | `<prefix>unified_gep_validation_summary.xlsx` at the root of `04_GEP_Validation/`. |
+| Unified workbook | `<prefix>unified_gep_validation_summary.xlsx` at the root of `04_GEP_Validation/`; this workbook uses comparison-only sheet names such as `Calibration_Comparison`, `Discrimination_Comparison`, `PRAME_Comparison`, and `Missing_Data_Comparison`. |
 | Simple QC workbook | `unified_summary/<prefix>simple_gep_validation.xlsx`. |
 | Default directory | `final_data/Analysis/<cohort>/04_GEP_Validation/` with `a_metastasis_free_survival/`, `b_melanoma_specific_survival/`, and `unified_summary/`. |
 | Outcomes covered | MFS and MSS; unified workbooks stack both. |

@@ -15,6 +15,10 @@
 #' @return A comprehensive summary text suitable for saving
 create_comprehensive_gep_summary <- function(validation_results, outcome_type, prame_analysis, missing_data_analysis, dataset_name) {
     logger::log_info(sprintf("Creating comprehensive GEP validation summary for %s", outcome_type))
+
+    if (is.null(dataset_name) || !nzchar(dataset_name)) {
+        dataset_name <- "dataset_not_provided"
+    }
     
     # Extract key metrics across timepoints for pattern analysis
     timepoints <- names(validation_results)
@@ -146,7 +150,7 @@ create_comprehensive_gep_summary <- function(validation_results, outcome_type, p
         paste(rep("=", 60), collapse = ""),
         sprintf("Analysis completed: %s", Sys.time()),
         "",
-        sprintf("Dataset: %s", ifelse(is.null(dataset_name), "uveal_melanoma_full_cohort", dataset_name)),
+        sprintf("Dataset: %s", dataset_name),
         sprintf("Outcome: %s", outcome_type),
         sprintf("Timepoints analyzed: %s", paste(timepoints, collapse = ", ")),
         "",

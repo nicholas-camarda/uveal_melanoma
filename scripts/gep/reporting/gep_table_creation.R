@@ -34,14 +34,45 @@ extract_overall_oe_metrics <- function(observed_expected) {
 
         n_total <- if ("n" %in% names(observed_expected)) sum(observed_expected$n, na.rm = TRUE) else NA_real_
 
+        poisson_ci_lower <- attr(observed_expected, "overall_poisson_ci_lower", exact = TRUE)
+        poisson_ci_upper <- attr(observed_expected, "overall_poisson_ci_upper", exact = TRUE)
+        chi_square_p <- attr(observed_expected, "chisq_p_value", exact = TRUE)
+
+        if (is.null(poisson_ci_lower) || is.null(poisson_ci_upper)) {
+            if (is.finite(expected_total) && expected_total > 0) {
+                overall_poisson <- stats::poisson.test(observed_total)
+                poisson_ci_lower <- overall_poisson$conf.int[1] / expected_total
+                poisson_ci_upper <- overall_poisson$conf.int[2] / expected_total
+            } else {
+                poisson_ci_lower <- NA_real_
+                poisson_ci_upper <- NA_real_
+            }
+        }
+
+        if (is.null(chi_square_p)) {
+            if (length(observed_expected$expected) > 1 && all(observed_expected$expected > 0, na.rm = TRUE) && sum(observed_expected$expected, na.rm = TRUE) > 0) {
+                chisq_statistic <- sum(
+                    (observed_expected$observed - observed_expected$expected)^2 / observed_expected$expected,
+                    na.rm = TRUE
+                )
+                chi_square_p <- stats::pchisq(
+                    chisq_statistic,
+                    df = length(observed_expected$expected) - 1,
+                    lower.tail = FALSE
+                )
+            } else {
+                chi_square_p <- NA_real_
+            }
+        }
+
         return(list(
             n = n_total,
             observed = observed_total,
             expected = expected_total,
             oe_ratio = ifelse(expected_total > 0, observed_total / expected_total, NA_real_),
-            poisson_ci_lower = NA_real_,
-            poisson_ci_upper = NA_real_,
-            chi_square_p = NA_real_
+            poisson_ci_lower = round(poisson_ci_lower, 3),
+            poisson_ci_upper = round(poisson_ci_upper, 3),
+            chi_square_p = round(chi_square_p, 4)
         ))
     }
 

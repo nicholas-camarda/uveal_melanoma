@@ -481,7 +481,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         conf.int = FALSE,
         pval = TRUE,
         pval.size = 6 * plot_scale,       # p-value text (scaled)
-        title = paste("Kaplan-Meier Survival Curves:", ylab),
+        title = paste("Kaplan-Meier Survival Curves", ylab, sep = "\n"),
         subtitle = if (!is.null(dataset_name)) paste("Cohort:", dataset_name) else NULL,
         xlab = "Time (months)",
         ylab = ylab,
