@@ -146,9 +146,11 @@ All analysis outputs are written inside each cohort folder under `final_data/Ana
 For Objective 4, the current artifact hierarchy is:
 
 1. outcome-specific consolidated workbooks: `*_MFS_consolidated_summary.xlsx`, `*_MSS_consolidated_summary.xlsx`
-2. MSS technical workbook: `*mss_validation_summary.xlsx`
+2. outcome-specific technical workbooks and narrative summaries: `*mfs_validation_summary.xlsx`, `*mss_validation_summary.xlsx`, `*mfs_validation_summary.txt`, `*mss_validation_summary.txt`
 3. cross-outcome workbook at the root of `04_GEP_Validation/`: `*unified_gep_validation_summary.xlsx`
 4. simple QC workbook in `04_GEP_Validation/unified_summary/`: `*simple_gep_validation.xlsx`
+
+The consolidated outcome workbooks are the primary review-facing artifacts. They now include an `Observed_Expected_Summary` sheet, while `PRAME_Summary` is always written even when the cohort only supports an explanatory placeholder row. The technical `*_validation_summary.xlsx` workbooks are now detail-only companions and no longer duplicate high-level calibration/discrimination summary tables.
 
 📖 **[Detailed workflow documentation →](docs/TECHNICAL.md#workflow-orchestration-system)**
 

@@ -522,7 +522,8 @@ Gene Expression Profiling (GEP) is our molecular risk model for metastatic sprea
 
 - Objective 4 outputs live under `04_GEP_Validation/` inside each cohort directory.
 - Start with the outcome-specific consolidated workbook named `<prefix>MFS_consolidated_summary.xlsx` or `<prefix>MSS_consolidated_summary.xlsx`.
-- For MSS, the technical-detail workbook `<prefix>mss_validation_summary.xlsx` sits in `b_melanoma_specific_survival/`.
+- Technical-detail workbooks `<prefix>mfs_validation_summary.xlsx` and `<prefix>mss_validation_summary.xlsx` sit in the matching outcome folders. They are now companion detail files rather than alternate summary workbooks.
+- Narrative text summaries `<prefix>mfs_validation_summary.txt` and `<prefix>mss_validation_summary.txt` sit alongside those technical workbooks.
 - Unified cross-outcome summaries live at the root of `04_GEP_Validation/` as `<prefix>unified_gep_validation_summary.xlsx`.
 - Simple actual-vs-expected QC outputs live in `04_GEP_Validation/unified_summary/` as `<prefix>simple_gep_validation.xlsx`.
 
@@ -530,10 +531,11 @@ Gene Expression Profiling (GEP) is our molecular risk model for metastatic sprea
 
 | Sheet | Purpose | Where to find detailed metric definitions |
 |-------|---------|-------------------------------------------|
+| `Observed_Expected_Summary` | Compact overall observed-vs-expected summary by timepoint. | `docs/STATISTICAL_METHODS.md#gep-validation-metrics` |
 | `Calibration_Summary` | Predicted vs observed agreement. | `docs/STATISTICAL_METHODS.md#gep-validation-metrics` (Calibration subsection) |
 | `Discrimination_Summary` | Rank-order performance across timepoints. | `STATISTICAL_METHODS.md` (Discrimination subsection) |
 | `Decision_Curve_Summary` | Net benefit across threshold probabilities. | `STATISTICAL_METHODS.md` (Clinical Utility subsection) |
-| `PRAME_Summary` | Base vs PRAME-augmented comparisons (see next section). | Same Clinical Utility subsection |
+| `PRAME_Summary` | Base vs PRAME-augmented comparisons; sparse cohorts may show an explanatory placeholder row instead of full results. | Same Clinical Utility subsection |
 | `Missing_Data_Summary` | QC signals that contextualize Objective 4. | `STATISTICAL_METHODS.md` (Missing Data diagnostics) |
 
 ### Workbook Naming & Refresh Cadence
@@ -541,7 +543,8 @@ Gene Expression Profiling (GEP) is our molecular risk model for metastatic sprea
 | Item | Details |
 | --- | --- |
 | Primary workbook pattern | `<prefix>MFS_consolidated_summary.xlsx` or `<prefix>MSS_consolidated_summary.xlsx`. |
-| Technical MSS workbook | `<prefix>mss_validation_summary.xlsx` in `b_melanoma_specific_survival/`. |
+| Technical workbooks | `<prefix>mfs_validation_summary.xlsx` and `<prefix>mss_validation_summary.xlsx` in the outcome folders; these keep lower-level detail and no longer repeat the consolidated summary calibration/discrimination tables. |
+| Narrative summaries | `<prefix>mfs_validation_summary.txt` and `<prefix>mss_validation_summary.txt`. |
 | Unified workbook | `<prefix>unified_gep_validation_summary.xlsx` at the root of `04_GEP_Validation/`. |
 | Simple QC workbook | `unified_summary/<prefix>simple_gep_validation.xlsx`. |
 | Default directory | `final_data/Analysis/<cohort>/04_GEP_Validation/` with `a_metastasis_free_survival/`, `b_melanoma_specific_survival/`, and `unified_summary/`. |

@@ -405,14 +405,19 @@ The analysis pipeline includes robust error handling for situations where data l
 - Outcome-specific consolidated workbooks:
    - `a_metastasis_free_survival/*_MFS_consolidated_summary.xlsx`
    - `b_melanoma_specific_survival/*_MSS_consolidated_summary.xlsx`
-- MSS technical workbook in `b_melanoma_specific_survival/`:
-   - `*mss_validation_summary.xlsx`
+- Outcome-specific technical workbooks in the outcome folders:
+   - `a_metastasis_free_survival/*mfs_validation_summary.xlsx`
+   - `b_melanoma_specific_survival/*mss_validation_summary.xlsx`
 - Comprehensive text summaries describing interpretation and data-quality flags
+   - `a_metastasis_free_survival/*mfs_validation_summary.txt`
+   - `b_melanoma_specific_survival/*mss_validation_summary.txt`
 - Cross-outcome workbook at the root of `04_GEP_Validation/`:
    - `*unified_gep_validation_summary.xlsx`
 - Simple QC workbook under `04_GEP_Validation/unified_summary/`:
    - `*simple_gep_validation.xlsx`
 - Limited visuals: KM curves for MFS and CIF curves for MSS (no standalone calibration/decision/discrimination PNGs)
+
+**Current workbook rule:** the consolidated outcome workbook is the primary review-facing artifact. Technical workbooks preserve lower-level sheets only, and no longer repeat summary calibration/discrimination tables already present in the consolidated workbook. `PRAME_Summary` is always written even when only an explanatory row is available.
 
 **Important layout note:** cross-cutting cohort outputs such as baseline characteristics and treatment-duration summaries belong in `00_General/` inside each cohort folder, not in a shared top-level `Analysis/General/` directory.
 

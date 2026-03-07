@@ -16,6 +16,11 @@
 create_consolidated_gep_tables <- function(validation_results, outcome_type, output_dir, prefix, prame_results = NULL, missing_data = NULL) {
     logger::log_info(formatted(sprintf("Creating consolidated %s tables to replace redundant outputs", outcome_type), indent = 1))
 
+    prame_note <- get_prame_availability_note(prame_results, sprintf("%s PRAME analysis", outcome_type))
+
+    # Create consolidated observed/expected table across all timepoints
+    oe_consolidated <- create_consolidated_oe_summary_table(validation_results)
+
     # Create consolidated calibration table across all timepoints
     cal_consolidated <- create_consolidated_calibration_table(validation_results, outcome_type)
 
@@ -34,9 +39,9 @@ create_consolidated_gep_tables <- function(validation_results, outcome_type, out
         }
     }
 
-    # Build PRAME summary table when available (handles enriched NRI/IDI outputs)
+    # Build PRAME summary table using the current nri_results structure
     prame_consolidated <- data.frame()
-    if (!is.null(prame_results)) {
+    if (!is.null(prame_results) && !is.null(prame_results$nri_results) && is.list(prame_results$nri_results)) {
         interpret_nri <- function(nri_value, idi_value) {
             if (is.na(nri_value)) {
                 return("Analysis failed - insufficient data")
@@ -50,55 +55,35 @@ create_consolidated_gep_tables <- function(validation_results, outcome_type, out
             return("No net change in risk classification")
         }
 
-        # Preferred path: modern structure with nri_results list (used by both MFS and MSS flows)
-        if (!is.null(prame_results$nri_results) && is.list(prame_results$nri_results)) {
-            rows <- lapply(names(prame_results$nri_results), function(tp_name) {
-                res <- prame_results$nri_results[[tp_name]]
-                counts <- res$reclassification_counts %||% list()
-                model_comp <- res$model_comparison %||% list()
-                nri_total <- suppressWarnings(as.numeric(res$nri_total))
-                idi_val <- suppressWarnings(as.numeric(res$idi))
-                data.frame(
-                    Timepoint = res$timepoint %||% tp_name,
-                    N = res$n %||% prame_results$n %||% NA,
-                    Events = res$events %||% NA,
-                    Non_Events = res$nonevents %||% NA,
-                    NRI_Total = nri_total,
-                    NRI_Events = suppressWarnings(as.numeric(res$nri_events)),
-                    NRI_NonEvents = suppressWarnings(as.numeric(res$nri_nonevents)),
-                    IDI = idi_val,
-                    McNemar_p = suppressWarnings(as.numeric(res$mcnemar_p)),
-                    Event_Up = counts$event_up %||% NA,
-                    Event_Down = counts$event_down %||% NA,
-                    NonEvent_Up = counts$nonevent_up %||% NA,
-                    NonEvent_Down = counts$nonevent_down %||% NA,
-                    Base_AUC = suppressWarnings(as.numeric(model_comp$base_auc)),
-                    Enhanced_AUC = suppressWarnings(as.numeric(model_comp$enhanced_auc)),
-                    AUC_Diff = suppressWarnings(as.numeric(model_comp$auc_difference)),
-                    Interpretation = interpret_nri(nri_total, idi_val),
-                    stringsAsFactors = FALSE
-                )
-            })
-            if (length(rows) > 0) {
-                prame_consolidated <- do.call(rbind, rows)
-            }
-        } else if (is.list(prame_results)) {
-            # Legacy fallback: MSS exported data.frames with simple 'nri' column
-            rows <- list()
-            for (nm in names(prame_results)) {
-                val <- prame_results[[nm]]
-                if (is.data.frame(val) && any(c("nri", "NRI") %in% names(val))) {
-                    nri_col <- intersect(c("nri", "NRI"), names(val))[1]
-                    nri_val <- suppressWarnings(as.numeric(val[[nri_col]][1]))
-                    rows[[length(rows) + 1]] <- data.frame(
-                        Timepoint = nm,
-                        NRI_Total = nri_val,
-                        Interpretation = interpret_nri(nri_val, NA),
-                        stringsAsFactors = FALSE
-                    )
-                }
-            }
-            if (length(rows) > 0) prame_consolidated <- do.call(rbind, rows)
+        rows <- lapply(names(prame_results$nri_results), function(tp_name) {
+            res <- prame_results$nri_results[[tp_name]]
+            counts <- res$reclassification_counts %||% list()
+            model_comp <- res$model_comparison %||% list()
+            nri_total <- suppressWarnings(as.numeric(res$nri_total))
+            idi_val <- suppressWarnings(as.numeric(res$idi))
+            data.frame(
+                Timepoint = res$timepoint %||% tp_name,
+                N = res$n %||% prame_results$n %||% NA,
+                Events = res$events %||% NA,
+                Non_Events = res$nonevents %||% NA,
+                NRI_Total = nri_total,
+                NRI_Events = suppressWarnings(as.numeric(res$nri_events)),
+                NRI_NonEvents = suppressWarnings(as.numeric(res$nri_nonevents)),
+                IDI = idi_val,
+                McNemar_p = suppressWarnings(as.numeric(res$mcnemar_p)),
+                Event_Up = counts$event_up %||% NA,
+                Event_Down = counts$event_down %||% NA,
+                NonEvent_Up = counts$nonevent_up %||% NA,
+                NonEvent_Down = counts$nonevent_down %||% NA,
+                Base_AUC = suppressWarnings(as.numeric(model_comp$base_auc)),
+                Enhanced_AUC = suppressWarnings(as.numeric(model_comp$enhanced_auc)),
+                AUC_Diff = suppressWarnings(as.numeric(model_comp$auc_difference)),
+                Interpretation = interpret_nri(nri_total, idi_val),
+                stringsAsFactors = FALSE
+            )
+        })
+        if (length(rows) > 0) {
+            prame_consolidated <- do.call(rbind, rows)
         }
 
         if (nrow(prame_consolidated) > 0) {
@@ -118,6 +103,9 @@ create_consolidated_gep_tables <- function(validation_results, outcome_type, out
             prame_consolidated <- prame_consolidated[, desired_cols, drop = FALSE]
         }
     }
+        if (nrow(prame_consolidated) == 0) {
+            prame_consolidated <- create_prame_placeholder_table(prame_note)
+        }
 
     # Build Missing Data summary (compact and human-readable)
     missing_consolidated <- data.frame()
@@ -154,12 +142,13 @@ create_consolidated_gep_tables <- function(validation_results, outcome_type, out
 
     # Combine all consolidated tables into a single Excel workbook
     consolidated_workbook <- list()
+    if (nrow(oe_consolidated) > 0) consolidated_workbook[["Observed_Expected_Summary"]] <- oe_consolidated
     if (nrow(cal_consolidated) > 0) consolidated_workbook[["Calibration_Summary"]] <- cal_consolidated
     if (nrow(disc_consolidated) > 0) consolidated_workbook[["Discrimination_Summary"]] <- disc_consolidated
     # REMOVED: Redundant performance summary
     # if (nrow(perf_consolidated) > 0) consolidated_workbook[["Performance_Summary"]] <- perf_consolidated
     if (nrow(dca_consolidated) > 0) consolidated_workbook[["Decision_Curve_Summary"]] <- dca_consolidated
-    if (nrow(prame_consolidated) > 0) consolidated_workbook[["PRAME_Summary"]] <- prame_consolidated
+    consolidated_workbook[["PRAME_Summary"]] <- prame_consolidated
     if (nrow(missing_consolidated) > 0) consolidated_workbook[["Missing_Data_Summary"]] <- missing_consolidated
 
     # Save consolidated workbook
@@ -184,6 +173,7 @@ create_consolidated_gep_tables <- function(validation_results, outcome_type, out
     # logger::log_info(formatted(sprintf("Consolidated %s text summary saved: %s", outcome_type, text_path), indent = 2))
 
     return(list(
+        observed_expected = oe_consolidated,
         calibration = cal_consolidated,
         discrimination = disc_consolidated,
         decision_curves = dca_consolidated,
@@ -191,6 +181,117 @@ create_consolidated_gep_tables <- function(validation_results, outcome_type, out
         missing_data = missing_consolidated,
         text_summary = text_summary
     ))
+}
+
+create_consolidated_oe_summary_table <- function(validation_results) {
+    oe_data <- data.frame()
+
+    for (tp_name in names(validation_results)) {
+        tp_results <- validation_results[[tp_name]]
+        oe <- extract_overall_oe_metrics(tp_results$observed_expected)
+        if (!is.null(oe)) {
+            oe_data <- rbind(oe_data, data.frame(
+                Timepoint = tp_name,
+                N = oe$n %||% NA,
+                Observed = oe$observed %||% NA,
+                Expected = oe$expected %||% NA,
+                OE_Ratio = oe$oe_ratio %||% NA,
+                CI_Lower = oe$poisson_ci_lower %||% NA,
+                CI_Upper = oe$poisson_ci_upper %||% NA,
+                Chi_Square_p = oe$chi_square_p %||% NA,
+                stringsAsFactors = FALSE
+            ))
+        }
+    }
+
+    oe_data
+}
+
+get_prame_availability_note <- function(prame_results, context_label = "PRAME analysis") {
+    if (is.null(prame_results)) {
+        return(sprintf("%s was not run for this output.", context_label))
+    }
+
+    if (!is.null(prame_results$error) && nzchar(prame_results$error)) {
+        return(sprintf("%s was not supportable: %s", context_label, prame_results$error))
+    }
+
+    if (!is.null(prame_results$status) && nzchar(prame_results$status)) {
+        return(sprintf("%s status: %s", context_label, prame_results$status))
+    }
+
+    if (!is.null(prame_results$prame_available) && identical(prame_results$prame_available, FALSE)) {
+        return(sprintf("%s was not supportable for this cohort/outcome.", context_label))
+    }
+
+    sprintf("%s did not produce reclassification results for this cohort/outcome.", context_label)
+}
+
+create_prame_placeholder_table <- function(note) {
+    data.frame(
+        Timepoint = "Not available",
+        N = NA_real_,
+        Events = NA_real_,
+        Non_Events = NA_real_,
+        NRI_Total = NA_real_,
+        NRI_Events = NA_real_,
+        NRI_NonEvents = NA_real_,
+        IDI = NA_real_,
+        McNemar_p = NA_real_,
+        Event_Up = NA_real_,
+        Event_Down = NA_real_,
+        NonEvent_Up = NA_real_,
+        NonEvent_Down = NA_real_,
+        Base_AUC = NA_real_,
+        Enhanced_AUC = NA_real_,
+        AUC_Diff = NA_real_,
+        Interpretation = note,
+        stringsAsFactors = FALSE
+    )
+}
+
+collect_unified_prame_rows <- function(prame_results, outcome_label) {
+    if (is.null(prame_results) || is.null(prame_results$nri_results) || !is.list(prame_results$nri_results)) {
+        return(data.frame())
+    }
+
+    rows <- lapply(names(prame_results$nri_results), function(tp_name) {
+        res <- prame_results$nri_results[[tp_name]]
+        nri_val <- suppressWarnings(as.numeric(res$nri_total))
+        nri_interpretation <- if (is.na(nri_val)) {
+            "Analysis failed - insufficient data"
+        } else if (nri_val == 0) {
+            "No improvement - PRAME does not add value beyond GEP alone"
+        } else if (nri_val > 0) {
+            "Improvement - PRAME enhances risk stratification"
+        } else {
+            "Worsening - PRAME reduces risk stratification accuracy"
+        }
+
+        data.frame(
+            Outcome = outcome_label,
+            Timepoint = res$timepoint %||% tp_name,
+            N = res$n %||% prame_results$n %||% NA,
+            NRI = nri_val,
+            IDI = suppressWarnings(as.numeric(res$idi)),
+            Interpretation = nri_interpretation,
+            stringsAsFactors = FALSE
+        )
+    })
+
+    do.call(rbind, rows)
+}
+
+create_unified_prame_placeholder_row <- function(outcome_label, note) {
+    data.frame(
+        Outcome = outcome_label,
+        Timepoint = "Not available",
+        N = NA_real_,
+        NRI = NA_real_,
+        IDI = NA_real_,
+        Interpretation = note,
+        stringsAsFactors = FALSE
+    )
 }
 
 #' Create consolidated calibration table across all timepoints
@@ -438,53 +539,26 @@ create_unified_gep_validation_summary <- function(mfs_results, mss_results, outp
     unified_prame <- data.frame()
     try(
         {
-            # MFS PRAME (expects mfs_results$prame_analysis$nri_results)
-            if (!is.null(mfs_results) && !is.null(mfs_results$prame_analysis) && !is.null(mfs_results$prame_analysis$nri_results)) {
-                for (nm in names(mfs_results$prame_analysis$nri_results)) {
-                    res <- mfs_results$prame_analysis$nri_results[[nm]]
-                    nri_val <- suppressWarnings(as.numeric(res$nri_total))
-                    nri_interpretation <- if (is.na(nri_val)) {
-                        "Analysis failed - insufficient data"
-                    } else if (nri_val == 0) {
-                        "No improvement - PRAME doesn't add value beyond GEP alone"
-                    } else if (nri_val > 0) {
-                        "Improvement - PRAME enhances risk stratification"
-                    } else {
-                        "Worsening - PRAME reduces risk stratification accuracy"
-                    }
-                    unified_prame <- rbind(unified_prame, data.frame(
-                        Outcome = "MFS", 
-                        Timepoint = nm, 
-                        NRI = nri_val,
-                        Interpretation = nri_interpretation,
-                        stringsAsFactors = FALSE
-                    ))
+            if (!is.null(mfs_results)) {
+                mfs_prame <- collect_unified_prame_rows(mfs_results$prame_analysis, "MFS")
+                if (nrow(mfs_prame) == 0) {
+                    mfs_prame <- create_unified_prame_placeholder_row(
+                        "MFS",
+                        get_prame_availability_note(mfs_results$prame_analysis, "MFS PRAME analysis")
+                    )
                 }
+                unified_prame <- rbind(unified_prame, mfs_prame)
             }
-            # MSS PRAME (expects mss_results$prame_results[[tp]] data.frame with 'nri')
-            if (!is.null(mss_results) && !is.null(mss_results$prame_results)) {
-                for (nm in names(mss_results$prame_results)) {
-                    val <- mss_results$prame_results[[nm]]
-                    if (is.data.frame(val) && "nri" %in% names(val)) {
-                        nri_val <- suppressWarnings(as.numeric(val$nri)[1])
-                        nri_interpretation <- if (is.na(nri_val)) {
-                            "Analysis failed - insufficient data"
-                        } else if (nri_val == 0) {
-                            "No improvement - PRAME doesn't add value beyond GEP alone"
-                        } else if (nri_val > 0) {
-                            "Improvement - PRAME enhances risk stratification"
-                        } else {
-                            "Worsening - PRAME reduces risk stratification accuracy"
-                        }
-                        unified_prame <- rbind(unified_prame, data.frame(
-                            Outcome = "MSS", 
-                            Timepoint = nm, 
-                            NRI = nri_val,
-                            Interpretation = nri_interpretation,
-                            stringsAsFactors = FALSE
-                        ))
-                    }
+
+            if (!is.null(mss_results)) {
+                mss_prame <- collect_unified_prame_rows(mss_results$prame_results, "MSS")
+                if (nrow(mss_prame) == 0) {
+                    mss_prame <- create_unified_prame_placeholder_row(
+                        "MSS",
+                        get_prame_availability_note(mss_results$prame_results, "MSS PRAME analysis")
+                    )
                 }
+                unified_prame <- rbind(unified_prame, mss_prame)
             }
         },
         silent = TRUE
