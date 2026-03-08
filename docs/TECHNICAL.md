@@ -8,6 +8,7 @@ This document provides detailed technical information about the implementation, 
 
 - [Workflow Orchestration System](#workflow-orchestration-system)
 - [Cohort Definitions](#cohort-definitions)
+   - [Dataset Identities and Construction](#dataset-identities-and-construction)
   - [Vital Status and Follow-up Classification](#vital-status-and-follow-up-classification)
 - [Directory Structure](#directory-structure)
 - [Data Processing Workflow](#data-processing-workflow)
@@ -91,6 +92,38 @@ This three-cohort design addresses key clinical and methodological challenges:
 - **Real-World Applicability:** Full cohort reflects actual clinical practice
 - **Treatment Limitations:** GKSRS-only cohort shows effectiveness in challenging cases
 - **Statistical Power:** Adequate sample sizes for robust statistical analysis
+
+### Dataset Identities and Construction
+
+The analytic datasets in `final_data/Analytic Dataset/` are not separate raw sources. They are three derived views of the same cleaned and fully processed master table, created once in Objective 0 and then reused by Objectives 1-4.
+
+| Dataset file | Runtime dataset id | Output folder | What it means | How it is constructed | Why it exists |
+|--------------|--------------------|---------------|---------------|-----------------------|---------------|
+| `uveal_melanoma_full_cohort.rds` | `uveal_melanoma_full_cohort` | `uveal_full/` | Canonical all-comers treatment cohort | Start from the cleaned master dataset, apply global exclusions, derive all analytic variables once, then retain every patient treated with either GKSRS or PBT | Preserves the real-world treatment population and serves as the broadest cohort for descriptive and outcome analyses |
+| `uveal_melanoma_restricted_cohort.rds` | `uveal_melanoma_restricted_cohort` | `uveal_restricted/` | Dual-eligibility comparison cohort | Subset the full cohort to patients who meet the predefined criteria for both modalities: tumor diameter `<= 20 mm`, tumor height `<= 10 mm`, and no optic nerve involvement | Minimizes treatment-selection bias when directly comparing GKSRS and PBT |
+| `uveal_melanoma_gksrs_only_cohort.rds` | `uveal_melanoma_gksrs_only_cohort` | `gksrs/` | Modality-limited challenging-case cohort | Subset the full cohort to patients who fail PBT eligibility because of tumor diameter `> 20 mm`, tumor height `> 10 mm`, or optic nerve involvement | Isolates the population in which GKSRS may still be clinically feasible when PBT is not |
+
+These three files should be interpreted as intentionally overlapping analytic cohorts rather than mutually independent studies:
+
+- The **full cohort** is the parent treatment cohort.
+- The **restricted cohort** is the clinically balanced subset of the full cohort.
+- The **GKSRS-only cohort** is the clinically excluded-from-PBT subset of the full cohort.
+
+The additional files in `final_data/Analytic Dataset/` support consistent downstream reporting:
+
+| Supporting file | What it contains | Why it is saved |
+|-----------------|------------------|-----------------|
+| `*_derived_precollapse.rds` | Cohort-specific analytic data before sparse factor levels are collapsed for modeling | Preserves original factor levels so merged baseline tables and review outputs can stay aligned with cohort-specific tables |
+| `other_map.rds` | Mapping of original category levels that were collapsed into `Other` | Documents exactly what was collapsed and supports transparent downstream reporting and diagnostics |
+
+Construction happens in a fixed order:
+
+1. Load and clean the raw spreadsheet.
+2. Derive dates, follow-up, endpoints, treatment flags, GEP fields, and other analysis variables once.
+3. Apply global exclusions before cohort assignment.
+4. Save the full cohort.
+5. Split that parent cohort into the restricted and GKSRS-only datasets using the predefined eligibility rules above.
+6. Save supporting `*_derived_precollapse.rds` and `other_map.rds` artifacts for output consistency.
 
 ### Vital Status and Follow-up Classification
 
