@@ -162,7 +162,7 @@ create_simple_gep_report <- function(mfs_results, mss_results, overall_summary, 
 #' @param output_dirs List of output directories (expects elements `obj4_mfs` and `obj4_mss`)
 #' @param prefix Filename prefix for saved files
 #' @return A list with `mfs_results`, `mss_results`, and `overall_summary`
-simple_gep_validation <- function(data, output_dirs, prefix) {
+simple_gep_validation <- function(data, output_dirs, prefix, dataset_name = NULL) {
     logger::log_info("Starting SIMPLE GEP validation (Project Goals)")
 
     # Resolve directories
@@ -182,6 +182,7 @@ simple_gep_validation <- function(data, output_dirs, prefix) {
             biopsy1_gep_mfs >= 0 & biopsy1_gep_mfs <= 1,
             biopsy1_gep_mss >= 0 & biopsy1_gep_mss <= 1
         )
+    display_analysis_data <- restore_gep_display_variables(analysis_data, dataset_name = dataset_name)
     logger::log_info(sprintf("Analysis dataset: %d patients with valid GEP predictions", nrow(analysis_data)))
 
     expected_mfs_col <- if ("expected_mfs_5yr" %in% names(analysis_data)) "expected_mfs_5yr" else "biopsy1_gep_mfs"
@@ -194,7 +195,7 @@ simple_gep_validation <- function(data, output_dirs, prefix) {
         TRUE ~ NA_character_
     )
 
-    mfs_data <- analysis_data %>%
+    mfs_data <- display_analysis_data %>%
         filter(
             if ("mfs_analysis_eligible" %in% names(.)) mfs_analysis_eligible else !is.na(tt_mets_months) & !is.na(mets_event),
             !is.na(.data[[expected_mfs_col]]),
@@ -219,7 +220,7 @@ simple_gep_validation <- function(data, output_dirs, prefix) {
             percent_difference = (difference / expected_rate) * 100
         )
 
-    mss_data <- analysis_data %>%
+    mss_data <- display_analysis_data %>%
         filter(
             if ("mss_analysis_eligible" %in% names(.)) mss_analysis_eligible else !is.na(melanoma_death_event) & !is.na(.data[[mss_time_col]]),
             !is.na(.data[[expected_mss_col]]),

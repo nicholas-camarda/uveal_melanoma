@@ -82,7 +82,7 @@ run_objective_4 <- function(data, dataset_name, output_dirs, prefix, other_map =
     # Simple GEP validation
     logger::log_info(formatted("Executing simple_gep_validation: Simple GEP validation - Actual vs Expected rates", indent = 1))
     # Simple GEP outputs: PNGs to MFS/MSS, combined report/XLSX to unified_summary
-    simple_gep_results <- simple_gep_validation(data, output_dirs, prefix)
+    simple_gep_results <- simple_gep_validation(data, output_dirs, prefix, dataset_name = dataset_name)
     logger::log_info(formatted("Simple GEP validation completed", indent = 1))
 
     logger::log_info(sprintf(">>> COMPLETED %s (Duration: %.1f seconds)",

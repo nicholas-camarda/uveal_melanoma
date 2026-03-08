@@ -442,10 +442,12 @@ calculate_greenwood_nam_dagostino <- function(data, predicted_risk_var, time_var
 
     chisq_stat <- NA_real_
     nam_dagostino_p <- NA_real_
+    nam_dagostino_log_p <- NA_real_
     if (nrow(valid_groups) >= 3) {
         chisq_stat <- sum((valid_groups$observed_events - valid_groups$expected_events)^2 /
             pmax(valid_groups$observed_events_variance, .Machine$double.eps), na.rm = TRUE)
         nam_dagostino_p <- stats::pchisq(chisq_stat, df = nrow(valid_groups) - 1, lower.tail = FALSE)
+        nam_dagostino_log_p <- calculate_chisq_log_p_value(chisq_stat, df = nrow(valid_groups) - 1)
     }
 
     ici <- NA_real_
@@ -462,7 +464,8 @@ calculate_greenwood_nam_dagostino <- function(data, predicted_risk_var, time_var
         n = nrow(cal_data),
         n_groups = nrow(group_results),
         nam_dagostino_statistic = round(chisq_stat, 3),
-        nam_dagostino_p = round(nam_dagostino_p, 4),
+        nam_dagostino_p = nam_dagostino_p,
+        nam_dagostino_log_p = nam_dagostino_log_p,
         nam_dagostino_method = "greenwood_nam_dagostino",
         ici = round(ici, 4),
         ici_method = "grouped_km",
@@ -564,16 +567,21 @@ calculate_survival_calibration_summary <- function(data, predicted_risk_var, tim
         n = nrow(cal_data),
         known_status_n = sum(cal_data$known_status, na.rm = TRUE),
         status = recalibration_fit$status,
+        fit_n = recalibration_fit$fit_n,
         events = recalibration_fit$events,
         non_events = recalibration_fit$non_events,
+        unique_risk_count = recalibration_fit$unique_risk_count,
         intercept = round(recalibration_fit$intercept, 3),
         calibration_intercept = round(recalibration_fit$intercept, 3),
         intercept_method = recalibration_fit$intercept_method,
+        intercept_se = recalibration_fit$intercept_se,
         slope = round(recalibration_fit$slope, 3),
         slope_method = recalibration_fit$slope_method,
+        slope_se = recalibration_fit$slope_se,
         ici = round(ici_result$ici, 4),
         ici_method = ici_result$ici_method,
         nam_dagostino_p = grouped_calibration$nam_dagostino_p,
+        nam_dagostino_log_p = grouped_calibration$nam_dagostino_log_p,
         nam_dagostino_method = grouped_calibration$nam_dagostino_method,
         nam_dagostino_statistic = grouped_calibration$nam_dagostino_statistic,
         n_groups = grouped_calibration$n_groups,
@@ -651,10 +659,12 @@ calculate_observed_expected_rates <- function(data, expected_var, event_var, tim
     expected_vec <- results_raw$expected
     observed_vec <- results_raw$observed
     chisq_p_value <- NA_real_
+    chisq_log_p_value <- NA_real_
     chisq_statistic <- NA_real_
     if (length(expected_vec) > 1 && all(expected_vec > 0) && sum(expected_vec) > 0) {
         chisq_statistic <- sum((observed_vec - expected_vec)^2 / expected_vec)
         chisq_p_value <- stats::pchisq(chisq_statistic, df = length(expected_vec) - 1, lower.tail = FALSE)
+        chisq_log_p_value <- calculate_chisq_log_p_value(chisq_statistic, df = length(expected_vec) - 1)
     }
 
     attr(results, "overall_n") <- sum(results_raw$n, na.rm = TRUE)
@@ -663,7 +673,8 @@ calculate_observed_expected_rates <- function(data, expected_var, event_var, tim
     attr(results, "overall_oe_ratio") <- round(overall_oe_ratio, 3)
     attr(results, "overall_poisson_ci_lower") <- round(overall_poisson_ci_lower, 3)
     attr(results, "overall_poisson_ci_upper") <- round(overall_poisson_ci_upper, 3)
-    attr(results, "chisq_p_value") <- round(chisq_p_value, 4)
+    attr(results, "chisq_p_value") <- chisq_p_value
+    attr(results, "chisq_log_p_value") <- chisq_log_p_value
     attr(results, "chisq_statistic") <- round(chisq_statistic, 3)
 
     return(results)

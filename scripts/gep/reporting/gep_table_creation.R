@@ -47,7 +47,8 @@ extract_overall_oe_metrics <- function(observed_expected) {
                 oe_ratio = observed_expected$overall_oe_ratio %||% NA_real_,
                 poisson_ci_lower = observed_expected$overall_poisson_ci_lower %||% NA_real_,
                 poisson_ci_upper = observed_expected$overall_poisson_ci_upper %||% NA_real_,
-                chi_square_p = observed_expected$chisq_p_value %||% NA_real_
+                chi_square_p = observed_expected$chisq_p_value %||% NA_real_,
+                chi_square_log_p = observed_expected$chisq_log_p_value %||% NA_real_
             ))
         }
     }
@@ -68,6 +69,7 @@ extract_overall_oe_metrics <- function(observed_expected) {
         poisson_ci_lower <- attr(observed_expected, "overall_poisson_ci_lower", exact = TRUE)
         poisson_ci_upper <- attr(observed_expected, "overall_poisson_ci_upper", exact = TRUE)
         chi_square_p <- attr(observed_expected, "chisq_p_value", exact = TRUE)
+        chi_square_log_p <- attr(observed_expected, "chisq_log_p_value", exact = TRUE)
 
         if (is.null(poisson_ci_lower) || is.null(poisson_ci_upper)) {
             if (is.finite(expected_total) && expected_total > 0) {
@@ -103,7 +105,8 @@ extract_overall_oe_metrics <- function(observed_expected) {
             oe_ratio = ifelse(expected_total > 0, observed_total / expected_total, NA_real_),
             poisson_ci_lower = round(poisson_ci_lower, 3),
             poisson_ci_upper = round(poisson_ci_upper, 3),
-            chi_square_p = round(chi_square_p, 4)
+                chi_square_p = chi_square_p,
+                chi_square_log_p = chi_square_log_p %||% NA_real_
         ))
     }
 
@@ -133,10 +136,27 @@ create_detailed_metrics_table <- function(validation_results) {
             nam_dagostino_val <- ifelse(is.null(cal$nam_dagostino_p), NA_real_, cal$nam_dagostino_p)
             slope_method <- ifelse(is.null(cal$slope_method), "NA", cal$slope_method)
             ici_method <- ifelse(is.null(cal$ici_method), "NA", cal$ici_method)
+            slope_text <- format_gep_calibration_slope_text(
+                slope = slope_val,
+                slope_method = slope_method,
+                status = ifelse(is.null(cal$status), NA_character_, cal$status),
+                fit_n = ifelse(is.null(cal$fit_n), NA_real_, cal$fit_n),
+                events = ifelse(is.null(cal$events), NA_real_, cal$events),
+                non_events = ifelse(is.null(cal$non_events), NA_real_, cal$non_events),
+                unique_risk_count = ifelse(is.null(cal$unique_risk_count), NA_real_, cal$unique_risk_count),
+                slope_se = ifelse(is.null(cal$slope_se), NA_real_, cal$slope_se)
+            )
+            ici_text <- ifelse(is.na(ici_val), "NA", sprintf("%.3f", ici_val))
+            nam_dagostino_text <- format_gep_p_value(
+                nam_dagostino_val,
+                log_p_value = ifelse(is.null(cal$nam_dagostino_log_p), NA_real_, cal$nam_dagostino_log_p)
+            )
             
             table_lines <- c(table_lines, 
-                sprintf("  Calibration: slope=%.3f [%s], ICI=%.3f [%s], Nam-D'Agostino p=%.4f", 
-                    slope_val, slope_method, ici_val, ici_method, nam_dagostino_val))
+                sprintf(
+                    "  Calibration: %s, ICI=%s [%s], Nam-D'Agostino p=%s",
+                    slope_text, ici_text, ici_method, nam_dagostino_text
+                ))
         }
         
         # Discrimination - with defensive programming
@@ -160,8 +180,8 @@ create_detailed_metrics_table <- function(validation_results) {
             chi_square_val <- oe$chi_square_p %||% NA_real_
 
             table_lines <- c(table_lines,
-                sprintf("  Overall O/E: %.2f (%.2f-%.2f); Chi-square p=%.4f",
-                    oe_ratio_val, ci_lower_val, ci_upper_val, chi_square_val))
+                sprintf("  Overall O/E: %.2f (%.2f-%.2f); Chi-square p=%s",
+                    oe_ratio_val, ci_lower_val, ci_upper_val, format_gep_p_value(chi_square_val, log_p_value = oe$chi_square_log_p)))
         }
         
         table_lines <- c(table_lines, "")

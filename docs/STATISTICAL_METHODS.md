@@ -53,6 +53,8 @@ The analysis employs standard statistical methods appropriate for comparative ef
 - Non-parametric estimation
 - No distributional assumptions
 
+For practical reading of survival curves, see [Kaplan-Meier Plots](INTERPRETATION_GUIDE.md#kaplan-meier-plots).
+
 ### Cox Proportional Hazards Regression
 
 **Purpose:** Compare hazard rates between treatment groups while adjusting for confounders
@@ -74,6 +76,8 @@ Surv(time, event) ~ treatment + age_at_diagnosis + sex + location + optic_nerve
 - Independent censoring
 - Multiplicative hazard effects
 
+For practical reading of hazard ratios and confidence intervals, see [Cox Regression Tables (Survival Outcomes)](INTERPRETATION_GUIDE.md#cox-regression-tables-survival-outcomes).
+
 ### Log-Rank Test
 
 **Purpose:** Compare survival distributions between groups
@@ -84,6 +88,8 @@ Surv(time, event) ~ treatment + age_at_diagnosis + sex + location + optic_nerve
 - p < 0.05 indicates significantly different survival distributions
 - Non-parametric test (no distributional assumptions)
 - Sensitive to differences across entire follow-up period
+
+For practical reading of survival-curve separation and log-rank context, see [Kaplan-Meier Plots](INTERPRETATION_GUIDE.md#kaplan-meier-plots).
 
 ---
 
@@ -146,6 +152,8 @@ Surv(time, event) ~ treatment + age_at_diagnosis + sex + location + optic_nerve
 - Comparing multiple adjusted models
 
 **Best Practice:** Report both RMST and Cox HR when possible
+
+For plain-English interpretation of RMST outputs, see [Understanding RMST Analysis](INTERPRETATION_GUIDE.md#understanding-rmst-analysis) and [Comparing RMST to Cox HR](INTERPRETATION_GUIDE.md#comparing-rmst-to-cox-hr).
 
 ---
 
@@ -213,6 +221,8 @@ The pipeline automatically:
 
 **Minimum Event Threshold:** PH testing skipped when <10 total events (insufficient power for reliable testing)
 
+For practical reading of PH tests and Schoenfeld plots, see [Interpreting Proportional Hazards Diagnostics](INTERPRETATION_GUIDE.md#interpreting-proportional-hazards-diagnostics) and [Schoenfeld Residual Plots](INTERPRETATION_GUIDE.md#schoenfeld-residual-plots).
+
 ---
 
 ## Competing Risks Analysis
@@ -268,6 +278,8 @@ The pipeline automatically:
 - Treatment groups differ significantly in cumulative incidence
 - Accounts for differential competing risk rates
 
+For practical reading of cumulative-incidence outputs, see [Cumulative Incidence Plots (Competing Risks)](INTERPRETATION_GUIDE.md#cumulative-incidence-plots-competing-risks).
+
 ---
 
 ## Binary Outcomes
@@ -309,6 +321,8 @@ outcome ~ treatment + age_at_diagnosis + sex + location + optic_nerve
 - Linearity of log-odds
 - No perfect multicollinearity
 - Adequate sample size (rule of thumb: 10 events per predictor)
+
+For practical reading of odds ratios and logistic-regression outputs, see [Logistic Regression Tables (Binary Outcomes)](INTERPRETATION_GUIDE.md#logistic-regression-tables-binary-outcomes).
 
 ---
 
@@ -361,6 +375,8 @@ outcome_change ~ treatment + baseline_value + confounders
 - Homoscedasticity (constant variance)
 - Normality of residuals
 - Independent observations
+
+For practical reading of linear-regression outputs, see [Linear Regression Tables (Continuous Outcomes)](INTERPRETATION_GUIDE.md#linear-regression-tables-continuous-outcomes).
 
 ---
 
@@ -438,6 +454,8 @@ See [TECHNICAL.md](TECHNICAL.md#subgroup-filtering) for detailed subgroup filter
 
 **Caution:** Subgroup analyses are exploratory and hypothesis-generating. Confirm findings in independent datasets before clinical application.
 
+For practical reading of subgroup outputs, see [Reading Forest Plots](INTERPRETATION_GUIDE.md#reading-forest-plots).
+
 ---
 
 ## GEP Validation Metrics
@@ -454,16 +472,13 @@ Gene Expression Profiling (GEP) provides lab-reported probabilities of metastasi
 3. **Clinical Utility:** Impact on clinical decision-making
 4. **Competing-risk MSS sensitivity analysis:** Separate accounting for non-melanoma death when evaluating MSS
 
+For a workbook-first overview written for non-statistical readers, see [Understanding GEP Analysis](INTERPRETATION_GUIDE.md#understanding-gep-analysis) and [GEP Quick Read](INTERPRETATION_GUIDE.md#gep-quick-read).
+
 ### Calibration Assessment
 
 **Purpose:** Do predicted probabilities match observed rates?
 
 **Method:** Table-first validation at 5, 7, and 10 years using grouped observed-vs-expected comparisons plus calibration diagnostics.
-
-**Interpretation:**
-- **Perfect calibration:** Points lie on 45° diagonal line
-- **Overestimation:** Points below diagonal (predicted > observed)
-- **Underestimation:** Points above diagonal (predicted < observed)
 
 **Metrics:**
 - **Overall O/E ratio:** Total observed events divided by total expected events across GEP classes
@@ -472,6 +487,7 @@ Gene Expression Profiling (GEP) provides lab-reported probabilities of metastasi
 - **Nam-D'Agostino statistic:** Grouped calibration test reported in the consolidated workbook
 - **Integrated Calibration Index (ICI):** Average absolute difference between predicted and observed risk
 - **Calibration slope:** Should be close to 1.0; reported as the primary slope summary across timepoints
+- **Brier score:** Horizon-specific mean squared error between predicted event risk and observed horizon outcome, carried in the workbook as a compact overall accuracy summary
 
 **Workbook traceability:**
 - The `Calibration_Summary` and `Calibration_Comparison` sheets now also carry method columns so the statistical variant used for each horizon is explicit: `Nam_D_Agostino_Method`, `ICI_Method`, and `Slope_Method`.
@@ -483,13 +499,13 @@ Gene Expression Profiling (GEP) provides lab-reported probabilities of metastasi
 
 ### How Expected Counts Are Calculated
 
-For Objective 4, the expected event count at time $t$ is derived from the lab-reported survival probability for each patient. If patient $i$ has predicted survival $S_i(t)$, then the corresponding predicted event probability is:
+For Objective 4, the expected event count at time $t$ is derived from the lab-reported survival probability for each patient. If patient $i$ has predicted survival $S_i(t)$, then the predicted event probability is:
 
 $$
 \hat{p}_i(t) = 1 - S_i(t)
 $$
 
-The expected number of events in a cohort or subgroup is the sum of those individual predicted event probabilities:
+The expected number of events in a cohort or subgroup is:
 
 $$
 E(t) = \sum_{i=1}^{N} \hat{p}_i(t) = \sum_{i=1}^{N} \left(1 - S_i(t)\right)
@@ -497,13 +513,13 @@ $$
 
 This is the quantity reported as `Expected` in the `Observed_Expected_Summary` sheet.
 
-Implementation details:
+Implementation notes:
 - In the shared MSS calculator, expected counts are computed directly as `sum(1 - expected_survival)` within each GEP class.
 - In the MFS helper, the same quantity is computed algebraically as $N \times (1 - \bar{S}(t))$, which is equivalent to summing $1 - S_i(t)$ across patients.
 
 ### How Observed Counts Are Calculated
 
-The current pipeline uses timepoint-specific binary event indicators that are created during preprocessing. For a given landmark year, the observed count is the sum of patients with the corresponding event indicator equal to 1.
+The current pipeline uses timepoint-specific binary event indicators created during preprocessing. For a given landmark year, the observed count is the sum of patients with the corresponding event indicator equal to 1.
 
 Examples:
 - MFS uses `mfs_event_5yr`, `mfs_event_7yr`, and `mfs_event_10yr`
@@ -517,7 +533,7 @@ $$
 
 where $I\{\cdot\}$ is the indicator function.
 
-Important distinction:
+Sheet distinction:
 - The `Observed_Expected_Summary` sheet still reflects the direct timepoint event-count calculation described above.
 - The `Observed_Expected_Summary` sheet reports its count-based goodness-of-fit p-value as `OE_Chi_Square_p`.
 - The `Calibration_Summary` sheet reports its grouped survival-calibration p-value as `Nam_D_Agostino_p` and uses grouped Kaplan-Meier estimates with Greenwood variance for that field.
@@ -538,33 +554,31 @@ where $O$ is the total observed event count and $E$ is the total expected event 
 
 The workbook reports an exact Poisson confidence interval for this ratio by treating the observed count as Poisson and scaling the resulting interval by the fixed expected count. In practice, the pipeline uses `stats::poisson.test()` on $O$ and then divides the lower and upper confidence limits by $E$.
 
-This is equivalent to the standard exact Poisson approach for a standardized event ratio and is preferred over a normal approximation because it respects the asymmetric uncertainty of low event counts and cannot produce impossible negative lower bounds.
-
-The same `Observed_Expected_Summary` sheet also reports `OE_Chi_Square_p`, which is the count-based goodness-of-fit p-value for the overall O/E comparison. It should be interpreted as an overall observed-versus-expected count check, not as the grouped Greenwood/Nam-D'Agostino survival-calibration test.
+The same `Observed_Expected_Summary` sheet also reports `OE_Chi_Square_p`, which is the count-based goodness-of-fit p-value for the overall O/E comparison rather than the grouped Greenwood/Nam-D'Agostino statistic.
 
 #### A Note About Denominator Retention and Summary Contracts
 
-Because the Objective 4 workbooks are now used as the primary review artifacts, the denominator fields must remain interpretable and stable across all summary layers.
+Because the Objective 4 workbooks are the primary review artifacts, denominator fields need to remain stable across summary layers.
 
 - In `Observed_Expected_Summary`, the overall `N` field is the total number of evaluable patients contributing to that horizon-specific O/E calculation, not a group-specific subgroup count.
 - For MFS, that overall denominator is carried through explicitly from the O/E helper so the consolidated workbook does not lose the cohort-level denominator when it collapses class-specific results into a single overall row.
 - If an upstream result shape does not expose that denominator directly, the reporting helper reconstructs it from the class-level counts rather than leaving the workbook denominator blank.
 - The grouped calibration table is a separate object from the overall O/E summary. Its `N` column refers to the number of patients entering the calibration analysis at that horizon, whereas the grouped Greenwood statistic itself is then computed within risk groups inside that analysis set.
 
-These denominator rules are intentionally strict because blank or ambiguous `N` fields make the workbook difficult to audit and can obscure whether a reported metric is being driven by a sparse horizon.
+These denominator rules prevent blank or ambiguous `N` fields in sparse horizons.
 
 ### Grouped Calibration and Goodness-of-Fit Fields
 
-The workbook contains both an overall O/E summary and a separate calibration summary. Those fields are not all generated the same way.
+The workbook contains both an overall O/E summary and a separate calibration summary. Those fields are generated differently.
 
 #### MFS calibration implementation
 
-For MFS, the calibration helper now performs a grouped Greenwood-Nam-D'Agostino-style survival calibration assessment. In plain language, it compares predicted risk versus observed risk across risk groups while properly accounting for incomplete follow-up:
+For MFS, grouped calibration uses a Greenwood-Nam-D'Agostino-style survival-calibration statistic:
 - Predicted risks are grouped into quantiles with a target of up to 10 groups and at least 3 groups.
 - Within each group, expected events are calculated as the sum of predicted risks.
-- Observed event risk at the evaluation horizon is estimated with Kaplan-Meier within that risk group. In plain language, Kaplan-Meier is the standard way to estimate the proportion who have had the event by a given time when not everyone is followed for exactly the same duration.
+- Observed event risk at the evaluation horizon is estimated with Kaplan-Meier within that risk group.
 - Observed events are then expressed on the count scale as $O_g = N_g \times \hat{P}_{KM,g}(t)$.
-- Greenwood variance from the group-specific Kaplan-Meier estimate supplies the denominator of the grouped goodness-of-fit statistic. In plain language, this is the standard way to quantify how much uncertainty there is around the Kaplan-Meier estimate in each group.
+- Greenwood variance from the group-specific Kaplan-Meier estimate supplies the denominator of the grouped goodness-of-fit statistic.
 
 Operationally, the reported statistic is computed on the count scale as:
 
@@ -574,51 +588,39 @@ $$
 
 with a $\chi^2$ reference distribution using $G-1$ degrees of freedom.
 
-Interpretation of the grouped chi-square result:
-- A small p-value for this statistic, conventionally $p < 0.05$, is evidence of grouped miscalibration: the observed event experience differs from the model-predicted event experience across the risk groups more than would usually be expected by chance alone.
-- A non-small p-value does not prove perfect calibration. It means the grouped test did not detect a clear mismatch at the available sample size and event count.
-- The p-value should therefore be interpreted alongside `N`, ICI, and calibration slope rather than in isolation, especially in sparse horizons where power is limited.
+**Practical interpretation:** Smaller `Nam_D_Agostino_p` values suggest stronger evidence of grouped miscalibration.
 
-This is now a true censoring-aware grouped survival-calibration test rather than the earlier $(O-E)^2 / E$ approximation. In plain language, the test now uses survival-analysis machinery that respects censoring instead of treating the data like a simple fully observed binary outcome.
+For a plain-English reading order for calibration outputs, see [GEP Calibration Made Simple](INTERPRETATION_GUIDE.md#gep-calibration-made-simple).
 
 #### MSS standard-validation calibration implementation
 
-For MSS standard validation, the grouped calibration p-value now uses the same Greenwood-based grouped survival approach:
+For MSS standard validation, the grouped calibration p-value uses the same Greenwood-based grouped survival approach:
 - Predicted melanoma-specific death risk is grouped into quantiles.
-- Group-specific observed risk is estimated by Kaplan-Meier at the evaluation horizon while treating non-melanoma deaths as censored in the standard MSS analysis. In plain language, the method estimates melanoma-specific death risk over time without counting other causes of death as melanoma events.
-- Greenwood variance is used in the grouped goodness-of-fit denominator. In plain language, the denominator is scaled by how uncertain the observed group risk estimate is.
+- Group-specific observed risk is estimated by Kaplan-Meier at the evaluation horizon while treating non-melanoma deaths as censored in the standard MSS analysis.
+- Greenwood variance is used in the grouped goodness-of-fit denominator.
 
-This is a true grouped survival-calibration statistic for both MFS and standard MSS calibration summaries, even though the standard MSS endpoint itself remains distinct from the separate competing-risk MSS analyses. In plain language, the same rigorous grouped calibration idea is used in both places, but the clinical endpoint being studied is still different.
+This grouped survival-calibration statistic is used for both MFS and standard MSS calibration summaries, while the competing-risk MSS analyses remain separate.
 
 ### Integrated Calibration Index (ICI)
 
 The current pipeline uses a censoring-aware horizon-specific ICI strategy with an explicit fallback rule.
 
 For MFS:
-- When the effective risk support at the evaluation horizon is rich enough, the reported ICI is computed from an IPCW-weighted logistic spline recalibration curve on the logit-transformed predicted risk. In plain language, the model draws a smooth observed-versus-predicted calibration curve at that timepoint while correcting for unequal follow-up.
-- When the effective risk support is too coarse for a stable smooth curve, the method falls back to the grouped Kaplan-Meier absolute calibration error already used for the Greenwood-based grouped calibration summary. In plain language, if there are too few distinct risk values to justify a smooth curve, the pipeline switches to a simpler grouped comparison.
+- When the effective risk support at the evaluation horizon is rich enough, the reported ICI is computed from an IPCW-weighted logistic spline recalibration curve on the logit-transformed predicted risk.
+- When the effective risk support is too coarse for a stable smooth curve, the method falls back to the grouped Kaplan-Meier absolute calibration error already used for the Greenwood-based grouped calibration summary.
 
 For MSS standard validation:
 - The same rule is used: preferred IPCW-smoothed ICI when the horizon-specific predicted risks are sufficiently granular, grouped Kaplan-Meier fallback when they are not.
 
-What this means operationally:
-
 #### IPCW-smoothed ICI path
 
-IPCW stands for inverse-probability-of-censoring weighting. In plain language, it gives extra weight to patients whose follow-up pattern makes them stand in for similar patients who were censored too early to contribute full horizon information.
-
-The problem it solves is that, at a fixed horizon such as 7 years, not every patient has a directly observed event/no-event status:
-- a patient who has the event before 7 years is known to be an event,
-- a patient followed beyond 7 years without the event is known to be a non-event at 7 years,
-- but a patient censored at 4 years has unknown 7-year status.
-
-If those early-censored patients were simply dropped without adjustment, the observed calibration curve could be biased toward the subset with longer follow-up. IPCW addresses this by upweighting patients whose 7-year status is known but whose follow-up pattern is relatively uncommon because of censoring. In plain language, it tries to reduce the bias that would happen if only the best-followed patients shaped the curve.
+IPCW stands for inverse-probability-of-censoring weighting. It upweights patients whose horizon status is observed in settings where censoring would otherwise thin the usable sample.
 
 In the current implementation:
 - the pipeline estimates the probability of remaining uncensored up to the relevant contribution time,
 - assigns each horizon-known patient a weight of approximately $1 / P(\text{not censored})$,
-- fits a weighted logistic spline recalibration curve of the horizon event indicator on the logit-transformed predicted risk, which means it estimates a smooth observed-risk curve from the model’s predicted risks on a scale that behaves better statistically near 0 and 1,
-- and computes the ICI as the weighted mean absolute difference between each patient’s predicted risk and the smooth recalibrated observed risk from that curve. In plain language, ICI is the average size of the prediction error after accounting for censoring.
+- fits a weighted logistic spline recalibration curve of the horizon event indicator on the logit-transformed predicted risk,
+- and computes the ICI as the weighted mean absolute difference between each patient’s predicted risk and the smooth recalibrated observed risk from that curve.
 
 Written schematically, the preferred IPCW-smoothed ICI is:
 
@@ -628,21 +630,9 @@ $$
 
 where $w_i$ is the inverse-probability-of-censoring weight for patient $i$, $\hat{p}_i$ is the predicted event risk at the horizon, and $\hat{o}_i$ is the smooth recalibrated observed risk from the IPCW logistic spline curve.
 
-Toy example:
-- Suppose the horizon is 7 years.
-- Patient A has predicted risk $0.20$ and is followed to 9 years without the event, so A is a known 7-year non-event.
-- Patient B has predicted risk $0.20$ but is censored at 4 years, so B has unknown 7-year status and does not directly enter the horizon outcome fit.
-- If patients like A have only a $0.60$ probability of remaining uncensored long enough to contribute known 7-year status, A receives weight about $1/0.60 = 1.67$.
-- The smooth weighted calibration curve might then estimate that patients around predicted risk $0.20$ have observed 7-year risk $0.27$.
-- A contributes roughly $1.67 \times |0.20 - 0.27|$ to the weighted ICI calculation.
-
-This is the preferred ICI because it is censoring-aware and produces a smooth calibration function rather than a grouped step function. In plain language, it makes fuller use of the data when the data are rich enough to support that extra detail.
-
 #### Grouped Kaplan-Meier fallback path
 
-The grouped Kaplan-Meier fallback is used when the horizon-specific predicted risks are too discrete to support a stable smooth IPCW curve. In plain language, this happens when the model effectively gives only a few repeated risk values, so a smooth curve would look more precise than the data justify.
-
-In practice, this happens when many patients share only a few distinct risk values at that horizon after filtering to the subset with enough information to contribute. In the current implementation, the smooth IPCW ICI is attempted only when the horizon-known subset has:
+The grouped Kaplan-Meier fallback is used when the horizon-specific predicted risks are too discrete to support a stable smooth IPCW curve. In the current implementation, the smooth IPCW ICI is attempted only when the horizon-known subset has:
 - at least 20 analyzable patients,
 - at least 5 events,
 - at least 5 non-events,
@@ -662,33 +652,23 @@ $$
 
 where $g(i)$ is the patient's assigned predicted-risk group and $\hat{P}_{KM,g(i)}(t)$ is the Kaplan-Meier observed event risk for that group at horizon $t$.
 
-Toy example:
-- Suppose the only distinct 7-year predicted risks in the usable dataset are $0.05$, $0.20$, and $0.60$.
-- A smooth spline on only three effective risk levels would be unstable and over-interpretable.
-- The pipeline instead forms groups and estimates the observed 7-year event risk in each group by Kaplan-Meier.
-- If the group centered around predicted risk $0.20$ has Kaplan-Meier observed risk $0.28$, then each patient in that group contributes $|0.20 - 0.28| = 0.08$ to the ICI before averaging.
-
-This fallback is more conservative than pretending a smooth curve is identifiable when the risk support is too coarse. In plain language, the pipeline intentionally chooses the simpler method rather than over-claiming precision.
-
-In the current data, many horizon-specific GEP predictions collapse to only a few distinct values after filtering to patients who actually contribute information at that horizon, so the grouped-Kaplan-Meier fallback is often the method that is ultimately reported. This is why the workbook now exposes `ICI_Method` explicitly rather than assuming one estimator is used everywhere.
-
 For sparse cohorts or sparse horizons, the summary-writing behavior is deliberate:
 - the workbook is still written even if a smooth ICI is not supportable,
 - the reported ICI falls back to the grouped Kaplan-Meier version,
 - and the method column records that fallback explicitly rather than silently mixing estimators.
 
-Lower ICI values still indicate better calibration regardless of method, but interpretation should always cite the method column when comparing cohorts or timepoints.
+**Practical interpretation:** Lower `ICI` is better, but comparisons should cite `ICI_Method`.
 
 ### Calibration Slope
 
 The calibration slope is now computed with a single censoring-aware method for both MFS and standard MSS.
 
 For both MFS and MSS standard validation:
-- The predicted event risk at the requested horizon is transformed to the logit scale. In plain language, the probabilities are converted to a scale that is easier to model reliably, especially near 0 and 1.
+- The predicted event risk at the requested horizon is transformed to the logit scale.
 - Patients with known horizon status contribute through inverse-probability-of-censoring weights (IPCW), so early censoring does not get treated as an observed non-event.
-- A weighted logistic recalibration model is then fit at that horizon, and the coefficient of the transformed predicted risk is reported as the calibration slope. In plain language, this checks whether high-risk patients are truly experiencing more events than low-risk patients by about the right amount.
-- The calibration intercept is estimated from the corresponding IPCW-weighted offset model and stored in the result object, although the main workbook still foregrounds the slope. In plain language, the intercept captures whether predictions are systematically too high or too low overall.
-- If that weighted slope fit is numerically unstable, such as under quasi-separation with very large coefficient uncertainty, the slope is withheld and the method column reports the fit as unavailable rather than publishing a spurious extreme estimate. In plain language, if the math is too unstable to trust the number, the pipeline leaves it blank instead of reporting a misleading value.
+- A weighted logistic recalibration model is then fit at that horizon, and the coefficient of the transformed predicted risk is reported as the calibration slope.
+- The calibration intercept is estimated from the corresponding IPCW-weighted offset model and stored in the result object, although the main workbook still foregrounds the slope.
+- If that weighted slope fit is numerically unstable, such as under quasi-separation with very large coefficient uncertainty, the slope is withheld and the method column reports the fit as unavailable rather than publishing a spurious extreme estimate.
 
 The recalibration model can be written schematically as:
 
@@ -698,58 +678,207 @@ $$
 
 where $Y_t$ is the horizon-specific event indicator, $\hat{p}_t$ is the model-predicted event risk at that horizon, $\alpha$ is the calibration intercept, and the reported calibration slope is $\beta$.
 
-Operationally, the slope is treated as unavailable when the recalibration fit fails minimum-support checks or crosses the instability thresholds currently encoded in the pipeline constants. At present this includes sparse event/non-event support and quasi-separated fits with implausibly large coefficient magnitude or standard error. In plain language, quasi-separation means the data are so thin or so cleanly split that the model tries to send the slope toward an unrealistically extreme value. In those cases:
+Operationally, the slope is treated as unavailable when the recalibration fit fails minimum-support checks or crosses the instability thresholds currently encoded in the pipeline constants. At present this includes sparse event/non-event support and quasi-separated fits with implausibly large coefficient magnitude or standard error. In those cases:
 - `Slope` is written as missing,
 - `Slope_Method` is written as `ipcw_logit_unavailable`,
 - and the rest of the summary is still emitted so the horizon remains reviewable rather than disappearing from the workbook.
 
 The intercept may remain estimable even when the slope is withheld. That is intentional: the offset-only IPCW intercept fit can be numerically acceptable in settings where the free slope fit is not.
 
-Interpretation remains standard:
-- Slope near 1.0 suggests well-scaled predictions.
-- Slope below 1.0 suggests predictions are too extreme.
-- Slope above 1.0 suggests predictions are too compressed.
+**Practical interpretation:** `Slope` near 1 is best; values below 1 suggest predictions are too extreme, and values above 1 suggest predictions are too compressed.
+
+For a plain-English reading order for calibration outputs, see [GEP Calibration Made Simple](INTERPRETATION_GUIDE.md#gep-calibration-made-simple).
+
+### Brier Score and `Brier_Method`
+
+The Objective 4 workbook also reports a Brier score in `Calibration_Summary`. This is not a separate model-fitting procedure. It is an accuracy metric that summarizes how close the predicted event probabilities were to the observed horizon outcomes.
+
+For patient $i$ at horizon $t$, let $\hat{p}_i(t)$ be the predicted event risk and let $Y_i(t)$ be the binary indicator for whether the event had occurred by that horizon. The current pipeline's preferred Brier calculation is:
+
+$$
+\mathrm{Brier}(t) = \frac{1}{N} \sum_{i=1}^{N} \left(\hat{p}_i(t) - Y_i(t)\right)^2
+$$
+
+where lower values indicate better overall probabilistic accuracy. A value of $0$ would be perfect. Because the Brier score depends on outcome frequency, it is more meaningful for like-for-like comparisons within the same endpoint and timepoint than as an absolute universal threshold.
+
+Current implementation details:
+- `Brier_Method = time_dependent`: preferred horizon-specific squared-error calculation.
+- `Brier_Method = simple_fallback`: simplified fallback using the same mean-squared-error idea if the preferred path errors.
+- `Brier_Method = basic_last_resort`: rough aggregate approximation based on the mean predicted risk and overall event rate if both earlier paths fail.
+- `Brier_Method = insufficient_data`, `calculation_failed`, or `all_methods_failed`: the score was unavailable or too degraded for normal interpretation.
+- `Brier_Fallback_Used = TRUE`: the reported value did not come from the preferred path and should be described as a fallback estimate.
+
+In this pipeline, the Brier score is a secondary calibration/accuracy check. The primary calibration interpretation should still rest on the grouped Greenwood Nam-D'Agostino result, the ICI, and the calibration slope.
 
 
 ### Discrimination Assessment
 
 **Purpose:** Can GEP separate patients with vs without events?
 
-**Metrics:**
+These fields are written to the `Discrimination_Summary` sheet of the consolidated Objective 4 workbooks.
 
-**1. C-Statistic (Concordance Index)**
-- Range: 0.5 (no discrimination) to 1.0 (perfect discrimination)
-- Interpretation:
-  - 0.50-0.60: Poor
-  - 0.60-0.70: Acceptable
-  - 0.70-0.80: Good
-  - 0.80-0.90: Excellent
-  - 0.90-1.00: Outstanding
+### Harrell's C (`Harrell_C`)
 
-**2. Integrated and Time-Aggregated Discrimination**
-- **Integrated AUC:** Averages discrimination over follow-up rather than at a single timepoint
-- **Cumulative discrimination:** Summarizes separation across prespecified follow-up windows
-- **Time-averaged discrimination:** Averages discrimination across the evaluation horizon while accounting for censoring
+**Package / function:** `survcomp::concordance.index()` with `method = "noether"`
+
+**MFS implementation:**
+- In `perform_discrimination_mfs()`, the code first truncates follow-up at the requested horizon.
+- The event indicator becomes `observed_event == 1 & observed_time <= timepoint_months`.
+- The survival time becomes `pmin(observed_time, timepoint_months)`.
+- `Harrell_C` is then computed on those horizon-truncated data, so the MFS value is a horizon-specific concordance estimate.
+
+**MSS implementation:**
+- In `perform_discrimination_mss()`, the primary `Harrell_C` uses the same `survcomp::concordance.index()` call but on full observed follow-up in the horizon-specific analytic subset.
+- The code passes `time_to_event` and `event_occurred` directly rather than truncating the primary concordance calculation at the landmark year.
+- This means the MSS `Harrell_C` is not the same estimand as the MFS `Harrell_C`, even though both appear in the same workbook column.
+
+**Fallback:** If `survcomp` fails, the code falls back to concordance from `survival::coxph()`.
+
+**Practical interpretation:** Higher `Harrell_C` means better rank-order separation of higher-risk versus lower-risk patients.
+
+For a plain-English reading order for discrimination outputs, see [GEP Discrimination Made Simple](INTERPRETATION_GUIDE.md#gep-discrimination-made-simple).
+
+### Integrated and Time-Aggregated Discrimination
+
+The pipeline intentionally removed Uno's C and single-timepoint time-dependent AUC because those metrics were too fragile for the current event pattern. The replacement discrimination fields are more stable summaries over follow-up.
+
+**Integrated AUC (`Integrated_AUC`):**
+- The code fits `coxph(Surv(observed_time, observed_event) ~ predicted_risk)`.
+- It then calls `riskRegression::Score()` with monthly evaluation times: `seq(0, max(observed_time), by = 12)`.
+- The reported integrated AUC is the mean of the returned AUC values across those time periods.
+
+**Cumulative discrimination (`Cumulative_Discrimination`):**
+- The code recomputes truncated Harrell-style concordance across prespecified 5-, 7-, and 10-year windows.
+- The workbook value is the mean of the available window-specific concordance estimates.
+
+**Time-averaged discrimination (`Time_averaged_Discrimination`):**
+- The code recomputes truncated Harrell-style concordance at monthly follow-up landmarks.
+- The workbook value is the mean of those monthly concordance estimates.
+
+**Practical interpretation:** Higher `Integrated_AUC`, `Cumulative_Discrimination`, and `Time_averaged_Discrimination` indicate better average discrimination over follow-up.
+
+For a plain-English reading order for discrimination outputs, see [GEP Discrimination Made Simple](INTERPRETATION_GUIDE.md#gep-discrimination-made-simple).
 
 ### Clinical Utility Assessment
 
 **Purpose:** Does GEP improve clinical decisions beyond standard factors?
 
-**Methods:**
+The current Objective 4 implementation reports clinical-utility metrics through the `Decision_Curve_Summary` and `PRAME_Summary` sheets, with the `IPA` field retained in `Discrimination_Summary` because it is generated alongside the other discrimination outputs.
 
-**1. Decision Curve Analysis**
-- Plots net benefit across decision thresholds
-- Compares GEP-based decisions vs clinical factors alone
-- Shows range of thresholds where GEP adds value
+### Decision Curve Analysis
 
-**2. Reclassification Metrics**
-- **Net Reclassification Improvement (NRI):** Proportion correctly reclassified
-- **Integrated Discrimination Improvement (IDI):** Improvement in predicted probabilities
+**Implementation:** `perform_decision_curve_analysis_mfs()` and `perform_decision_curve_analysis_mss()`
 
-**3. Incremental Predictive Value**
-- Compare models with vs without GEP
-- Likelihood ratio test: p < 0.05 indicates added value
-- ΔC-statistic: improvement in discrimination
+**Predicted risk:**
+- MFS uses `1 - expected_mfs_{timepoint}yr`.
+- MSS uses `1 - expected_mss_{timepoint}yr`.
+
+**Observed outcome:**
+- The code constructs a binary outcome indicating whether the endpoint occurred by the requested horizon.
+
+**Threshold grid:**
+- Decision curves are evaluated on `seq(GEP_DCA_THRESHOLD_MIN, GEP_DCA_THRESHOLD_MAX, by = GEP_DCA_THRESHOLD_STEP)`.
+
+**Net benefit formula:**
+
+$$
+NB(p_t) = \frac{TP}{N} - \frac{FP}{N} \cdot \frac{p_t}{1 - p_t}
+$$
+
+where $p_t$ is the decision threshold, $TP$ is the number of true positives, and $FP$ is the number of false positives under the threshold-based treatment rule.
+
+**Workbook outputs:**
+- `Event_Rate`
+- `Optimal_Threshold`
+- `Optimal_Net_Benefit`
+- `Threshold_Range_Min` / `Threshold_Range_Max`
+- `Area_Between_Curves`
+
+`Area_Between_Curves` is currently computed as the summed difference between the model and treat-all net-benefit curves over the evaluated threshold grid, scaled by the fixed threshold step.
+
+**Practical interpretation:** Positive net benefit means the model outperforms a treat-none strategy at that threshold; larger positive values indicate greater potential clinical utility.
+
+For a plain-English reading order for decision-curve outputs, see [GEP Decision Curve Made Simple](INTERPRETATION_GUIDE.md#gep-decision-curve-made-simple).
+
+### Index of Prediction Accuracy (`IPA`)
+
+**Implementation:** `calculate_ipa_survival()`
+
+The code uses a three-level fallback strategy:
+
+**Preferred method:** Brier-score comparison at the requested horizon
+
+$$
+IPA = \frac{BS_{null} - BS_{model}}{BS_{null}}
+$$
+
+where the null model predicts the overall horizon event rate for everyone.
+
+**Fallback 1:** AUC-based comparison
+
+$$
+IPA = \frac{AUC_{model} - 0.5}{1 - 0.5}
+$$
+
+using `pROC::roc()` when available, or a simpler correlation-based AUC surrogate if `pROC` is unavailable.
+
+**Fallback 2:** Spearman-correlation shortcut
+
+$$
+IPA \approx \frac{\rho_{Spearman}}{2}
+$$
+
+This final fallback is only used if both earlier methods fail.
+
+The workbook records the active path in `IPA_Method` and whether a fallback was needed in `IPA_Fallback_Used`.
+
+**Practical interpretation:** Positive `IPA` means the model improves on the null benchmark at that horizon; values near zero indicate little gain.
+
+For a plain-English reading order for discrimination outputs, see [GEP Discrimination Made Simple](INTERPRETATION_GUIDE.md#gep-discrimination-made-simple).
+
+### PRAME Reclassification Metrics
+
+**Implementation:** `perform_prame_augmented_analysis_mfs()` and `perform_prame_augmented_analysis_mss()`
+
+PRAME augmentation is optional and is only run on the PRAME-complete subset with binary `Positive` / `Negative` status and the required endpoint-specific GEP predictions.
+
+**Base risk:**
+
+Base risk is calculated as $1 -$ the lab-reported survival probability.
+
+**PRAME-adjusted risk:**
+- PRAME-positive patients have their base risk multiplied by `GEP_PRAME_ADJUSTMENT_FACTOR`, capped at `GEP_RISK_CAP_MAXIMUM`.
+- PRAME-negative patients have their base risk multiplied by `GEP_PRAME_REDUCTION_FACTOR`.
+
+The code then converts both the base and PRAME-adjusted risks into categorical risk strata using `GEP_RISK_CUTOFFS` and `GEP_RISK_LABELS`.
+
+**Categorical NRI:**
+
+$$
+NRI_{events} = \frac{Event_{Up}}{n_{events}} - \frac{Event_{Down}}{n_{events}}
+$$
+
+$$
+NRI_{nonevents} = \frac{NonEvent_{Down}}{n_{nonevents}} - \frac{NonEvent_{Up}}{n_{nonevents}}
+$$
+
+$$
+NRI_{total} = NRI_{events} + NRI_{nonevents}
+$$
+
+**IDI:**
+
+$$
+IDI = \left[\bar{p}_{enhanced}(events) - \bar{p}_{base}(events)\right] - \left[\bar{p}_{enhanced}(nonevents) - \bar{p}_{base}(nonevents)\right]
+$$
+
+**Additional comparison field:**
+- The code also reports a McNemar-style p-value based on improved vs worsened reclassification counts.
+- When `pROC` is available and event counts are adequate, it additionally reports `Base_AUC`, `Enhanced_AUC`, and `AUC_Diff`.
+
+**Practical interpretation:** Positive `NRI_Total` or `IDI` favors the PRAME-augmented model over the base GEP prediction.
+
+For a plain-English reading order for PRAME augmentation outputs, see [Understanding PRAME Enhancement Outputs](INTERPRETATION_GUIDE.md#understanding-prame-enhancement-outputs).
 
 ### Validation Workflow
 
@@ -767,11 +896,14 @@ Interpretation remains standard:
 - Record results in the consolidated workbook
 
 **Step 3: Discrimination Analysis**
-- Calculate Harrell’s C, integrated AUC, cumulative/time-averaged discrimination
-- Store metrics in the discrimination tab; no time-dependent AUC plots are emitted
+- Calculate `Harrell_C`, `Integrated_AUC`, `Cumulative_Discrimination`, and `Time_averaged_Discrimination`
+- Use horizon-truncated concordance for MFS and full-follow-up primary concordance for MSS
+- Store these fields together with `IPA`, `IPA_Method`, and `IPA_Fallback_Used` in the discrimination tab; no time-dependent AUC plots are emitted
 
 **Step 4: Clinical Utility Analysis**
-- Perform decision-curve calculations and PRAME-based NRI/IDI comparisons
+- Perform decision-curve calculations on the horizon-specific binary outcome
+- Compute `IPA` using the preferred Brier-score comparison with documented fallbacks
+- Run optional PRAME-based NRI/IDI and reclassification comparisons when the PRAME-complete subset is adequate
 - Capture net-benefit ranges and reclassification tables inside the workbook
 
 **Step 5: Reporting**
@@ -797,19 +929,18 @@ Interpretation remains standard:
 
 **Schema note:** `PRAME_Summary` is always written in consolidated workbooks, and `PRAME_Comparison` is always written in unified workbooks. Sparse cohorts may receive explanatory placeholder rows instead of full PRAME reclassification results.
 
-### Interpretation Example
+### Quick Interpretation Shortcuts
 
-**Calibration:** Slope = 0.95 (good), Intercept = 0.02 (good)
-- GEP predictions closely match observed rates
+- `OE_Ratio`: values near 1 indicate better calibration-in-the-large.
+- `Nam_D_Agostino_p`: smaller values suggest stronger evidence of grouped miscalibration.
+- `ICI`: lower is better.
+- `Slope`: values near 1 are better.
+- `Harrell_C`, `Integrated_AUC`, `Cumulative_Discrimination`, `Time_averaged_Discrimination`: higher is better.
+- `IPA`: positive values indicate improvement over the null benchmark.
+- `Optimal_Net_Benefit` and a positive threshold range: suggest potential clinical utility over that threshold region.
+- `NRI_Total` and `IDI`: positive values favor the PRAME-augmented model.
 
-**Discrimination:** C-statistic = 0.75 (good)
-- GEP effectively separates patients with vs without metastasis
-
-**Clinical Utility:** Decision curve shows net benefit at thresholds 10-30%
-- GEP improves decisions for patients with 10-30% predicted risk
-- Outside this range, clinical factors alone may suffice
-
-**Conclusion:** GEP provides well-calibrated, discriminative predictions with clinical utility for intermediate-risk patients.
+For fuller narrative interpretation and workbook examples, see [GEP Quick Read](INTERPRETATION_GUIDE.md#gep-quick-read), [GEP Calibration Made Simple](INTERPRETATION_GUIDE.md#gep-calibration-made-simple), [GEP Discrimination Made Simple](INTERPRETATION_GUIDE.md#gep-discrimination-made-simple), and [GEP Decision Curve Made Simple](INTERPRETATION_GUIDE.md#gep-decision-curve-made-simple).
 
 ---
 

@@ -353,12 +353,32 @@ create_consolidated_calibration_table <- function(validation_results, outcome_ty
             cal_data <- rbind(cal_data, data.frame(
                 Timepoint = tp_name,
                 N = cal$n %||% NA,
+                Fit_N = cal$fit_n %||% NA,
+                Status = cal$status %||% NA,
+                Events = cal$events %||% NA,
+                Non_Events = cal$non_events %||% NA,
+                Unique_Risk_Count = cal$unique_risk_count %||% NA,
                 Nam_D_Agostino_p = cal$nam_dagostino_p %||% NA,
+                Nam_D_Agostino_log_p = cal$nam_dagostino_log_p %||% NA,
                 Nam_D_Agostino_Method = cal$nam_dagostino_method %||% NA,
                 ICI = cal$ici %||% NA,
                 ICI_Method = cal$ici_method %||% NA,
                 Slope = cal$slope %||% cal$calibration_slope %||% NA,
                 Slope_Method = cal$slope_method %||% NA,
+                Slope_SE = cal$slope_se %||% NA,
+                Slope_Unavailable_Reason = if (is.finite(cal$slope %||% cal$calibration_slope %||% NA_real_)) {
+                    NA_character_
+                } else {
+                    describe_gep_slope_problem(
+                        status = cal$status %||% NA_character_,
+                        fit_n = cal$fit_n %||% NA_real_,
+                        events = cal$events %||% NA_real_,
+                        non_events = cal$non_events %||% NA_real_,
+                        unique_risk_count = cal$unique_risk_count %||% NA_real_,
+                        slope_se = cal$slope_se %||% NA_real_,
+                        include_counts = TRUE
+                    )
+                },
                 Brier_Score = cal$brier_score %||% NA,
                 Brier_Method = cal$brier_method %||% NA,
                 Brier_Fallback_Used = cal$brier_fallback_used %||% NA,
@@ -506,7 +526,11 @@ create_comprehensive_text_summary <- function(validation_results, outcome_type,
                     "%-10s %-8s %-20s %-12s %-18s %-10s %-18s",
                     row$Timepoint,
                     ifelse(is.na(row$N), "NA", as.character(row$N)),
-                    ifelse(is.na(row$Nam_D_Agostino_p), "NA", sprintf("%.3f", row$Nam_D_Agostino_p)),
+                    format_gep_p_value(
+                        row$Nam_D_Agostino_p,
+                        log_p_value = row$Nam_D_Agostino_log_p,
+                        decimal_places = 3
+                    ),
                     ifelse(is.na(row$ICI), "NA", sprintf("%.3f", row$ICI)),
                     ifelse(is.na(row$ICI_Method), "NA", as.character(row$ICI_Method)),
                     ifelse(is.na(row$Slope), "NA", sprintf("%.3f", row$Slope)),
@@ -580,9 +604,14 @@ create_comprehensive_text_summary <- function(validation_results, outcome_type,
                 sprintf("- Best calibration at %s (slope: %.3f)", best_tp, best_slope)
             )
         } else {
+            slope_issue_summary <- summarize_gep_slope_issue_pattern(cal_consolidated)
             summary_lines <- c(
                 summary_lines,
-                "- No finite calibration slope was estimable across timepoints"
+                if (nzchar(slope_issue_summary)) {
+                    paste0("- ", slope_issue_summary)
+                } else {
+                    "- The calibration slope could not be estimated across timepoints"
+                }
             )
         }
     }
@@ -743,12 +772,31 @@ create_unified_calibration_summary <- function(mfs_results, mss_results) {
                     Outcome = "MFS",
                     Timepoint = tp_name,
                     N = cal$n %||% NA,
+                    Fit_N = cal$fit_n %||% NA,
+                    Status = cal$status %||% NA,
+                    Events = cal$events %||% NA,
+                    Non_Events = cal$non_events %||% NA,
+                    Unique_Risk_Count = cal$unique_risk_count %||% NA,
                     Nam_D_Agostino_p = cal$nam_dagostino_p %||% NA,
                     Nam_D_Agostino_Method = cal$nam_dagostino_method %||% NA,
                     ICI = cal$ici %||% NA,
                     ICI_Method = cal$ici_method %||% NA,
                     Slope = cal$slope %||% cal$calibration_slope %||% NA,
                     Slope_Method = cal$slope_method %||% NA,
+                    Slope_SE = cal$slope_se %||% NA,
+                    Slope_Unavailable_Reason = if (is.finite(cal$slope %||% cal$calibration_slope %||% NA_real_)) {
+                        NA_character_
+                    } else {
+                        describe_gep_slope_problem(
+                            status = cal$status %||% NA_character_,
+                            fit_n = cal$fit_n %||% NA_real_,
+                            events = cal$events %||% NA_real_,
+                            non_events = cal$non_events %||% NA_real_,
+                            unique_risk_count = cal$unique_risk_count %||% NA_real_,
+                            slope_se = cal$slope_se %||% NA_real_,
+                            include_counts = TRUE
+                        )
+                    },
                     stringsAsFactors = FALSE
                 ))
             }
@@ -765,12 +813,31 @@ create_unified_calibration_summary <- function(mfs_results, mss_results) {
                     Outcome = "MSS",
                     Timepoint = tp_name,
                     N = cal$n %||% NA,
+                    Fit_N = cal$fit_n %||% NA,
+                    Status = cal$status %||% NA,
+                    Events = cal$events %||% NA,
+                    Non_Events = cal$non_events %||% NA,
+                    Unique_Risk_Count = cal$unique_risk_count %||% NA,
                     Nam_D_Agostino_p = cal$nam_dagostino_p %||% NA,
                     Nam_D_Agostino_Method = cal$nam_dagostino_method %||% NA,
                     ICI = cal$ici %||% NA,
                     ICI_Method = cal$ici_method %||% NA,
                     Slope = cal$slope %||% cal$calibration_slope %||% NA,
                     Slope_Method = cal$slope_method %||% NA,
+                    Slope_SE = cal$slope_se %||% NA,
+                    Slope_Unavailable_Reason = if (is.finite(cal$slope %||% cal$calibration_slope %||% NA_real_)) {
+                        NA_character_
+                    } else {
+                        describe_gep_slope_problem(
+                            status = cal$status %||% NA_character_,
+                            fit_n = cal$fit_n %||% NA_real_,
+                            events = cal$events %||% NA_real_,
+                            non_events = cal$non_events %||% NA_real_,
+                            unique_risk_count = cal$unique_risk_count %||% NA_real_,
+                            slope_se = cal$slope_se %||% NA_real_,
+                            include_counts = TRUE
+                        )
+                    },
                     stringsAsFactors = FALSE
                 ))
             }
@@ -874,7 +941,7 @@ create_unified_text_summary <- function(mfs_results, mss_results, unified_cal, u
                     row$Outcome,
                     row$Timepoint,
                     ifelse(is.na(row$N), "NA", as.character(row$N)),
-                    ifelse(is.na(row$Nam_D_Agostino_p), "NA", sprintf("%.3f", row$Nam_D_Agostino_p)),
+                    format_gep_p_value(row$Nam_D_Agostino_p, decimal_places = 3),
                     ifelse(is.na(row$ICI), "NA", sprintf("%.3f", row$ICI)),
                     ifelse(is.na(row$ICI_Method), "NA", as.character(row$ICI_Method)),
                     ifelse(is.na(row$Slope), "NA", sprintf("%.3f", row$Slope)),

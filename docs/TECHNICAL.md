@@ -116,6 +116,11 @@ The additional files in `final_data/Analytic Dataset/` support consistent downst
 | `*_derived_precollapse.rds` | Cohort-specific analytic data before sparse factor levels are collapsed for modeling | Preserves original factor levels so merged baseline tables and review outputs can stay aligned with cohort-specific tables |
 | `other_map.rds` | Mapping of original category levels that were collapsed into `Other` | Documents exactly what was collapsed and supports transparent downstream reporting and diagnostics |
 
+For semantically meaningful GEP fields such as `biopsy1_gep`, `gep_class_simple`, `prame_status`, and `gep12_prame_status`, the pipeline now uses a two-layer contract:
+
+- Post-collapse cohort `.rds` files remain the model-facing artifacts used for sparse-category protection.
+- Reader-facing outputs restore those GEP variables from the matching `*_derived_precollapse.rds` artifact when it exists, so plots, workbooks, and simple QC tables show the canonical GEP labels rather than a synthetic `Other` bucket.
+
 Construction happens in a fixed order:
 
 1. Load and clean the raw spreadsheet.
@@ -378,6 +383,7 @@ The analysis pipeline includes robust error handling for situations where data l
 - Categories with <5 observations automatically collapsed
 - Variables with insufficient levels after collapsing excluded from models
 - Other_map tracks all collapsed categories
+- For GEP display variables, `Other` is treated as a model-side convenience bucket rather than a presentation label; reporting layers should restore canonical pre-collapse labels when the precollapse artifact is available
 
 **Graceful Degradation:**
 - When full analyses cannot be completed, summary statistics still generated
@@ -443,7 +449,9 @@ The analysis pipeline includes robust error handling for situations where data l
 - Use metastasis events for MFS and melanoma-specific death for MSS.
 - Run companion competing-risk MSS analyses so non-melanoma death is handled explicitly rather than folded into the primary MSS endpoint.
 - Summarize observed-vs-expected performance by GEP class and as an overall O/E ratio with exact Poisson confidence intervals and a Pearson goodness-of-fit p-value across classes.
-- Summarize calibration with Greenwood Nam-D'Agostino, an IPCW-weighted logistic calibration slope, and an ICI that may use grouped-KM fallback when the usable horizon-specific risk support is too discrete; numerically unstable slope fits are withheld instead of reported as extreme coefficients. Summarize discrimination with Harrell's C and integrated/time-aggregated AUC-style metrics.
+- Summarize calibration with Greenwood Nam-D'Agostino, an IPCW-weighted logistic calibration slope, and an ICI that may use grouped-KM fallback when the usable horizon-specific risk support is too discrete; numerically unstable slope fits are withheld instead of reported as extreme coefficients.
+- Summarize discrimination with `Harrell_C`, `Integrated_AUC`, `Cumulative_Discrimination`, `Time_averaged_Discrimination`, and `IPA`. The primary `Harrell_C` implementation differs by outcome: MFS uses horizon-truncated concordance, whereas MSS uses full observed follow-up in the horizon-specific analysis subset.
+- Summarize clinical utility with decision-curve outputs plus optional PRAME-based NRI/IDI reclassification metrics when the PRAME-complete subset is adequate.
 
 **Current Outputs:**
 - Outcome-specific consolidated workbooks:
@@ -463,9 +471,11 @@ The analysis pipeline includes robust error handling for situations where data l
 
 **Current workbook rule:** the consolidated outcome workbook is the primary review-facing artifact. Technical workbooks preserve lower-level sheets only, and no longer repeat summary calibration/discrimination tables already present in the consolidated workbook. Narrative summaries carry the cohort label used at runtime and report the overall O/E ratio with its exact Poisson interval and Pearson goodness-of-fit p-value. The root unified workbook is comparison-only and uses `*_Comparison` sheet names to distinguish it from the outcome-specific summaries. `PRAME_Summary` remains the consolidated-workbook sheet name, while the unified workbook uses `PRAME_Comparison`.
 
+**Current display contract:** Objective 4 reader-facing GEP outputs restore canonical labels from `*_derived_precollapse.rds` for `biopsy1_gep`, `gep_class_simple`, `prame_status`, and `gep12_prame_status` when that artifact exists. This keeps KM curves, CIF curves, distribution tables, and simple QC summaries aligned with the intended GEP recode logic, while Cox and competing-risk model fitting still operates on the post-collapse cohort artifact for sparse-cell protection.
+
 **Important layout note:** cross-cutting cohort outputs such as baseline characteristics and treatment-duration summaries belong in `00_General/` inside each cohort folder, not in a shared top-level `Analysis/General/` directory.
 
-See [STATISTICAL_METHODS.md](STATISTICAL_METHODS.md) for the table-first GEP validation methodology.
+See [STATISTICAL_METHODS.md](STATISTICAL_METHODS.md#gep-validation-metrics) for the metric definitions and code-level methodology, and [INTERPRETATION_GUIDE.md](INTERPRETATION_GUIDE.md#understanding-gep-analysis) for workbook-reading guidance.
 
 ---
 

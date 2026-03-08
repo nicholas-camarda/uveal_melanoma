@@ -559,6 +559,106 @@ Gene Expression Profiling (GEP) is our molecular risk model for metastatic sprea
 - **`Timepoint`** corresponds to the year label in `GEP_VALIDATION_TIMEPOINTS`; interpretation tips should explicitly quote it.
 - **Fallback + method columns** (`*_Fallback_Used`, `*_Method`) surface whenever the preferred estimator fails; cite them whenever they read `TRUE` to explain unexpected `NA`s.
 - **Missing = `NA`** means "metric skipped" rather than "zero." Cross-check the run log (`logs/json/*.jsonl`) for warnings before imputing values.
+- **Displayed GEP labels are canonical labels, not sparse-model buckets.** When a cohort has a matching `*_derived_precollapse.rds` artifact, reader-facing Objective 4 outputs restore `biopsy1_gep`, `gep_class_simple`, `prame_status`, and `gep12_prame_status` from that artifact. A literal `Other` label should therefore be interpreted as a bug or an intentionally non-GEP output, not as a valid biological class.
+
+### GEP Quick Read
+
+If you are not statistically inclined, use this order:
+
+1. Check `N` and `Events` first. Very small numbers make every later metric less trustworthy.
+2. Check calibration next. Ask: "Were the predicted risks roughly the right size?"
+3. Check discrimination after that. Ask: "Did the model rank higher-risk patients above lower-risk patients?"
+4. Check the decision-curve sheet last. Ask: "Would using this model actually help a clinical decision?"
+5. Read the PRAME sheet only after the base GEP model looks at least reasonably calibrated and discriminative.
+
+Fast triage rule:
+- `OE_Ratio` near 1, lower `ICI`, and `Slope` near 1 suggest the risk estimates are in the right ballpark.
+- Lower `Brier_Score` suggests better overall prediction accuracy at that horizon because the predicted risks sit closer to what actually happened.
+- Higher `Harrell_C` and `Integrated_AUC` suggest better patient ranking.
+- Positive `Optimal_Net_Benefit` over a sensible threshold range suggests the model could be clinically useful.
+- Many `NA` values or `*_Fallback_Used = TRUE` mean the result is more fragile and should be described cautiously.
+
+### GEP Calibration Made Simple
+
+Calibration asks a simple question: **did the model get the amount of risk about right?**
+
+Use this reading order:
+
+1. `OE_Ratio`
+  - Near 1: overall predicted risk and overall observed risk are similar.
+  - Above 1: the model may be underpredicting events.
+  - Below 1: the model may be overpredicting events.
+2. `ICI`
+  - Lower is better.
+  - Think of this as the average prediction error.
+3. `Slope`
+  - Near 1: the spread of predictions is about right.
+  - Below 1: predictions are too extreme.
+  - Above 1: predictions are too compressed.
+4. `Nam_D_Agostino_p`
+  - Small p-value: more evidence that predicted and observed risks are mismatched across risk groups.
+  - Larger p-value: no strong evidence of mismatch, but not proof of perfect calibration.
+
+Plain-English example:
+- `OE_Ratio = 0.98`, `ICI = 0.04`, `Slope = 0.95`: the model is probably estimating risk reasonably well.
+- `OE_Ratio = 0.60`, `ICI = 0.14`, `Slope = 0.55`: the model is probably miscalibrated and making risks too extreme.
+
+What to say in a write-up:
+- "Calibration looked acceptable: overall predicted risk was close to observed risk, average calibration error was small, and the slope was near 1."
+- "Calibration looked weak: observed risk did not line up well with predicted risk, and the slope suggested the model was over-separating patients."
+
+### GEP Discrimination Made Simple
+
+Discrimination asks a different question: **did the model put sicker patients above healthier patients?**
+
+Start with `Harrell_C`:
+- Higher is better.
+- Around 0.5 means the ranking is close to random.
+- Around 0.7 means the ranking is often useful.
+- Much higher than that suggests stronger separation.
+
+Then use the supporting fields:
+- `Integrated_AUC`: average ranking performance over follow-up.
+- `Cumulative_Discrimination`: average ranking performance across the prespecified 5-, 7-, and 10-year windows.
+- `Time_averaged_Discrimination`: average ranking performance across monthly follow-up landmarks.
+- `IPA`: whether the model improves on a very simple benchmark.
+
+Important caution:
+- MFS `Harrell_C` and MSS `Harrell_C` are not identical estimands in this pipeline.
+- MFS uses horizon-truncated follow-up.
+- MSS uses full observed follow-up in the horizon-specific analysis set.
+- Compare MFS-to-MFS and MSS-to-MSS more confidently than MFS-to-MSS.
+
+Plain-English example:
+- `Harrell_C = 0.72`: the model usually ranks patients who fail earlier above patients who remain event-free longer.
+- `Harrell_C = 0.54`: the model is only a little better than chance at ranking patients.
+
+What to say in a write-up:
+- "Discrimination was reasonable: higher-risk patients generally experienced the endpoint sooner than lower-risk patients."
+- "Discrimination was weak: the model did not separate higher-risk from lower-risk patients very well."
+
+### GEP Decision Curve Made Simple
+
+Decision-curve analysis asks: **if we used this model in practice, would it help decision-making?**
+
+Read it this way:
+
+1. `Optimal_Net_Benefit`
+  - Positive is better.
+  - Negative means the model is not helping at that threshold.
+2. `Threshold_Range_Min` / `Threshold_Range_Max`
+  - These show the probability range where the model is giving positive net benefit.
+  - If that range lines up with a clinically realistic action threshold, the result is more useful.
+3. `Area_Between_Curves`
+  - Bigger positive values suggest a larger overall gain across the evaluated threshold range.
+
+Plain-English example:
+- Positive net benefit from 10% to 30% means the model may help if your clinical action threshold lives in that range.
+- No positive net benefit means the model may not improve decisions beyond simpler strategies.
+
+What to say in a write-up:
+- "The decision-curve analysis suggested clinical usefulness across the 10% to 30% threshold range."
+- "The decision-curve analysis did not show a clear net-benefit advantage over simple default strategies."
 
 ### Sheet Dictionary (Quick Reference)
 
@@ -583,8 +683,8 @@ Important distinction:
 - `ICI_Method`: tells you whether the ICI came from the preferred IPCW-smoothed recalibration curve or from the grouped Kaplan-Meier fallback. Cite this column whenever comparing cohorts or horizons.
 - `Slope`: horizon-specific IPCW-weighted logistic recalibration slope (ideal = 1.0).
 - `Slope_Method`: method label for the slope field; currently this should read `ipcw_logit` when the fit is supportable. `ipcw_logit_unavailable` means the weighted slope fit was too sparse or too numerically unstable to report responsibly.
-- `Brier_Score`: Timepoint-specific Brier score; compare against the cohort event rate to assess accuracy.
-- `Brier_Method` + `Brier_Fallback_Used`: record which estimator supplied the score (`pec`, KM fallback, etc.).
+- `Brier_Score`: Overall prediction-accuracy check at that horizon. Lower is better.
+- `Brier_Method` + `Brier_Fallback_Used`: tell you whether the score came from the preferred calculation or from a fallback path. If a fallback was used, describe the result more cautiously and see `STATISTICAL_METHODS.md` for the technical details.
 
 ##### How to interpret the main calibration fields
 
@@ -605,15 +705,30 @@ How to read the slope:
 - `Slope > 1`: predictions are too compressed, so the model is not separating low and high risk strongly enough.
 - `Slope = NA` with `Slope_Method = ipcw_logit_unavailable`: the fit was too sparse or unstable to trust, so the workbook intentionally withholds the number.
 
+The Brier score is the workbook's overall accuracy check at that horizon. Lower values mean the predicted risks were closer to what actually happened. There is no single universal cutoff that counts as "good" in every cohort, so this field is most useful when comparing the same outcome and timepoint across cohorts or models.
+
+How to read the Brier fields:
+- `Brier_Score` near 0: predictions were very close to the observed horizon outcomes.
+- Larger `Brier_Score`: worse overall probabilistic accuracy.
+- `Brier_Method`: check whether the score came from the preferred calculation or a fallback path.
+- `Brier_Fallback_Used = TRUE`: mention in the write-up that the score came from a fallback path rather than the preferred calculation.
+
 Practical rule: use the grouped chi-square p-value to ask, "Is there evidence of group-level miscalibration?" and use `ICI` plus `Slope` to ask, "How large is the mismatch, and in what direction?"
+
+If you want the shortest possible version, read [GEP Calibration Made Simple](#gep-calibration-made-simple) first.
 
 #### `Discrimination_Summary`
 
 - `Events`: Number of outcome events accumulated by that year.
-- `Harrell_C`: Concordance index from the survival model.
-- `Integrated_AUC`: Dynamic AUC integrated over follow-up.
-- `Cumulative_Discrimination` / `Time_averaged_Discrimination`: Alternate views of rank-order performance through time.
-- `IPA`, `IPA_Method`, `IPA_Fallback_Used`: Index of Prediction Accuracy and bookkeeping for when we revert to the simplified estimator.
+- `Harrell_C`: Primary concordance field. For MFS, this is a horizon-specific concordance estimate after truncating follow-up at the sheet's timepoint. For MSS, this is computed from the full observed follow-up within the horizon-specific analytic subset rather than the same horizon-truncated estimand used for MFS.
+- `Integrated_AUC`: Mean `riskRegression::Score()` AUC over monthly follow-up intervals rather than a single landmark AUC.
+- `Cumulative_Discrimination`: Mean truncated concordance across the prespecified 5-, 7-, and 10-year windows that had enough events to evaluate.
+- `Time_averaged_Discrimination`: Mean truncated concordance across monthly follow-up landmarks.
+- `IPA`, `IPA_Method`, `IPA_Fallback_Used`: Index of Prediction Accuracy at that horizon. The preferred estimator is the Brier-score comparison against the null event-rate benchmark; the method columns tell you when the pipeline had to fall back to the AUC-based or simplified estimator.
+
+See [STATISTICAL_METHODS.md](STATISTICAL_METHODS.md#gep-validation-metrics) for the exact formulas and implementation details.
+
+If you want the shortest possible version, read [GEP Discrimination Made Simple](#gep-discrimination-made-simple) first.
 
 #### `Decision_Curve_Summary`
 
@@ -622,6 +737,8 @@ Practical rule: use the grouped chi-square p-value to ask, "Is there evidence of
 - `Optimal_Net_Benefit`: Net benefit at the optimal threshold relative to treat-all/none.
 - `Threshold_Range_Min` / `Threshold_Range_Max`: Boundaries for clinically reasonable thresholds configured when building the decision curves.
 - `Area_Between_Curves`: Integral of the net-benefit gain vs treat-none across the range.
+
+If you want the shortest possible version, read [GEP Decision Curve Made Simple](#gep-decision-curve-made-simple) first.
 
 #### `PRAME_Summary`
 
@@ -648,7 +765,8 @@ Single column dictionary:
 ### Differences Between MFS and MSS Tabs
 
 - **Event definition:** MFS treats metastasis as the event and censors deaths without metastasis; MSS uses cause-specific death as the event.
-- **Modeling approach:** MSS inherits the competing-risk adjustments from `perform_discrimination_mss()` and `calculate_ipa_survival()`, so expect more `*_Fallback_Used` flags when events are scarce.
+- **Discrimination definition:** MFS `Harrell_C` is a horizon-specific concordance estimate after truncating follow-up at the requested timepoint, whereas MSS `Harrell_C` uses full observed follow-up in the horizon-specific analysis set. Do not read those two columns as identical estimands.
+- **Modeling approach:** MSS commonly has fewer usable events than MFS and therefore more `*_Fallback_Used` flags or `NA` fields when horizons are sparse.
 - **Sample size:** MSS tables often have lower `N`, which in turn drives more `NA` metrics. Always sanity-check counts before comparing outcomes.
 
 ### How to Use the Sheets

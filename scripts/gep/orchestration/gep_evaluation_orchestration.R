@@ -45,8 +45,21 @@ analyze_gep_mfs_validation <- function(data,
     if (!dir.exists(mfs_output_dir)) {
         dir.create(mfs_output_dir, recursive = TRUE, showWarnings = FALSE)
     }
+    display_data <- restore_gep_display_variables(data, dataset_name = dataset_name)
+    restored_gep_rows <- sum(
+        !is.na(display_data$biopsy1_gep) &
+            !is.na(data$biopsy1_gep) &
+            as.character(display_data$biopsy1_gep) != as.character(data$biopsy1_gep),
+        na.rm = TRUE
+    )
+    if (restored_gep_rows > 0) {
+        logger::log_info(formatted(sprintf(
+            "Restored canonical pre-collapse GEP display labels for %d rows in reader-facing MFS outputs",
+            restored_gep_rows
+        ), indent = 1))
+    }
     logger::log_info(formatted("Reporting GEP validation dataset distribution", indent = 1))
-    gep_distribution <- data %>%
+    gep_distribution <- display_data %>%
         count(gep_validation_set, biopsy1_gep) %>%
         tidyr::pivot_wider(names_from = biopsy1_gep, values_from = n, values_fill = 0)
     logger::log_info(formatted("GEP Validation Set Distribution:", indent = 1))
@@ -70,6 +83,7 @@ analyze_gep_mfs_validation <- function(data,
     # Use pre-processed analysis eligibility for consistency in risk-based metrics
     analysis_data <- data %>%
         filter(mfs_analysis_eligible)
+    display_analysis_data <- restore_gep_display_variables(analysis_data, dataset_name = dataset_name)
     logger::log_info(formatted(sprintf("Analysis dataset: %d patients with valid GEP and MFS data", nrow(analysis_data)), indent = 1))
 
     # Create an expanded dataset for KM curves and PH diagnostics that retains "GEP Not Tested"
@@ -80,12 +94,14 @@ analyze_gep_mfs_validation <- function(data,
             !is.na(mets_event),
             tt_mets_months >= 0
         )
+    km_ph_display_data <- restore_gep_display_variables(km_ph_data, dataset_name = dataset_name) %>%
+        mutate(biopsy1_gep_model = km_ph_data$biopsy1_gep)
     logger::log_info(formatted(sprintf(
         "KM/PH dataset: %d patients after including GEP Not Tested",
         nrow(km_ph_data)
     ), indent = 1))
-    if (nrow(km_ph_data) > 0) {
-        km_summary <- km_ph_data %>%
+    if (nrow(km_ph_display_data) > 0) {
+        km_summary <- km_ph_display_data %>%
             group_by(biopsy1_gep) %>%
             summarise(
                 n = n(),
@@ -116,7 +132,7 @@ analyze_gep_mfs_validation <- function(data,
     for (tp in timepoints) {
         logger::log_info(formatted(sprintf("Analyzing %d-year MFS validation", tp), indent = 1))
         # Use PRAME-aware grouping (biopsy1_gep) for class-level O/E
-        oe_results <- calculate_observed_expected_mfs(analysis_data, tp)
+        oe_results <- calculate_observed_expected_mfs(display_analysis_data, tp)
         calibration_results <- perform_calibration_mfs(analysis_data, tp, bootstrap_iterations)
         discrimination_results <- perform_discrimination_mfs(analysis_data, tp)
         dca_results <- perform_decision_curve_analysis_mfs(analysis_data, tp)
@@ -155,15 +171,15 @@ analyze_gep_mfs_validation <- function(data,
                 tryCatch(
                     {
                         # Diagnostics before KM: ensure non-NA time/event by class
-                        if (!is.null(analysis_data)) {
-                            nn_time <- sum(!is.na(analysis_data$tt_mets_months))
-                            nn_event <- sum(!is.na(analysis_data$mets_event))
+                        if (!is.null(display_analysis_data)) {
+                            nn_time <- sum(!is.na(display_analysis_data$tt_mets_months))
+                            nn_event <- sum(!is.na(display_analysis_data$mets_event))
                             logger::log_info(formatted(sprintf(
                                 "MFS diagnostics: non-NA tt_mets_months=%d, non-NA mets_event=%d",
                                 nn_time, nn_event
                             ), indent = 2))
-                            if (!is.null(analysis_data$biopsy1_gep)) {
-                                by_class <- analysis_data %>%
+                            if (!is.null(display_analysis_data$biopsy1_gep)) {
+                                by_class <- display_analysis_data %>%
                                     dplyr::group_by(biopsy1_gep) %>%
                                     dplyr::summarise(
                                         n = dplyr::n(),
@@ -195,15 +211,15 @@ analyze_gep_mfs_validation <- function(data,
     tryCatch(
         {
             # Diagnostics before KM: ensure non-NA time/event by class
-            if (!is.null(analysis_data)) {
-                nn_time <- sum(!is.na(analysis_data$tt_mets_months))
-                nn_event <- sum(!is.na(analysis_data$mets_event))
+            if (!is.null(display_analysis_data)) {
+                nn_time <- sum(!is.na(display_analysis_data$tt_mets_months))
+                nn_event <- sum(!is.na(display_analysis_data$mets_event))
                 logger::log_info(formatted(sprintf(
                     "MFS diagnostics: non-NA tt_mets_months=%d, non-NA mets_event=%d",
                     nn_time, nn_event
                 ), indent = 1))
-                if (!is.null(analysis_data$biopsy1_gep)) {
-                    by_class <- analysis_data %>%
+                if (!is.null(display_analysis_data$biopsy1_gep)) {
+                    by_class <- display_analysis_data %>%
                         dplyr::group_by(biopsy1_gep) %>%
                         dplyr::summarise(
                             n = dplyr::n(),
@@ -225,10 +241,11 @@ analyze_gep_mfs_validation <- function(data,
             tryCatch({
                 create_mfs_gep_visuals(
                     mfs_results = validation_results,
-                    mfs_data = km_ph_data,
+                    mfs_data = km_ph_display_data,
                     output_dir = mfs_output_dir,
                     prefix = prefix,
                     group_var = "biopsy1_gep",
+                    model_group_var = "biopsy1_gep_model",
                     other_map = other_map,
                     dataset_name = dataset_name
                 )
@@ -324,6 +341,19 @@ analyze_gep_mss_validation <- function(data,
     if (!dir.exists(mss_output_dir)) {
         dir.create(mss_output_dir, recursive = TRUE, showWarnings = FALSE)
     }
+    display_data <- restore_gep_display_variables(data, dataset_name = dataset_name)
+    restored_gep_rows <- sum(
+        !is.na(display_data$biopsy1_gep) &
+            !is.na(data$biopsy1_gep) &
+            as.character(display_data$biopsy1_gep) != as.character(data$biopsy1_gep),
+        na.rm = TRUE
+    )
+    if (restored_gep_rows > 0) {
+        logger::log_info(formatted(sprintf(
+            "Restored canonical pre-collapse GEP display labels for %d rows in reader-facing MSS outputs",
+            restored_gep_rows
+        ), indent = 1))
+    }
     
     logger::log_info(formatted("DEBUG: Checking required variables", indent = 1))
     logger::log_info(formatted("Filtering data for MSS validation", indent = 1))
@@ -340,7 +370,7 @@ analyze_gep_mss_validation <- function(data,
         filter(mss_analysis_eligible)
     logger::log_info(formatted(sprintf("Analysis dataset: %d patients with valid GEP and MSS data", nrow(analysis_data)), indent = 1))
 
-    mss_visual_data <- data %>%
+    mss_visual_data <- display_data %>%
         filter(
             !is.na(biopsy1_gep),
             !is.na(tt_death_years),
@@ -383,16 +413,28 @@ analyze_gep_mss_validation <- function(data,
     }
     missing_data_analysis <- assess_gep_missing_data(data)
     standard_results <- list()
+    display_analysis_data <- restore_gep_display_variables(analysis_data, dataset_name = dataset_name)
     for (tp in timepoints) {
         logger::log_info(formatted(sprintf("Analyzing %d-year standard MSS validation", tp), indent = 2))
-        standard_results[[paste0(tp, "yr")]] <- perform_standard_mss_validation(analysis_data, tp, bootstrap_iterations, time_var = "tt_death_months")
+        standard_results[[paste0(tp, "yr")]] <- perform_standard_mss_validation(
+            analysis_data,
+            tp,
+            bootstrap_iterations,
+            time_var = "tt_death_months",
+            oe_data = display_analysis_data
+        )
     }
     logger::log_info(formatted("Performing competing risk MSS validation", indent = 1))
     competing_results <- list()
     for (tp in timepoints) {
         logger::log_info(formatted(sprintf("Analyzing %d-year competing risk MSS validation", tp), indent = 2))
         tryCatch({
-            competing_results[[paste0(tp, "yr")]] <- perform_competing_risk_mss_validation(analysis_data, tp, time_var = "tt_death_months")
+            competing_results[[paste0(tp, "yr")]] <- perform_competing_risk_mss_validation(
+                analysis_data,
+                tp,
+                time_var = "tt_death_months",
+                cif_data = display_analysis_data
+            )
         }, error = function(e) {
             logger::log_warn(formatted(sprintf("Competing risk analysis failed for %d-year timepoint: %s", tp, e$message), indent = 3))
             competing_results[[paste0(tp, "yr")]] <- list(status = "failed", error = e$message)

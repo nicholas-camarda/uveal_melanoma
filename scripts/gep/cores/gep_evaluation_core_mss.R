@@ -11,8 +11,9 @@
 #' @param timepoint Numeric year value for evaluation (e.g., 5, 7, 10)
 #' @param bootstrap_iterations Integer number of bootstrap iterations for discrimination metrics where applicable
 #' @param time_var Character name of time variable (default 'tt_death_months' for months-based analysis)
+#' @param oe_data Optional data frame used only for reader-facing observed vs expected summaries
 #' @return A list with `observed_expected`, `calibration`, `discrimination`, `decision_curve`, and `timepoint`.
-perform_standard_mss_validation <- function(data, timepoint, bootstrap_iterations, time_var = "tt_death_months") {
+perform_standard_mss_validation <- function(data, timepoint, bootstrap_iterations, time_var = "tt_death_months", oe_data = NULL) {
     logger::log_debug(sprintf("Performing standard MSS validation for %d-year timepoint", timepoint))
 
     # Convert timepoint to months for consistency with survival time units
@@ -25,9 +26,16 @@ perform_standard_mss_validation <- function(data, timepoint, bootstrap_iteration
             event_occurred = .data[[paste0("mss_event_", timepoint, "yr")]]
         )
 
+    oe_source_data <- if (is.null(oe_data)) data else oe_data
+    oe_analysis_data <- oe_source_data %>%
+        mutate(
+            time_to_event = .data[[time_var]],
+            event_occurred = .data[[paste0("mss_event_", timepoint, "yr")]]
+        )
+
     # Calculate observed vs expected rates
     observed_expected <- calculate_observed_expected_rates(
-        data = analysis_data,
+        data = oe_analysis_data,
         expected_var = paste0("expected_mss_", timepoint, "yr"),
         event_var = "event_occurred",
         time_var = "time_to_event",
@@ -73,8 +81,9 @@ perform_standard_mss_validation <- function(data, timepoint, bootstrap_iteration
 #' @param data Data frame prepared for MSS competing risk analysis
 #' @param timepoint Numeric year value for evaluation (e.g., 5, 7, 10)
 #' @param time_var Character name of time variable (default 'tt_death_months' for months-based competing risks)
+#' @param cif_data Optional data frame used only for reader-facing cumulative incidence summaries
 #' @return A list with `cumulative_incidence`, `cause_specific_hazards`, and `timepoint`.
-perform_competing_risk_mss_validation <- function(data, timepoint, time_var = "tt_death_months") {
+perform_competing_risk_mss_validation <- function(data, timepoint, time_var = "tt_death_months", cif_data = NULL) {
     logger::log_debug(sprintf("Performing competing risk MSS validation for %d-year timepoint", timepoint))
 
     # Convert timepoint to months for consistency with survival time units
@@ -88,9 +97,16 @@ perform_competing_risk_mss_validation <- function(data, timepoint, time_var = "t
             event_type = .data[[paste0("event_type_mss_", timepoint, "yr")]]
         )
 
+    cif_source_data <- if (is.null(cif_data)) data else cif_data
+    cif_analysis_data <- cif_source_data %>%
+        mutate(
+            time_to_event = .data[[time_var]],
+            event_type = .data[[paste0("event_type_mss_", timepoint, "yr")]]
+        )
+
     # Calculate cumulative incidence functions
     cumulative_incidence <- calculate_cumulative_incidence(
-        data = analysis_data,
+        data = cif_analysis_data,
         time_var = "time_to_event",
         event_var = "event_type",
         group_var = "biopsy1_gep"
@@ -99,7 +115,7 @@ perform_competing_risk_mss_validation <- function(data, timepoint, time_var = "t
     # Add CIF with 95% CI at the evaluation time (bootstrap)
                 cif_ci <- tryCatch({
         calculate_cif_by_class_with_ci(
-            data = analysis_data,
+            data = cif_analysis_data,
             time_var = "time_to_event",
             event_type_var = "event_type",
             eval_time = timepoint_months,
@@ -303,7 +319,7 @@ perform_prame_augmented_analysis_mss <- function(data, timepoints) {
             nri_nonevents = round(nri_nonevents, 3),
             nri_total = round(nri_total, 3),
             idi = round(idi, 4),
-            mcnemar_p = round(mcnemar_p, 4),
+            mcnemar_p = mcnemar_p,
             reclassification_counts = list(
                 event_up = event_up,
                 event_down = event_down,

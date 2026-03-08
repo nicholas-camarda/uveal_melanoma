@@ -108,25 +108,154 @@ format_levels_for_display <- function(data) {
     formatted
 }
 
-#' Reapply pre-collapsed factor levels when available
-#'
-apply_precollapse_levels <- function(data, dataset_name = NULL) {
+format_gep_log_p_value <- function(log_p_value, significant_digits = 4) {
+    if (is.infinite(log_p_value) && log_p_value < 0) {
+        return("0")
+    }
+
+    if (length(log_p_value) == 0 || is.na(log_p_value) || !is.finite(log_p_value)) {
+        return("NA")
+    }
+
+    exponent <- floor(as.numeric(log_p_value) / log(10))
+    if (!is.finite(exponent) || abs(exponent) > .Machine$integer.max) {
+        return("0")
+    }
+
+    mantissa <- exp(log_p_value - exponent * log(10))
+
+    if (mantissa >= 10) {
+        mantissa <- mantissa / 10
+        exponent <- exponent + 1
+    }
+
+    mantissa_text <- formatC(mantissa, format = "f", digits = significant_digits - 1)
+    exponent_value <- as.integer(exponent)
+    exponent_sign <- if (exponent_value < 0) "-" else "+"
+    exponent_abs <- abs(exponent_value)
+    exponent_text <- if (exponent_abs < 10) sprintf("%02d", exponent_abs) else as.character(exponent_abs)
+
+    sprintf("%se%s%s", mantissa_text, exponent_sign, exponent_text)
+}
+
+calculate_chisq_log_p_value <- function(chisq_statistic, df, max_terms = 12) {
+    if (length(chisq_statistic) == 0 || length(df) == 0 || is.na(chisq_statistic) || is.na(df) ||
+        !is.finite(chisq_statistic) || !is.finite(df) || chisq_statistic < 0 || df <= 0) {
+        return(NA_real_)
+    }
+
+    log_p_value <- stats::pchisq(chisq_statistic, df = df, lower.tail = FALSE, log.p = TRUE)
+    if (is.finite(log_p_value)) {
+        return(log_p_value)
+    }
+
+    -Inf
+}
+
+format_gep_p_value <- function(p_value, log_p_value = NULL, decimal_places = 4, significant_digits = 4) {
+    if (length(p_value) == 0 || is.na(p_value) || !is.finite(p_value)) {
+        if (!is.null(log_p_value) && length(log_p_value) > 0 && !is.na(log_p_value)) {
+            return(format_gep_log_p_value(log_p_value, significant_digits = significant_digits))
+        }
+        return("NA")
+    }
+
+    if (p_value == 0) {
+        if (!is.null(log_p_value) && length(log_p_value) > 0 && !is.na(log_p_value)) {
+            return(format_gep_log_p_value(log_p_value, significant_digits = significant_digits))
+        }
+        return("0")
+    }
+
+    scientific_threshold <- 10^(-decimal_places)
+    if (abs(p_value) < scientific_threshold) {
+        return(formatC(p_value, format = "e", digits = significant_digits - 1))
+    }
+
+    sprintf(paste0("%.", decimal_places, "f"), p_value)
+}
+
+load_precollapse_data <- function(dataset_name = NULL) {
     if (is.null(dataset_name) || !exists("PROCESSED_DATA_DIR", inherits = TRUE)) {
-        return(data)
+        return(NULL)
     }
 
     precollapse_path <- file.path(PROCESSED_DATA_DIR, paste0(dataset_name, "_derived_precollapse.rds"))
-    if (file.exists(precollapse_path)) {
-        try({
-            precollapse_data <- readRDS(precollapse_path)
-            common_cols <- intersect(names(precollapse_data), names(data))
-            if (length(common_cols) > 0) {
-                data[common_cols] <- precollapse_data[common_cols]
+    if (!file.exists(precollapse_path)) {
+        return(NULL)
+    }
+
+    tryCatch(
+        readRDS(precollapse_path),
+        error = function(e) NULL
+    )
+}
+
+restore_precollapse_variables <- function(data, dataset_name = NULL, variables = NULL) {
+    precollapse_data <- load_precollapse_data(dataset_name)
+    if (is.null(precollapse_data)) {
+        return(data)
+    }
+
+    common_cols <- intersect(names(precollapse_data), names(data))
+    if (!is.null(variables)) {
+        common_cols <- intersect(common_cols, variables)
+    }
+
+    if (length(common_cols) == 0) {
+        return(data)
+    }
+
+    key_candidates <- c("id", "patient_id", "record_id", "case_id", "study_id")
+    key_col <- key_candidates[key_candidates %in% names(data) & key_candidates %in% names(precollapse_data)][1]
+
+    if (!is.na(key_col) &&
+        !anyDuplicated(data[[key_col]]) &&
+        !anyDuplicated(precollapse_data[[key_col]])) {
+        matched_rows <- match(data[[key_col]], precollapse_data[[key_col]])
+        matched <- !is.na(matched_rows)
+        restore_cols <- setdiff(common_cols, key_col)
+
+        for (col in restore_cols) {
+            restored_values <- data[[col]]
+
+            if (is.factor(precollapse_data[[col]]) || is.factor(restored_values)) {
+                restored_chars <- as.character(restored_values)
+                restored_chars[matched] <- as.character(precollapse_data[[col]][matched_rows[matched]])
+                restored_levels <- unique(c(levels(factor(precollapse_data[[col]])), restored_chars))
+                data[[col]] <- factor(restored_chars, levels = restored_levels)
+            } else {
+                restored_values[matched] <- precollapse_data[[col]][matched_rows[matched]]
+                data[[col]] <- restored_values
             }
-        }, silent = TRUE)
+        }
+
+        return(data)
+    }
+
+    if (nrow(precollapse_data) == nrow(data)) {
+        data[common_cols] <- precollapse_data[common_cols]
     }
 
     data
+}
+
+restore_gep_display_variables <- function(data, dataset_name = NULL, variables = NULL) {
+    if (is.null(variables)) {
+        if (exists("GEP_DISPLAY_VARIABLES", inherits = TRUE)) {
+            variables <- get("GEP_DISPLAY_VARIABLES", inherits = TRUE)
+        } else {
+            variables <- c("biopsy1_gep", "gep_class_simple", "prame_status", "gep12_prame_status")
+        }
+    }
+
+    restore_precollapse_variables(data, dataset_name = dataset_name, variables = variables)
+}
+
+#' Reapply pre-collapsed factor levels when available
+#'
+apply_precollapse_levels <- function(data, dataset_name = NULL) {
+    restore_precollapse_variables(data, dataset_name = dataset_name)
 }
 
 #' Merge baseline characteristics tables from full and restricted cohorts

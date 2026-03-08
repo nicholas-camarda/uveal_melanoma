@@ -12,12 +12,32 @@
 #' @param outcome_type Either "MFS" or "MSS"
 #' @return List with clinical interpretation sections
 create_clinical_interpretation <- function(calibration_data, discrimination_data, oe_data, outcome_type) {
+    slope_issue_summary <- summarize_gep_slope_issue_pattern(calibration_data)
+    all_slopes_unavailable <-
+        nrow(calibration_data) > 0 &&
+        all(!is.finite(calibration_data$Slope))
     
     # Overall assessment
     overall_assessment <- if (outcome_type == "MFS") {
-        "The GEP model demonstrates strong predictive performance for metastasis-free survival, with consistent discrimination across timepoints and generally good calibration. The model appears to be clinically useful for risk stratification and treatment planning."
+        if (all_slopes_unavailable && nzchar(slope_issue_summary)) {
+            paste(
+                "The GEP model demonstrates strong predictive performance for metastasis-free survival, with consistent discrimination across timepoints, but the calibration slope could not be estimated.",
+                slope_issue_summary,
+                "The model still appears clinically useful for risk stratification, but the absolute risk estimates should be interpreted with caution."
+            )
+        } else {
+            "The GEP model demonstrates strong predictive performance for metastasis-free survival, with consistent discrimination across timepoints and generally good calibration. The model appears to be clinically useful for risk stratification and treatment planning."
+        }
     } else {
-        "The GEP model shows excellent discrimination for melanoma-specific survival, though calibration varies across timepoints. The model provides valuable prognostic information for clinical decision-making and patient counseling."
+        if (all_slopes_unavailable && nzchar(slope_issue_summary)) {
+            paste(
+                "The GEP model shows excellent discrimination for melanoma-specific survival, but the calibration slope could not be estimated.",
+                slope_issue_summary,
+                "The model still provides useful prognostic information, but the absolute risk estimates should be interpreted with caution."
+            )
+        } else {
+            "The GEP model shows excellent discrimination for melanoma-specific survival, though calibration varies across timepoints. The model provides valuable prognostic information for clinical decision-making and patient counseling."
+        }
     }
     
     # Calibration interpretation
@@ -45,6 +65,175 @@ create_clinical_interpretation <- function(calibration_data, discrimination_data
     ))
 }
 
+join_gep_reason_fragments <- function(fragments) {
+    fragments <- fragments[!is.na(fragments) & nzchar(fragments)]
+
+    if (length(fragments) == 0) {
+        return("")
+    }
+
+    if (length(fragments) == 1) {
+        return(fragments[[1]])
+    }
+
+    if (length(fragments) == 2) {
+        return(sprintf("%s and %s", fragments[[1]], fragments[[2]]))
+    }
+
+    sprintf(
+        "%s, and %s",
+        paste(fragments[-length(fragments)], collapse = ", "),
+        fragments[[length(fragments)]]
+    )
+}
+
+describe_gep_slope_problem <- function(status, fit_n = NA_real_, events = NA_real_,
+                                       non_events = NA_real_, unique_risk_count = NA_real_,
+                                       slope_se = NA_real_, include_counts = TRUE) {
+    fit_n_text <- if (is.finite(fit_n)) as.character(as.integer(round(fit_n))) else "NA"
+    events_text <- if (is.finite(events)) as.character(as.integer(round(events))) else "NA"
+    non_events_text <- if (is.finite(non_events)) as.character(as.integer(round(non_events))) else "NA"
+    unique_risk_text <- if (is.finite(unique_risk_count)) as.character(as.integer(round(unique_risk_count))) else "NA"
+
+    if (!is.na(status) && identical(status, "insufficient_recalibration_data")) {
+        problem_fragments <- c()
+
+        if (is.finite(fit_n) && fit_n < GEP_MIN_SAMPLE_SIZE) {
+            problem_fragments <- c(problem_fragments, "too few patients had usable data")
+        }
+
+        if (is.finite(events) && events < GEP_MIN_CALIBRATION_EVENTS) {
+            problem_fragments <- c(problem_fragments, "too few events were available")
+        }
+
+        if (is.finite(non_events) && non_events < GEP_MIN_CALIBRATION_EVENTS) {
+            problem_fragments <- c(problem_fragments, "too few non-events were available")
+        }
+
+        if (is.finite(unique_risk_count) && unique_risk_count < 2) {
+            problem_fragments <- c(problem_fragments, "predicted risks did not vary enough")
+        }
+
+        if (length(problem_fragments) > 0) {
+            description <- sprintf(
+                "there was not enough usable data to fit a reliable calibration slope because %s",
+                join_gep_reason_fragments(problem_fragments)
+            )
+        } else {
+            description <- "there was not enough usable data to fit a reliable calibration slope"
+        }
+    } else if (!is.na(status) && identical(status, "recalibration_fit_unstable")) {
+        if (is.finite(slope_se) && slope_se > GEP_MAX_CALIBRATION_COEF_SE) {
+            description <- "the calibration model gave an unstable result with too much uncertainty to trust"
+        } else {
+            description <- "the calibration model gave an unstable result that was not reliable enough to report"
+        }
+    } else {
+        description <- "the calibration slope could not be estimated reliably"
+    }
+
+    if (!isTRUE(include_counts)) {
+        return(description)
+    }
+
+    count_fragments <- c(
+        sprintf("usable n=%s", fit_n_text),
+        sprintf("events=%s", events_text),
+        sprintf("non-events=%s", non_events_text)
+    )
+
+    if (is.finite(unique_risk_count)) {
+        count_fragments <- c(count_fragments, sprintf("distinct risk values=%s", unique_risk_text))
+    }
+
+    sprintf("%s (%s)", description, paste(count_fragments, collapse = ", "))
+}
+
+format_gep_calibration_slope_text <- function(slope, slope_method = NA_character_,
+                                              status = NA_character_, fit_n = NA_real_,
+                                              events = NA_real_, non_events = NA_real_,
+                                              unique_risk_count = NA_real_, slope_se = NA_real_) {
+    if (is.finite(slope)) {
+        method_label <- if (!is.na(slope_method) && nzchar(slope_method)) slope_method else "method not recorded"
+        return(sprintf("slope=%.3f [%s]", slope, method_label))
+    }
+
+    sprintf(
+        "slope=NA (%s)",
+        describe_gep_slope_problem(
+            status = status,
+            fit_n = fit_n,
+            events = events,
+            non_events = non_events,
+            unique_risk_count = unique_risk_count,
+            slope_se = slope_se,
+            include_counts = TRUE
+        )
+    )
+}
+
+summarize_gep_slope_issue_pattern <- function(calibration_data) {
+    if (nrow(calibration_data) == 0 || !"Slope" %in% names(calibration_data)) {
+        return("")
+    }
+
+    unavailable_rows <- calibration_data[!is.finite(calibration_data$Slope), , drop = FALSE]
+
+    if (nrow(unavailable_rows) == 0) {
+        return("")
+    }
+
+    statuses <- if ("Status" %in% names(unavailable_rows)) unavailable_rows$Status else rep(NA_character_, nrow(unavailable_rows))
+    fit_ns <- if ("Fit_N" %in% names(unavailable_rows)) unavailable_rows$Fit_N else rep(NA_real_, nrow(unavailable_rows))
+    events <- if ("Events" %in% names(unavailable_rows)) unavailable_rows$Events else rep(NA_real_, nrow(unavailable_rows))
+    non_events <- if ("Non_Events" %in% names(unavailable_rows)) unavailable_rows$Non_Events else rep(NA_real_, nrow(unavailable_rows))
+    unique_risk_counts <- if ("Unique_Risk_Count" %in% names(unavailable_rows)) unavailable_rows$Unique_Risk_Count else rep(NA_real_, nrow(unavailable_rows))
+    slope_ses <- if ("Slope_SE" %in% names(unavailable_rows)) unavailable_rows$Slope_SE else rep(NA_real_, nrow(unavailable_rows))
+
+    problem_descriptions <- vapply(seq_len(nrow(unavailable_rows)), function(i) {
+        describe_gep_slope_problem(
+            status = statuses[[i]],
+            fit_n = fit_ns[[i]],
+            events = events[[i]],
+            non_events = non_events[[i]],
+            unique_risk_count = unique_risk_counts[[i]],
+            slope_se = slope_ses[[i]],
+            include_counts = FALSE
+        )
+    }, character(1))
+
+    if (nrow(unavailable_rows) == nrow(calibration_data)) {
+        unique_descriptions <- unique(problem_descriptions[nzchar(problem_descriptions)])
+
+        if (length(unique_descriptions) == 1) {
+            return(sprintf("The calibration slope could not be estimated at any timepoint because %s.", unique_descriptions[[1]]))
+        }
+
+        timepoint_fragments <- vapply(seq_len(nrow(unavailable_rows)), function(i) {
+            sprintf("%s: %s", unavailable_rows$Timepoint[[i]], problem_descriptions[[i]])
+        }, character(1))
+
+        return(sprintf(
+            "The calibration slope could not be estimated at any timepoint: %s.",
+            paste(timepoint_fragments, collapse = "; ")
+        ))
+    }
+
+    unique_descriptions <- unique(problem_descriptions[nzchar(problem_descriptions)])
+    if (length(unique_descriptions) == 1) {
+        return(sprintf("At some timepoints the calibration slope could not be estimated because %s.", unique_descriptions[[1]]))
+    }
+
+    timepoint_fragments <- vapply(seq_len(nrow(unavailable_rows)), function(i) {
+        sprintf("%s: %s", unavailable_rows$Timepoint[[i]], problem_descriptions[[i]])
+    }, character(1))
+
+    sprintf(
+        "At some timepoints the calibration slope could not be estimated: %s.",
+        paste(timepoint_fragments, collapse = "; ")
+    )
+}
+
 #' Create Calibration Interpretation
 #'
 #' Summarize calibration-slope behavior across timepoints in narrative form.
@@ -54,6 +243,14 @@ create_clinical_interpretation <- function(calibration_data, discrimination_data
 #' @return Character scalar with a calibration interpretation.
 create_calibration_interpretation <- function(calibration_data, outcome_type) {
     if (nrow(calibration_data) == 0) return("Calibration metrics not available")
+
+    slope_issue_summary <- summarize_gep_slope_issue_pattern(calibration_data)
+    if (all(!is.finite(calibration_data$Slope))) {
+        return(paste(
+            slope_issue_summary,
+            "This means the report cannot use the slope to judge whether predicted risks are systematically too high or too low."
+        ))
+    }
     
     # Analyze calibration slope patterns
     slopes <- calibration_data$Slope
@@ -76,6 +273,10 @@ create_calibration_interpretation <- function(calibration_data, outcome_type) {
         calibration_quality,
         if (is.na(calibration_quality) || calibration_quality == "unknown") "has unknown calibration status" else if (calibration_quality %in% c("excellent", "good")) "is well-calibrated and suitable" else "may require recalibration before"
     )
+
+    if (nzchar(slope_issue_summary)) {
+        interpretation <- paste(interpretation, slope_issue_summary)
+    }
     
     return(interpretation)
 }
@@ -234,7 +435,19 @@ create_clinical_implications <- function(calibration_data, discrimination_data, 
     if (nrow(calibration_data) > 0) {
         mean_slope <- mean(calibration_data$Slope, na.rm = TRUE)
         if (is.na(mean_slope)) {
-            implications <- c(implications, "Calibration slope was not estimable across the available timepoints")
+            slope_issue_summary <- summarize_gep_slope_issue_pattern(calibration_data)
+            if (nzchar(slope_issue_summary)) {
+                slope_issue_summary <- sub("\\.$", "", slope_issue_summary)
+                implications <- c(
+                    implications,
+                    paste0(
+                        slope_issue_summary,
+                        ". The absolute risk estimates should be interpreted with caution for patient-level counseling"
+                    )
+                )
+            } else {
+                implications <- c(implications, "Calibration slope was not estimable across the available timepoints")
+            }
         } else if (abs(mean_slope - 1) < 0.2) {
             implications <- c(implications, "Good calibration suggests the model's risk estimates can be used directly for patient counseling")
         } else {

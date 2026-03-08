@@ -342,10 +342,13 @@ summarize_cox_hr <- function(model, dataset_name, analysis_label, model_label, g
 #' @param output_dirs Output directories by analysis type
 #' @param prefix File prefix for outputs
 #' @return List with KM/cox outputs and diagnostics
-analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var = "treatment_group", confounders = NULL, ylab = "Survival Probability", analysis_type = "post_treatment_only", dataset_name = NULL, legend_labels = NULL, other_map = list(), output_dirs = NULL, prefix = NULL) {
+analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var = "treatment_group", model_group_var = group_var, confounders = NULL, ylab = "Survival Probability", analysis_type = "post_treatment_only", dataset_name = NULL, legend_labels = NULL, other_map = list(), output_dirs = NULL, prefix = NULL) {
+    plot_group_var <- group_var
+    palette_group_var <- group_var
+
     # Check that there are at least two groups for analysis; otherwise, skip Cox model
-    if (length(unique(data[[group_var]])) < 2) {
-        warning(sprintf("Only one level of %s present; skipping cox model.", group_var))
+    if (length(unique(data[[plot_group_var]])) < 2) {
+        warning(sprintf("Only one level of %s present; skipping cox model.", plot_group_var))
         return(list(
             fit = NULL,
             plot = NULL,
@@ -370,14 +373,20 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
 
     # Construct survival formula for KM and Cox
     surv_formula <- as.formula(
-        paste0("Surv(", time_var, ", ", event_var, ") ~ ", group_var)
+        paste0("Surv(", time_var, ", ", event_var, ") ~ ", plot_group_var)
+    )
+    model_surv_formula <- as.formula(
+        paste0("Surv(", time_var, ", ", event_var, ") ~ ", model_group_var)
     )
 
     # Select relevant columns for KM/RMST analysis (retain "Other" rows)
     km_data <- fix_event_data %>%
-        dplyr::select(all_of(c(time_var, event_var, group_var, confounders_to_use)))
+        dplyr::select(all_of(c(time_var, event_var, plot_group_var)))
 
-    if (nrow(km_data) == 0 || length(unique(stats::na.omit(km_data[[group_var]]))) < 2) {
+    model_data <- fix_event_data %>%
+        dplyr::select(all_of(c(time_var, event_var, model_group_var, confounders_to_use)))
+
+    if (nrow(km_data) == 0 || length(unique(stats::na.omit(km_data[[plot_group_var]]))) < 2) {
         logger::log_warn(formatted(
             "Insufficient data available for Kaplan-Meier fit; skipping survival analysis.",
             indent = 1
@@ -400,10 +409,10 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         ))
     }
 
-    survival_variables <- unique(c(group_var, confounders_to_use))
+    survival_variables <- unique(c(model_group_var, confounders_to_use))
     cox_exclusion_result <- exclude_other_categories(
-        data = km_data,
-        variables = survival_variables[survival_variables %in% names(km_data)],
+        data = model_data,
+        variables = survival_variables[survival_variables %in% names(model_data)],
         other_map = if (is.null(other_map)) list() else other_map
     )
 
@@ -417,7 +426,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
 
     cox_data <- cox_exclusion_result$data
 
-    cox_ready <- nrow(cox_data) > 0 && length(unique(stats::na.omit(cox_data[[group_var]]))) >= 2
+    cox_ready <- nrow(cox_data) > 0 && length(unique(stats::na.omit(cox_data[[model_group_var]]))) >= 2
     if (!cox_ready) {
         logger::log_warn(formatted(
             "Cox model will be skipped: insufficient non-'Other' data after exclusions.",
@@ -426,10 +435,10 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     }
 
     km_unadjusted_cox_model <- NULL
-    unadjusted_ready <- length(unique(stats::na.omit(km_data[[group_var]]))) >= 2
+    unadjusted_ready <- nrow(model_data) > 0 && length(unique(stats::na.omit(model_data[[model_group_var]]))) >= 2
     if (unadjusted_ready) {
         km_unadjusted_cox_model <- tryCatch({
-            survival::coxph(surv_formula, data = km_data)
+            survival::coxph(model_surv_formula, data = model_data)
         }, error = function(e) {
             logger::log_error(sprintf("Unadjusted Cox model failed for %s: %s", ylab, e$message))
             NULL
@@ -444,7 +453,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     cox_unadjusted_model <- NULL
     if (cox_ready) {
         cox_unadjusted_model <- tryCatch({
-            survival::coxph(surv_formula, data = cox_data)
+            survival::coxph(model_surv_formula, data = cox_data)
         }, error = function(e) {
             logger::log_error(sprintf("Unadjusted Cox (Cox data) model failed for %s: %s", ylab, e$message))
             NULL
@@ -463,9 +472,9 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
 
     # Set legend labels and color palette (centralized)
     if (is.null(legend_labels)) {
-        legend_labels <- levels(factor(km_data[[group_var]]))
+        legend_labels <- levels(factor(km_data[[plot_group_var]]))
     }
-    color_palette <- get_palette_by_variable(group_var, legend_labels)
+    color_palette <- get_palette_by_variable(palette_group_var, legend_labels)
     # Identify strata requiring de-emphasis (thinner line/partial transparency)
     deemphasised_levels <- intersect(legend_labels, c("GEP Failed/Indeterminate"))
 
@@ -631,9 +640,9 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         # Dynamic height scaling: base on number of strata in the KM fit
         n_groups <- tryCatch(
             {
-                length(surv_plot$plot$data$strata %||% levels(km_data[[group_var]]))
+                length(surv_plot$plot$data$strata %||% levels(km_data[[plot_group_var]]))
             },
-            error = function(e) length(levels(km_data[[group_var]]))
+            error = function(e) length(levels(km_data[[plot_group_var]]))
         )
         # Calculate dynamic height based on number of strata
         extra_groups <- max(0, n_groups - 2)
@@ -747,7 +756,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             rmst_result <- tryCatch(
                 {
                     # Handle RMST for any number of groups (binary or multi-group)
-                    unique_groups <- unique(rmst_data[[group_var]])
+                    unique_groups <- unique(rmst_data[[plot_group_var]])
                     logger::log_info(sprintf("DEBUG: Unique groups for RMST: %s", paste(unique_groups, collapse = ", ")))
                     
                     if (length(unique_groups) == 2) {
@@ -756,29 +765,29 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
                         # coded with PBT as reference and GKSRS as comparison. Any deviation
                         # should be coerced back to that convention rather than inferred.
 
-                        if (group_var == "treatment_group") {
-                            rmst_data[[group_var]] <- factor(
-                                as.character(rmst_data[[group_var]]),
+                        if (plot_group_var == "treatment_group") {
+                            rmst_data[[plot_group_var]] <- factor(
+                                as.character(rmst_data[[plot_group_var]]),
                                 levels = TREATMENT_FACTOR_LEVELS
                             )
                             factor_levels <- TREATMENT_FACTOR_LEVELS
                         } else {
                             # For non-treatment groupings (e.g., GEP strata), fall back to
                             # simple factor coercion but keep the natural ordering.
-                            rmst_data[[group_var]] <- factor(rmst_data[[group_var]])
-                            factor_levels <- levels(rmst_data[[group_var]])
+                            rmst_data[[plot_group_var]] <- factor(rmst_data[[plot_group_var]])
+                            factor_levels <- levels(rmst_data[[plot_group_var]])
                         }
 
                         # Require at least two levels before proceeding
                         if (length(factor_levels) < 2) {
                             logger::log_warn(sprintf(
                                 "RMST: group_var '%s' has <2 levels after coercion; skipping RMST at time_point=%.1f months",
-                                group_var, time_point
+                                plot_group_var, time_point
                             ))
                             return(NULL)
                         }
 
-                        group_binary <- ifelse(rmst_data[[group_var]] == factor_levels[2], 1, 0)
+                        group_binary <- ifelse(rmst_data[[plot_group_var]] == factor_levels[2], 1, 0)
                         logger::log_info(sprintf("DEBUG: Running RMST for binary comparison: %s (arm=0) vs %s (arm=1)", factor_levels[1], factor_levels[2]))
                         
                         rmst2(
@@ -801,21 +810,21 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             )
             if (!is.null(rmst_result)) {
                 # Get group names for clear labeling
-                if (group_var == "treatment_group") {
+                if (plot_group_var == "treatment_group") {
                     # We know the correct order from config: PBT (arm 0), GKSRS (arm 1)
                     factor_levels <- TREATMENT_FACTOR_LEVELS
                 } else {
-                    factor_levels <- levels(rmst_data[[group_var]])
+                    factor_levels <- levels(rmst_data[[plot_group_var]])
                     if (is.null(factor_levels) || length(factor_levels) == 0) {
-                        rmst_data[[group_var]] <- factor(rmst_data[[group_var]])
-                        factor_levels <- levels(rmst_data[[group_var]])
+                        rmst_data[[plot_group_var]] <- factor(rmst_data[[plot_group_var]])
+                        factor_levels <- levels(rmst_data[[plot_group_var]])
                     }
                 }
 
                 if (length(factor_levels) < 2) {
                     logger::log_warn(sprintf(
                         "RMST row build: group_var '%s' has <2 levels; skipping RMST row for time_point=%.1f months",
-                        group_var, time_point
+                        plot_group_var, time_point
                     ))
                     next
                 }
@@ -868,7 +877,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
                 )
             } else {
                 # Check if we skipped RMST due to non-binary grouping
-                unique_groups <- unique(rmst_data[[group_var]])
+                unique_groups <- unique(rmst_data[[plot_group_var]])
                 analysis_type_msg <- if (length(unique_groups) < 2) {
                     "Not applicable (insufficient groups)"
                 } else if (length(unique_groups) > 2) {
@@ -902,7 +911,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         }
     }
     rmst_survival_summary <- if (exists("rmst_results", inherits = FALSE)) {
-        build_rmst_survival_summary(rmst_results, surv_rates, group_var = group_var)
+        build_rmst_survival_summary(rmst_results, surv_rates, group_var = plot_group_var)
     } else {
         data.frame()
     }
@@ -1031,7 +1040,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             generate_regression_table(
                 data = cox_data,
                 outcome_var = event_var,
-                predictor_vars = group_var,
+                predictor_vars = model_group_var,
                 confounders = confounders_to_use,
                 model_type = "cox",
                 effect_measure = "HR",
@@ -1042,7 +1051,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
                 time_var = time_var,
                 event_var = event_var,
                 other_map = other_map,
-                treatment_var = group_var,
+                treatment_var = model_group_var,
                 other_level_details = cox_exclusion_result$other_level_details,
                 filter_stats = cox_exclusion_result$filter_stats
             )
@@ -1092,7 +1101,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             dataset_name = dataset_name,
             analysis_label = ylab,
             model_label = "Unadjusted (KM data)",
-            group_var = group_var,
+            group_var = model_group_var,
             data_source_label = "KM dataset (before rare-category exclusions, no covariates)"
         ),
         summarize_cox_hr(
@@ -1100,7 +1109,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             dataset_name = dataset_name,
             analysis_label = ylab,
             model_label = "Unadjusted (Cox data)",
-            group_var = group_var,
+            group_var = model_group_var,
             data_source_label = "Cox dataset (after rare-category exclusions, no covariates)"
         ),
         summarize_cox_hr(
@@ -1108,7 +1117,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             dataset_name = dataset_name,
             analysis_label = ylab,
             model_label = "Adjusted Cox (confounders)",
-            group_var = group_var,
+            group_var = model_group_var,
             data_source_label = "Cox dataset (after rare-category exclusions, includes covariates)"
         )
     )
@@ -1154,17 +1163,17 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             }
 
             # Get group names for RMST plot - use levels() to match factor order
-            factor_levels <- levels(km_data[[group_var]])
+            factor_levels <- levels(km_data[[plot_group_var]])
             
             # If not a factor or no levels, fall back to unique values in sorted order
             if (is.null(factor_levels) || length(factor_levels) == 0) {
-                factor_levels <- sort(unique(km_data[[group_var]]))
+                factor_levels <- sort(unique(km_data[[plot_group_var]]))
             }
             
             group1_name <- as.character(factor_levels[1])
             group2_name <- as.character(factor_levels[2])
             
-            plot_rmst_pvalue_progression(rmst_results, ylab, output_dirs, prefix, group1_name, group2_name, group_var)
+            plot_rmst_pvalue_progression(rmst_results, ylab, output_dirs, prefix, group1_name, group2_name, plot_group_var)
         }, error = function(e) {
             logger::log_warn(sprintf("RMST plot generation failed: %s", e$message))
             NULL

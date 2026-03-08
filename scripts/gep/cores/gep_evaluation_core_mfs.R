@@ -94,9 +94,11 @@ calculate_observed_expected_mfs <- function(data, timepoint, group_var = "biopsy
     if (all(expected_vec > 0) && sum(expected_vec) > 0) {
         chisq_test <- chisq.test(x = observed_vec, p = expected_vec / sum(expected_vec))
         chisq_p <- chisq_test$p.value
+        chisq_log_p <- calculate_chisq_log_p_value(as.numeric(chisq_test$statistic), df = length(expected_vec) - 1)
         chisq_stat <- chisq_test$statistic
     } else {
         chisq_p <- NA
+        chisq_log_p <- NA
         chisq_stat <- NA
     }
 
@@ -110,7 +112,8 @@ calculate_observed_expected_mfs <- function(data, timepoint, group_var = "biopsy
         overall_poisson_ci_lower = round(overall_ci_lower, 3),
         overall_poisson_ci_upper = round(overall_ci_upper, 3),
         chisq_statistic = round(chisq_stat, 3),
-        chisq_p_value = round(chisq_p, 4)
+        chisq_p_value = chisq_p,
+        chisq_log_p_value = chisq_log_p
     ))
 }
 
@@ -157,8 +160,11 @@ perform_calibration_mfs <- function(data, timepoint, bootstrap_iterations) {
     )
 
     logger::log_info(formatted(sprintf(
-        "Calibration metrics: Nam-D'Agostino p=%.4f, ICI=%.4f (%s), Slope=%.3f (%s)",
-        calibration_summary$nam_dagostino_p,
+        "Calibration metrics: Nam-D'Agostino p=%s, ICI=%.4f (%s), Slope=%.3f (%s)",
+        format_gep_p_value(
+            calibration_summary$nam_dagostino_p,
+            log_p_value = calibration_summary$nam_dagostino_log_p
+        ),
         calibration_summary$ici,
         calibration_summary$ici_method,
         calibration_summary$slope,
@@ -736,7 +742,7 @@ perform_prame_augmented_analysis_mfs <- function(data, timepoints) {
             nri_nonevents = round(nri_nonevents, 3),
             nri_total = round(nri_total, 3),
             idi = round(idi, 4),
-            mcnemar_p = round(mcnemar_p, 4),
+            mcnemar_p = mcnemar_p,
             reclassification_counts = list(
                 event_up = event_up,
                 event_down = event_down,

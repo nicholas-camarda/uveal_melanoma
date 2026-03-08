@@ -10,7 +10,7 @@
 #' @param mfs_data data.frame Raw data for MFS survival curve
 #' @param output_dir character Destination directory (MFS outcome folder)
 #' @param prefix character Filename prefix
-create_mfs_gep_visuals <- function(mfs_results, mfs_data, output_dir, prefix, group_var = "biopsy1_gep", other_map = list(), dataset_name = "GEP Validation") {
+create_mfs_gep_visuals <- function(mfs_results, mfs_data, output_dir, prefix, group_var = "biopsy1_gep", model_group_var = group_var, other_map = list(), dataset_name = "GEP Validation") {
     # Directly write into centralized visuals folder created by create_output_structure()
 
     # Calibration plots
@@ -26,7 +26,7 @@ create_mfs_gep_visuals <- function(mfs_results, mfs_data, output_dir, prefix, gr
 
     # Survival curves (KM)
     if (!is.null(mfs_data) && nrow(mfs_data) > 0) {
-        create_mfs_survival_curves(mfs_data, output_dir, prefix, group_var = group_var, other_map = other_map, dataset_name = dataset_name)
+        create_mfs_survival_curves(mfs_data, output_dir, prefix, group_var = group_var, model_group_var = model_group_var, other_map = other_map, dataset_name = dataset_name)
     }
 
     invisible(NULL)
@@ -769,7 +769,7 @@ create_single_outcome_performance_plot <- function(results, outcome_type, output
 #' @param output_dir Output directory for saved plots
 #' @param prefix Filename prefix
 #' @return Invisibly returns NULL after saving plots
-create_mfs_survival_curves <- function(data, output_dir, prefix, group_var = "biopsy1_gep", other_map = list(), dataset_name = "GEP Validation") {
+create_mfs_survival_curves <- function(data, output_dir, prefix, group_var = "biopsy1_gep", model_group_var = group_var, other_map = list(), dataset_name = "GEP Validation") {
     logger::log_info("Creating MFS survival curves by GEP class using existing survival analysis infrastructure")
 
     # Use the existing analyze_time_to_event_outcomes function that handles all the complexity
@@ -796,6 +796,7 @@ create_mfs_survival_curves <- function(data, output_dir, prefix, group_var = "bi
                 time_var = "tt_mets_months",
                 event_var = "mets_event",
                 group_var = group_var,
+                model_group_var = model_group_var,
                 confounders = NULL, # No confounders for MFS plotting
                 ylab = "Metastasis-Free Survival Probability",
                 analysis_type = "post_treatment_only",

@@ -550,6 +550,10 @@ GEP_DERIVED_VARIABLES <- c(
     "expected_mfs_10yr", "expected_mss_5yr", "expected_mss_7yr", "expected_mss_10yr"
 )
 
+GEP_DISPLAY_VARIABLES <- c(
+    "biopsy1_gep", "gep_class_simple", "prame_status", "gep12_prame_status"
+)
+
 # =============================================================================
 # SUMMARY: This file contains ALL configuration constants for the analysis pipeline
 # =============================================================================
