@@ -39,7 +39,8 @@ perform_standard_mss_validation <- function(data, timepoint, bootstrap_iteration
         data = analysis_data,
         expected_var = paste0("expected_mss_", timepoint, "yr"),
         event_var = "event_occurred",
-        time_var = "time_to_event"
+        time_var = "time_to_event",
+        eval_time_months = timepoint_months
     )
 
     # Time-dependent discrimination metrics (Harrell C, Uno C, AUC at timepoint)

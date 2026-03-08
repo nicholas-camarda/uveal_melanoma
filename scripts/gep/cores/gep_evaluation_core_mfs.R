@@ -117,16 +117,17 @@ calculate_observed_expected_mfs <- function(data, timepoint, group_var = "biopsy
 #' Perform Calibration Assessment (MFS)
 #'
 #' Assess calibration of GEP-predicted MFS risk at a given timepoint using
-#' Nam-D'Agostino chi-square, Integrated Calibration Index (ICI), and a
-#' bootstrap-corrected calibration slope.
+#' Nam-D'Agostino chi-square, Integrated Calibration Index (ICI), and an
+#' IPCW-weighted logistic calibration slope.
 #'
 #' @param data Data frame with GEP predictions and survival outcomes.
 #'   Must contain `tt_mets_months`, `mets_event`, and timepoint-specific
 #'   expected survival columns (e.g., `expected_mfs_5yr`).
 #' @param timepoint Numeric year value (e.g., 5, 7, 10) specifying the
 #'   MFS evaluation timepoint.
-#' @param bootstrap_iterations Integer number of bootstrap iterations for
-#'   slope optimism correction.
+#' @param bootstrap_iterations Integer number of bootstrap iterations retained
+#'   for API compatibility; the current recalibration method does not use
+#'   bootstrap optimism correction.
 #' @return A list with elements: `n`, `n_groups`, `nam_dagostino_statistic`,
 #'   `nam_dagostino_p`, `ici`, `slope`, `calibration_intercept`,
 #'   and `group_results`.
@@ -141,36 +142,13 @@ perform_calibration_mfs <- function(data, timepoint, bootstrap_iterations) {
     cal_data <- data %>%
         filter(mfs_analysis_eligible) %>%
         mutate(
-            predicted_prob = .data[[expected_var]],
             observed_time = .data[[paste0("tt_mfs_", timepoint, "yr")]],
             observed_event = .data[[paste0("mfs_event_", timepoint, "yr")]],
             # Use pre-calculated risk variables
             predicted_risk = .data[[paste0("predicted_mfs_risk_", timepoint, "yr")]]
         )
 
-    if (nrow(cal_data) < GEP_MIN_SAMPLE_SIZE) {
-        logger::log_warn(formatted("Insufficient data for calibration analysis", indent = 3))
-        # Try to calculate a simple ICI even with insufficient data
-        simple_ici <- tryCatch({
-            observed_rate <- sum(cal_data$observed_event == 1 & cal_data$observed_time <= timepoint_months) / nrow(cal_data)
-            mean_predicted_rate <- mean(cal_data$predicted_risk, na.rm = TRUE)
-            abs(observed_rate - mean_predicted_rate)
-        }, error = function(e) NA)
-        
-        return(list(
-            n = nrow(cal_data),
-            status = "insufficient_data",
-            nam_dagostino_p = NA,
-            ici = simple_ici,
-            calibration_slope = NA,
-            calibration_intercept = NA
-        ))
-    }
-
-    # Create survival object for calibration
-    surv_obj <- Surv(cal_data$observed_time, cal_data$observed_event)
-
-    grouped_calibration <- calculate_greenwood_nam_dagostino(
+    calibration_summary <- calculate_survival_calibration_summary(
         data = cal_data,
         predicted_risk_var = "predicted_risk",
         time_var = "observed_time",
@@ -178,100 +156,16 @@ perform_calibration_mfs <- function(data, timepoint, bootstrap_iterations) {
         eval_time_months = timepoint_months
     )
 
-    group_results <- grouped_calibration$group_results
-    chisq_stat <- grouped_calibration$nam_dagostino_statistic
-    nam_dagostino_p <- grouped_calibration$nam_dagostino_p
-    ici <- grouped_calibration$ici
-    ici_method <- grouped_calibration$ici_method
-
-    # 3. Bootstrap-corrected calibration slope and intercept
-    if (bootstrap_iterations > 0 && nrow(cal_data) >= GEP_MIN_BOOTSTRAP_SAMPLE) {
-        tryCatch(
-            {
-                # Fit Cox model to get calibration slope
-                cox_fit <- coxph(surv_obj ~ predicted_risk, data = cal_data, model = TRUE)
-                original_slope <- coef(cox_fit)[1]
-
-                # Bootstrap validation
-                bootstrap_slopes <- replicate(min(bootstrap_iterations, GEP_MAX_BOOTSTRAP_ITERATIONS), {
-                    # Bootstrap sample
-                    boot_indices <- sample(nrow(cal_data), replace = TRUE)
-                    boot_data <- cal_data[boot_indices, ]
-
-                    # Fit model on bootstrap sample
-                    boot_surv <- Surv(boot_data$observed_time, boot_data$observed_event)
-                    tryCatch(
-                        {
-                            boot_cox <- coxph(boot_surv ~ predicted_risk, data = boot_data, model = TRUE)
-                            coef(boot_cox)[1]
-                        },
-                        error = function(e) NA
-                    )
-                })
-
-                # Calculate optimism and shrunk slope
-                bootstrap_slopes <- bootstrap_slopes[!is.na(bootstrap_slopes)]
-                if (length(bootstrap_slopes) > GEP_MISSING_DATA_THRESHOLD) {
-                    optimism <- mean(bootstrap_slopes) - original_slope
-                    calibration_slope <- original_slope - optimism
-                } else {
-                    calibration_slope <- original_slope
-                }
-
-                # Calibration intercept (assuming proportional hazards)
-                calibration_intercept <- 0 # In Cox models, no intercept
-            },
-            error = function(e) {
-                logger::log_error(formatted("Error in bootstrap calibration, using simple estimates", indent = 3))
-                calibration_slope <- 1 # Perfect calibration assumption
-                calibration_intercept <- 0
-            }
-        )
-    } else {
-        calibration_slope <- 1 # Default assumption
-        calibration_intercept <- 0
-    }
-
     logger::log_info(formatted(sprintf(
-        "Calibration metrics: Nam-D'Agostino p=%.4f, ICI=%.4f (%s), Slope=%.3f",
-        nam_dagostino_p, ici, ifelse(exists("ici_method"), ici_method, "unknown"), calibration_slope
+        "Calibration metrics: Nam-D'Agostino p=%.4f, ICI=%.4f (%s), Slope=%.3f (%s)",
+        calibration_summary$nam_dagostino_p,
+        calibration_summary$ici,
+        calibration_summary$ici_method,
+        calibration_summary$slope,
+        calibration_summary$slope_method
     ), indent = 3))
 
-    # Calculate Brier Score for overall prediction accuracy
-    brier_result <- tryCatch({
-        calculate_brier_score_survival(
-            data = cal_data,
-            predicted_var = "predicted_risk",
-            event_var = "observed_event",
-            time_var = "observed_time",
-            timepoint_months = timepoint_months
-        )
-    }, error = function(e) {
-        logger::log_warn(formatted(sprintf("Brier Score calculation failed: %s", e$message), indent = 3))
-        list(
-            brier_score = NA_real_,
-            method_used = "calculation_failed",
-            fallback_triggered = FALSE,
-            calculation_notes = sprintf("Calculation failed: %s", e$message)
-        )
-    })
-
-    return(list(
-        n = nrow(cal_data),
-        n_groups = grouped_calibration$n_groups,
-        nam_dagostino_statistic = chisq_stat,
-        nam_dagostino_p = round(nam_dagostino_p, 4),
-        nam_dagostino_method = grouped_calibration$nam_dagostino_method,
-        ici = round(ici, 4),
-        ici_method = ifelse(exists("ici_method"), ici_method, NA_character_),
-        slope = round(calibration_slope, 3),
-        calibration_intercept = round(calibration_intercept, 3),
-        brier_score = round(brier_result$brier_score, 4),
-        brier_method = brier_result$method_used,
-        brier_fallback_used = brier_result$fallback_triggered,
-        brier_calculation_notes = brier_result$calculation_notes,
-        group_results = group_results
-    ))
+    calibration_summary
 }
 
 #' Discrimination Analysis (MFS)

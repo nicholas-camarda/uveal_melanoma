@@ -567,9 +567,12 @@ Metric formulas remain in `STATISTICAL_METHODS.md`; the notes below clarify what
 #### `Calibration_Summary`
 
 - `Timepoint`, `N`: context columns described above.
-- `Nam_D_Agostino_p`: p-value from the Nam–D'Agostino χ² goodness-of-fit test (flag low values as miscalibration).
+- `Nam_D_Agostino_p`: p-value from the grouped Greenwood Nam-D'Agostino survival-calibration test.
+- `Nam_D_Agostino_Method`: method label for the grouped goodness-of-fit field; currently this should read `greenwood_nam_dagostino`.
 - `ICI`: Integrated Calibration Index — lower is better.
-- `Slope`: Bootstrap calibration slope (ideal = 1.0).
+- `ICI_Method`: tells you whether the ICI came from the preferred IPCW-smoothed recalibration curve or from the grouped Kaplan-Meier fallback. Cite this column whenever comparing cohorts or horizons.
+- `Slope`: horizon-specific IPCW-weighted logistic recalibration slope (ideal = 1.0).
+- `Slope_Method`: method label for the slope field; currently this should read `ipcw_logit` when the fit is supportable. `ipcw_logit_unavailable` means the weighted slope fit was too sparse or too numerically unstable to report responsibly.
 - `Brier_Score`: Timepoint-specific Brier score; compare against the cohort event rate to assess accuracy.
 - `Brier_Method` + `Brier_Fallback_Used`: record which estimator supplied the score (`pec`, KM fallback, etc.).
 
@@ -628,8 +631,6 @@ Single column dictionary:
 ### Suggested Interpretation Template
 
 > "For 5-year metastasis-free survival (`uveal_full_mfs_consolidated_summary.xlsx`), Harrell's C was 0.71 with calibration slope 0.98 and positive decision-curve net benefit at 10–30% thresholds (see `STATISTICAL_METHODS.md#gep-validation-metrics`)."
-
-Keep the narrative succinct in this guide and direct readers to the statistical reference for deeper dives.
 
 ---
 

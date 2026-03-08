@@ -9,7 +9,7 @@
 #' @param data Data frame with GEP predictions and outcomes
 #' @param dataset_name Optional character label for reporting
 #' @param timepoints Numeric vector of years (default `GEP_VALIDATION_TIMEPOINTS`)
-#' @param bootstrap_iterations Integer bootstrap iterations for calibration slope
+#' @param bootstrap_iterations Integer bootstrap iterations retained for API compatibility; the current calibration slope uses IPCW-weighted logistic recalibration rather than bootstrap optimism correction
 #' @param create_unified_at_base logical If TRUE, also write unified visuals at the parent objective dir
 #' @param other_map List containing treatment group mappings and categorical variable level mappings for consistent analysis
 #' @param output_dirs Named list of objective-specific output directories

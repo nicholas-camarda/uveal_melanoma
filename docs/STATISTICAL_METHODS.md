@@ -473,6 +473,9 @@ Gene Expression Profiling (GEP) provides lab-reported probabilities of metastasi
 - **Integrated Calibration Index (ICI):** Average absolute difference between predicted and observed risk
 - **Calibration slope:** Should be close to 1.0; reported as the primary slope summary across timepoints
 
+**Workbook traceability:**
+- The `Calibration_Summary` and `Calibration_Comparison` sheets now also carry method columns so the statistical variant used for each horizon is explicit: `Nam_D_Agostino_Method`, `ICI_Method`, and `Slope_Method`.
+
 **Endpoint note:**
 - MFS uses metastasis events.
 - MSS standard validation uses melanoma-specific death as the event.
@@ -562,42 +565,39 @@ For MSS standard validation, the grouped calibration p-value now uses the same G
 - Group-specific observed risk is estimated by Kaplan-Meier at the evaluation horizon while treating non-melanoma deaths as censored in the standard MSS analysis.
 - Greenwood variance is used in the grouped goodness-of-fit denominator.
 
-The workbook therefore now uses a true grouped survival-calibration statistic for both MFS and standard MSS calibration summaries, even though the standard MSS endpoint itself remains distinct from the separate competing-risk MSS analyses.
+This is a true grouped survival-calibration statistic for both MFS and standard MSS calibration summaries, even though the standard MSS endpoint itself remains distinct from the separate competing-risk MSS analyses.
 
 ### Integrated Calibration Index (ICI)
 
-The current pipeline still uses implementation-specific ICI approximations rather than a smoothed LOESS- or spline-based survival calibration curve.
+The current pipeline uses a censoring-aware horizon-specific ICI strategy with an explicit fallback rule.
 
 For MFS:
-- The reported ICI is the mean absolute difference between each patient’s predicted risk and the Kaplan-Meier-estimated observed risk of the patient’s grouped risk stratum.
+- When the effective risk support at the evaluation horizon is rich enough, the reported ICI is computed from an IPCW-weighted logistic spline recalibration curve on the logit-transformed predicted risk.
+- When the effective risk support is too coarse for a stable smooth curve, the method falls back to the grouped Kaplan-Meier absolute calibration error already used for the Greenwood-based grouped calibration summary.
 
 For MSS standard validation:
-- The reported ICI is computed the same grouped-Kaplan-Meier way, using the standard MSS endpoint definition for that horizon.
+- The same rule is used: preferred IPCW-smoothed ICI when the horizon-specific predicted risks are sufficiently granular, grouped Kaplan-Meier fallback when they are not.
 
-Lower ICI values still indicate better calibration, but this should still be described as a grouped approximation rather than as a fully smoothed non-parametric survival ICI.
+In the current data, many horizon-specific GEP predictions collapse to only a few distinct values after filtering to patients who actually contribute information at that horizon, so the grouped-Kaplan-Meier fallback is often the method that is ultimately reported. This is why the workbook now exposes `ICI_Method` explicitly rather than assuming one estimator is used everywhere.
+
+Lower ICI values still indicate better calibration regardless of method, but interpretation should always cite the method column when comparing cohorts or timepoints.
 
 ### Calibration Slope
 
-The calibration slope is also implementation-specific.
+The calibration slope is now computed with a single censoring-aware method for both MFS and standard MSS.
 
-For MFS:
-- A Cox model is fit using the predicted risk as the sole covariate.
-- The coefficient is used as the starting calibration slope.
-- When bootstrap validation is feasible, the code applies an optimism correction and reports the resulting slope.
-
-For MSS standard validation:
-- The slope comes from the simplified logistic calibration model used in the shared helper.
+For both MFS and MSS standard validation:
+- The predicted event risk at the requested horizon is transformed to the logit scale.
+- Patients with known horizon status contribute through inverse-probability-of-censoring weights (IPCW), so early censoring does not get treated as an observed non-event.
+- A weighted logistic recalibration model is then fit at that horizon, and the coefficient of the transformed predicted risk is reported as the calibration slope.
+- The calibration intercept is estimated from the corresponding IPCW-weighted offset model and stored in the result object, although the main workbook still foregrounds the slope.
+- If that weighted slope fit is numerically unstable, such as under quasi-separation with very large coefficient uncertainty, the slope is withheld and the method column reports the fit as unavailable rather than publishing a spurious extreme estimate.
 
 Interpretation remains standard:
 - Slope near 1.0 suggests well-scaled predictions.
 - Slope below 1.0 suggests predictions are too extreme.
 - Slope above 1.0 suggests predictions are too compressed.
 
-### Recommended Documentation Boundary
-
-The material above belongs in this statistical reference because it explains the formulas behind Objective 4 workbook fields. It does not belong primarily in the interpretation guide, which should stay focused on how to read the workbooks, and it does not belong primarily in the technical guide, which should stay focused on pipeline structure and file layout.
-
-If the project later upgrades Objective 4 to use Kaplan-Meier-adjusted overall O/E summaries or a smoothed survival ICI, this section should be revised at the same time as the code so the documentation continues to match implementation.
 
 ### Discrimination Assessment
 

@@ -1,5 +1,324 @@
 # GEP Model Evaluation Metrics (shared calculators)
 
+#' Extract survival probabilities at requested times
+#'
+#' Summarize a fitted survival curve at one or more requested timepoints and
+#' coerce the result into a numeric vector aligned to the input times.
+#'
+#' @param surv_fit A fitted `survival::survfit` object.
+#' @param requested_times Numeric vector of times to evaluate.
+#' @return Numeric vector of survival probabilities with non-finite values
+#'   replaced by `1`.
+extract_survival_probabilities <- function(surv_fit, requested_times) {
+    surv_summary <- summary(surv_fit, times = requested_times, extend = TRUE)
+    survival_probabilities <- suppressWarnings(as.numeric(surv_summary$surv))
+
+    if (length(survival_probabilities) == 1 && length(requested_times) > 1) {
+        survival_probabilities <- rep(survival_probabilities, length(requested_times))
+    }
+
+    survival_probabilities[!is.finite(survival_probabilities)] <- 1
+    survival_probabilities
+}
+
+#' Calculate IPCW weights at a fixed horizon
+#'
+#' Derive inverse-probability-of-censoring weights for horizon-specific
+#' calibration analyses, including capped and renormalized weights to limit the
+#' influence of extreme censoring probabilities.
+#'
+#' @param time Numeric vector of observed follow-up times.
+#' @param event Integer or logical event indicator where `1` denotes the target
+#'   event.
+#' @param eval_time_months Numeric horizon in months.
+#' @return Named list with IPCW weights, known-status flags, censoring survival,
+#'   and horizon-specific event indicators.
+calculate_ipcw_weights <- function(time, event, eval_time_months) {
+    truncated_time <- pmin(time, eval_time_months)
+    event_by_horizon <- as.integer(event == 1 & time <= eval_time_months)
+    known_status <- event_by_horizon == 1 | time >= eval_time_months
+    censoring_event <- as.integer(event_by_horizon == 0 & time < eval_time_months)
+
+    censoring_fit <- survival::survfit(survival::Surv(truncated_time, censoring_event) ~ 1)
+    weight_times <- ifelse(
+        event_by_horizon == 1,
+        pmax(truncated_time - 1e-08, 0),
+        truncated_time
+    )
+    censoring_survival <- extract_survival_probabilities(censoring_fit, weight_times)
+
+    raw_weights <- ifelse(
+        known_status,
+        1 / pmax(censoring_survival, GEP_MIN_RISK_PREDICTION),
+        0
+    )
+
+    positive_weights <- raw_weights[raw_weights > 0 & is.finite(raw_weights)]
+    capped_weights <- raw_weights
+    if (length(positive_weights) > 1) {
+        weight_cap <- stats::quantile(
+            positive_weights,
+            probs = GEP_IPCW_WEIGHT_CAP_PROB,
+            na.rm = TRUE,
+            names = FALSE,
+            type = 8
+        )
+        capped_weights <- pmin(raw_weights, weight_cap)
+        if (sum(capped_weights, na.rm = TRUE) > 0) {
+            capped_weights[capped_weights > 0] <-
+                capped_weights[capped_weights > 0] * sum(known_status, na.rm = TRUE) / sum(capped_weights, na.rm = TRUE)
+        }
+    }
+
+    list(
+        ipcw_weight = capped_weights,
+        known_status = known_status,
+        censoring_survival = censoring_survival,
+        event_by_horizon = event_by_horizon
+    )
+}
+
+#' Prepare calibration data for a fixed time horizon
+#'
+#' Filter to complete cases, bound predicted risks away from 0 and 1, derive the
+#' logit-transformed prediction, and append IPCW-derived horizon status fields.
+#'
+#' @param data Data frame containing observed outcomes and predicted risk.
+#' @param predicted_risk_var Character name of the predicted-risk column.
+#' @param time_var Character name of the observed time column.
+#' @param event_var Character name of the observed event indicator column.
+#' @param eval_time_months Numeric horizon in months.
+#' @return Data frame augmented with standardized calibration columns such as
+#'   `predicted_risk`, `observed_time`, `observed_event`, `horizon_event`, and
+#'   `ipcw_weight`.
+prepare_horizon_calibration_data <- function(data, predicted_risk_var, time_var, event_var, eval_time_months) {
+    cal_data <- data %>%
+        dplyr::filter(
+            !is.na(.data[[predicted_risk_var]]),
+            !is.na(.data[[time_var]]),
+            !is.na(.data[[event_var]])
+        ) %>%
+        dplyr::mutate(
+            predicted_risk = pmin(
+                pmax(.data[[predicted_risk_var]], GEP_MIN_RISK_PREDICTION),
+                GEP_MAX_RISK_PREDICTION
+            ),
+            observed_time = .data[[time_var]],
+            observed_event = as.integer(.data[[event_var]]),
+            logit_predicted_risk = stats::qlogis(predicted_risk)
+        )
+
+    if (nrow(cal_data) == 0) {
+        return(cal_data)
+    }
+
+    ipcw_info <- calculate_ipcw_weights(
+        time = cal_data$observed_time,
+        event = cal_data$observed_event,
+        eval_time_months = eval_time_months
+    )
+
+    cal_data %>%
+        dplyr::mutate(
+            horizon_event = ipcw_info$event_by_horizon,
+            known_status = ipcw_info$known_status,
+            ipcw_weight = ipcw_info$ipcw_weight,
+            censoring_survival = ipcw_info$censoring_survival
+        )
+}
+
+#' Fit IPCW-weighted recalibration models
+#'
+#' Estimate horizon-specific calibration intercept and slope using weighted
+#' logistic recalibration models after excluding observations without known
+#' status at the evaluation horizon.
+#'
+#' @param cal_data Data frame produced by `prepare_horizon_calibration_data()`.
+#' @return Named list containing intercept, slope, method labels, fit status,
+#'   sample size, and event counts.
+fit_ipcw_recalibration <- function(cal_data) {
+    fit_data <- cal_data %>%
+        dplyr::filter(known_status, ipcw_weight > 0, is.finite(logit_predicted_risk))
+
+    event_count <- sum(fit_data$horizon_event == 1, na.rm = TRUE)
+    non_event_count <- sum(fit_data$horizon_event == 0, na.rm = TRUE)
+    unique_risk_count <- length(unique(fit_data$predicted_risk))
+
+    if (nrow(fit_data) < GEP_MIN_SAMPLE_SIZE ||
+        length(unique(fit_data$logit_predicted_risk)) < 2 ||
+        event_count < GEP_MIN_CALIBRATION_EVENTS ||
+        non_event_count < GEP_MIN_CALIBRATION_EVENTS) {
+        return(list(
+            intercept = NA_real_,
+            slope = NA_real_,
+            slope_method = "ipcw_logit_unavailable",
+            intercept_method = "ipcw_offset_unavailable",
+            status = "insufficient_recalibration_data",
+            fit_n = nrow(fit_data),
+            events = event_count,
+            non_events = non_event_count,
+            unique_risk_count = unique_risk_count,
+            intercept_se = NA_real_,
+            slope_se = NA_real_
+        ))
+    }
+
+    intercept_model <- tryCatch(
+        suppressWarnings(
+            stats::glm(
+                horizon_event ~ 1,
+                data = fit_data,
+                family = stats::quasibinomial(),
+                weights = ipcw_weight,
+                offset = logit_predicted_risk
+            )
+        ),
+        error = function(e) NULL
+    )
+
+    slope_model <- tryCatch(
+        suppressWarnings(
+            stats::glm(
+                horizon_event ~ logit_predicted_risk,
+                data = fit_data,
+                family = stats::quasibinomial(),
+                weights = ipcw_weight
+            )
+        ),
+        error = function(e) NULL
+    )
+
+    intercept <- NA_real_
+    intercept_se <- NA_real_
+    if (!is.null(intercept_model) && all(is.finite(stats::coef(intercept_model)))) {
+        intercept <- unname(stats::coef(intercept_model)[1])
+        intercept_summary <- tryCatch(summary(intercept_model)$coefficients, error = function(e) NULL)
+        if (!is.null(intercept_summary) && nrow(intercept_summary) >= 1 && "Std. Error" %in% colnames(intercept_summary)) {
+            intercept_se <- unname(intercept_summary[1, "Std. Error"])
+        }
+    }
+
+    slope <- NA_real_
+    slope_se <- NA_real_
+    if (!is.null(slope_model) && length(stats::coef(slope_model)) >= 2 && all(is.finite(stats::coef(slope_model)))) {
+        slope <- unname(stats::coef(slope_model)[2])
+        slope_summary <- tryCatch(summary(slope_model)$coefficients, error = function(e) NULL)
+        if (!is.null(slope_summary) && nrow(slope_summary) >= 2 && "Std. Error" %in% colnames(slope_summary)) {
+            slope_se <- unname(slope_summary[2, "Std. Error"])
+        }
+    }
+
+    stable_intercept <-
+        is.finite(intercept) &&
+        is.finite(intercept_se) &&
+        abs(intercept) <= GEP_MAX_CALIBRATION_COEF_ABS &&
+        intercept_se <= GEP_MAX_CALIBRATION_COEF_SE
+
+    stable_slope <-
+        is.finite(slope) &&
+        is.finite(slope_se) &&
+        abs(slope) <= GEP_MAX_CALIBRATION_COEF_ABS &&
+        slope_se <= GEP_MAX_CALIBRATION_COEF_SE
+
+    list(
+        intercept = ifelse(stable_intercept, intercept, NA_real_),
+        slope = ifelse(stable_slope, slope, NA_real_),
+        slope_method = ifelse(stable_slope, "ipcw_logit", "ipcw_logit_unavailable"),
+        intercept_method = ifelse(stable_intercept, "ipcw_offset", "ipcw_offset_unavailable"),
+        status = ifelse(stable_slope, "ok", "recalibration_fit_unstable"),
+        fit_n = nrow(fit_data),
+        events = event_count,
+        non_events = non_event_count,
+        unique_risk_count = unique_risk_count,
+        intercept_se = intercept_se,
+        slope_se = slope_se
+    )
+}
+
+#' Calculate a smoothed IPCW Integrated Calibration Index
+#'
+#' Fit a weighted spline recalibration curve when the usable risk support is
+#' adequate and otherwise fall back to the grouped Kaplan-Meier calibration
+#' summary already computed for the same horizon.
+#'
+#' @param cal_data Data frame produced by `prepare_horizon_calibration_data()`.
+#' @param grouped_calibration List returned by
+#'   `calculate_greenwood_nam_dagostino()`.
+#' @return Named list with `ici` and `ici_method`.
+calculate_smoothed_ipcw_ici <- function(cal_data, grouped_calibration) {
+    fit_data <- cal_data %>%
+        dplyr::filter(known_status, ipcw_weight > 0, is.finite(logit_predicted_risk))
+
+    event_count <- sum(fit_data$horizon_event == 1, na.rm = TRUE)
+    non_event_count <- sum(fit_data$horizon_event == 0, na.rm = TRUE)
+    unique_risk_count <- length(unique(fit_data$predicted_risk))
+
+    can_fit_smooth_curve <-
+        nrow(fit_data) >= GEP_MIN_SAMPLE_SIZE &&
+        unique_risk_count >= GEP_DEFAULT_N_GROUPS &&
+        event_count >= GEP_MIN_CALIBRATION_EVENTS &&
+        non_event_count >= GEP_MIN_CALIBRATION_EVENTS
+
+    if (!can_fit_smooth_curve) {
+        return(list(
+            ici = grouped_calibration$ici,
+            ici_method = grouped_calibration$ici_method
+        ))
+    }
+
+    spline_df <- min(
+        GEP_CALIBRATION_SPLINE_DF,
+        unique_risk_count - 1L,
+        nrow(fit_data) - 1L
+    )
+
+    if (spline_df < 2) {
+        return(list(
+            ici = grouped_calibration$ici,
+            ici_method = grouped_calibration$ici_method
+        ))
+    }
+
+    smooth_model <- tryCatch(
+        suppressWarnings(
+            stats::glm(
+                horizon_event ~ splines::ns(logit_predicted_risk, df = spline_df),
+                data = fit_data,
+                family = stats::quasibinomial(),
+                weights = ipcw_weight
+            )
+        ),
+        error = function(e) NULL
+    )
+
+    if (is.null(smooth_model)) {
+        return(list(
+            ici = grouped_calibration$ici,
+            ici_method = grouped_calibration$ici_method
+        ))
+    }
+
+    fitted_risk <- suppressWarnings(stats::predict(smooth_model, type = "response"))
+    fitted_risk <- pmin(pmax(fitted_risk, 0), 1)
+
+    list(
+        ici = weighted.mean(
+            abs(fit_data$predicted_risk - fitted_risk),
+            w = fit_data$ipcw_weight,
+            na.rm = TRUE
+        ),
+        ici_method = "ipcw_logistic_spline"
+    )
+}
+
+#' Assign grouped calibration risk bins
+#'
+#' Split predicted risks into approximately equal-sized groups for grouped
+#' calibration summaries, with a binary fallback when the distribution is too
+#' discrete for quantile-based grouping.
+#'
+#' @param predicted_risk Numeric vector of predicted risks.
+#' @return Integer vector of risk-group assignments.
 assign_calibration_risk_groups <- function(predicted_risk) {
     n_obs <- length(predicted_risk)
     n_groups <- min(10, floor(n_obs / 10))
@@ -16,6 +335,17 @@ assign_calibration_risk_groups <- function(predicted_risk) {
     cut(predicted_risk, breaks = risk_quantiles, include.lowest = TRUE, labels = FALSE)
 }
 
+#' Estimate observed events using Kaplan-Meier at a horizon
+#'
+#' Convert a univariate Kaplan-Meier estimate into observed event-rate and
+#' variance quantities used by grouped survival-calibration summaries.
+#'
+#' @param time Numeric vector of observed follow-up times.
+#' @param event Integer or logical event indicator where `1` denotes the target
+#'   event.
+#' @param eval_time_months Numeric horizon in months.
+#' @return Named list with observed rate, observed event count, raw events,
+#'   Kaplan-Meier survival estimates, and Greenwood-based variance terms.
 estimate_km_observed_events <- function(time, event, eval_time_months) {
     surv_fit <- survival::survfit(survival::Surv(time, event) ~ 1)
     surv_summary <- summary(surv_fit, times = eval_time_months, extend = TRUE)
@@ -43,6 +373,19 @@ estimate_km_observed_events <- function(time, event, eval_time_months) {
     )
 }
 
+#' Calculate grouped Greenwood Nam-D'Agostino calibration metrics
+#'
+#' Group patients by predicted risk, estimate observed risk within each group
+#' using Kaplan-Meier, and compute the grouped Greenwood Nam-D'Agostino test and
+#' grouped absolute calibration error.
+#'
+#' @param data Data frame containing predicted risk and observed endpoint data.
+#' @param predicted_risk_var Character name of the predicted-risk column.
+#' @param time_var Character name of the observed time column.
+#' @param event_var Character name of the observed event indicator column.
+#' @param eval_time_months Numeric horizon in months.
+#' @return Named list with grouped calibration statistics, method labels, and a
+#'   per-group results table.
 calculate_greenwood_nam_dagostino <- function(data, predicted_risk_var, time_var, event_var, eval_time_months) {
     cal_data <- data %>%
         dplyr::filter(
@@ -124,6 +467,121 @@ calculate_greenwood_nam_dagostino <- function(data, predicted_risk_var, time_var
         ici = round(ici, 4),
         ici_method = "grouped_km",
         group_results = group_results
+    )
+}
+
+#' Summarize survival calibration at a fixed horizon
+#'
+#' Combine grouped Greenwood Nam-D'Agostino results, IPCW-weighted logistic
+#' recalibration, smoothed or fallback ICI estimates, and Brier score output
+#' into the canonical calibration payload used by Objective 4 reporting.
+#'
+#' @param data Data frame containing observed outcomes and predicted risk.
+#' @param predicted_risk_var Character name of the predicted-risk column.
+#' @param time_var Character name of the observed time column.
+#' @param event_var Character name of the observed event indicator column.
+#' @param eval_time_months Numeric horizon in months.
+#' @return Named list containing calibration summary metrics, method labels,
+#'   group-level results, and Brier score diagnostics.
+calculate_survival_calibration_summary <- function(data, predicted_risk_var, time_var, event_var, eval_time_months) {
+    cal_data <- prepare_horizon_calibration_data(
+        data = data,
+        predicted_risk_var = predicted_risk_var,
+        time_var = time_var,
+        event_var = event_var,
+        eval_time_months = eval_time_months
+    )
+
+    if (nrow(cal_data) == 0) {
+        return(list(
+            n = 0,
+            known_status_n = 0,
+            status = "no_complete_cases",
+            intercept = NA_real_,
+            calibration_intercept = NA_real_,
+            intercept_method = "ipcw_offset_unavailable",
+            slope = NA_real_,
+            slope_method = "ipcw_logit_unavailable",
+            ici = NA_real_,
+            ici_method = "grouped_km",
+            nam_dagostino_p = NA_real_,
+            nam_dagostino_statistic = NA_real_,
+            nam_dagostino_method = "greenwood_nam_dagostino",
+            n_groups = NA_integer_,
+            group_results = data.frame()
+        ))
+    }
+
+    grouped_calibration <- calculate_greenwood_nam_dagostino(
+        data = cal_data,
+        predicted_risk_var = "predicted_risk",
+        time_var = "observed_time",
+        event_var = "observed_event",
+        eval_time_months = eval_time_months
+    )
+
+    recalibration_fit <- fit_ipcw_recalibration(cal_data)
+    ici_result <- calculate_smoothed_ipcw_ici(cal_data, grouped_calibration)
+
+    fallback_ici <- NA_real_
+    if (sum(cal_data$known_status, na.rm = TRUE) > 0) {
+        fallback_ici <- weighted.mean(
+            abs(cal_data$predicted_risk[cal_data$known_status] -
+                weighted.mean(
+                    cal_data$horizon_event[cal_data$known_status],
+                    w = cal_data$ipcw_weight[cal_data$known_status],
+                    na.rm = TRUE
+                )),
+            w = cal_data$ipcw_weight[cal_data$known_status],
+            na.rm = TRUE
+        )
+    }
+
+    if (!is.finite(ici_result$ici)) {
+        ici_result$ici <- fallback_ici
+        ici_result$ici_method <- "weighted_absolute_error_fallback"
+    }
+
+    brier_result <- tryCatch({
+        calculate_brier_score_survival(
+            data = cal_data,
+            predicted_var = "predicted_risk",
+            event_var = "observed_event",
+            time_var = "observed_time",
+            timepoint_months = eval_time_months
+        )
+    }, error = function(e) {
+        logger::log_warn(sprintf("Brier Score calculation failed: %s", e$message))
+        list(
+            brier_score = NA_real_,
+            method_used = "calculation_failed",
+            fallback_triggered = FALSE,
+            calculation_notes = sprintf("Calculation failed: %s", e$message)
+        )
+    })
+
+    list(
+        n = nrow(cal_data),
+        known_status_n = sum(cal_data$known_status, na.rm = TRUE),
+        status = recalibration_fit$status,
+        events = recalibration_fit$events,
+        non_events = recalibration_fit$non_events,
+        intercept = round(recalibration_fit$intercept, 3),
+        calibration_intercept = round(recalibration_fit$intercept, 3),
+        intercept_method = recalibration_fit$intercept_method,
+        slope = round(recalibration_fit$slope, 3),
+        slope_method = recalibration_fit$slope_method,
+        ici = round(ici_result$ici, 4),
+        ici_method = ici_result$ici_method,
+        nam_dagostino_p = grouped_calibration$nam_dagostino_p,
+        nam_dagostino_method = grouped_calibration$nam_dagostino_method,
+        nam_dagostino_statistic = grouped_calibration$nam_dagostino_statistic,
+        n_groups = grouped_calibration$n_groups,
+        group_results = grouped_calibration$group_results,
+        brier_score = brier_result$brier_score,
+        brier_method = brier_result$method_used,
+        brier_fallback_used = brier_result$fallback_triggered,
+        brier_calculation_notes = brier_result$calculation_notes
     )
 }
 
@@ -214,88 +672,60 @@ calculate_observed_expected_rates <- function(data, expected_var, event_var, tim
 #' Calculate survival calibration metrics
 #'
 #' Compute grouped Greenwood-Nam-D'Agostino calibration statistics and derive
-#' horizon-specific slope/intercept summaries from a logistic recalibration model.
+#' horizon-specific recalibration summaries from IPCW-weighted logistic models.
 #'
 #' @param data Data frame containing observed outcome and predicted probabilities
 #' @param expected_var Character name of predicted probability column
 #' @param event_var Character name of binary event indicator column
-#' @param time_var Character name of time variable (not used in simplified method)
+#' @param time_var Character name of time variable
+#' @param eval_time_months Numeric horizon in months for the calibration target
 #' @return A list with `n`, `intercept`, `slope`, `ici`, and `nam_dagostino_p` fields
-calculate_calibration_metrics <- function(data, expected_var, event_var, time_var) {
+calculate_calibration_metrics <- function(data, expected_var, event_var, time_var, eval_time_months) {
     logger::log_debug("Calculating calibration metrics")
-    # Guard: need at least two distinct predicted probabilities and at least one event/non-event
-    if (length(unique(stats::na.omit(data[[expected_var]]))) < 2 ||
-        sum(data[[event_var]] == 1, na.rm = TRUE) == 0 ||
-        sum(data[[event_var]] == 0, na.rm = TRUE) == 0) {
+    if (length(unique(stats::na.omit(data[[expected_var]]))) < 2) {
         return(list(
             n = nrow(data),
+            known_status_n = NA_integer_,
+            status = "insufficient_prediction_variation",
             intercept = NA_real_,
+            calibration_intercept = NA_real_,
+            intercept_method = "ipcw_offset_unavailable",
             slope = NA_real_,
+            slope_method = "ipcw_logit_unavailable",
             ici = NA_real_,
             nam_dagostino_p = NA_real_,
+            nam_dagostino_statistic = NA_real_,
             nam_dagostino_method = "greenwood_nam_dagostino",
             ici_method = "grouped_km"
         ))
     }
 
-    eval_time_months <- suppressWarnings(max(data[[time_var]], na.rm = TRUE))
     data <- data %>%
         dplyr::mutate(.predicted_risk_for_calibration = 1 - .data[[expected_var]])
 
-    grouped_calibration <- calculate_greenwood_nam_dagostino(
+    calculate_survival_calibration_summary(
         data = data,
         predicted_risk_var = ".predicted_risk_for_calibration",
         time_var = time_var,
         event_var = event_var,
         eval_time_months = eval_time_months
     )
-
-    calibration_model <- glm(stats::as.formula(paste(event_var, "~", expected_var)),
-        data = data, family = binomial()
-    )
-    co <- coef(calibration_model)
-    intercept <- unname(ifelse(length(co) >= 1, co[1], NA_real_))
-    slope <- unname(ifelse(length(co) >= 2, co[2], NA_real_))
-    predicted_probs <- predict(calibration_model, type = "response")
-    summ <- summary(calibration_model)
-    # Calculate Brier Score for overall prediction accuracy
-    brier_result <- tryCatch({
-        calculate_brier_score_survival(
-            data = data,
-            predicted_var = expected_var,
-            event_var = event_var,
-            time_var = time_var,
-            timepoint_months = max(data[[time_var]], na.rm = TRUE)  # Use max time as approximation
-        )
-    }, error = function(e) {
-        logger::log_warn(sprintf("Brier Score calculation failed: %s", e$message))
-        list(
-            brier_score = NA_real_,
-            method_used = "calculation_failed",
-            fallback_triggered = FALSE,
-            calculation_notes = sprintf("Calculation failed: %s", e$message)
-        )
-    })
-    
-    return(list(
-        n = nrow(data),
-        intercept = intercept,
-        slope = slope,
-        ici = grouped_calibration$ici,
-        ici_method = grouped_calibration$ici_method,
-        nam_dagostino_p = grouped_calibration$nam_dagostino_p,
-        nam_dagostino_method = grouped_calibration$nam_dagostino_method,
-        nam_dagostino_statistic = grouped_calibration$nam_dagostino_statistic,
-        n_groups = grouped_calibration$n_groups,
-        group_results = grouped_calibration$group_results,
-        brier_score = brier_result$brier_score,
-        brier_method = brier_result$method_used,
-        brier_fallback_used = brier_result$fallback_triggered,
-        brier_calculation_notes = brier_result$calculation_notes
-    ))
 }
 
 #' Calculate discrimination metrics (simplified)
+    #'
+    #' Compute a lightweight discrimination summary based on the rank correlation
+    #' between predicted risk and the observed event indicator, with optional
+    #' bootstrap confidence limits.
+    #'
+    #' @param data Data frame containing predictions and observed events.
+    #' @param expected_var Character name of the predicted-probability column.
+    #' @param event_var Character name of the binary event indicator column.
+    #' @param time_var Character name of the time column retained for interface
+    #'   consistency.
+    #' @param bootstrap_iterations Integer number of bootstrap resamples.
+    #' @return Data frame with discrimination estimate and confidence interval
+    #'   limits.
 calculate_discrimination_metrics <- function(data, expected_var, event_var, time_var, bootstrap_iterations) {
     logger::log_debug("Calculating discrimination metrics")
     harrell_c <- tryCatch(
@@ -338,6 +768,17 @@ calculate_discrimination_metrics <- function(data, expected_var, event_var, time
 }
 
 #' Calculate cumulative incidence (simplified)
+#'
+#' Produce a class-level cumulative-incidence summary using simple event counts
+#' within each grouping level.
+#'
+#' @param data Data frame containing grouped event data.
+#' @param time_var Character name of the time column retained for interface
+#'   consistency.
+#' @param event_var Character name of the event column retained for interface
+#'   consistency.
+#' @param group_var Character name of the grouping column.
+#' @return Data frame with per-group counts and cumulative-incidence estimates.
 calculate_cumulative_incidence <- function(data, time_var, event_var, group_var) {
     logger::log_debug("Calculating cumulative incidence")
     results <- data %>%
@@ -357,6 +798,16 @@ calculate_cumulative_incidence <- function(data, time_var, event_var, group_var)
 }
 
 #' Calculate cause-specific hazards (simplified)
+#'
+#' Produce a class-level cause-specific hazard summary using observed event counts
+#' and total follow-up time within each grouping level.
+#'
+#' @param data Data frame containing grouped event data.
+#' @param time_var Character name of the time column.
+#' @param event_var Character name of the event column retained for interface
+#'   consistency.
+#' @param group_var Character name of the grouping column.
+#' @return Data frame with per-group counts and cause-specific hazard estimates.
 calculate_cause_specific_hazards <- function(data, time_var, event_var, group_var) {
     logger::log_debug("Calculating cause-specific hazards")
     results <- data %>%
@@ -376,6 +827,17 @@ calculate_cause_specific_hazards <- function(data, time_var, event_var, group_va
 }
 
 #' Calculate net reclassification index (simplified)
+#'
+#' Approximate the net reclassification gain from an enhanced predictor by
+#' comparing its rank correlation with the observed event indicator against a
+#' base predictor.
+#'
+#' @param data Data frame containing both prediction columns and the event
+#'   indicator.
+#' @param base_pred Character name of the base-prediction column.
+#' @param enhanced_pred Character name of the enhanced-prediction column.
+#' @param event_var Character name of the observed event indicator column.
+#' @return One-row data frame with the simplified NRI estimate.
 calculate_net_reclassification_index <- function(data, base_pred, enhanced_pred, event_var) {
     logger::log_debug("Calculating net reclassification index")
     nri <- tryCatch(

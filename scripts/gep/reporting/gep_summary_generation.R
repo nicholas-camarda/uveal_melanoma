@@ -27,7 +27,9 @@ create_comprehensive_gep_summary <- function(validation_results, outcome_type, p
     calibration_data <- data.frame(
         Timepoint = character(),
         Slope = numeric(),
+        Slope_Method = character(),
         ICI = numeric(),
+        ICI_Method = character(),
         Nam_D_Agostino_p = numeric(),
         stringsAsFactors = FALSE
     )
@@ -64,7 +66,9 @@ create_comprehensive_gep_summary <- function(validation_results, outcome_type, p
                 new_cal_row <- data.frame(
                     Timepoint = tp,
                     Slope = cal$slope,
+                    Slope_Method = ifelse(is.null(cal$slope_method), NA_character_, cal$slope_method),
                     ICI = ifelse(is.null(cal$ici), NA_real_, cal$ici),
+                    ICI_Method = ifelse(is.null(cal$ici_method), NA_character_, cal$ici_method),
                     Nam_D_Agostino_p = ifelse(is.null(cal$nam_dagostino_p), NA_real_, cal$nam_dagostino_p),
                     stringsAsFactors = FALSE
                 )
@@ -258,6 +262,14 @@ create_comprehensive_gep_report <- function(mfs_results, mss_results, comparison
 }
 
 #' Create Comprehensive GEP Validation Summary
+    #'
+    #' Combine the outcome-specific comprehensive summaries into a single narrative
+    #' document spanning both MFS and MSS analyses.
+    #'
+    #' @param mfs_results MFS validation result object.
+    #' @param mss_results MSS validation result object.
+    #' @param prefix Filename prefix retained for interface consistency.
+    #' @return Character scalar containing the consolidated summary text.
 create_comprehensive_gep_validation_summary <- function(mfs_results, mss_results, prefix) {
     summary_lines <- c(
         "COMPREHENSIVE GEP VALIDATION SUMMARY",
@@ -327,6 +339,14 @@ create_comprehensive_gep_validation_summary <- function(mfs_results, mss_results
 }
 
 #' Create Clinical Interpretation Summary
+#'
+#' Generate a clinician-facing narrative overview of how to interpret GEP
+#' validation results and apply them in practice.
+#'
+#' @param mfs_results MFS validation result object.
+#' @param mss_results MSS validation result object.
+#' @param prefix Filename prefix retained for interface consistency.
+#' @return Character scalar containing the interpretation summary.
 create_clinical_interpretation_summary <- function(mfs_results, mss_results, prefix) {
     clinical_lines <- c(
         "GEP VALIDATION - CLINICAL INTERPRETATION SUMMARY",

@@ -529,6 +529,11 @@ GEP_MIN_GROUP_SIZE <- 5 # Minimum patients per calibration group
 GEP_DEFAULT_N_GROUPS <- 10 # Default number of calibration groups
 GEP_MIN_N_GROUPS <- 3 # Minimum number of calibration groups
 GEP_LOESS_SPAN <- 0.3 # Smoothing parameter for loess calibration curves
+GEP_MIN_CALIBRATION_EVENTS <- 5 # Minimum events and non-events for stable recalibration fits
+GEP_CALIBRATION_SPLINE_DF <- 3 # Degrees of freedom for IPCW-smoothed calibration curves
+GEP_IPCW_WEIGHT_CAP_PROB <- 0.99 # Cap extreme inverse-censoring weights at the 99th percentile
+GEP_MAX_CALIBRATION_COEF_ABS <- 10 # Treat larger recalibration coefficients as unstable/quasi-separated fits
+GEP_MAX_CALIBRATION_COEF_SE <- 5 # Treat larger recalibration coefficient standard errors as unstable fits
 
 # Sample size requirements for analysis
 GEP_MIN_SAMPLE_SIZE <- 20 # Minimum sample size for any analysis

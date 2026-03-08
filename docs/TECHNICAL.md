@@ -443,7 +443,7 @@ The analysis pipeline includes robust error handling for situations where data l
 - Use metastasis events for MFS and melanoma-specific death for MSS.
 - Run companion competing-risk MSS analyses so non-melanoma death is handled explicitly rather than folded into the primary MSS endpoint.
 - Summarize observed-vs-expected performance by GEP class and as an overall O/E ratio with exact Poisson confidence intervals and a Pearson goodness-of-fit p-value across classes.
-- Summarize calibration with Nam-D'Agostino, ICI, and calibration slope; summarize discrimination with Harrell's C and integrated/time-aggregated AUC-style metrics.
+- Summarize calibration with Greenwood Nam-D'Agostino, an IPCW-weighted logistic calibration slope, and an ICI that may use grouped-KM fallback when the usable horizon-specific risk support is too discrete; numerically unstable slope fits are withheld instead of reported as extreme coefficients. Summarize discrimination with Harrell's C and integrated/time-aggregated AUC-style metrics.
 
 **Current Outputs:**
 - Outcome-specific consolidated workbooks:

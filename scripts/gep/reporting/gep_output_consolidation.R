@@ -183,6 +183,14 @@ create_consolidated_gep_tables <- function(validation_results, outcome_type, out
     ))
 }
 
+#' Create an overall observed-versus-expected summary table
+#'
+#' Collapse timepoint-specific observed/expected outputs into a single table with
+#' overall counts, O/E ratios, confidence intervals, and goodness-of-fit
+#' p-values.
+#'
+#' @param validation_results Named list of per-timepoint validation results.
+#' @return Data frame with one row per timepoint.
 create_consolidated_oe_summary_table <- function(validation_results) {
     oe_data <- data.frame()
 
@@ -207,6 +215,14 @@ create_consolidated_oe_summary_table <- function(validation_results) {
     oe_data
 }
 
+#' Describe PRAME result availability
+#'
+#' Generate a human-readable status note explaining why PRAME results are
+#' present, absent, or not supportable for a given context.
+#'
+#' @param prame_results PRAME result object, or `NULL` if no analysis was run.
+#' @param context_label Character label used in the note.
+#' @return Character scalar status note.
 get_prame_availability_note <- function(prame_results, context_label = "PRAME analysis") {
     if (is.null(prame_results)) {
         return(sprintf("%s was not run for this output.", context_label))
@@ -227,6 +243,13 @@ get_prame_availability_note <- function(prame_results, context_label = "PRAME an
     sprintf("%s did not produce reclassification results for this cohort/outcome.", context_label)
 }
 
+#' Create a placeholder PRAME summary table
+#'
+#' Build a one-row PRAME summary table used when the analysis is unavailable or
+#' not supportable.
+#'
+#' @param note Character explanation to store in the `Interpretation` column.
+#' @return Data frame matching the PRAME summary schema.
 create_prame_placeholder_table <- function(note) {
     data.frame(
         Timepoint = "Not available",
@@ -250,6 +273,15 @@ create_prame_placeholder_table <- function(note) {
     )
 }
 
+#' Collect unified PRAME comparison rows
+#'
+#' Convert PRAME reclassification results into a cross-outcome comparison table
+#' used by the unified workbook.
+#'
+#' @param prame_results PRAME analysis result object.
+#' @param outcome_label Character outcome label, such as `"MFS"` or `"MSS"`.
+#' @return Data frame with one row per timepoint, or an empty data frame if no
+#'   comparison rows can be created.
 collect_unified_prame_rows <- function(prame_results, outcome_label) {
     if (is.null(prame_results) || is.null(prame_results$nri_results) || !is.list(prame_results$nri_results)) {
         return(data.frame())
@@ -282,6 +314,14 @@ collect_unified_prame_rows <- function(prame_results, outcome_label) {
     do.call(rbind, rows)
 }
 
+#' Create a unified PRAME placeholder row
+#'
+#' Build a single-row placeholder for the unified PRAME comparison workbook when
+#' one outcome has no supportable PRAME results.
+#'
+#' @param outcome_label Character outcome label.
+#' @param note Character explanation to store in the `Interpretation` column.
+#' @return One-row data frame matching the unified PRAME comparison schema.
 create_unified_prame_placeholder_row <- function(outcome_label, note) {
     data.frame(
         Outcome = outcome_label,
@@ -295,6 +335,14 @@ create_unified_prame_placeholder_row <- function(outcome_label, note) {
 }
 
 #' Create consolidated calibration table across all timepoints
+#'
+#' Gather timepoint-specific calibration outputs into a single workbook-ready
+#' table with explicit method fields.
+#'
+#' @param validation_results Named list of per-timepoint validation results.
+#' @param outcome_type Character outcome label retained for interface
+#'   consistency.
+#' @return Data frame with one row per timepoint.
 create_consolidated_calibration_table <- function(validation_results, outcome_type) {
     cal_data <- data.frame()
 
@@ -306,8 +354,11 @@ create_consolidated_calibration_table <- function(validation_results, outcome_ty
                 Timepoint = tp_name,
                 N = cal$n %||% NA,
                 Nam_D_Agostino_p = cal$nam_dagostino_p %||% NA,
+                Nam_D_Agostino_Method = cal$nam_dagostino_method %||% NA,
                 ICI = cal$ici %||% NA,
+                ICI_Method = cal$ici_method %||% NA,
                 Slope = cal$slope %||% cal$calibration_slope %||% NA,
+                Slope_Method = cal$slope_method %||% NA,
                 Brier_Score = cal$brier_score %||% NA,
                 Brier_Method = cal$brier_method %||% NA,
                 Brier_Fallback_Used = cal$brier_fallback_used %||% NA,
@@ -320,6 +371,14 @@ create_consolidated_calibration_table <- function(validation_results, outcome_ty
 }
 
 #' Create consolidated discrimination table across all timepoints
+#'
+#' Gather timepoint-specific discrimination outputs into a single workbook-ready
+#' table.
+#'
+#' @param validation_results Named list of per-timepoint validation results.
+#' @param outcome_type Character outcome label retained for interface
+#'   consistency.
+#' @return Data frame with one row per timepoint.
 create_consolidated_discrimination_table <- function(validation_results, outcome_type) {
     disc_data <- data.frame()
 
@@ -350,6 +409,14 @@ create_consolidated_discrimination_table <- function(validation_results, outcome
 }
 
 #' Create consolidated performance table across all timepoints
+#'
+#' Build a reduced performance table for legacy consumers that still expect a
+#' separate performance summary distinct from the discrimination table.
+#'
+#' @param validation_results Named list of per-timepoint validation results.
+#' @param outcome_type Character outcome label retained for interface
+#'   consistency.
+#' @return Data frame with one row per timepoint.
 create_consolidated_performance_table <- function(validation_results, outcome_type) {
     perf_data <- data.frame()
 
@@ -373,6 +440,14 @@ create_consolidated_performance_table <- function(validation_results, outcome_ty
 }
 
 #' Create consolidated decision curve table across all timepoints
+#'
+#' Gather decision-curve metrics into a single workbook-ready table spanning all
+#' available timepoints.
+#'
+#' @param validation_results Named list of per-timepoint validation results.
+#' @param outcome_type Character outcome label retained for interface
+#'   consistency.
+#' @return Data frame with one row per timepoint.
 create_consolidated_decision_curve_table <- function(validation_results, outcome_type) {
     dca_data <- data.frame()
 
@@ -400,6 +475,16 @@ create_consolidated_decision_curve_table <- function(validation_results, outcome
 }
 
 #' Create comprehensive text summary from consolidated tables
+#'
+#' Render a plain-text summary of calibration, discrimination, and decision-curve
+#' results from the consolidated workbook tables.
+#'
+#' @param validation_results Named list of per-timepoint validation results.
+#' @param outcome_type Character outcome label.
+#' @param cal_consolidated Consolidated calibration data frame.
+#' @param disc_consolidated Consolidated discrimination data frame.
+#' @param dca_consolidated Consolidated decision-curve data frame.
+#' @return Character scalar containing a newline-delimited summary.
 create_comprehensive_text_summary <- function(validation_results, outcome_type,
                                               cal_consolidated, disc_consolidated,
                                               dca_consolidated) {
@@ -411,19 +496,21 @@ create_comprehensive_text_summary <- function(validation_results, outcome_type,
     if (nrow(cal_consolidated) > 0) {
         summary_lines <- c(summary_lines, "CALIBRATION SUMMARY:")
         summary_lines <- c(summary_lines, "")
-        summary_lines <- c(summary_lines, sprintf("%-10s %-8s %-20s %-12s %-10s", "Timepoint", "N", "Nam-D'Agostino p", "ICI", "Slope"))
-        summary_lines <- c(summary_lines, paste(rep("-", 70), collapse = ""))
+        summary_lines <- c(summary_lines, sprintf("%-10s %-8s %-20s %-12s %-18s %-10s %-18s", "Timepoint", "N", "Nam-D'Agostino p", "ICI", "ICI Method", "Slope", "Slope Method"))
+        summary_lines <- c(summary_lines, paste(rep("-", 110), collapse = ""))
         for (i in seq_len(nrow(cal_consolidated))) {
             row <- cal_consolidated[i, ]
             summary_lines <- c(
                 summary_lines,
                 sprintf(
-                    "%-10s %-8s %-20s %-12s %-10s",
+                    "%-10s %-8s %-20s %-12s %-18s %-10s %-18s",
                     row$Timepoint,
                     ifelse(is.na(row$N), "NA", as.character(row$N)),
                     ifelse(is.na(row$Nam_D_Agostino_p), "NA", sprintf("%.3f", row$Nam_D_Agostino_p)),
                     ifelse(is.na(row$ICI), "NA", sprintf("%.3f", row$ICI)),
-                    ifelse(is.na(row$Slope), "NA", sprintf("%.3f", row$Slope))
+                    ifelse(is.na(row$ICI_Method), "NA", as.character(row$ICI_Method)),
+                    ifelse(is.na(row$Slope), "NA", sprintf("%.3f", row$Slope)),
+                    ifelse(is.na(row$Slope_Method), "NA", as.character(row$Slope_Method))
                 )
             )
         }
@@ -483,27 +570,37 @@ create_comprehensive_text_summary <- function(validation_results, outcome_type,
     # Key findings summary
     summary_lines <- c(summary_lines, "KEY FINDINGS:")
     if (nrow(cal_consolidated) > 0) {
-        # Find best calibration timepoint
-        best_cal_idx <- which.max(cal_consolidated$Slope %||% 0)
-        if (best_cal_idx > 0) {
+        valid_cal_idx <- which(!is.na(cal_consolidated$Slope))
+        if (length(valid_cal_idx) > 0) {
+            best_cal_idx <- valid_cal_idx[which.max(cal_consolidated$Slope[valid_cal_idx])]
             best_tp <- cal_consolidated$Timepoint[best_cal_idx]
             best_slope <- cal_consolidated$Slope[best_cal_idx]
             summary_lines <- c(
                 summary_lines,
                 sprintf("- Best calibration at %s (slope: %.3f)", best_tp, best_slope)
             )
+        } else {
+            summary_lines <- c(
+                summary_lines,
+                "- No finite calibration slope was estimable across timepoints"
+            )
         }
     }
 
     if (nrow(disc_consolidated) > 0) {
-        # Find best discrimination timepoint
-        best_disc_idx <- which.max(disc_consolidated$Harrell_C %||% 0)
-        if (best_disc_idx > 0) {
+        valid_disc_idx <- which(!is.na(disc_consolidated$Harrell_C))
+        if (length(valid_disc_idx) > 0) {
+            best_disc_idx <- valid_disc_idx[which.max(disc_consolidated$Harrell_C[valid_disc_idx])]
             best_tp <- disc_consolidated$Timepoint[best_disc_idx]
             best_c <- disc_consolidated$Harrell_C[best_disc_idx]
             summary_lines <- c(
                 summary_lines,
                 sprintf("- Best discrimination at %s (Harrell's C: %.3f)", best_tp, best_c)
+            )
+        } else {
+            summary_lines <- c(
+                summary_lines,
+                "- No finite discrimination estimate was available across timepoints"
             )
         }
     }
@@ -626,6 +723,13 @@ create_unified_gep_validation_summary <- function(mfs_results, mss_results, outp
 }
 
 #' Create unified calibration summary across outcomes
+#'
+#' Combine MFS and MSS calibration outputs into a single cross-outcome
+#' comparison table.
+#'
+#' @param mfs_results MFS validation result object.
+#' @param mss_results MSS validation result object.
+#' @return Data frame with one row per outcome and timepoint.
 create_unified_calibration_summary <- function(mfs_results, mss_results) {
     unified_cal <- data.frame()
 
@@ -640,8 +744,11 @@ create_unified_calibration_summary <- function(mfs_results, mss_results) {
                     Timepoint = tp_name,
                     N = cal$n %||% NA,
                     Nam_D_Agostino_p = cal$nam_dagostino_p %||% NA,
+                    Nam_D_Agostino_Method = cal$nam_dagostino_method %||% NA,
                     ICI = cal$ici %||% NA,
+                    ICI_Method = cal$ici_method %||% NA,
                     Slope = cal$slope %||% cal$calibration_slope %||% NA,
+                    Slope_Method = cal$slope_method %||% NA,
                     stringsAsFactors = FALSE
                 ))
             }
@@ -659,8 +766,11 @@ create_unified_calibration_summary <- function(mfs_results, mss_results) {
                     Timepoint = tp_name,
                     N = cal$n %||% NA,
                     Nam_D_Agostino_p = cal$nam_dagostino_p %||% NA,
+                    Nam_D_Agostino_Method = cal$nam_dagostino_method %||% NA,
                     ICI = cal$ici %||% NA,
+                    ICI_Method = cal$ici_method %||% NA,
                     Slope = cal$slope %||% cal$calibration_slope %||% NA,
+                    Slope_Method = cal$slope_method %||% NA,
                     stringsAsFactors = FALSE
                 ))
             }
@@ -671,6 +781,13 @@ create_unified_calibration_summary <- function(mfs_results, mss_results) {
 }
 
 #' Create unified discrimination summary across outcomes
+#'
+#' Combine MFS and MSS discrimination outputs into a single cross-outcome
+#' comparison table.
+#'
+#' @param mfs_results MFS validation result object.
+#' @param mss_results MSS validation result object.
+#' @return Data frame with one row per outcome and timepoint.
 create_unified_discrimination_summary <- function(mfs_results, mss_results) {
     unified_disc <- data.frame()
 
@@ -728,6 +845,15 @@ create_unified_discrimination_summary <- function(mfs_results, mss_results) {
 # Performance metrics (C-Index, AUC) are the same as discrimination metrics (Harrell's C, Integrated AUC)
 
 #' Create unified text summary
+#'
+#' Render a plain-text comparison of unified calibration and discrimination
+#' results across outcomes.
+#'
+#' @param mfs_results MFS validation result object.
+#' @param mss_results MSS validation result object.
+#' @param unified_cal Unified calibration summary table.
+#' @param unified_disc Unified discrimination summary table.
+#' @return Character scalar containing a newline-delimited summary.
 create_unified_text_summary <- function(mfs_results, mss_results, unified_cal, unified_disc) {
     summary_lines <- c()
     summary_lines <- c(summary_lines, "=", "Unified GEP Validation Summary", "=")
@@ -737,20 +863,22 @@ create_unified_text_summary <- function(mfs_results, mss_results, unified_cal, u
     # Calibration comparison
     if (nrow(unified_cal) > 0) {
         summary_lines <- c(summary_lines, "CALIBRATION COMPARISON (MFS vs MSS):")
-        summary_lines <- c(summary_lines, "Outcome | Timepoint | N | Nam-D'Agostino p | ICI | Slope")
-        summary_lines <- c(summary_lines, "---------|-----------|----|------------------|-----|------")
+        summary_lines <- c(summary_lines, "Outcome | Timepoint | N | Nam-D'Agostino p | ICI | ICI Method | Slope | Slope Method")
+        summary_lines <- c(summary_lines, "---------|-----------|----|------------------|-----|------------|-------|-------------")
         for (i in seq_len(nrow(unified_cal))) {
             row <- unified_cal[i, ]
             summary_lines <- c(
                 summary_lines,
                 sprintf(
-                    "%s | %s | %s | %s | %s | %s",
+                    "%s | %s | %s | %s | %s | %s | %s | %s",
                     row$Outcome,
                     row$Timepoint,
                     ifelse(is.na(row$N), "NA", as.character(row$N)),
                     ifelse(is.na(row$Nam_D_Agostino_p), "NA", sprintf("%.3f", row$Nam_D_Agostino_p)),
                     ifelse(is.na(row$ICI), "NA", sprintf("%.3f", row$ICI)),
-                    ifelse(is.na(row$Slope), "NA", sprintf("%.3f", row$Slope))
+                    ifelse(is.na(row$ICI_Method), "NA", as.character(row$ICI_Method)),
+                    ifelse(is.na(row$Slope), "NA", sprintf("%.3f", row$Slope)),
+                    ifelse(is.na(row$Slope_Method), "NA", as.character(row$Slope_Method))
                 )
             )
         }

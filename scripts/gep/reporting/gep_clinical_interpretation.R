@@ -46,6 +46,12 @@ create_clinical_interpretation <- function(calibration_data, discrimination_data
 }
 
 #' Create Calibration Interpretation
+#'
+#' Summarize calibration-slope behavior across timepoints in narrative form.
+#'
+#' @param calibration_data Data frame with at least a `Slope` column.
+#' @param outcome_type Character outcome label, typically `"MFS"` or `"MSS"`.
+#' @return Character scalar with a calibration interpretation.
 create_calibration_interpretation <- function(calibration_data, outcome_type) {
     if (nrow(calibration_data) == 0) return("Calibration metrics not available")
     
@@ -65,7 +71,7 @@ create_calibration_interpretation <- function(calibration_data, outcome_type) {
     calibration_quality <- if (is.na(mean_slope)) "unknown" else if (abs(mean_slope - 1) < 0.1) "excellent" else if (abs(mean_slope - 1) < 0.2) "good" else "moderate"
     
     interpretation <- sprintf(
-        "Calibration slope across timepoints shows %s pattern (mean = %.2f). Overall calibration quality is %s. Clinical interpretation: A slope of 1.0 indicates perfect calibration. Slopes > 1.0 suggest the model overestimates risk, while slopes < 1.0 suggest underestimation. The %s calibration quality indicates the model %s for clinical use.",
+        "Calibration slope across timepoints shows %s pattern (mean = %.2f). Overall calibration quality is %s. Clinical interpretation: A slope of 1.0 indicates perfect calibration. Slopes > 1.0 suggest the predictions are too moderate or compressed, while slopes < 1.0 suggest the predictions are too extreme. The %s calibration quality indicates the model %s for clinical use.",
         slope_trend, mean_slope, calibration_quality,
         calibration_quality,
         if (is.na(calibration_quality) || calibration_quality == "unknown") "has unknown calibration status" else if (calibration_quality %in% c("excellent", "good")) "is well-calibrated and suitable" else "may require recalibration before"
@@ -75,6 +81,12 @@ create_calibration_interpretation <- function(calibration_data, outcome_type) {
 }
 
 #' Create Discrimination Interpretation
+#'
+#' Summarize Harrell's C across timepoints in narrative form.
+#'
+#' @param discrimination_data Data frame with at least a `Harrell_C` column.
+#' @param outcome_type Character outcome label, typically `"MFS"` or `"MSS"`.
+#' @return Character scalar with a discrimination interpretation.
 create_discrimination_interpretation <- function(discrimination_data, outcome_type) {
     if (nrow(discrimination_data) == 0) return("Discrimination metrics not available")
     
@@ -95,6 +107,12 @@ create_discrimination_interpretation <- function(discrimination_data, outcome_ty
 }
 
 #' Create Observed/Expected Interpretation
+#'
+#' Summarize overall O/E behavior across timepoints in narrative form.
+#'
+#' @param oe_data Data frame with at least an `Overall_OE` column.
+#' @param outcome_type Character outcome label, typically `"MFS"` or `"MSS"`.
+#' @return Character scalar with an O/E interpretation.
 create_oe_interpretation <- function(oe_data, outcome_type) {
     if (nrow(oe_data) == 0) return("Observed/Expected metrics not available")
     
@@ -117,6 +135,16 @@ create_oe_interpretation <- function(oe_data, outcome_type) {
 }
 
 #' Create Temporal Pattern Analysis
+#'
+#' Describe cross-timepoint patterns in calibration, discrimination, and O/E
+#' behavior.
+#'
+#' @param calibration_data Data frame with calibration metrics across timepoints.
+#' @param discrimination_data Data frame with discrimination metrics across
+#'   timepoints.
+#' @param oe_data Data frame with observed/expected metrics across timepoints.
+#' @param outcome_type Character outcome label, typically `"MFS"` or `"MSS"`.
+#' @return Character scalar describing temporal patterns.
 create_temporal_patterns <- function(calibration_data, discrimination_data, oe_data, outcome_type) {
     patterns <- c()
     
@@ -177,13 +205,25 @@ create_temporal_patterns <- function(calibration_data, discrimination_data, oe_d
 }
 
 #' Create Clinical Implications
+#'
+#' Translate calibration and discrimination summaries into practical clinical-use
+#' statements for the current outcome.
+#'
+#' @param calibration_data Data frame with calibration metrics across timepoints.
+#' @param discrimination_data Data frame with discrimination metrics across
+#'   timepoints.
+#' @param oe_data Data frame with observed/expected metrics across timepoints.
+#' @param outcome_type Character outcome label, typically `"MFS"` or `"MSS"`.
+#' @return Character scalar describing clinical implications.
 create_clinical_implications <- function(calibration_data, discrimination_data, oe_data, outcome_type) {
     implications <- c()
     
     # Overall model utility
     if (nrow(discrimination_data) > 0) {
         mean_harrell <- mean(discrimination_data$Harrell_C, na.rm = TRUE)
-        if (mean_harrell >= 0.8) {
+        if (is.na(mean_harrell)) {
+            implications <- c(implications, "Discrimination was not estimable across the available timepoints")
+        } else if (mean_harrell >= 0.8) {
             implications <- c(implications, "The GEP model provides strong prognostic information suitable for clinical decision-making")
         } else {
             implications <- c(implications, "The GEP model provides moderate prognostic information; clinical decisions should consider additional factors")
@@ -193,7 +233,9 @@ create_clinical_implications <- function(calibration_data, discrimination_data, 
     # Calibration implications
     if (nrow(calibration_data) > 0) {
         mean_slope <- mean(calibration_data$Slope, na.rm = TRUE)
-        if (abs(mean_slope - 1) < 0.2) {
+        if (is.na(mean_slope)) {
+            implications <- c(implications, "Calibration slope was not estimable across the available timepoints")
+        } else if (abs(mean_slope - 1) < 0.2) {
             implications <- c(implications, "Good calibration suggests the model's risk estimates can be used directly for patient counseling")
         } else {
             implications <- c(implications, "Moderate calibration suggests risk estimates should be interpreted with caution and may require adjustment")
@@ -211,15 +253,24 @@ create_clinical_implications <- function(calibration_data, discrimination_data, 
 }
 
 # Helper functions for clinical interpretation
+#'
+#' Classify calibration slope interpretation
+#'
+#' @param slope Numeric calibration slope.
+#' @return Character label describing calibration quality.
 get_calibration_interpretation <- function(slope) {
     if (is.na(slope)) return("Not available")
     if (abs(slope - 1) < 0.1) return("Excellent calibration")
     if (abs(slope - 1) < 0.2) return("Good calibration")
-    if (slope > 1.1) return("Model overestimates risk")
-    if (slope < 0.9) return("Model underestimates risk")
+    if (slope > 1.1) return("Predictions appear too compressed")
+    if (slope < 0.9) return("Predictions appear too extreme")
     return("Moderate calibration")
 }
 
+#' Classify calibration quality from slope magnitude
+#'
+#' @param slope Numeric calibration slope.
+#' @return Character quality label.
 get_calibration_quality <- function(slope) {
     if (is.na(slope)) return("Not available")
     if (abs(slope - 1) < 0.1) return("Excellent")
@@ -227,6 +278,10 @@ get_calibration_quality <- function(slope) {
     return("Moderate")
 }
 
+#' Describe calibration slope trend across timepoints
+#'
+#' @param slopes Numeric vector of calibration slopes.
+#' @return Character description of the slope trend.
 get_slope_trend <- function(slopes) {
     if (length(slopes) < 2) return("Single timepoint")
     # Filter out NA values before computing differences
@@ -238,6 +293,11 @@ get_slope_trend <- function(slopes) {
     return("Variable pattern")
 }
 
+#' Interpret decision-curve utility at a threshold
+#'
+#' @param threshold Numeric decision threshold.
+#' @param net_benefit Numeric net benefit estimate.
+#' @return Character description of threshold-specific utility.
 get_decision_curve_interpretation <- function(threshold, net_benefit) {
     if (is.na(threshold) || is.na(net_benefit)) return("Not available")
     if (threshold < 5) return("Low threshold - model useful for most patients")
@@ -245,6 +305,10 @@ get_decision_curve_interpretation <- function(threshold, net_benefit) {
     return("High threshold - model useful for high risk only")
 }
 
+#' Describe threshold trend across timepoints
+#'
+#' @param thresholds Numeric vector of decision thresholds.
+#' @return Character description of the threshold trend.
 get_threshold_trend <- function(thresholds) {
     if (length(thresholds) < 2) return("Single timepoint")
     # Filter out NA values before computing differences
@@ -256,6 +320,10 @@ get_threshold_trend <- function(thresholds) {
     return("Variable pattern")
 }
 
+#' Describe net-benefit trend across timepoints
+#'
+#' @param net_benefits Numeric vector of net-benefit estimates.
+#' @return Character description of the net-benefit trend.
 get_net_benefit_trend <- function(net_benefits) {
     if (length(net_benefits) < 2) return("Single timepoint")
     # Filter out NA values before computing differences
@@ -267,6 +335,10 @@ get_net_benefit_trend <- function(net_benefits) {
     return("Variable pattern")
 }
 
+#' Classify discrimination quality
+#'
+#' @param harrell_c Numeric Harrell's C estimate.
+#' @return Character quality label.
 get_discrimination_quality <- function(harrell_c) {
     if (is.na(harrell_c)) return("Not available")
     if (harrell_c >= 0.9) return("Excellent")
@@ -275,6 +347,10 @@ get_discrimination_quality <- function(harrell_c) {
     return("Moderate")
 }
 
+#' Classify O/E calibration quality
+#'
+#' @param oe_ratio Numeric observed-to-expected ratio.
+#' @return Character quality label.
 get_oe_calibration_quality <- function(oe_ratio) {
     if (is.na(oe_ratio)) return("Not available")
     if (abs(oe_ratio - 1) < 0.1) return("Excellent")
@@ -282,6 +358,11 @@ get_oe_calibration_quality <- function(oe_ratio) {
     return("Moderate")
 }
 
+#' Combine discrimination and calibration into an overall assessment
+#'
+#' @param harrell_c Numeric Harrell's C estimate.
+#' @param oe_ratio Numeric observed-to-expected ratio.
+#' @return Character overall performance assessment.
 get_overall_performance_assessment <- function(harrell_c, oe_ratio) {
     if (is.na(harrell_c) || is.na(oe_ratio)) return("Insufficient data")
     
@@ -293,6 +374,10 @@ get_overall_performance_assessment <- function(harrell_c, oe_ratio) {
     return("Moderate overall performance")
 }
 
+#' Describe discrimination trend across timepoints
+#'
+#' @param harrell_c_values Numeric vector of Harrell's C values.
+#' @return Character description of the discrimination trend.
 get_discrimination_trend <- function(harrell_c_values) {
     if (length(harrell_c_values) < 2) return("Single timepoint")
     # Filter out NA values before computing differences
@@ -304,6 +389,10 @@ get_discrimination_trend <- function(harrell_c_values) {
     return("Stable discrimination")
 }
 
+#' Describe O/E-based calibration trend across timepoints
+#'
+#' @param oe_ratios Numeric vector of observed-to-expected ratios.
+#' @return Character description of the calibration trend.
 get_calibration_trend <- function(oe_ratios) {
     if (length(oe_ratios) < 2) return("Single timepoint")
     # Filter out NA values before computing differences

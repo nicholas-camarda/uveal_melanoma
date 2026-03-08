@@ -2,6 +2,15 @@
 # Table generation and formatting for GEP validation results
 
 #' Extract overall observed/expected metrics
+#'
+#' Normalize the different observed/expected result shapes used across the GEP
+#' pipeline into a single overall summary structure.
+#'
+#' @param observed_expected Either a nested list result or a data frame with
+#'   observed/expected quantities.
+#' @return A list with overall counts, observed and expected totals, O/E ratio,
+#'   confidence interval bounds, and goodness-of-fit p-value, or `NULL` if the
+#'   input cannot be interpreted.
 extract_overall_oe_metrics <- function(observed_expected) {
     if (is.null(observed_expected)) {
         return(NULL)
@@ -102,6 +111,13 @@ extract_overall_oe_metrics <- function(observed_expected) {
 }
 
 #' Create Detailed Metrics Table
+#'
+#' Render a plain-text summary of calibration, discrimination, and overall O/E
+#' metrics for each available validation timepoint.
+#'
+#' @param validation_results Named list of timepoint-specific validation result
+#'   objects.
+#' @return Character scalar containing a newline-delimited report.
 create_detailed_metrics_table <- function(validation_results) {
     table_lines <- c()
     
@@ -115,10 +131,12 @@ create_detailed_metrics_table <- function(validation_results) {
             slope_val <- ifelse(is.null(cal$slope), NA_real_, cal$slope)
             ici_val <- ifelse(is.null(cal$ici), NA_real_, cal$ici)
             nam_dagostino_val <- ifelse(is.null(cal$nam_dagostino_p), NA_real_, cal$nam_dagostino_p)
+            slope_method <- ifelse(is.null(cal$slope_method), "NA", cal$slope_method)
+            ici_method <- ifelse(is.null(cal$ici_method), "NA", cal$ici_method)
             
             table_lines <- c(table_lines, 
-                sprintf("  Calibration: slope=%.3f, ICI=%.3f, Nam-D'Agostino p=%.4f", 
-                    slope_val, ici_val, nam_dagostino_val))
+                sprintf("  Calibration: slope=%.3f [%s], ICI=%.3f [%s], Nam-D'Agostino p=%.4f", 
+                    slope_val, slope_method, ici_val, ici_method, nam_dagostino_val))
         }
         
         # Discrimination - with defensive programming
@@ -175,6 +193,8 @@ create_gep_comparison_table <- function(mfs_results, mss_results) {
                 timepoint = tp_name,
                 calibration_slope = cal_slope,
                 calibration_intercept = cal_intercept,
+                calibration_slope_method = if (!is.null(tp_results$calibration) && !is.null(tp_results$calibration$slope_method)) tp_results$calibration$slope_method else NA,
+                calibration_ici_method = if (!is.null(tp_results$calibration) && !is.null(tp_results$calibration$ici_method)) tp_results$calibration$ici_method else NA,
                 harrell_c = harrell_c,
                 integrated_auc = integrated_auc,
                 stringsAsFactors = FALSE
@@ -195,6 +215,8 @@ create_gep_comparison_table <- function(mfs_results, mss_results) {
                     timepoint = tp_name,
                     calibration_slope = cal_slope,
                     calibration_intercept = cal_intercept,
+                    calibration_slope_method = if (!is.null(tp_results$calibration) && !is.null(tp_results$calibration$slope_method)) tp_results$calibration$slope_method else NA,
+                    calibration_ici_method = if (!is.null(tp_results$calibration) && !is.null(tp_results$calibration$ici_method)) tp_results$calibration$ici_method else NA,
                     harrell_c = harrell_c,
                     integrated_auc = integrated_auc,
                     stringsAsFactors = FALSE
