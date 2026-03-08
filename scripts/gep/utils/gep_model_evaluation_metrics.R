@@ -1,5 +1,132 @@
 # GEP Model Evaluation Metrics (shared calculators)
 
+assign_calibration_risk_groups <- function(predicted_risk) {
+    n_obs <- length(predicted_risk)
+    n_groups <- min(10, floor(n_obs / 10))
+    if (n_groups < 3) {
+        n_groups <- 3
+    }
+
+    risk_quantiles <- unique(stats::quantile(predicted_risk, seq(0, 1, length.out = n_groups + 1), na.rm = TRUE))
+
+    if (length(risk_quantiles) <= 2) {
+        return(ifelse(predicted_risk <= stats::median(predicted_risk, na.rm = TRUE), 1, 2))
+    }
+
+    cut(predicted_risk, breaks = risk_quantiles, include.lowest = TRUE, labels = FALSE)
+}
+
+estimate_km_observed_events <- function(time, event, eval_time_months) {
+    surv_fit <- survival::survfit(survival::Surv(time, event) ~ 1)
+    surv_summary <- summary(surv_fit, times = eval_time_months, extend = TRUE)
+
+    survival_prob <- suppressWarnings(as.numeric(surv_summary$surv[[1]] %||% surv_summary$surv[1]))
+    survival_se <- suppressWarnings(as.numeric(surv_summary$std.err[[1]] %||% surv_summary$std.err[1]))
+
+    if (!is.finite(survival_prob)) {
+        survival_prob <- 1
+    }
+    if (!is.finite(survival_se)) {
+        survival_se <- 0
+    }
+
+    observed_risk <- 1 - survival_prob
+    n_obs <- length(time)
+
+    list(
+        observed_rate = observed_risk,
+        observed_events = n_obs * observed_risk,
+        raw_events = sum(event == 1 & time <= eval_time_months, na.rm = TRUE),
+        km_survival = survival_prob,
+        km_survival_se = survival_se,
+        observed_events_variance = (n_obs^2) * (survival_se^2)
+    )
+}
+
+calculate_greenwood_nam_dagostino <- function(data, predicted_risk_var, time_var, event_var, eval_time_months) {
+    cal_data <- data %>%
+        dplyr::filter(
+            !is.na(.data[[predicted_risk_var]]),
+            !is.na(.data[[time_var]]),
+            !is.na(.data[[event_var]])
+        ) %>%
+        dplyr::mutate(
+            predicted_risk = .data[[predicted_risk_var]],
+            observed_time = .data[[time_var]],
+            observed_event = .data[[event_var]],
+            risk_group = assign_calibration_risk_groups(.data[[predicted_risk_var]])
+        )
+
+    if (nrow(cal_data) < GEP_MIN_SAMPLE_SIZE) {
+        return(list(
+            n = nrow(cal_data),
+            n_groups = NA_integer_,
+            nam_dagostino_statistic = NA_real_,
+            nam_dagostino_p = NA_real_,
+            nam_dagostino_method = "greenwood_nam_dagostino",
+            ici = NA_real_,
+            ici_method = "grouped_km",
+            group_results = data.frame()
+        ))
+    }
+
+    group_results <- cal_data %>%
+        dplyr::group_by(risk_group) %>%
+        dplyr::group_modify(~ {
+            km_metrics <- estimate_km_observed_events(.x$observed_time, .x$observed_event, eval_time_months)
+            tibble::tibble(
+                n = nrow(.x),
+                mean_predicted_risk = mean(.x$predicted_risk, na.rm = TRUE),
+                expected_events = sum(.x$predicted_risk, na.rm = TRUE),
+                expected_rate = mean(.x$predicted_risk, na.rm = TRUE),
+                observed_events = km_metrics$observed_events,
+                observed_rate = km_metrics$observed_rate,
+                raw_events = km_metrics$raw_events,
+                km_survival = km_metrics$km_survival,
+                km_survival_se = km_metrics$km_survival_se,
+                observed_events_variance = km_metrics$observed_events_variance
+            )
+        }) %>%
+        dplyr::ungroup() %>%
+        dplyr::filter(n >= GEP_MIN_GROUP_SIZE)
+
+    valid_groups <- group_results %>%
+        dplyr::filter(
+            is.finite(expected_events),
+            is.finite(observed_events),
+            is.finite(observed_events_variance)
+        )
+
+    chisq_stat <- NA_real_
+    nam_dagostino_p <- NA_real_
+    if (nrow(valid_groups) >= 3) {
+        chisq_stat <- sum((valid_groups$observed_events - valid_groups$expected_events)^2 /
+            pmax(valid_groups$observed_events_variance, .Machine$double.eps), na.rm = TRUE)
+        nam_dagostino_p <- stats::pchisq(chisq_stat, df = nrow(valid_groups) - 1, lower.tail = FALSE)
+    }
+
+    ici <- NA_real_
+    if (nrow(group_results) > 0) {
+        cal_data <- cal_data %>%
+            dplyr::left_join(
+                group_results %>% dplyr::select(risk_group, grouped_observed_rate = observed_rate),
+                by = "risk_group"
+            )
+        ici <- mean(abs(cal_data$predicted_risk - cal_data$grouped_observed_rate), na.rm = TRUE)
+    }
+
+    list(
+        n = nrow(cal_data),
+        n_groups = nrow(group_results),
+        nam_dagostino_statistic = round(chisq_stat, 3),
+        nam_dagostino_p = round(nam_dagostino_p, 4),
+        nam_dagostino_method = "greenwood_nam_dagostino",
+        ici = round(ici, 4),
+        ici_method = "grouped_km",
+        group_results = group_results
+    )
+}
+
 #' Calculate observed vs expected rates by GEP class
 #'
 #' @param data Data frame with endpoint data
@@ -84,11 +211,10 @@ calculate_observed_expected_rates <- function(data, expected_var, event_var, tim
     return(results)
 }
 
-#' Calculate calibration metrics (simple logistic calibration)
+#' Calculate survival calibration metrics
 #'
-#' Fit a logistic calibration model of observed event vs predicted probability
-#' and derive intercept, slope, Integrated Calibration Index (ICI), and a
-#' Nam-D'Agostino p-value proxy.
+#' Compute grouped Greenwood-Nam-D'Agostino calibration statistics and derive
+#' horizon-specific slope/intercept summaries from a logistic recalibration model.
 #'
 #' @param data Data frame containing observed outcome and predicted probabilities
 #' @param expected_var Character name of predicted probability column
@@ -106,9 +232,24 @@ calculate_calibration_metrics <- function(data, expected_var, event_var, time_va
             intercept = NA_real_,
             slope = NA_real_,
             ici = NA_real_,
-            nam_dagostino_p = NA_real_
+            nam_dagostino_p = NA_real_,
+            nam_dagostino_method = "greenwood_nam_dagostino",
+            ici_method = "grouped_km"
         ))
     }
+
+    eval_time_months <- suppressWarnings(max(data[[time_var]], na.rm = TRUE))
+    data <- data %>%
+        dplyr::mutate(.predicted_risk_for_calibration = 1 - .data[[expected_var]])
+
+    grouped_calibration <- calculate_greenwood_nam_dagostino(
+        data = data,
+        predicted_risk_var = ".predicted_risk_for_calibration",
+        time_var = time_var,
+        event_var = event_var,
+        eval_time_months = eval_time_months
+    )
+
     calibration_model <- glm(stats::as.formula(paste(event_var, "~", expected_var)),
         data = data, family = binomial()
     )
@@ -116,9 +257,7 @@ calculate_calibration_metrics <- function(data, expected_var, event_var, time_va
     intercept <- unname(ifelse(length(co) >= 1, co[1], NA_real_))
     slope <- unname(ifelse(length(co) >= 2, co[2], NA_real_))
     predicted_probs <- predict(calibration_model, type = "response")
-    ici <- mean(abs(predicted_probs - data[[expected_var]]))
     summ <- summary(calibration_model)
-    nam_dagostino_p <- tryCatch(summ$coefficients[2, 4], error = function(e) NA_real_)
     # Calculate Brier Score for overall prediction accuracy
     brier_result <- tryCatch({
         calculate_brier_score_survival(
@@ -142,8 +281,13 @@ calculate_calibration_metrics <- function(data, expected_var, event_var, time_va
         n = nrow(data),
         intercept = intercept,
         slope = slope,
-        ici = ici,
-        nam_dagostino_p = nam_dagostino_p,
+        ici = grouped_calibration$ici,
+        ici_method = grouped_calibration$ici_method,
+        nam_dagostino_p = grouped_calibration$nam_dagostino_p,
+        nam_dagostino_method = grouped_calibration$nam_dagostino_method,
+        nam_dagostino_statistic = grouped_calibration$nam_dagostino_statistic,
+        n_groups = grouped_calibration$n_groups,
+        group_results = grouped_calibration$group_results,
         brier_score = brier_result$brier_score,
         brier_method = brier_result$method_used,
         brier_fallback_used = brier_result$fallback_triggered,

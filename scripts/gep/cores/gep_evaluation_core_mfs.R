@@ -170,119 +170,19 @@ perform_calibration_mfs <- function(data, timepoint, bootstrap_iterations) {
     # Create survival object for calibration
     surv_obj <- Surv(cal_data$observed_time, cal_data$observed_event)
 
-    # 1. Nam-D'Agostino χ² test
-    # Group predictions into quantiles and compare observed vs expected
-    n_groups <- min(10, floor(nrow(cal_data) / 10)) # At least 10 per group
-    if (n_groups < 3) n_groups <- 3
-
-    # Create breaks that are guaranteed to be unique
-    risk_quantiles <- unique(quantile(cal_data$predicted_risk, seq(0, 1, length.out = n_groups + 1)))
-
-    # If we don't have enough unique quantiles, adjust the number of groups
-    if (length(risk_quantiles) <= 2) {
-        # Fall back to simple median split
-        cal_data$risk_group <- ifelse(cal_data$predicted_risk <= median(cal_data$predicted_risk), 1, 2)
-        n_groups <- 2
-    } else {
-        # Use the unique quantiles as breaks
-        cal_data$risk_group <- cut(cal_data$predicted_risk,
-            breaks = risk_quantiles,
-            include.lowest = TRUE, labels = FALSE
-        )
-        n_groups <- length(risk_quantiles) - 1
-    }
-
-    # Calculate observed vs expected by risk group
-    group_results <- cal_data %>%
-        group_by(risk_group) %>%
-        summarise(
-            n = n(),
-            mean_predicted_risk = mean(predicted_risk),
-            observed_events = sum(observed_event == 1 & observed_time <= timepoint_months),
-            expected_events = sum(predicted_risk),
-            .groups = "drop"
-        ) %>%
-        filter(n >= GEP_MIN_GROUP_SIZE) # Minimum group size for reliable testing
-
-    # Initialize variables
-    chisq_stat <- NA
-    nam_dagostino_p <- NA
-    # ICI will be calculated below with robust error handling
-
-    # Nam-D'Agostino test
-    if (nrow(group_results) >= 3 && sum(group_results$expected_events) > 0) {
-        chisq_stat <- sum((group_results$observed_events - group_results$expected_events)^2 /
-            pmax(group_results$expected_events, 1))
-        nam_dagostino_p <- pchisq(chisq_stat, df = nrow(group_results) - 1, lower.tail = FALSE)
-    } else {
-        nam_dagostino_p <- NA
-    }
-
-    # 2. Integrated Calibration Index (ICI)
-    # Use a more robust approach that handles edge cases
-    ici <- NA
-    ici_method <- "unknown"
-    
-    tryCatch(
-        {
-            if (nrow(cal_data) >= 2 * GEP_MIN_SAMPLE_SIZE) {
-                # Calculate observed rate at timepoint
-                observed_rate <- sum(cal_data$observed_event == 1 & cal_data$observed_time <= timepoint_months) / nrow(cal_data)
-                mean_predicted_rate <- mean(cal_data$predicted_risk, na.rm = TRUE)
-                
-                # Calculate ICI as mean absolute difference between predicted and observed
-                ici <- mean(abs(cal_data$predicted_risk - observed_rate), na.rm = TRUE)
-                ici_method <- "mean_absolute_diff"
-                
-                # Alternative: use quantile-based approach if the above fails
-                if (is.na(ici) || is.infinite(ici)) {
-                    # Group predictions into quantiles and compare with observed
-                    quantiles <- quantile(cal_data$predicted_risk, probs = seq(0.1, 0.9, 0.1), na.rm = TRUE)
-                    ici_calc <- 0
-                    count <- 0
-                    
-                    for (i in 1:(length(quantiles)-1)) {
-                        lower <- quantiles[i]
-                        upper <- quantiles[i+1]
-                        mask <- cal_data$predicted_risk >= lower & cal_data$predicted_risk < upper
-                        if (sum(mask) > 0) {
-                            pred_avg <- mean(cal_data$predicted_risk[mask], na.rm = TRUE)
-                            obs_avg <- mean(cal_data$observed_event[mask] == 1 & cal_data$observed_time[mask] <= timepoint_months, na.rm = TRUE)
-                            ici_calc <- ici_calc + abs(pred_avg - obs_avg)
-                            count <- count + 1
-                        }
-                    }
-                    
-                    if (count > 0) {
-                        ici <- ici_calc / count
-                        ici_method <- "quantile_based"
-                    }
-                }
-            } else {
-                # Simple calibration for small samples
-                observed_rate <- sum(cal_data$observed_event == 1 & cal_data$observed_time <= timepoint_months) / nrow(cal_data)
-                mean_predicted_rate <- mean(cal_data$predicted_risk, na.rm = TRUE)
-                ici <- abs(observed_rate - mean_predicted_rate)
-                ici_method <- "simple"
-            }
-        },
-        error = function(e) {
-            logger::log_warn(formatted("Error calculating ICI, using fallback approach", indent = 3))
-            # Fallback: use overall observed vs predicted difference
-            observed_rate <- sum(cal_data$observed_event == 1 & cal_data$observed_time <= timepoint_months) / nrow(cal_data)
-            mean_predicted_rate <- mean(cal_data$predicted_risk, na.rm = TRUE)
-            ici <- abs(observed_rate - mean_predicted_rate)
-            ici_method <- "fallback"
-        }
+    grouped_calibration <- calculate_greenwood_nam_dagostino(
+        data = cal_data,
+        predicted_risk_var = "predicted_risk",
+        time_var = "observed_time",
+        event_var = "observed_event",
+        eval_time_months = timepoint_months
     )
-    
-    # Final safety check
-    if (is.na(ici) || is.infinite(ici)) {
-        ici <- NA
-        ici_method <- "failed"
-    }
 
-    # ICI is now properly handled above with robust error handling
+    group_results <- grouped_calibration$group_results
+    chisq_stat <- grouped_calibration$nam_dagostino_statistic
+    nam_dagostino_p <- grouped_calibration$nam_dagostino_p
+    ici <- grouped_calibration$ici
+    ici_method <- grouped_calibration$ici_method
 
     # 3. Bootstrap-corrected calibration slope and intercept
     if (bootstrap_iterations > 0 && nrow(cal_data) >= GEP_MIN_BOOTSTRAP_SAMPLE) {
@@ -358,9 +258,10 @@ perform_calibration_mfs <- function(data, timepoint, bootstrap_iterations) {
 
     return(list(
         n = nrow(cal_data),
-        n_groups = nrow(group_results),
+        n_groups = grouped_calibration$n_groups,
         nam_dagostino_statistic = chisq_stat,
         nam_dagostino_p = round(nam_dagostino_p, 4),
+        nam_dagostino_method = grouped_calibration$nam_dagostino_method,
         ici = round(ici, 4),
         ici_method = ifelse(exists("ici_method"), ici_method, NA_character_),
         slope = round(calibration_slope, 3),

@@ -478,6 +478,127 @@ Gene Expression Profiling (GEP) provides lab-reported probabilities of metastasi
 - MSS standard validation uses melanoma-specific death as the event.
 - Non-melanoma death is handled separately in competing-risk analyses rather than being treated as an MSS event.
 
+### How Expected Counts Are Calculated
+
+For Objective 4, the expected event count at time $t$ is derived from the lab-reported survival probability for each patient. If patient $i$ has predicted survival $S_i(t)$, then the corresponding predicted event probability is:
+
+$$
+\hat{p}_i(t) = 1 - S_i(t)
+$$
+
+The expected number of events in a cohort or subgroup is the sum of those individual predicted event probabilities:
+
+$$
+E(t) = \sum_{i=1}^{N} \hat{p}_i(t) = \sum_{i=1}^{N} \left(1 - S_i(t)\right)
+$$
+
+This is the quantity reported as `Expected` in the `Observed_Expected_Summary` sheet.
+
+Implementation details:
+- In the shared MSS calculator, expected counts are computed directly as `sum(1 - expected_survival)` within each GEP class.
+- In the MFS helper, the same quantity is computed algebraically as $N \times (1 - \bar{S}(t))$, which is equivalent to summing $1 - S_i(t)$ across patients.
+
+### How Observed Counts Are Calculated
+
+The current pipeline uses timepoint-specific binary event indicators that are created during preprocessing. For a given landmark year, the observed count is the sum of patients with the corresponding event indicator equal to 1.
+
+Examples:
+- MFS uses `mfs_event_5yr`, `mfs_event_7yr`, and `mfs_event_10yr`
+- MSS uses `mss_event_5yr`, `mss_event_7yr`, and `mss_event_10yr`
+
+Accordingly,
+
+$$
+O(t) = \sum_{i=1}^{N} I\{\text{event by time } t\}
+$$
+
+where $I\{\cdot\}$ is the indicator function.
+
+Important distinction:
+- The `Observed_Expected_Summary` sheet still reflects the direct timepoint event-count calculation described above.
+- The `Calibration_Summary` sheet now uses grouped Kaplan-Meier estimates with Greenwood variance for its Nam-D'Agostino goodness-of-fit field.
+
+### Overall O/E Ratio and Exact Poisson Confidence Interval
+
+The overall calibration-in-the-large metric is the observed-to-expected ratio:
+
+$$
+\text{O/E} = \frac{O}{E}
+$$
+
+where $O$ is the total observed event count and $E$ is the total expected event count across GEP classes.
+
+The workbook reports an exact Poisson confidence interval for this ratio by treating the observed count as Poisson and scaling the resulting interval by the fixed expected count. In practice, the pipeline uses `stats::poisson.test()` on $O$ and then divides the lower and upper confidence limits by $E$.
+
+This is equivalent to the standard exact Poisson approach for a standardized event ratio and is preferred over a normal approximation because it respects the asymmetric uncertainty of low event counts and cannot produce impossible negative lower bounds.
+
+### Grouped Calibration and Goodness-of-Fit Fields
+
+The workbook contains both an overall O/E summary and a separate calibration summary. Those fields are not all generated the same way.
+
+#### MFS calibration implementation
+
+For MFS, the calibration helper now performs a grouped Greenwood-Nam-D'Agostino-style survival calibration assessment:
+- Predicted risks are grouped into quantiles with a target of up to 10 groups and at least 3 groups.
+- Within each group, expected events are calculated as the sum of predicted risks.
+- Observed event risk at the evaluation horizon is estimated with Kaplan-Meier within that risk group.
+- Observed events are then expressed on the count scale as $O_g = N_g \times \hat{P}_{KM,g}(t)$.
+- Greenwood variance from the group-specific Kaplan-Meier estimate supplies the denominator of the grouped goodness-of-fit statistic.
+
+Operationally, the reported statistic is computed on the count scale as:
+
+$$
+\chi^2_{GND} = \sum_{g=1}^{G} \frac{(O_g - E_g)^2}{N_g^2 \cdot \widehat{\mathrm{Var}}(\hat{P}_{KM,g}(t))}
+$$
+
+with a $\chi^2$ reference distribution using $G-1$ degrees of freedom.
+
+This is now a true censoring-aware grouped survival-calibration test rather than the earlier $(O-E)^2 / E$ approximation.
+
+#### MSS standard-validation calibration implementation
+
+For MSS standard validation, the grouped calibration p-value now uses the same Greenwood-based grouped survival approach:
+- Predicted melanoma-specific death risk is grouped into quantiles.
+- Group-specific observed risk is estimated by Kaplan-Meier at the evaluation horizon while treating non-melanoma deaths as censored in the standard MSS analysis.
+- Greenwood variance is used in the grouped goodness-of-fit denominator.
+
+The workbook therefore now uses a true grouped survival-calibration statistic for both MFS and standard MSS calibration summaries, even though the standard MSS endpoint itself remains distinct from the separate competing-risk MSS analyses.
+
+### Integrated Calibration Index (ICI)
+
+The current pipeline still uses implementation-specific ICI approximations rather than a smoothed LOESS- or spline-based survival calibration curve.
+
+For MFS:
+- The reported ICI is the mean absolute difference between each patient’s predicted risk and the Kaplan-Meier-estimated observed risk of the patient’s grouped risk stratum.
+
+For MSS standard validation:
+- The reported ICI is computed the same grouped-Kaplan-Meier way, using the standard MSS endpoint definition for that horizon.
+
+Lower ICI values still indicate better calibration, but this should still be described as a grouped approximation rather than as a fully smoothed non-parametric survival ICI.
+
+### Calibration Slope
+
+The calibration slope is also implementation-specific.
+
+For MFS:
+- A Cox model is fit using the predicted risk as the sole covariate.
+- The coefficient is used as the starting calibration slope.
+- When bootstrap validation is feasible, the code applies an optimism correction and reports the resulting slope.
+
+For MSS standard validation:
+- The slope comes from the simplified logistic calibration model used in the shared helper.
+
+Interpretation remains standard:
+- Slope near 1.0 suggests well-scaled predictions.
+- Slope below 1.0 suggests predictions are too extreme.
+- Slope above 1.0 suggests predictions are too compressed.
+
+### Recommended Documentation Boundary
+
+The material above belongs in this statistical reference because it explains the formulas behind Objective 4 workbook fields. It does not belong primarily in the interpretation guide, which should stay focused on how to read the workbooks, and it does not belong primarily in the technical guide, which should stay focused on pipeline structure and file layout.
+
+If the project later upgrades Objective 4 to use Kaplan-Meier-adjusted overall O/E summaries or a smoothed survival ICI, this section should be revised at the same time as the code so the documentation continues to match implementation.
+
 ### Discrimination Assessment
 
 **Purpose:** Can GEP separate patients with vs without events?
@@ -531,7 +652,7 @@ Gene Expression Profiling (GEP) provides lab-reported probabilities of metastasi
 - Derive overall O/E ratios with exact Poisson confidence intervals
 - Compute Pearson goodness-of-fit p-values across GEP classes
 - Compute Nam–D’Agostino χ², Integrated Calibration Index (ICI), and calibration slope
-- Record results in the consolidated workbook (no standalone calibration PNGs)
+- Record results in the consolidated workbook
 
 **Step 3: Discrimination Analysis**
 - Calculate Harrell’s C, integrated AUC, cumulative/time-averaged discrimination
