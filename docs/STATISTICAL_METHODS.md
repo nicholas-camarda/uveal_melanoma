@@ -720,6 +720,7 @@ These fields are written to the `Discrimination_Summary` sheet of the consolidat
 ### Harrell's C (`Harrell_C`)
 
 **Package / function:** `survcomp::concordance.index()` with `method = "noether"`
+- The function evaluates a model's ability to order subjects by their risk. For a given pair of individuals, they are considered "concordant" if their predicted risk matches their actual event times in the correct order. The C-index is essentially the frequency of such concordant pairs among all usable (comparable) pairs.
 
 **MFS implementation:**
 - In `perform_discrimination_mfs()`, the code first truncates follow-up at the requested horizon.
