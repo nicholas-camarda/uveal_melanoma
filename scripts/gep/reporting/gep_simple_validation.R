@@ -272,7 +272,7 @@ simple_gep_validation <- function(data, output_dirs, prefix) {
             overall_percent_difference = (overall_difference / overall_expected) * 100
         )
 
-    write_xlsx(list(
+    write_gep_workbook(list(
         "MFS_By_Class" = mfs_results,
         "MSS_By_Class" = mss_results,
         "Overall_Summary" = overall_summary

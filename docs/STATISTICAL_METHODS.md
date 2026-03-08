@@ -519,7 +519,12 @@ where $I\{\cdot\}$ is the indicator function.
 
 Important distinction:
 - The `Observed_Expected_Summary` sheet still reflects the direct timepoint event-count calculation described above.
-- The `Calibration_Summary` sheet now uses grouped Kaplan-Meier estimates with Greenwood variance for its Nam-D'Agostino goodness-of-fit field.
+- The `Observed_Expected_Summary` sheet reports its count-based goodness-of-fit p-value as `OE_Chi_Square_p`.
+- The `Calibration_Summary` sheet reports its grouped survival-calibration p-value as `Nam_D_Agostino_p` and uses grouped Kaplan-Meier estimates with Greenwood variance for that field.
+
+These are not interchangeable quantities:
+- `OE_Chi_Square_p` is the older overall observed-versus-expected count-comparison p-value attached to the calibration-in-the-large summary.
+- `Nam_D_Agostino_p` is the grouped Greenwood/Nam-D'Agostino survival-calibration p-value attached to the grouped calibration summary.
 
 ### Overall O/E Ratio and Exact Poisson Confidence Interval
 
@@ -535,18 +540,31 @@ The workbook reports an exact Poisson confidence interval for this ratio by trea
 
 This is equivalent to the standard exact Poisson approach for a standardized event ratio and is preferred over a normal approximation because it respects the asymmetric uncertainty of low event counts and cannot produce impossible negative lower bounds.
 
+The same `Observed_Expected_Summary` sheet also reports `OE_Chi_Square_p`, which is the count-based goodness-of-fit p-value for the overall O/E comparison. It should be interpreted as an overall observed-versus-expected count check, not as the grouped Greenwood/Nam-D'Agostino survival-calibration test.
+
+#### A Note About Denominator Retention and Summary Contracts
+
+Because the Objective 4 workbooks are now used as the primary review artifacts, the denominator fields must remain interpretable and stable across all summary layers.
+
+- In `Observed_Expected_Summary`, the overall `N` field is the total number of evaluable patients contributing to that horizon-specific O/E calculation, not a group-specific subgroup count.
+- For MFS, that overall denominator is carried through explicitly from the O/E helper so the consolidated workbook does not lose the cohort-level denominator when it collapses class-specific results into a single overall row.
+- If an upstream result shape does not expose that denominator directly, the reporting helper reconstructs it from the class-level counts rather than leaving the workbook denominator blank.
+- The grouped calibration table is a separate object from the overall O/E summary. Its `N` column refers to the number of patients entering the calibration analysis at that horizon, whereas the grouped Greenwood statistic itself is then computed within risk groups inside that analysis set.
+
+These denominator rules are intentionally strict because blank or ambiguous `N` fields make the workbook difficult to audit and can obscure whether a reported metric is being driven by a sparse horizon.
+
 ### Grouped Calibration and Goodness-of-Fit Fields
 
 The workbook contains both an overall O/E summary and a separate calibration summary. Those fields are not all generated the same way.
 
 #### MFS calibration implementation
 
-For MFS, the calibration helper now performs a grouped Greenwood-Nam-D'Agostino-style survival calibration assessment:
+For MFS, the calibration helper now performs a grouped Greenwood-Nam-D'Agostino-style survival calibration assessment. In plain language, it compares predicted risk versus observed risk across risk groups while properly accounting for incomplete follow-up:
 - Predicted risks are grouped into quantiles with a target of up to 10 groups and at least 3 groups.
 - Within each group, expected events are calculated as the sum of predicted risks.
-- Observed event risk at the evaluation horizon is estimated with Kaplan-Meier within that risk group.
+- Observed event risk at the evaluation horizon is estimated with Kaplan-Meier within that risk group. In plain language, Kaplan-Meier is the standard way to estimate the proportion who have had the event by a given time when not everyone is followed for exactly the same duration.
 - Observed events are then expressed on the count scale as $O_g = N_g \times \hat{P}_{KM,g}(t)$.
-- Greenwood variance from the group-specific Kaplan-Meier estimate supplies the denominator of the grouped goodness-of-fit statistic.
+- Greenwood variance from the group-specific Kaplan-Meier estimate supplies the denominator of the grouped goodness-of-fit statistic. In plain language, this is the standard way to quantify how much uncertainty there is around the Kaplan-Meier estimate in each group.
 
 Operationally, the reported statistic is computed on the count scale as:
 
@@ -556,29 +574,108 @@ $$
 
 with a $\chi^2$ reference distribution using $G-1$ degrees of freedom.
 
-This is now a true censoring-aware grouped survival-calibration test rather than the earlier $(O-E)^2 / E$ approximation.
+Interpretation of the grouped chi-square result:
+- A small p-value for this statistic, conventionally $p < 0.05$, is evidence of grouped miscalibration: the observed event experience differs from the model-predicted event experience across the risk groups more than would usually be expected by chance alone.
+- A non-small p-value does not prove perfect calibration. It means the grouped test did not detect a clear mismatch at the available sample size and event count.
+- The p-value should therefore be interpreted alongside `N`, ICI, and calibration slope rather than in isolation, especially in sparse horizons where power is limited.
+
+This is now a true censoring-aware grouped survival-calibration test rather than the earlier $(O-E)^2 / E$ approximation. In plain language, the test now uses survival-analysis machinery that respects censoring instead of treating the data like a simple fully observed binary outcome.
 
 #### MSS standard-validation calibration implementation
 
 For MSS standard validation, the grouped calibration p-value now uses the same Greenwood-based grouped survival approach:
 - Predicted melanoma-specific death risk is grouped into quantiles.
-- Group-specific observed risk is estimated by Kaplan-Meier at the evaluation horizon while treating non-melanoma deaths as censored in the standard MSS analysis.
-- Greenwood variance is used in the grouped goodness-of-fit denominator.
+- Group-specific observed risk is estimated by Kaplan-Meier at the evaluation horizon while treating non-melanoma deaths as censored in the standard MSS analysis. In plain language, the method estimates melanoma-specific death risk over time without counting other causes of death as melanoma events.
+- Greenwood variance is used in the grouped goodness-of-fit denominator. In plain language, the denominator is scaled by how uncertain the observed group risk estimate is.
 
-This is a true grouped survival-calibration statistic for both MFS and standard MSS calibration summaries, even though the standard MSS endpoint itself remains distinct from the separate competing-risk MSS analyses.
+This is a true grouped survival-calibration statistic for both MFS and standard MSS calibration summaries, even though the standard MSS endpoint itself remains distinct from the separate competing-risk MSS analyses. In plain language, the same rigorous grouped calibration idea is used in both places, but the clinical endpoint being studied is still different.
 
 ### Integrated Calibration Index (ICI)
 
 The current pipeline uses a censoring-aware horizon-specific ICI strategy with an explicit fallback rule.
 
 For MFS:
-- When the effective risk support at the evaluation horizon is rich enough, the reported ICI is computed from an IPCW-weighted logistic spline recalibration curve on the logit-transformed predicted risk.
-- When the effective risk support is too coarse for a stable smooth curve, the method falls back to the grouped Kaplan-Meier absolute calibration error already used for the Greenwood-based grouped calibration summary.
+- When the effective risk support at the evaluation horizon is rich enough, the reported ICI is computed from an IPCW-weighted logistic spline recalibration curve on the logit-transformed predicted risk. In plain language, the model draws a smooth observed-versus-predicted calibration curve at that timepoint while correcting for unequal follow-up.
+- When the effective risk support is too coarse for a stable smooth curve, the method falls back to the grouped Kaplan-Meier absolute calibration error already used for the Greenwood-based grouped calibration summary. In plain language, if there are too few distinct risk values to justify a smooth curve, the pipeline switches to a simpler grouped comparison.
 
 For MSS standard validation:
 - The same rule is used: preferred IPCW-smoothed ICI when the horizon-specific predicted risks are sufficiently granular, grouped Kaplan-Meier fallback when they are not.
 
+What this means operationally:
+
+#### IPCW-smoothed ICI path
+
+IPCW stands for inverse-probability-of-censoring weighting. In plain language, it gives extra weight to patients whose follow-up pattern makes them stand in for similar patients who were censored too early to contribute full horizon information.
+
+The problem it solves is that, at a fixed horizon such as 7 years, not every patient has a directly observed event/no-event status:
+- a patient who has the event before 7 years is known to be an event,
+- a patient followed beyond 7 years without the event is known to be a non-event at 7 years,
+- but a patient censored at 4 years has unknown 7-year status.
+
+If those early-censored patients were simply dropped without adjustment, the observed calibration curve could be biased toward the subset with longer follow-up. IPCW addresses this by upweighting patients whose 7-year status is known but whose follow-up pattern is relatively uncommon because of censoring. In plain language, it tries to reduce the bias that would happen if only the best-followed patients shaped the curve.
+
+In the current implementation:
+- the pipeline estimates the probability of remaining uncensored up to the relevant contribution time,
+- assigns each horizon-known patient a weight of approximately $1 / P(\text{not censored})$,
+- fits a weighted logistic spline recalibration curve of the horizon event indicator on the logit-transformed predicted risk, which means it estimates a smooth observed-risk curve from the model’s predicted risks on a scale that behaves better statistically near 0 and 1,
+- and computes the ICI as the weighted mean absolute difference between each patient’s predicted risk and the smooth recalibrated observed risk from that curve. In plain language, ICI is the average size of the prediction error after accounting for censoring.
+
+Written schematically, the preferred IPCW-smoothed ICI is:
+
+$$
+\mathrm{ICI}_{\mathrm{IPCW}} = \frac{\sum_{i=1}^{N} w_i\,|\hat{p}_i - \hat{o}_i|}{\sum_{i=1}^{N} w_i}
+$$
+
+where $w_i$ is the inverse-probability-of-censoring weight for patient $i$, $\hat{p}_i$ is the predicted event risk at the horizon, and $\hat{o}_i$ is the smooth recalibrated observed risk from the IPCW logistic spline curve.
+
+Toy example:
+- Suppose the horizon is 7 years.
+- Patient A has predicted risk $0.20$ and is followed to 9 years without the event, so A is a known 7-year non-event.
+- Patient B has predicted risk $0.20$ but is censored at 4 years, so B has unknown 7-year status and does not directly enter the horizon outcome fit.
+- If patients like A have only a $0.60$ probability of remaining uncensored long enough to contribute known 7-year status, A receives weight about $1/0.60 = 1.67$.
+- The smooth weighted calibration curve might then estimate that patients around predicted risk $0.20$ have observed 7-year risk $0.27$.
+- A contributes roughly $1.67 \times |0.20 - 0.27|$ to the weighted ICI calculation.
+
+This is the preferred ICI because it is censoring-aware and produces a smooth calibration function rather than a grouped step function. In plain language, it makes fuller use of the data when the data are rich enough to support that extra detail.
+
+#### Grouped Kaplan-Meier fallback path
+
+The grouped Kaplan-Meier fallback is used when the horizon-specific predicted risks are too discrete to support a stable smooth IPCW curve. In plain language, this happens when the model effectively gives only a few repeated risk values, so a smooth curve would look more precise than the data justify.
+
+In practice, this happens when many patients share only a few distinct risk values at that horizon after filtering to the subset with enough information to contribute. In the current implementation, the smooth IPCW ICI is attempted only when the horizon-known subset has:
+- at least 20 analyzable patients,
+- at least 5 events,
+- at least 5 non-events,
+- and at least 10 distinct predicted-risk values.
+
+If those conditions are not met, the pipeline falls back to the grouped Kaplan-Meier ICI:
+- patients are placed into predicted-risk groups,
+- observed risk within each group is estimated by Kaplan-Meier at the evaluation horizon,
+- each patient is assigned that group-level observed risk,
+- and the ICI is the mean absolute difference between the patient’s predicted risk and that grouped Kaplan-Meier observed risk.
+
+Written schematically, the grouped fallback ICI is:
+
+$$
+\mathrm{ICI}_{\mathrm{grouped}} = \frac{1}{N} \sum_{i=1}^{N} |\hat{p}_i - \hat{P}_{KM,g(i)}(t)|
+$$
+
+where $g(i)$ is the patient's assigned predicted-risk group and $\hat{P}_{KM,g(i)}(t)$ is the Kaplan-Meier observed event risk for that group at horizon $t$.
+
+Toy example:
+- Suppose the only distinct 7-year predicted risks in the usable dataset are $0.05$, $0.20$, and $0.60$.
+- A smooth spline on only three effective risk levels would be unstable and over-interpretable.
+- The pipeline instead forms groups and estimates the observed 7-year event risk in each group by Kaplan-Meier.
+- If the group centered around predicted risk $0.20$ has Kaplan-Meier observed risk $0.28$, then each patient in that group contributes $|0.20 - 0.28| = 0.08$ to the ICI before averaging.
+
+This fallback is more conservative than pretending a smooth curve is identifiable when the risk support is too coarse. In plain language, the pipeline intentionally chooses the simpler method rather than over-claiming precision.
+
 In the current data, many horizon-specific GEP predictions collapse to only a few distinct values after filtering to patients who actually contribute information at that horizon, so the grouped-Kaplan-Meier fallback is often the method that is ultimately reported. This is why the workbook now exposes `ICI_Method` explicitly rather than assuming one estimator is used everywhere.
+
+For sparse cohorts or sparse horizons, the summary-writing behavior is deliberate:
+- the workbook is still written even if a smooth ICI is not supportable,
+- the reported ICI falls back to the grouped Kaplan-Meier version,
+- and the method column records that fallback explicitly rather than silently mixing estimators.
 
 Lower ICI values still indicate better calibration regardless of method, but interpretation should always cite the method column when comparing cohorts or timepoints.
 
@@ -587,11 +684,26 @@ Lower ICI values still indicate better calibration regardless of method, but int
 The calibration slope is now computed with a single censoring-aware method for both MFS and standard MSS.
 
 For both MFS and MSS standard validation:
-- The predicted event risk at the requested horizon is transformed to the logit scale.
+- The predicted event risk at the requested horizon is transformed to the logit scale. In plain language, the probabilities are converted to a scale that is easier to model reliably, especially near 0 and 1.
 - Patients with known horizon status contribute through inverse-probability-of-censoring weights (IPCW), so early censoring does not get treated as an observed non-event.
-- A weighted logistic recalibration model is then fit at that horizon, and the coefficient of the transformed predicted risk is reported as the calibration slope.
-- The calibration intercept is estimated from the corresponding IPCW-weighted offset model and stored in the result object, although the main workbook still foregrounds the slope.
-- If that weighted slope fit is numerically unstable, such as under quasi-separation with very large coefficient uncertainty, the slope is withheld and the method column reports the fit as unavailable rather than publishing a spurious extreme estimate.
+- A weighted logistic recalibration model is then fit at that horizon, and the coefficient of the transformed predicted risk is reported as the calibration slope. In plain language, this checks whether high-risk patients are truly experiencing more events than low-risk patients by about the right amount.
+- The calibration intercept is estimated from the corresponding IPCW-weighted offset model and stored in the result object, although the main workbook still foregrounds the slope. In plain language, the intercept captures whether predictions are systematically too high or too low overall.
+- If that weighted slope fit is numerically unstable, such as under quasi-separation with very large coefficient uncertainty, the slope is withheld and the method column reports the fit as unavailable rather than publishing a spurious extreme estimate. In plain language, if the math is too unstable to trust the number, the pipeline leaves it blank instead of reporting a misleading value.
+
+The recalibration model can be written schematically as:
+
+$$
+\operatorname{logit}\{P(Y_t = 1)\} = \alpha + \beta\,\operatorname{logit}(\hat{p}_t)
+$$
+
+where $Y_t$ is the horizon-specific event indicator, $\hat{p}_t$ is the model-predicted event risk at that horizon, $\alpha$ is the calibration intercept, and the reported calibration slope is $\beta$.
+
+Operationally, the slope is treated as unavailable when the recalibration fit fails minimum-support checks or crosses the instability thresholds currently encoded in the pipeline constants. At present this includes sparse event/non-event support and quasi-separated fits with implausibly large coefficient magnitude or standard error. In plain language, quasi-separation means the data are so thin or so cleanly split that the model tries to send the slope toward an unrealistically extreme value. In those cases:
+- `Slope` is written as missing,
+- `Slope_Method` is written as `ipcw_logit_unavailable`,
+- and the rest of the summary is still emitted so the horizon remains reviewable rather than disappearing from the workbook.
+
+The intercept may remain estimable even when the slope is withheld. That is intentional: the offset-only IPCW intercept fit can be numerically acceptable in settings where the free slope fit is not.
 
 Interpretation remains standard:
 - Slope near 1.0 suggests well-scaled predictions.

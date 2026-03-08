@@ -48,7 +48,7 @@ create_comprehensive_gep_summary <- function(validation_results, outcome_type, p
         Overall_OE = numeric(),
         CI_Lower = numeric(),
         CI_Upper = numeric(),
-        Chi_Square_p = numeric(),
+        OE_Chi_Square_p = numeric(),
         stringsAsFactors = FALSE
     )
     
@@ -107,7 +107,7 @@ create_comprehensive_gep_summary <- function(validation_results, outcome_type, p
                     Overall_OE = oe$oe_ratio %||% NA_real_,
                     CI_Lower = oe$poisson_ci_lower %||% NA_real_,
                     CI_Upper = oe$poisson_ci_upper %||% NA_real_,
-                    Chi_Square_p = oe$chi_square_p %||% NA_real_,
+                    OE_Chi_Square_p = oe$chi_square_p %||% NA_real_,
                     stringsAsFactors = FALSE
                 )
                 oe_data <- rbind(oe_data, new_oe_row)
@@ -256,7 +256,7 @@ create_comprehensive_gep_report <- function(mfs_results, mss_results, comparison
     writeLines(summary_lines, summary_path)
     if (nrow(comparison_table) > 0) {
         excel_path <- file.path(output_dir, paste0(prefix, "gep_comparison_table.xlsx"))
-        writexl::write_xlsx(comparison_table, excel_path)
+        write_gep_workbook(comparison_table, excel_path)
     }
     logger::log_info(sprintf("Comprehensive GEP report saved: %s", summary_path))
 }
@@ -429,7 +429,7 @@ create_consolidated_gep_excel_workbook_unified <- function(mfs_results, mss_resu
     )
     
     excel_path <- file.path(unified_dir, paste0(prefix, "consolidated_gep_validation.xlsx"))
-    writexl::write_xlsx(simplified_excel, excel_path)
+    write_gep_workbook(simplified_excel, excel_path)
     consolidated_files$consolidated_excel <- excel_path
     
     # 3. Create clinical interpretation summary (replaces scattered information)

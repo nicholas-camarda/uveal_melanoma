@@ -58,7 +58,7 @@ analyze_gep_mfs_validation <- function(data,
         total <- class_1 + class_2 + no_gep
         logger::log_info(formatted(sprintf("%s: %d patients (Class1:%d, Class2:%d, No:%d)", set_name, total, class_1, class_2, no_gep), indent = 2))
     }
-    write_xlsx(gep_distribution, file.path(mfs_output_dir, paste0(prefix, "gep_validation_distribution.xlsx")))
+    write_gep_workbook(gep_distribution, file.path(mfs_output_dir, paste0(prefix, "gep_validation_distribution.xlsx")))
     logger::log_info(formatted("Filtering data for MFS validation", indent = 1))
     required_vars <- c("biopsy1_gep", "expected_mfs_5yr", "expected_mfs_7yr", "expected_mfs_10yr", "prame_status", "gep_validation_set")
     missing_vars <- setdiff(required_vars, names(data))

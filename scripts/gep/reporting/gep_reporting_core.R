@@ -58,7 +58,7 @@ save_mfs_validation_results <- function(validation_results, missing_data_analysi
             # summarized in the consolidated review-facing workbook.
             if (nrow(oe_summary) > 0) unified_sheets[["Observed_Expected_by_class"]] <- oe_summary
             if (length(unified_sheets) > 0) {
-                writexl::write_xlsx(unified_sheets, file.path(output_dir, paste0(prefix, "mfs_validation_summary.xlsx")))
+                write_gep_workbook(unified_sheets, file.path(output_dir, paste0(prefix, "mfs_validation_summary.xlsx")))
             }
         },
         error = function(e) {
@@ -257,7 +257,7 @@ create_mss_validation_excel_files <- function(standard_results, competing_result
         if (nrow(cif_ci_df) > 0) excel_sheets[["CompRisk_CIF_with_CI"]] <- cif_ci_df
     }
     excel_path <- file.path(output_dir, paste0(prefix, "mss_validation_summary.xlsx"))
-    writexl::write_xlsx(excel_sheets, excel_path)
+    write_gep_workbook(excel_sheets, excel_path)
     logger::log_info(sprintf("MSS validation Excel file saved: %s", excel_path))
 }
 

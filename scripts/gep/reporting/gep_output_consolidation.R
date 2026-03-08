@@ -206,7 +206,7 @@ create_consolidated_oe_summary_table <- function(validation_results) {
                 OE_Ratio = oe$oe_ratio %||% NA,
                 CI_Lower = oe$poisson_ci_lower %||% NA,
                 CI_Upper = oe$poisson_ci_upper %||% NA,
-                Chi_Square_p = oe$chi_square_p %||% NA,
+                OE_Chi_Square_p = oe$chi_square_p %||% NA,
                 stringsAsFactors = FALSE
             ))
         }

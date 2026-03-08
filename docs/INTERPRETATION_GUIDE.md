@@ -564,10 +564,20 @@ Gene Expression Profiling (GEP) is our molecular risk model for metastatic sprea
 
 Metric formulas remain in `STATISTICAL_METHODS.md`; the notes below clarify what each column represents inside the workbook.
 
+#### `Observed_Expected_Summary`
+
+- `Timepoint`, `N`: context columns described above.
+- `Observed`, `Expected`, `OE_Ratio`, `CI_Lower`, `CI_Upper`: overall observed-versus-expected counts, ratio, and exact Poisson confidence interval for calibration-in-the-large.
+- `OE_Chi_Square_p`: p-value for the overall O/E goodness-of-fit comparison across the class-level observed and expected event counts. This is not the grouped Greenwood Nam-D'Agostino calibration p-value.
+
+Important distinction:
+- `OE_Chi_Square_p` belongs to `Observed_Expected_Summary` and summarizes the overall O/E count mismatch.
+- `Nam_D_Agostino_p` belongs to `Calibration_Summary` and summarizes grouped survival calibration using Kaplan-Meier observed risk with Greenwood variance.
+
 #### `Calibration_Summary`
 
 - `Timepoint`, `N`: context columns described above.
-- `Nam_D_Agostino_p`: p-value from the grouped Greenwood Nam-D'Agostino survival-calibration test.
+- `Nam_D_Agostino_p`: p-value from the grouped Greenwood Nam-D'Agostino survival-calibration test. Smaller values mean stronger evidence that predicted and observed risk do not agree well across the risk groups.
 - `Nam_D_Agostino_Method`: method label for the grouped goodness-of-fit field; currently this should read `greenwood_nam_dagostino`.
 - `ICI`: Integrated Calibration Index — lower is better.
 - `ICI_Method`: tells you whether the ICI came from the preferred IPCW-smoothed recalibration curve or from the grouped Kaplan-Meier fallback. Cite this column whenever comparing cohorts or horizons.
@@ -575,6 +585,27 @@ Metric formulas remain in `STATISTICAL_METHODS.md`; the notes below clarify what
 - `Slope_Method`: method label for the slope field; currently this should read `ipcw_logit` when the fit is supportable. `ipcw_logit_unavailable` means the weighted slope fit was too sparse or too numerically unstable to report responsibly.
 - `Brier_Score`: Timepoint-specific Brier score; compare against the cohort event rate to assess accuracy.
 - `Brier_Method` + `Brier_Fallback_Used`: record which estimator supplied the score (`pec`, KM fallback, etc.).
+
+##### How to interpret the main calibration fields
+
+The grouped Greenwood Nam-D'Agostino statistic is the workbook's formal grouped calibration test. The full equation is documented in [docs/STATISTICAL_METHODS.md](docs/STATISTICAL_METHODS.md). In plain language, the test asks whether the model's predicted event counts and the observed event counts line up across low-, medium-, and high-risk groups once censoring is taken seriously.
+
+How to read the chi-square result:
+- `Nam_D_Agostino_p < 0.05`: evidence of miscalibration. The observed risks differ from the predicted risks more than would usually be expected by chance alone.
+- `Nam_D_Agostino_p >= 0.05`: no strong evidence of miscalibration. This does not prove the model is perfectly calibrated; it only means the grouped test did not detect a clear mismatch.
+- Larger cohorts can detect smaller departures from calibration, so the p-value should always be read alongside `ICI`, `Slope`, and `N` rather than in isolation.
+
+ICI can be thought of as the average absolute calibration error. The exact method-specific formulas are documented in [docs/STATISTICAL_METHODS.md](docs/STATISTICAL_METHODS.md). In plain language, lower ICI means the average prediction is closer to what actually happened.
+
+The calibration slope comes from the horizon-specific recalibration model, with the formal equation documented in [docs/STATISTICAL_METHODS.md](docs/STATISTICAL_METHODS.md).
+
+How to read the slope:
+- `Slope` near 1: prediction spread is about right.
+- `Slope < 1`: predictions are too extreme, so low risks are too low and high risks are too high.
+- `Slope > 1`: predictions are too compressed, so the model is not separating low and high risk strongly enough.
+- `Slope = NA` with `Slope_Method = ipcw_logit_unavailable`: the fit was too sparse or unstable to trust, so the workbook intentionally withholds the number.
+
+Practical rule: use the grouped chi-square p-value to ask, "Is there evidence of group-level miscalibration?" and use `ICI` plus `Slope` to ask, "How large is the mismatch, and in what direction?"
 
 #### `Discrimination_Summary`
 
