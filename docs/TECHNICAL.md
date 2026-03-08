@@ -147,7 +147,7 @@ Patients are classified into three vital status categories for summary reporting
 - Lost to follow-up does not indicate missing data; these patients contributed valid follow-up time
 - Total person-years of follow-up includes all patients up to their last documented contact
 
-**Implementation:** `scripts/utils/cohort_summary_export.R`
+**Implementation:** `scripts/utils/cohort_summary_export.R` with cutoff constants centralized in `scripts/utils/config_constants.R`
 
 **See also:** [Lost to Follow-up Classification](CALCULATIONS.md#lost-to-follow-up-classification) for detailed calculation methodology
 
@@ -173,6 +173,8 @@ project_working_directory/
 │   └── Analysis/                   # Analysis outputs by cohort
 │       ├── uveal_full/             # Full cohort (n=260)
 │       │   ├── 00_General/
+│       │   │   ├── cohort_summary.tsv
+│       │   │   ├── cohort_summary.txt
 │       │   │   ├── baseline_characteristics/
 │       │   │   ├── treatment_duration/
 │       │   │   └── removed_patients_summary.tsv
@@ -280,6 +282,7 @@ scripts/
    - Store processed RDS files
    - Save pre-collapsed factor levels
    - Store other_map for reference
+   - Write `cohort_summary.tsv` and `cohort_summary.txt` into each cohort's `00_General/` directory
 
 5. **Run Analyses**
    - Load RDS datasets
@@ -300,6 +303,7 @@ See README.md for the Mermaid diagram illustrating the complete data flow.
 - Stage IV cases (IDs 7, 116, 262) removed before cohort assignment
 - Manually excluded records (ID 271) documented
 - `removed_patients_summary.tsv` exported to each cohort's `00_General/` directory
+- `cohort_summary.tsv` and `cohort_summary.txt` exported to each cohort's `00_General/` directory
 - Reviewers can audit exclusion decisions
 
 **Data Validation:**

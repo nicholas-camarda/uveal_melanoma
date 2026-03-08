@@ -79,6 +79,8 @@ DAYS_IN_YEAR <- 365.25
 DAYS_IN_MONTH <- 30.44
 FOLLOW_UP_YEARS <- 5 # For 5-year outcomes
 UNITS_OF_TIME <- "months" # "days" or "months" or "years"
+VITAL_STATUS_DATA_CUTOFF_DATE <- as.Date("2025-03-04")
+LOST_TO_FOLLOWUP_CUTOFF_DAYS <- 450
 
 # =============================================================================
 # TREATMENT AND FACTOR LEVEL CONFIGURATION

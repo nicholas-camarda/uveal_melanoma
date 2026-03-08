@@ -144,7 +144,8 @@ create_analytic_dataset <- function(output_dirs = NULL) {
     export_cohort_summary(
         cohort_list = factored_filtered_data,
         removal_log = removal_log,
-        output_path = file.path(PROCESSED_DATA_DIR, "cohort_summary_statistics.json")
+        output_path = file.path(PROCESSED_DATA_DIR, "cohort_summary_statistics.json"),
+        output_dirs = output_dirs
     )
 
     logger::log_info("Validating cohorts after saving")
