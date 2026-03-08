@@ -103,6 +103,7 @@ calculate_observed_expected_mfs <- function(data, timepoint, group_var = "biopsy
     return(list(
         timepoint = timepoint,
         results_by_class = results_by_class,
+        overall_n = nrow(analysis_data),
         overall_observed = observed_total,
         overall_expected = round(expected_total, 2),
         overall_oe_ratio = if (expected_total > 0) round(observed_total / expected_total, 3) else NA,

@@ -7,10 +7,32 @@ extract_overall_oe_metrics <- function(observed_expected) {
         return(NULL)
     }
 
+    derive_overall_n <- function(observed_expected) {
+        overall_n <- observed_expected$overall_n %||% NA_real_
+        if (!is.na(overall_n)) {
+            return(overall_n)
+        }
+
+        results_by_class <- observed_expected$results_by_class %||% NULL
+        if (!is.list(results_by_class)) {
+            return(NA_real_)
+        }
+
+        class_n <- vapply(results_by_class, function(result) {
+            result$n %||% NA_real_
+        }, numeric(1))
+
+        if (all(is.na(class_n))) {
+            return(NA_real_)
+        }
+
+        sum(class_n, na.rm = TRUE)
+    }
+
     if (is.list(observed_expected) && !is.data.frame(observed_expected)) {
         if (all(c("overall_observed", "overall_expected", "overall_oe_ratio") %in% names(observed_expected))) {
             return(list(
-                n = observed_expected$overall_n %||% NA_real_,
+                n = derive_overall_n(observed_expected),
                 observed = observed_expected$overall_observed %||% NA_real_,
                 expected = observed_expected$overall_expected %||% NA_real_,
                 oe_ratio = observed_expected$overall_oe_ratio %||% NA_real_,
