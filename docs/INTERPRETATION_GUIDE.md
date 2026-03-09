@@ -516,7 +516,7 @@ Global test          6.89     3      0.075
 
 ## Understanding GEP Analysis
 
-Gene Expression Profiling (GEP) is our molecular risk model for metastatic spread. Objective 4 recomputes the Castle-type 15-gene signature (Class 1 vs Class 2) on every cohort, then stress-tests it against long-term metastasis-free (MFS) and melanoma-specific survival (MSS) horizons. Each run reports how well the baseline signature calibrates, discriminates high- vs low-risk patients, and whether augmenting it with PRAME status or other enhancers improves clinical utility. This section is being used to describe the predictive accuracy of the molecular assay rather than the primary treatment comparisons tackled in Objective 1.
+Gene Expression Profiling (GEP) is an external molecular risk assay for metastatic spread. Objective 4 does not recompute the Castle-type 15-gene signature inside this pipeline. Instead, it takes the lab-reported patient-level GEP survival predictions already present in the analytic dataset, converts them into the horizon-specific survival and risk quantities needed for validation, and compares those predictions with long-term metastasis-free (MFS) and melanoma-specific survival (MSS) outcomes. The downstream methods then ask different questions: Kaplan-Meier or competing-risk summaries estimate observed outcome risk from follow-up data, calibration tools assess agreement between supplied GEP risk and observed risk, discrimination tools test rank-ordering, and PRAME-based analyses evaluate whether reclassification improves clinical utility.
 
 ### Where to Find the Files
 
@@ -569,7 +569,7 @@ If you are not statistically inclined, use this order:
 2. Check calibration next. Ask: "Were the predicted risks roughly the right size?"
 3. Check discrimination after that. Ask: "Did the model rank higher-risk patients above lower-risk patients?"
 4. Check the decision-curve sheet last. Ask: "Would using this model actually help a clinical decision?"
-5. Read the PRAME sheet only after the base GEP model looks at least reasonably calibrated and discriminative.
+5. Read the PRAME sheet only after the base GEP prediction looks at least reasonably calibrated and discriminative.
 
 Fast triage rule:
 - `OE_Ratio` near 1, lower `ICI`, and `Slope` near 1 suggest the risk estimates are in the right ballpark.
@@ -580,14 +580,14 @@ Fast triage rule:
 
 ### GEP Calibration Made Simple
 
-Calibration asks a simple question: **did the model get the amount of risk about right?**
+Calibration asks a simple question: **did the supplied GEP prediction get the amount of risk about right?**
 
 Use this reading order:
 
 1. `OE_Ratio`
   - Near 1: overall predicted risk and overall observed risk are similar.
-  - Above 1: the model may be underpredicting events.
-  - Below 1: the model may be overpredicting events.
+  - Above 1: the supplied GEP prediction may be underpredicting events.
+  - Below 1: the supplied GEP prediction may be overpredicting events.
 2. `ICI`
   - Lower is better.
   - Think of this as the average prediction error.
@@ -600,8 +600,8 @@ Use this reading order:
   - Larger p-value: no strong evidence of mismatch, but not proof of perfect calibration.
 
 Plain-English example:
-- `OE_Ratio = 0.98`, `ICI = 0.04`, `Slope = 0.95`: the model is probably estimating risk reasonably well.
-- `OE_Ratio = 0.60`, `ICI = 0.14`, `Slope = 0.55`: the model is probably miscalibrated and making risks too extreme.
+- `OE_Ratio = 0.98`, `ICI = 0.04`, `Slope = 0.95`: the supplied GEP prediction is probably estimating risk reasonably well.
+- `OE_Ratio = 0.60`, `ICI = 0.14`, `Slope = 0.55`: the supplied GEP prediction is probably miscalibrated and making risks too extreme.
 
 What to say in a write-up:
 - "Calibration looked acceptable: overall predicted risk was close to observed risk, average calibration error was small, and the slope was near 1."

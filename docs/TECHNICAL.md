@@ -438,14 +438,14 @@ The analysis pipeline includes robust error handling for situations where data l
 
 ### Objective 4: GEP Predictive Accuracy (🚧 IN PROGRESS)
 
-**Purpose:** Validate lab-reported GEP probabilities against real outcomes for metastasis-free survival (MFS) and melanoma-specific survival (MSS)
+**Purpose:** Validate externally supplied lab-reported GEP survival probabilities against real outcomes for metastasis-free survival (MFS) and melanoma-specific survival (MSS)
 
 **Location:** `{cohort}/04_GEP_Validation/a_metastasis_free_survival/` and `b_melanoma_specific_survival/`
 
 **Implementation:** `scripts/workflow/objective_4_gep_analysis.R`
 
 **Current methods:**
-- Validate lab-reported GEP probabilities at 5, 7, and 10 years.
+- Validate lab-reported GEP survival probabilities at 5, 7, and 10 years. The 5-year values are carried into the analytic dataset, 7- and 10-year survival are derived during preprocessing, and downstream analyses convert survival to event risk as needed; Objective 4 does not fit a new prognostic model to generate the base GEP predictions.
 - Use metastasis events for MFS and melanoma-specific death for MSS.
 - Run companion competing-risk MSS analyses so non-melanoma death is handled explicitly rather than folded into the primary MSS endpoint.
 - Summarize observed-vs-expected performance by GEP class and as an overall O/E ratio with exact Poisson confidence intervals and a Pearson goodness-of-fit p-value across classes.

@@ -464,7 +464,9 @@ Gene Expression Profiling (GEP) provides lab-reported probabilities of metastasi
 
 ### Validation Framework
 
-**Goal:** Assess whether GEP probabilities accurately predict patient outcomes
+**Goal:** Assess whether lab-reported GEP survival probabilities accurately predict patient outcomes
+
+In Objective 4, the starting predictions are externally supplied patient-level GEP survival probabilities that are already present in the analytic dataset: `biopsy1_gep_mfs` for metastasis-free survival and `biopsy1_gep_mss` for melanoma-specific survival. The pipeline copies those lab-reported 5-year survival values into the 5-year `expected_*` columns, extrapolates 7- and 10-year survival during preprocessing, and converts survival to event risk as $1 - S(t)$ whenever a validation metric needs predicted event probability rather than predicted survival. Objective 4 therefore validates imported GEP predictions; it does not fit a new prognostic model to generate the base GEP probabilities.
 
 **Analyses:**
 1. **Observed vs Expected / Calibration:** Agreement between lab-reported and realized event rates
@@ -472,11 +474,16 @@ Gene Expression Profiling (GEP) provides lab-reported probabilities of metastasi
 3. **Clinical Utility:** Impact on clinical decision-making
 4. **Competing-risk MSS sensitivity analysis:** Separate accounting for non-melanoma death when evaluating MSS
 
+**Role of the downstream methods:**
+- Kaplan-Meier summaries in MFS and standard MSS grouped calibration estimate observed outcome risk from follow-up data; they are not the source of the GEP prediction.
+- Companion competing-risk MSS analyses use cumulative incidence functions to estimate observed melanoma-specific death risk when non-melanoma death is handled explicitly as a competing event.
+- IPCW-weighted recalibration models, grouped calibration statistics, discrimination metrics, and decision-curve analysis all evaluate how well the supplied GEP predictions performed.
+
 For a workbook-first overview written for non-statistical readers, see [Understanding GEP Analysis](INTERPRETATION_GUIDE.md#understanding-gep-analysis) and [GEP Quick Read](INTERPRETATION_GUIDE.md#gep-quick-read).
 
 ### Calibration Assessment
 
-**Purpose:** Do predicted probabilities match observed rates?
+**Purpose:** Do GEP-predicted event probabilities, derived from lab-reported survival probabilities, match observed event rates?
 
 **Method:** Table-first validation at 5, 7, and 10 years using grouped observed-vs-expected comparisons plus calibration diagnostics.
 
@@ -499,7 +506,7 @@ For a workbook-first overview written for non-statistical readers, see [Understa
 
 ### How Expected Counts Are Calculated
 
-For Objective 4, the expected event count at time $t$ is derived from the lab-reported survival probability for each patient. If patient $i$ has predicted survival $S_i(t)$, then the predicted event probability is:
+For Objective 4, the expected event count at time $t$ is derived from the patient-level GEP survival probability carried into the analytic dataset. At 5 years this comes directly from the lab-reported value; at 7 and 10 years the current pipeline uses the extrapolated survival columns created during preprocessing. If patient $i$ has predicted survival $S_i(t)$, then the predicted event probability is:
 
 $$
 \hat{p}_i(t) = 1 - S_i(t)
@@ -588,7 +595,7 @@ $$
 
 with a $\chi^2$ reference distribution using $G-1$ degrees of freedom.
 
-**Practical interpretation:** Smaller `Nam_D_Agostino_p` values suggest stronger evidence of grouped miscalibration.
+**Practical interpretation:** Smaller `Nam_D_Agostino_p` values suggest stronger evidence of grouped miscalibration. This means that when we divide the subjects into groups (e.g., deciles of predicted risk), the supplied GEP-based predicted risk does not match the actual observed risk in those groups. 
 
 For a plain-English reading order for calibration outputs, see [GEP Calibration Made Simple](INTERPRETATION_GUIDE.md#gep-calibration-made-simple).
 
