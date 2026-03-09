@@ -12,28 +12,28 @@
 #' @param outcome_type Either "MFS" or "MSS"
 #' @return List with clinical interpretation sections
 create_clinical_interpretation <- function(calibration_data, discrimination_data, oe_data, outcome_type) {
-    slope_issue_summary <- summarize_gep_slope_issue_pattern(calibration_data)
+    slope_issue_context <- create_gep_slope_issue_context(calibration_data)
     all_slopes_unavailable <-
         nrow(calibration_data) > 0 &&
         all(!is.finite(calibration_data$Slope))
     
     # Overall assessment
     overall_assessment <- if (outcome_type == "MFS") {
-        if (all_slopes_unavailable && nzchar(slope_issue_summary)) {
+        if (all_slopes_unavailable && slope_issue_context$has_issue) {
             paste(
-                "The GEP model demonstrates strong predictive performance for metastasis-free survival, with consistent discrimination across timepoints, but the calibration slope could not be estimated.",
-                slope_issue_summary,
-                "The model still appears clinically useful for risk stratification, but the absolute risk estimates should be interpreted with caution."
+                "The GEP model demonstrates strong predictive performance for metastasis-free survival with stable discrimination across timepoints.",
+                slope_issue_context$overall_summary,
+                "The model still appears clinically useful for risk stratification, but absolute risk estimates should be interpreted with caution."
             )
         } else {
             "The GEP model demonstrates strong predictive performance for metastasis-free survival, with consistent discrimination across timepoints and generally good calibration. The model appears to be clinically useful for risk stratification and treatment planning."
         }
     } else {
-        if (all_slopes_unavailable && nzchar(slope_issue_summary)) {
+        if (all_slopes_unavailable && slope_issue_context$has_issue) {
             paste(
-                "The GEP model shows excellent discrimination for melanoma-specific survival, but the calibration slope could not be estimated.",
-                slope_issue_summary,
-                "The model still provides useful prognostic information, but the absolute risk estimates should be interpreted with caution."
+                "The GEP model shows excellent discrimination for melanoma-specific survival.",
+                slope_issue_context$overall_summary,
+                "The model still provides useful prognostic information, but absolute risk estimates should be interpreted with caution."
             )
         } else {
             "The GEP model shows excellent discrimination for melanoma-specific survival, though calibration varies across timepoints. The model provides valuable prognostic information for clinical decision-making and patient counseling."
@@ -234,6 +234,114 @@ summarize_gep_slope_issue_pattern <- function(calibration_data) {
     )
 }
 
+trim_gep_terminal_period <- function(text) {
+    if (!is.character(text) || length(text) == 0 || is.na(text) || !nzchar(text)) {
+        return("")
+    }
+
+    sub("\\.$", "", text)
+}
+
+summarize_gep_ici_range <- function(calibration_data) {
+    if (nrow(calibration_data) == 0 || !"ICI" %in% names(calibration_data)) {
+        return("")
+    }
+
+    ici_values <- calibration_data$ICI[is.finite(calibration_data$ICI)]
+
+    if (length(ici_values) == 0) {
+        return("")
+    }
+
+    if (length(ici_values) == 1) {
+        return(sprintf("ICI was %.3f.", ici_values[[1]]))
+    }
+
+    sprintf("ICI ranged from %.3f to %.3f across timepoints.", min(ici_values), max(ici_values))
+}
+
+create_gep_slope_issue_context <- function(calibration_data) {
+    if (nrow(calibration_data) == 0 || !"Slope" %in% names(calibration_data)) {
+        return(list(
+            has_issue = FALSE,
+            all_unavailable = FALSE,
+            detailed_summary = "",
+            overall_summary = "",
+            partial_summary = "",
+            temporal_summary = "",
+            counseling_summary = ""
+        ))
+    }
+
+    unavailable_rows <- calibration_data[!is.finite(calibration_data$Slope), , drop = FALSE]
+
+    if (nrow(unavailable_rows) == 0) {
+        return(list(
+            has_issue = FALSE,
+            all_unavailable = FALSE,
+            detailed_summary = "",
+            overall_summary = "",
+            partial_summary = "",
+            temporal_summary = "",
+            counseling_summary = ""
+        ))
+    }
+
+    all_unavailable <- nrow(unavailable_rows) == nrow(calibration_data)
+    statuses <- if ("Status" %in% names(unavailable_rows)) unavailable_rows$Status else rep(NA_character_, nrow(unavailable_rows))
+
+    short_reason <- if (all(statuses == "insufficient_recalibration_data", na.rm = TRUE)) {
+        "because calibration data were too sparse for reliable recalibration"
+    } else if (all(statuses == "recalibration_fit_unstable", na.rm = TRUE)) {
+        "because recalibration fits were too unstable to report"
+    } else if (any(statuses == "insufficient_recalibration_data", na.rm = TRUE)) {
+        "because calibration data were sparse or unstable at key timepoints"
+    } else if (any(statuses == "recalibration_fit_unstable", na.rm = TRUE)) {
+        "because recalibration fits were unstable at key timepoints"
+    } else {
+        "because the calibration model was not reliable enough to report"
+    }
+
+    detailed_summary <- summarize_gep_slope_issue_pattern(calibration_data)
+    overall_summary <- sprintf(
+        "%s %s.",
+        if (all_unavailable) {
+            "Calibration slope was unavailable across all timepoints"
+        } else {
+            "Calibration slope was unavailable at some timepoints"
+        },
+        short_reason
+    )
+
+    partial_summary <- if (all_unavailable) {
+        overall_summary
+    } else {
+        paste(overall_summary, trim_gep_terminal_period(detailed_summary), sep = " ")
+    }
+
+    temporal_summary <- if (all_unavailable) {
+        "Calibration slope could not be tracked over time because it was unavailable at all timepoints."
+    } else {
+        "Calibration slope trends were only partially assessable because some timepoints had unavailable slopes."
+    }
+
+    counseling_summary <- if (all_unavailable) {
+        "Absolute risk estimates should be interpreted with caution for patient-level counseling because calibration slope was not estimable across the available timepoints."
+    } else {
+        "Absolute risk estimates should be interpreted with some caution because calibration slope was not estimable at every timepoint."
+    }
+
+    list(
+        has_issue = TRUE,
+        all_unavailable = all_unavailable,
+        detailed_summary = detailed_summary,
+        overall_summary = overall_summary,
+        partial_summary = partial_summary,
+        temporal_summary = temporal_summary,
+        counseling_summary = counseling_summary
+    )
+}
+
 #' Create Calibration Interpretation
 #'
 #' Summarize calibration-slope behavior across timepoints in narrative form.
@@ -244,12 +352,15 @@ summarize_gep_slope_issue_pattern <- function(calibration_data) {
 create_calibration_interpretation <- function(calibration_data, outcome_type) {
     if (nrow(calibration_data) == 0) return("Calibration metrics not available")
 
-    slope_issue_summary <- summarize_gep_slope_issue_pattern(calibration_data)
+    slope_issue_context <- create_gep_slope_issue_context(calibration_data)
     if (all(!is.finite(calibration_data$Slope))) {
-        return(paste(
-            slope_issue_summary,
-            "This means the report cannot use the slope to judge whether predicted risks are systematically too high or too low."
-        ))
+        interpretation_parts <- c(
+            slope_issue_context$detailed_summary,
+            summarize_gep_ici_range(calibration_data),
+            "This limits direct assessment of whether predicted risks are systematically too high or too low."
+        )
+
+        return(paste(interpretation_parts[nzchar(interpretation_parts)], collapse = " "))
     }
     
     # Analyze calibration slope patterns
@@ -268,14 +379,21 @@ create_calibration_interpretation <- function(calibration_data, outcome_type) {
     calibration_quality <- if (is.na(mean_slope)) "unknown" else if (abs(mean_slope - 1) < 0.1) "excellent" else if (abs(mean_slope - 1) < 0.2) "good" else "moderate"
     
     interpretation <- sprintf(
-        "Calibration slope across timepoints shows %s pattern (mean = %.2f). Overall calibration quality is %s. Clinical interpretation: A slope of 1.0 indicates perfect calibration. Slopes > 1.0 suggest the predictions are too moderate or compressed, while slopes < 1.0 suggest the predictions are too extreme. The %s calibration quality indicates the model %s for clinical use.",
-        slope_trend, mean_slope, calibration_quality,
+        "Calibration was %s overall with a %s slope pattern (mean slope = %.2f). This suggests the model %s.",
         calibration_quality,
-        if (is.na(calibration_quality) || calibration_quality == "unknown") "has unknown calibration status" else if (calibration_quality %in% c("excellent", "good")) "is well-calibrated and suitable" else "may require recalibration before"
+        slope_trend,
+        mean_slope,
+        if (is.na(calibration_quality) || calibration_quality == "unknown") {
+            "has uncertain calibration"
+        } else if (calibration_quality %in% c("excellent", "good")) {
+            "is reasonably well calibrated for clinical use"
+        } else {
+            "may require recalibration before direct use for absolute-risk counseling"
+        }
     )
 
-    if (nzchar(slope_issue_summary)) {
-        interpretation <- paste(interpretation, slope_issue_summary)
+    if (slope_issue_context$has_issue) {
+        interpretation <- paste(interpretation, slope_issue_context$partial_summary)
     }
     
     return(interpretation)
@@ -293,15 +411,41 @@ create_discrimination_interpretation <- function(discrimination_data, outcome_ty
     
     # Analyze Harrell's C-index patterns
     harrell_c <- discrimination_data$Harrell_C
+    valid_harrell <- harrell_c[is.finite(harrell_c)]
+
+    if (length(valid_harrell) == 0) {
+        return("Discrimination metrics were not estimable across timepoints.")
+    }
+
     mean_harrell <- mean(harrell_c, na.rm = TRUE)
     
-    discrimination_quality <- if (is.na(mean_harrell)) "unknown" else if (mean_harrell >= 0.9) "excellent" else if (mean_harrell >= 0.8) "very good" else if (mean_harrell >= 0.7) "good" else "moderate"
+    discrimination_quality <- tolower(get_discrimination_quality(mean_harrell))
+    trend_text <- if (length(valid_harrell) > 1) {
+        diffs <- diff(valid_harrell)
+        if (all(diffs > 0, na.rm = TRUE)) {
+            "improved over time"
+        } else if (all(diffs < 0, na.rm = TRUE)) {
+            "declined over time"
+        } else {
+            "remained stable across timepoints"
+        }
+    } else {
+        "was assessed at a single timepoint"
+    }
+
+    range_text <- if (length(valid_harrell) > 1) {
+        sprintf(" (range %.3f-%.3f)", min(valid_harrell), max(valid_harrell))
+    } else {
+        ""
+    }
     
     interpretation <- sprintf(
-        "Discrimination performance is %s with mean Harrell's C-index = %.3f across timepoints. Clinical interpretation: Harrell's C-index ranges from 0.5 (no discrimination) to 1.0 (perfect discrimination). Values >= 0.8 indicate very good discrimination, while values >= 0.9 indicate excellent discrimination. The %s discrimination suggests the GEP model %s distinguish between high and low-risk patients.",
-        discrimination_quality, mean_harrell,
+        "Discrimination was %s and %s, with mean Harrell's C-index = %.3f%s. The model %s separates higher- and lower-risk patients.",
         discrimination_quality,
-        if (is.na(discrimination_quality) || discrimination_quality == "unknown") "has unknown discrimination ability" else if (discrimination_quality %in% c("excellent", "very good")) "effectively" else "adequately"
+        trend_text,
+        mean_harrell,
+        range_text,
+        if (discrimination_quality %in% c("excellent", "very good")) "effectively" else "adequately"
     )
     
     return(interpretation)
@@ -319,17 +463,28 @@ create_oe_interpretation <- function(oe_data, outcome_type) {
     
     # Analyze O/E ratio patterns
     oe_ratios <- oe_data$Overall_OE
+    valid_oe <- oe_ratios[is.finite(oe_ratios)]
+
+    if (length(valid_oe) == 0) {
+        return("Observed/Expected metrics were not estimable across timepoints.")
+    }
+
     mean_oe <- mean(oe_ratios, na.rm = TRUE)
     
     # Assess systematic bias
-    bias_assessment <- if (is.na(mean_oe)) "unknown bias pattern" else if (abs(mean_oe - 1) < 0.1) "minimal systematic bias" else if (mean_oe > 1.1) "tends to underestimate risk" else if (mean_oe < 0.9) "tends to overestimate risk" else "shows moderate bias"
+    bias_assessment <- if (is.na(mean_oe)) "unknown bias pattern" else if (abs(mean_oe - 1) < 0.1) "shows minimal systematic bias" else if (mean_oe > 1.1) "tends to underestimate risk" else if (mean_oe < 0.9) "tends to overestimate risk" else "shows moderate bias"
+    range_text <- if (length(valid_oe) > 1) {
+        sprintf(" (range %.2f-%.2f)", min(valid_oe), max(valid_oe))
+    } else {
+        ""
+    }
     
     interpretation <- sprintf(
-        "Observed/Expected analysis shows %s with mean O/E ratio = %.2f across timepoints. Clinical interpretation: O/E ratio = 1.0 indicates perfect prediction. Ratios > 1.0 suggest the model underestimates actual risk, while ratios < 1.0 suggest overestimation. The %s indicates the model %s, which is %s for clinical use.",
+        "Observed/Expected ratios %s, with mean O/E ratio = %.2f%s. This suggests the model %s and %s.",
         bias_assessment, mean_oe,
-        bias_assessment,
-        if (is.na(mean_oe)) "has unknown prediction accuracy" else if (abs(mean_oe - 1) < 0.2) "provides reasonably accurate risk estimates" else "has systematic prediction errors",
-        if (is.na(mean_oe)) "unknown" else if (abs(mean_oe - 1) < 0.2) "acceptable" else "concerning and may require recalibration"
+        range_text,
+        if (is.na(mean_oe)) "has uncertain absolute-risk accuracy" else if (abs(mean_oe - 1) < 0.2) "provides reasonably accurate absolute-risk estimates" else "has systematic absolute-risk error",
+        if (is.na(mean_oe)) "should be interpreted cautiously" else if (abs(mean_oe - 1) < 0.2) "remains acceptable for clinical use" else "may warrant recalibration before clinical use"
     )
     
     return(interpretation)
@@ -348,6 +503,7 @@ create_oe_interpretation <- function(oe_data, outcome_type) {
 #' @return Character scalar describing temporal patterns.
 create_temporal_patterns <- function(calibration_data, discrimination_data, oe_data, outcome_type) {
     patterns <- c()
+    slope_issue_context <- create_gep_slope_issue_context(calibration_data)
     
     # Calibration trends
     if (nrow(calibration_data) > 1) {
@@ -363,6 +519,8 @@ create_temporal_patterns <- function(calibration_data, discrimination_data, oe_d
             } else {
                 patterns <- c(patterns, "Calibration slope shows variable pattern across timepoints")
             }
+        } else if (slope_issue_context$has_issue) {
+            patterns <- c(patterns, slope_issue_context$temporal_summary)
         }
     }
     
@@ -418,6 +576,7 @@ create_temporal_patterns <- function(calibration_data, discrimination_data, oe_d
 #' @return Character scalar describing clinical implications.
 create_clinical_implications <- function(calibration_data, discrimination_data, oe_data, outcome_type) {
     implications <- c()
+    slope_issue_context <- create_gep_slope_issue_context(calibration_data)
     
     # Overall model utility
     if (nrow(discrimination_data) > 0) {
@@ -435,16 +594,8 @@ create_clinical_implications <- function(calibration_data, discrimination_data, 
     if (nrow(calibration_data) > 0) {
         mean_slope <- mean(calibration_data$Slope, na.rm = TRUE)
         if (is.na(mean_slope)) {
-            slope_issue_summary <- summarize_gep_slope_issue_pattern(calibration_data)
-            if (nzchar(slope_issue_summary)) {
-                slope_issue_summary <- sub("\\.$", "", slope_issue_summary)
-                implications <- c(
-                    implications,
-                    paste0(
-                        slope_issue_summary,
-                        ". The absolute risk estimates should be interpreted with caution for patient-level counseling"
-                    )
-                )
+            if (slope_issue_context$has_issue) {
+                implications <- c(implications, slope_issue_context$counseling_summary)
             } else {
                 implications <- c(implications, "Calibration slope was not estimable across the available timepoints")
             }
