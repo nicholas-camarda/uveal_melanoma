@@ -12,6 +12,10 @@
 #' @param prefix character Filename prefix
 create_mfs_gep_visuals <- function(mfs_results, mfs_data, output_dir, prefix, group_var = "biopsy1_gep", model_group_var = group_var, other_map = list(), dataset_name = "GEP Validation") {
     # Directly write into centralized visuals folder created by create_output_structure()
+    prame_results <- NULL
+    if (!is.null(mfs_results$prame_analysis)) {
+        prame_results <- mfs_results$prame_analysis
+    }
 
     # Calibration plots
     # create_calibration_plots(mfs_results, "MFS", output_dir, prefix)
@@ -29,6 +33,8 @@ create_mfs_gep_visuals <- function(mfs_results, mfs_data, output_dir, prefix, gr
         create_mfs_survival_curves(mfs_data, output_dir, prefix, group_var = group_var, model_group_var = model_group_var, other_map = other_map, dataset_name = dataset_name)
     }
 
+    create_prame_incremental_value_plot(prame_results, "MFS", output_dir, prefix)
+
     invisible(NULL)
 }
 
@@ -43,6 +49,7 @@ create_mfs_gep_visuals <- function(mfs_results, mfs_data, output_dir, prefix, gr
 #' @param prefix character Filename prefix
 create_mss_gep_visuals <- function(mss_results, mss_data, output_dir, prefix, group_var = "biopsy1_gep", other_map = list()) {
     # Directly write into centralized visuals folder created by create_output_structure()
+    prame_results <- mss_results$prame_results %||% NULL
 
     # Calibration plots (removed per spec; included in consolidated summary)
     # create_calibration_plots(mss_results, "MSS", output_dir, prefix)
@@ -72,6 +79,8 @@ create_mss_gep_visuals <- function(mss_results, mss_data, output_dir, prefix, gr
         )
     }
 
+    create_prame_incremental_value_plot(prame_results, "MSS", output_dir, prefix)
+
     invisible(NULL)
 }
 
@@ -90,6 +99,89 @@ create_unified_gep_visuals <- function(mfs_results, mss_results, output_dir, pre
     # create_combined_discrimination_plot(mfs_results, mss_results, output_dir, prefix)
     # REMOVED: Redundant performance comparison plot that duplicates discrimination metrics
     # create_performance_comparison_plot(mfs_results, mss_results, output_dir, prefix)
+    invisible(NULL)
+}
+
+#' Create a PRAME incremental-value delta-C plot
+#'
+#' Save one outcome-specific dot-and-whisker plot showing the delta Harrell's C
+#' estimate and its bootstrap confidence interval for each timepoint.
+#'
+#' @param prame_results PRAME comparison result object.
+#' @param outcome_type Character outcome label (`"MFS"` or `"MSS"`).
+#' @param output_dir Character destination directory.
+#' @param prefix Character filename prefix.
+create_prame_incremental_value_plot <- function(prame_results, outcome_type, output_dir, prefix) {
+    if (is.null(prame_results) || is.null(prame_results$comparison_results) || !is.list(prame_results$comparison_results)) {
+        return(invisible(NULL))
+    }
+
+    plot_rows <- lapply(prame_results$comparison_results, function(result) {
+        if (!is.list(result) || !is.finite(result$delta_harrell_c %||% NA_real_)) {
+            return(NULL)
+        }
+
+        data.frame(
+            Timepoint = paste0(result$timepoint, "yr"),
+            Delta_Harrell_C = as.numeric(result$delta_harrell_c),
+            Delta_CI_Lower = as.numeric(result$delta_ci_lower),
+            Delta_CI_Upper = as.numeric(result$delta_ci_upper),
+            Analysis_Tier = result$analysis_tier %||% NA_character_,
+            stringsAsFactors = FALSE
+        )
+    })
+
+    plot_rows <- Filter(Negate(is.null), plot_rows)
+    if (length(plot_rows) == 0) {
+        return(invisible(NULL))
+    }
+
+    plot_data <- do.call(rbind, plot_rows)
+    plot_data$timepoint_numeric <- suppressWarnings(as.numeric(gsub("yr", "", plot_data$Timepoint)))
+    plot_data <- plot_data[order(plot_data$timepoint_numeric, decreasing = TRUE), , drop = FALSE]
+    plot_data$Timepoint <- factor(plot_data$Timepoint, levels = plot_data$Timepoint)
+
+    subtitle_label <- unique(stats::na.omit(plot_data$Analysis_Tier))
+    if (length(subtitle_label) == 0) {
+        subtitle_label <- NA_character_
+    }
+
+    p <- ggplot(plot_data, aes(x = Delta_Harrell_C, y = Timepoint)) +
+        geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") +
+        geom_errorbarh(
+            aes(xmin = Delta_CI_Lower, xmax = Delta_CI_Upper),
+            height = 0.18,
+            color = "gray35",
+            na.rm = TRUE
+        ) +
+        geom_point(size = 3, color = get_qualitative_palette(1)[1]) +
+        labs(
+            title = sprintf("%s PRAME Incremental Discrimination", outcome_type),
+            subtitle = ifelse(is.na(subtitle_label), NULL, sprintf("%s analysis", subtitle_label)),
+            x = "Delta Harrell's C (GEP + PRAME minus GEP only)",
+            y = "Timepoint"
+        ) +
+        theme_classic() +
+        theme(
+            plot.background = element_rect(fill = "white"),
+            panel.background = element_rect(fill = "white")
+        )
+
+    plot_name <- if (identical(outcome_type, "MFS")) {
+        paste0(prefix, "mfs_prame_delta_c.png")
+    } else {
+        paste0(prefix, "mss_prame_delta_c.png")
+    }
+
+    ggsave(
+        file.path(output_dir, plot_name),
+        p,
+        width = DEFAULT_PLOT_WIDTH,
+        height = DEFAULT_PLOT_HEIGHT,
+        dpi = PLOT_DPI,
+        bg = "white"
+    )
+
     invisible(NULL)
 }
 

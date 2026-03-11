@@ -154,29 +154,23 @@ perform_competing_risk_mss_validation <- function(data, timepoint, time_var = "t
     ))
 }
 
-#' Perform PRAME-augmented analysis for MSS
+#' Perform PRAME incremental discrimination analysis for MSS
 #'
-#' Assess added value of PRAME status by comparing base GEP predictions vs
-#' PRAME-augmented categories using NRI across timepoints.
+#' Assess whether PRAME improves discrimination beyond imported GEP risk on the
+#' PRAME-complete subset, reported as exploratory MSS support.
 #'
-#' @param data Data frame prepared for MSS with PRAME status
-#' @param timepoints Numeric vector of year values for evaluation
-#' @return A named list of NRI results by timepoint (when feasible)
+#' @param data Data frame prepared for MSS with PRAME status.
+#' @param timepoints Numeric vector of year values for evaluation.
+#' @return A named list of incremental discrimination results by timepoint.
 perform_prame_augmented_analysis_mss <- function(data, timepoints) {
-    logger::log_info(formatted("Performing PRAME-augmented analysis with NRI calculation (MSS)", indent = 1))
+    logger::log_info(formatted("Performing PRAME incremental discrimination analysis (MSS exploratory)", indent = 1))
 
-    # Filter down to a clean cohort that has the inputs needed for reclassification:
-    # - binary PRAME status
-    # - baseline MSS risk predictions (biopsy1_gep_mss)
-    # - survival time + melanoma-specific event indicator
-    # - recorded baseline GEP class (for downstream summaries)
     prame_data <- data %>%
         dplyr::filter(
             !is.na(prame_status),
             prame_status %in% c("Positive", "Negative"),
-            !is.na(biopsy1_gep_mss),
-            !is.na(tt_death_years),
-            !is.na(melanoma_death_event),
+            !is.na(predicted_mss_risk_5yr),
+            !is.na(tt_death_months),
             !is.na(biopsy1_gep)
         )
 
@@ -189,162 +183,52 @@ perform_prame_augmented_analysis_mss <- function(data, timepoints) {
         ))
     }
 
-    logger::log_info(formatted(sprintf("MSS PRAME analysis using %d patients", nrow(prame_data)), indent = 2))
+    logger::log_info(formatted(sprintf("MSS PRAME comparison using %d patients", nrow(prame_data)), indent = 2))
     prame_dist <- table(prame_data$prame_status)
     logger::log_info(formatted(sprintf(
         "PRAME distribution (MSS): Positive=%d, Negative=%d",
-        prame_dist["Positive"], prame_dist["Negative"]
+        sum(prame_data$prame_status == "Positive", na.rm = TRUE),
+        sum(prame_data$prame_status == "Negative", na.rm = TRUE)
     ), indent = 2))
 
-    # Hold per-timepoint statistics so each sheet/summary can pick them up later
-    nri_results <- list()
+    comparison_results <- list()
 
     for (timepoint in timepoints) {
-        logger::log_info(formatted(sprintf("Calculating MSS NRI for %d-year timepoint", timepoint), indent = 2))
+        logger::log_info(formatted(sprintf("Comparing GEP-only vs GEP-plus-PRAME models for %d-year MSS", timepoint), indent = 2))
 
-        # For each timepoint we construct a focused analysis frame:
-        #   event_by_timepoint:   did the melanoma death happen before the landmark year?
-        #   base_risk:            convert survival probability to risk (1-survival)
-        #   prame_positive:       flag used for risk inflation vs deflation
-        outcome_data <- prame_data %>%
-            dplyr::mutate(
-                event_by_timepoint = melanoma_death_event == 1 & tt_death_years <= timepoint,
-                base_risk = 1 - biopsy1_gep_mss,
-                prame_positive = prame_status == "Positive"
-            )
-
-        # Apply the empirically chosen adjustment factors that mirror the MFS workflow.
-        # Positive PRAME shifts risk upward (capped by GEP_RISK_CAP_MAXIMUM) whereas
-        # negative PRAME gently lowers the baseline risk estimate.
-        enhanced_predictions <- ifelse(
-            outcome_data$prame_positive,
-            pmin(outcome_data$base_risk * GEP_PRAME_ADJUSTMENT_FACTOR, GEP_RISK_CAP_MAXIMUM),
-            outcome_data$base_risk * GEP_PRAME_REDUCTION_FACTOR
+        comparison_results[[paste0("yr", timepoint)]] <- calculate_prame_incremental_value_metrics(
+            data = prame_data,
+            time_var = paste0("tt_mss_", timepoint, "yr"),
+            event_var = paste0("mss_event_", timepoint, "yr"),
+            base_risk_var = paste0("predicted_mss_risk_", timepoint, "yr"),
+            timepoint = timepoint,
+            outcome_label = "MSS",
+            analysis_tier = "Exploratory"
         )
 
-        # Translate continuous risks into categorical risk strata so we can
-        # quantify movement across thresholds (net reclassification index)
-        risk_cutoffs <- GEP_RISK_CUTOFFS
-        risk_labels <- GEP_RISK_LABELS
-        base_categories <- cut(outcome_data$base_risk, breaks = risk_cutoffs, labels = risk_labels, include.lowest = TRUE)
-        enhanced_categories <- cut(enhanced_predictions, breaks = risk_cutoffs, labels = risk_labels, include.lowest = TRUE)
-        base_category_codes <- as.integer(base_categories)
-        enhanced_category_codes <- as.integer(enhanced_categories)
-
-        reclass_table <- table(
-            Base = base_categories,
-            With_PRAME = enhanced_categories,
-            useNA = "ifany"
-        )
-
-        # Event bookkeeping drives both NRI halves (events vs non-events) and
-        # helps short-circuit the workflow when data are sparse at a given landmark
-        events <- outcome_data$event_by_timepoint
-        n_events <- sum(events)
-        n_nonevents <- sum(!events)
-
-        if (n_events >= GEP_MIN_EVENTS_COMPETING_RISK && n_nonevents >= GEP_MIN_EVENTS_COMPETING_RISK) {
-            # Count upward/downward movement separately for events and non-events
-            event_indices <- which(events)
-            event_up <- sum(enhanced_category_codes[event_indices] > base_category_codes[event_indices], na.rm = TRUE)
-            event_down <- sum(enhanced_category_codes[event_indices] < base_category_codes[event_indices], na.rm = TRUE)
-            nonevent_indices <- which(!events)
-            nonevent_up <- sum(enhanced_category_codes[nonevent_indices] > base_category_codes[nonevent_indices], na.rm = TRUE)
-            nonevent_down <- sum(enhanced_category_codes[nonevent_indices] < base_category_codes[nonevent_indices], na.rm = TRUE)
-
-            # Classical categorical NRI components
-            nri_events <- (event_up / n_events) - (event_down / n_events)
-            nri_nonevents <- (nonevent_down / n_nonevents) - (nonevent_up / n_nonevents)
-            nri_total <- nri_events + nri_nonevents
-
-            # Integrated discrimination improvement captures the average risk separation
-            # achieved by adding PRAME on top of the categorical NRI story
-            idi <- mean(enhanced_predictions[events]) - mean(outcome_data$base_risk[events]) -
-                (mean(enhanced_predictions[!events]) - mean(outcome_data$base_risk[!events]))
-
-            reclass_improved <- event_up + nonevent_down
-            reclass_worsened <- event_down + nonevent_up
-            if (reclass_improved + reclass_worsened > 0) {
-                # McNemar's test assesses whether the direction of movement is symmetric
-                mcnemar_stat <- (abs(reclass_improved - reclass_worsened) - 1)^2 / (reclass_improved + reclass_worsened)
-                mcnemar_p <- pchisq(mcnemar_stat, df = 1, lower.tail = FALSE)
-            } else {
-                mcnemar_p <- 1
-            }
+        tp_result <- comparison_results[[paste0("yr", timepoint)]]
+        if (identical(tp_result$status, "ok")) {
+            logger::log_info(formatted(sprintf(
+                "MSS delta Harrell's C = %.3f (base %.3f, enhanced %.3f)",
+                tp_result$delta_harrell_c,
+                tp_result$base_harrell_c,
+                tp_result$enhanced_harrell_c
+            ), indent = 3))
         } else {
             logger::log_warn(formatted(sprintf(
-                "Insufficient events (%d) or non-events (%d) for MSS NRI calculation",
-                n_events, n_nonevents
-            ), indent = 3))
-            nri_events <- NA
-            nri_nonevents <- NA
-            nri_total <- NA
-            idi <- NA
-            mcnemar_p <- NA
-            event_up <- 0
-            event_down <- 0
-            nonevent_up <- 0
-            nonevent_down <- 0
-        }
-
-        # Optionally compare ROC AUCs (baseline vs PRAME-augmented) when data support it.
-        # Wrapped in tryCatch to avoid pulling pROC when it is unavailable or when
-        # event counts are too small to define a ROC curve.
-        model_comparison <- NULL
-        tryCatch(
-            {
-                if (requireNamespace("pROC", quietly = TRUE) && n_events >= GEP_MIN_EVENTS_COMPETING_RISK && n_nonevents >= GEP_MIN_EVENTS_COMPETING_RISK) {
-                    base_auc <- pROC::auc(pROC::roc(events, outcome_data$base_risk, quiet = TRUE))
-                    enhanced_auc <- pROC::auc(pROC::roc(events, enhanced_predictions, quiet = TRUE))
-                    auc_difference <- enhanced_auc - base_auc
-                    model_comparison <- list(
-                        base_auc = round(as.numeric(base_auc), 3),
-                        enhanced_auc = round(as.numeric(enhanced_auc), 3),
-                        auc_difference = round(as.numeric(auc_difference), 3)
-                    )
-                }
-            },
-            error = function(e) {
-                model_comparison <- NULL
-            }
-        )
-
-        # Store all per-timepoint artifacts (counts, metrics, interpretation helpers)
-        nri_results[[paste0("yr", timepoint)]] <- list(
-            timepoint = timepoint,
-            n = nrow(outcome_data),
-            events = n_events,
-            nonevents = n_nonevents,
-            nri_events = round(nri_events, 3),
-            nri_nonevents = round(nri_nonevents, 3),
-            nri_total = round(nri_total, 3),
-            idi = round(idi, 4),
-            mcnemar_p = mcnemar_p,
-            reclassification_counts = list(
-                event_up = event_up,
-                event_down = event_down,
-                nonevent_up = nonevent_up,
-                nonevent_down = nonevent_down
-            ),
-            reclassification_table = reclass_table,
-            model_comparison = model_comparison
-        )
-
-        if (!is.na(nri_total)) {
-            logger::log_info(formatted(sprintf(
-                "MSS NRI = %.3f (Events: %.3f, Non-events: %.3f), IDI = %.4f",
-                nri_total, nri_events, nri_nonevents, idi
+                "%d-year MSS PRAME comparison unavailable: %s",
+                timepoint,
+                tp_result$interpretation
             ), indent = 3))
         }
     }
 
-    # Return a compact bundle that downstream reporting modules understand,
-    # mirroring the structure used by the MFS PRAME workflow for consistency
     return(list(
         n = nrow(prame_data),
         prame_available = TRUE,
         prame_distribution = prame_dist,
-        nri_results = nri_results
+        analysis_type = "incremental_discrimination",
+        comparison_results = comparison_results
     ))
 }
 

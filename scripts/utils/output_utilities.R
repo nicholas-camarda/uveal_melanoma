@@ -252,6 +252,126 @@ restore_gep_display_variables <- function(data, dataset_name = NULL, variables =
     restore_precollapse_variables(data, dataset_name = dataset_name, variables = variables)
 }
 
+build_merged_baseline_cohort_table <- function(data, dataset_name = NULL) {
+    vars_to_summarize <- BASELINE_VARIABLES_TO_SUMMARIZE
+    variable_labels <- get_variable_labels()
+    cohort_label <- dataset_name %||% "cohort"
+
+    cohort_data <- apply_precollapse_levels(data, dataset_name)
+    cohort_data <- format_levels_for_display(cohort_data)
+
+    available_vars <- intersect(vars_to_summarize, names(cohort_data))
+    if (!is.null(dataset_name) && grepl("restricted", dataset_name, ignore.case = TRUE)) {
+        available_vars <- setdiff(available_vars, "optic_nerve")
+    }
+
+    treatment_levels <- character()
+    if ("treatment_group" %in% names(cohort_data)) {
+        treatment_levels <- unique(stats::na.omit(as.character(cohort_data$treatment_group)))
+    }
+
+    if (length(treatment_levels) >= 2) {
+        vars_with_insufficient_levels <- c()
+        for (var in available_vars) {
+            if (var %in% names(cohort_data) && (is.factor(cohort_data[[var]]) || is.character(cohort_data[[var]]))) {
+                level_counts <- table(cohort_data[[var]], useNA = "no")
+                valid_levels <- sum(level_counts > 0)
+                if (valid_levels < 2) {
+                    vars_with_insufficient_levels <- c(vars_with_insufficient_levels, var)
+                }
+            }
+        }
+
+        if (length(vars_with_insufficient_levels) > 0) {
+            logger::log_info(sprintf(
+                "Variables with insufficient levels for p-values in %s: %s",
+                cohort_label,
+                paste(vars_with_insufficient_levels, collapse = ", ")
+            ))
+        }
+
+        cohort_table <- cohort_data %>%
+            select(any_of(c(available_vars, "treatment_group"))) %>%
+            tbl_summary(
+                by = treatment_group,
+                missing = "no",
+                label = variable_labels[intersect(names(variable_labels), available_vars)],
+                statistic = list(
+                    all_continuous() ~ "{median} ({min}, {max})",
+                    all_categorical() ~ "{n} ({p}%)"
+                ),
+                digits = list(all_continuous() ~ 1, all_categorical() ~ 0)
+            ) %>%
+            add_overall() %>%
+            bold_labels()
+
+        testable_vars <- setdiff(available_vars, vars_with_insufficient_levels)
+
+        cohort_table <- tryCatch(
+            {
+                if (length(testable_vars) == 0) {
+                    return(cohort_table)
+                }
+
+                cohort_table %>%
+                    add_p(
+                        include = any_of(testable_vars),
+                        test = list(all_categorical() ~ "fisher.test"),
+                        test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))
+                    )
+            },
+            error = function(e) {
+                logger::log_warn(sprintf("Warning: Could not add p-values for %s table: %s", cohort_label, e$message))
+                cohort_table
+            }
+        )
+
+        return(tryCatch(
+            {
+                cohort_table %>%
+                    modify_header(
+                        label = "**Characteristic**",
+                        stat_0 = "**Overall**\nN = {N}",
+                        stat_1 = "**PBT**\nN = {n}",
+                        stat_2 = "**GKSRS**\nN = {n}",
+                        p.value = "**p-value**"
+                    )
+            },
+            error = function(e) {
+                logger::log_warn(sprintf("Warning: Could not modify headers for %s table: %s", cohort_label, e$message))
+                cohort_table
+            }
+        ))
+    }
+
+    cohort_table <- cohort_data %>%
+        select(any_of(available_vars)) %>%
+        tbl_summary(
+            missing = "no",
+            label = variable_labels[intersect(names(variable_labels), available_vars)],
+            statistic = list(
+                all_continuous() ~ "{median} ({min}, {max})",
+                all_categorical() ~ "{n} ({p}%)"
+            ),
+            digits = list(all_continuous() ~ 1, all_categorical() ~ 0)
+        ) %>%
+        bold_labels()
+
+    tryCatch(
+        {
+            cohort_table %>%
+                modify_header(
+                    label = "**Characteristic**",
+                    stat_0 = "**Overall**\nN = {N}"
+                )
+        },
+        error = function(e) {
+            logger::log_warn(sprintf("Warning: Could not modify headers for %s table: %s", cohort_label, e$message))
+            cohort_table
+        }
+    )
+}
+
 #' Reapply pre-collapsed factor levels when available
 #'
 apply_precollapse_levels <- function(data, dataset_name = NULL) {
@@ -287,132 +407,16 @@ merge_cohort_tables <- function(full_cohort_data, restricted_cohort_data, output
 
             logger::log_info(sprintf("Merging tables will be saved to: %s", output_path))
 
-    # Use globally defined variables for baseline characteristics summary
-    vars_to_summarize <- BASELINE_VARIABLES_TO_SUMMARIZE
-
-    # Get variable labels for human-readable display
-    variable_labels <- get_variable_labels()
-
-    # Helper function to filter variables with sufficient variation
-    filter_variables_with_variation <- function(data, variables, by_var = "treatment_group") {
-        filtered_vars <- c()
-        
-        for (var in variables) {
-            if (var %in% names(data)) {
-                # Check if variable has sufficient variation
-                if (is.numeric(data[[var]])) {
-                    # For numeric variables, check if there's variation
-                    if (length(unique(data[[var]])) > 1) {
-                        filtered_vars <- c(filtered_vars, var)
-                    }
-                } else {
-                    # For categorical variables, check if there are at least 2 levels
-                    # and if the by_var has sufficient variation
-                    if (length(unique(data[[var]])) > 1) {
-                        # Also check if the by_var has sufficient variation
-                        if (by_var %in% names(data) && length(unique(data[[by_var]])) > 1) {
-                            filtered_vars <- c(filtered_vars, var)
-                        }
-                    }
-                }
-            }
-        }
-        
-        if (length(filtered_vars) < length(variables)) {
-            removed_vars <- setdiff(variables, filtered_vars)
-            logger::log_info(sprintf("Removed variables with insufficient variation: %s", paste(removed_vars, collapse = ", ")))
-        }
-        
-        return(filtered_vars)
-    }
-
     tryCatch(
         {
-            # Restore pre-collapsed levels when files are available to mirror individual cohort tables
-            full_cohort_data <- apply_precollapse_levels(full_cohort_data, dataset_names$full)
-            restricted_cohort_data <- apply_precollapse_levels(restricted_cohort_data, dataset_names$restricted)
-
-            # Align factor display formatting with individual baseline tables
-            full_cohort_formatted <- format_levels_for_display(full_cohort_data)
-            restricted_cohort_formatted <- format_levels_for_display(restricted_cohort_data)
-
-            # Filter variables with sufficient variation for full cohort
-            full_available <- intersect(vars_to_summarize, names(full_cohort_formatted))
-            full_available_filtered <- filter_variables_with_variation(full_cohort_formatted, full_available)
-
-            # Create baseline table for full cohort
-            full_baseline <- full_cohort_formatted %>%
-                select(any_of(c(full_available_filtered, "treatment_group"))) %>%
-                tbl_summary(
-                    by = treatment_group,
-                    missing = "no",
-                    label = variable_labels[intersect(names(variable_labels), full_available_filtered)],
-                    statistic = list(
-                        all_continuous() ~ "{median} ({min}, {max})",
-                        all_categorical() ~ "{n} ({p}%)"
-                    ),
-                    digits = list(all_continuous() ~ 1, all_categorical() ~ 0)
-                ) %>%
-                add_overall() %>%
-                add_p(
-                    test = list(all_categorical() ~ "fisher.test"),
-                    test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))
-                ) %>%
-                bold_labels()
-
-            # Add header modification with error handling for full cohort
-            tryCatch({
-                full_baseline <- full_baseline %>%
-                    modify_header(
-                        label = "**Characteristic**",
-                        stat_0 = "**Overall**\nN = {N}",
-                        stat_1 = "**PBT**\nN = {n}",
-                        stat_2 = "**GKSRS**\nN = {n}",
-                        p.value = "**p-value**"
-                    )
-            }, error = function(e) {
-                logger::log_warn(sprintf("Warning: Could not modify headers for full cohort table: %s", e$message))
-                logger::log_info("Proceeding with default headers for full cohort")
-            })
-
-            # Create baseline table for restricted cohort
-            # Exclude optic_nerve from restricted cohort (always "N" by eligibility criteria)
-            restricted_available <- intersect(vars_to_summarize, names(restricted_cohort_formatted))
-            restricted_available <- setdiff(restricted_available, "optic_nerve")
-            restricted_available_filtered <- filter_variables_with_variation(restricted_cohort_formatted, restricted_available)
-            restricted_baseline <- restricted_cohort_formatted %>%
-                select(any_of(c(restricted_available_filtered, "treatment_group"))) %>%
-                tbl_summary(
-                    by = treatment_group,
-                    missing = "no",
-                    label = variable_labels[intersect(names(variable_labels), restricted_available_filtered)],
-                    statistic = list(
-                        all_continuous() ~ "{median} ({min}, {max})",
-                        all_categorical() ~ "{n} ({p}%)"
-                    ),
-                    digits = list(all_continuous() ~ 1, all_categorical() ~ 0)
-                ) %>%
-                add_overall() %>%
-                add_p(
-                    test = list(all_categorical() ~ "fisher.test"),
-                    test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))
-                ) %>%
-                bold_labels()
-
-            # Add header modification with error handling for restricted cohort
-            tryCatch({
-                restricted_baseline <- restricted_baseline %>%
-                    modify_header(
-                        label = "**Characteristic**",
-                        stat_0 = "**Overall**\nN = {N}",
-                        stat_1 = "**PBT**\nN = {n}",
-                        stat_2 = "**GKSRS**\nN = {n}",
-                        p.value = "**p-value**"
-                    )
-            }, error = function(e) {
-                logger::log_warn(sprintf("Warning: Could not modify headers for restricted cohort table: %s", e$message))
-                logger::log_info("Proceeding with default headers for restricted cohort")
-            })
+            full_baseline <- build_merged_baseline_cohort_table(
+                full_cohort_data,
+                dataset_name = dataset_names$full %||% "uveal_melanoma_full_cohort"
+            )
+            restricted_baseline <- build_merged_baseline_cohort_table(
+                restricted_cohort_data,
+                dataset_name = dataset_names$restricted %||% "uveal_melanoma_restricted_cohort"
+            )
 
             # Merge tables side by side
             merged_table <- tbl_merge(
@@ -448,6 +452,155 @@ merge_cohort_tables <- function(full_cohort_data, restricted_cohort_data, output
     logger::log_info("Files created: merged_baseline_characteristics.xlsx and merged_baseline_characteristics.html")
 
     return(invisible(NULL))
+}
+
+#' Merge baseline characteristics tables from all three analytic cohorts
+#'
+#' Creates a side-by-side baseline table comparing the full, restricted, and
+#' GKSRS-only cohorts while preserving the legacy two-cohort merged outputs.
+#' The GKSRS-only cohort is summarized as a single overall arm because it has no
+#' PBT comparator by design.
+#'
+#' @param full_cohort_data Data frame containing full cohort data.
+#' @param restricted_cohort_data Data frame containing restricted cohort data.
+#' @param gksrs_only_cohort_data Data frame containing GKSRS-only cohort data.
+#' @param output_path Directory where merged tables should be saved.
+#' @param dataset_names Named list of dataset ids for pre-collapse restoration.
+#' @return Invisibly returns NULL.
+merge_all_cohort_baseline_tables <- function(full_cohort_data,
+                                             restricted_cohort_data,
+                                             gksrs_only_cohort_data,
+                                             output_path = NULL,
+                                             dataset_names = list()) {
+    logger::log_info("=== STARTING TABLE MERGING: Full, Restricted, and GKSRS-Only Cohorts ===")
+
+    if (is.null(output_path)) {
+        output_path <- MERGED_TABLES_DIR
+    }
+
+    if (!dir.exists(output_path)) {
+        dir.create(output_path, recursive = TRUE, showWarnings = FALSE)
+        logger::log_info(sprintf("Created merged tables directory: %s", output_path))
+    }
+
+    logger::log_info(sprintf("Three-cohort merged tables will be saved to: %s", output_path))
+
+    tryCatch(
+        {
+            full_baseline <- build_merged_baseline_cohort_table(
+                full_cohort_data,
+                dataset_name = dataset_names$full %||% "uveal_melanoma_full_cohort"
+            )
+            restricted_baseline <- build_merged_baseline_cohort_table(
+                restricted_cohort_data,
+                dataset_name = dataset_names$restricted %||% "uveal_melanoma_restricted_cohort"
+            )
+            gksrs_only_baseline <- build_merged_baseline_cohort_table(
+                gksrs_only_cohort_data,
+                dataset_name = dataset_names$gksrs_only %||% "uveal_melanoma_gksrs_only_cohort"
+            )
+
+            merged_table <- tbl_merge(
+                tbls = list(full_baseline, restricted_baseline, gksrs_only_baseline),
+                tab_spanner = c("**Full Cohort**", "**Restricted Cohort**", "**GKSRS-Only Cohort**")
+            ) %>%
+                modify_caption("**Table 1B: Baseline Characteristics Across All Three Cohorts**")
+
+            save_gt_html(
+                merged_table,
+                filename = file.path(output_path, "merged_baseline_characteristics_all_three_cohorts.html")
+            )
+
+            merged_table %>%
+                as_tibble() %>%
+                writexl::write_xlsx(
+                    path = file.path(output_path, "merged_baseline_characteristics_all_three_cohorts.xlsx")
+                )
+
+            logger::log_info("Saved three-cohort merged baseline characteristics table (Excel and HTML)")
+        },
+        error = function(e) {
+            logger::log_error(sprintf("Error merging three-cohort baseline tables: %s", e$message))
+            logger::log_info("Skipping three-cohort baseline table merge")
+        }
+    )
+
+    logger::log_info("=== COMPLETED THREE-COHORT BASELINE TABLE MERGING ===")
+    logger::log_info(sprintf("Three-cohort merged baseline characteristics table saved to: %s", output_path))
+    logger::log_info("Files created: merged_baseline_characteristics_all_three_cohorts.xlsx and merged_baseline_characteristics_all_three_cohorts.html")
+
+    invisible(NULL)
+}
+
+#' Merge baseline characteristics tables for the full and GKSRS-only cohorts
+#'
+#' Creates a side-by-side baseline table comparing the full cohort against the
+#' GKSRS-only cohort. The full cohort retains its within-cohort PBT-vs-GKSRS
+#' statistical tests, while the GKSRS-only cohort is summarized descriptively.
+#'
+#' @param full_cohort_data Data frame containing full cohort data.
+#' @param gksrs_only_cohort_data Data frame containing GKSRS-only cohort data.
+#' @param output_path Directory where merged tables should be saved.
+#' @param dataset_names Named list of dataset ids for pre-collapse restoration.
+#' @return Invisibly returns NULL.
+merge_full_vs_gksrs_baseline_tables <- function(full_cohort_data,
+                                                gksrs_only_cohort_data,
+                                                output_path = NULL,
+                                                dataset_names = list()) {
+    logger::log_info("=== STARTING TABLE MERGING: Full and GKSRS-Only Cohorts ===")
+
+    if (is.null(output_path)) {
+        output_path <- MERGED_TABLES_DIR
+    }
+
+    if (!dir.exists(output_path)) {
+        dir.create(output_path, recursive = TRUE, showWarnings = FALSE)
+        logger::log_info(sprintf("Created merged tables directory: %s", output_path))
+    }
+
+    logger::log_info(sprintf("Full-vs-GKSRS-only merged tables will be saved to: %s", output_path))
+
+    tryCatch(
+        {
+            full_baseline <- build_merged_baseline_cohort_table(
+                full_cohort_data,
+                dataset_name = dataset_names$full %||% "uveal_melanoma_full_cohort"
+            )
+            gksrs_only_baseline <- build_merged_baseline_cohort_table(
+                gksrs_only_cohort_data,
+                dataset_name = dataset_names$gksrs_only %||% "uveal_melanoma_gksrs_only_cohort"
+            )
+
+            merged_table <- tbl_merge(
+                tbls = list(full_baseline, gksrs_only_baseline),
+                tab_spanner = c("**Full Cohort**", "**GKSRS-Only Cohort**")
+            ) %>%
+                modify_caption("**Table 1C: Baseline Characteristics for Full vs GKSRS-Only Cohorts**")
+
+            save_gt_html(
+                merged_table,
+                filename = file.path(output_path, "merged_baseline_characteristics_full_vs_gksrs_only.html")
+            )
+
+            merged_table %>%
+                as_tibble() %>%
+                writexl::write_xlsx(
+                    path = file.path(output_path, "merged_baseline_characteristics_full_vs_gksrs_only.xlsx")
+                )
+
+            logger::log_info("Saved full-vs-GKSRS-only merged baseline characteristics table (Excel and HTML)")
+        },
+        error = function(e) {
+            logger::log_error(sprintf("Error merging full-vs-GKSRS-only baseline tables: %s", e$message))
+            logger::log_info("Skipping full-vs-GKSRS-only baseline table merge")
+        }
+    )
+
+    logger::log_info("=== COMPLETED FULL-VS-GKSRS-ONLY BASELINE TABLE MERGING ===")
+    logger::log_info(sprintf("Full-vs-GKSRS-only merged baseline characteristics table saved to: %s", output_path))
+    logger::log_info("Files created: merged_baseline_characteristics_full_vs_gksrs_only.xlsx and merged_baseline_characteristics_full_vs_gksrs_only.html")
+
+    invisible(NULL)
 }
 
 #' Create All Combined Forest Plots and Summary Tables

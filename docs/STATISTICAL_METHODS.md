@@ -844,49 +844,39 @@ The workbook records the active path in `IPA_Method` and whether a fallback was 
 
 For a plain-English reading order for discrimination outputs, see [GEP Discrimination Made Simple](INTERPRETATION_GUIDE.md#gep-discrimination-made-simple).
 
-### PRAME Reclassification Metrics
+### PRAME Incremental Discrimination Metrics
 
 **Implementation:** `perform_prame_augmented_analysis_mfs()` and `perform_prame_augmented_analysis_mss()`
 
-PRAME augmentation is optional and is only run on the PRAME-complete subset with binary `Positive` / `Negative` status and the required endpoint-specific GEP predictions.
+PRAME comparison is optional and is only run on the PRAME-complete subset with binary `Positive` / `Negative` status and the required endpoint-specific GEP predictions.
 
-**Base risk:**
+At each timepoint, the pipeline fits two Cox models on the same analytic cohort:
+- Base model: imported GEP risk only.
+- Enhanced model: imported GEP risk plus PRAME status.
 
-Base risk is calculated as $1 -$ the lab-reported survival probability.
+The primary PRAME question is whether the enhanced model improves discrimination beyond the imported GEP prediction already present in the dataset.
 
-**PRAME-adjusted risk:**
-- PRAME-positive patients have their base risk multiplied by `GEP_PRAME_ADJUSTMENT_FACTOR`, capped at `GEP_RISK_CAP_MAXIMUM`.
-- PRAME-negative patients have their base risk multiplied by `GEP_PRAME_REDUCTION_FACTOR`.
-
-The code then converts both the base and PRAME-adjusted risks into categorical risk strata using `GEP_RISK_CUTOFFS` and `GEP_RISK_LABELS`.
-
-**Categorical NRI:**
+**Primary metric:**
 
 $$
-NRI_{events} = \frac{Event_{Up}}{n_{events}} - \frac{Event_{Down}}{n_{events}}
+\Delta C = C_{GEP + PRAME} - C_{GEP\ only}
 $$
 
-$$
-NRI_{nonevents} = \frac{NonEvent_{Down}}{n_{nonevents}} - \frac{NonEvent_{Up}}{n_{nonevents}}
-$$
+- `Base_Harrell_C`: Harrell's C for the GEP-only model.
+- `Enhanced_Harrell_C`: Harrell's C for the GEP-plus-PRAME model.
+- `Delta_Harrell_C`: paired improvement in discrimination on the same patients.
+- `Delta_CI_Lower` / `Delta_CI_Upper`: bootstrap percentile interval for $\Delta C$.
 
-$$
-NRI_{total} = NRI_{events} + NRI_{nonevents}
-$$
+**Secondary support:**
+- `LR_p`: likelihood-ratio p-value comparing the nested Cox models.
+- `PRAME_HR` with confidence limits: PRAME hazard ratio from the enhanced model.
+- `Analysis_Tier`: `Primary` for MFS and `Exploratory` for MSS.
 
-**IDI:**
+**Estimand note:** the PRAME comparison inherits the main Objective 4 discrimination estimand for each outcome. MFS uses horizon-truncated follow-up at the requested landmark, whereas MSS uses full observed follow-up inside the horizon-specific analytic subset.
 
-$$
-IDI = \left[\bar{p}_{enhanced}(events) - \bar{p}_{base}(events)\right] - \left[\bar{p}_{enhanced}(nonevents) - \bar{p}_{base}(nonevents)\right]
-$$
+**Practical interpretation:** positive `Delta_Harrell_C` values favor the enhanced model, but the confidence interval and `LR_p` should be reviewed before calling the improvement convincing.
 
-**Additional comparison field:**
-- The code also reports a McNemar-style p-value based on improved vs worsened reclassification counts.
-- When `pROC` is available and event counts are adequate, it additionally reports `Base_AUC`, `Enhanced_AUC`, and `AUC_Diff`.
-
-**Practical interpretation:** Positive `NRI_Total` or `IDI` favors the PRAME-augmented model over the base GEP prediction.
-
-For a plain-English reading order for PRAME augmentation outputs, see [Understanding PRAME Enhancement Outputs](INTERPRETATION_GUIDE.md#understanding-prame-enhancement-outputs).
+For a plain-English reading order for PRAME outputs, see [Understanding PRAME Incremental Outputs](INTERPRETATION_GUIDE.md#understanding-prame-incremental-outputs).
 
 ### Validation Workflow
 
@@ -911,8 +901,8 @@ For a plain-English reading order for PRAME augmentation outputs, see [Understan
 **Step 4: Clinical Utility Analysis**
 - Perform decision-curve calculations on the horizon-specific binary outcome
 - Compute `IPA` using the preferred Brier-score comparison with documented fallbacks
-- Run optional PRAME-based NRI/IDI and reclassification comparisons when the PRAME-complete subset is adequate
-- Capture net-benefit ranges and reclassification tables inside the workbook
+- Run optional PRAME incremental discrimination comparisons when the PRAME-complete subset is adequate
+- Capture delta-C summaries, nested-model support metrics, and interpretation rows inside the workbook
 
 **Step 5: Reporting**
 - Export outcome-specific consolidated Excel workbooks (`*_MFS_consolidated_summary.xlsx`, `*_MSS_consolidated_summary.xlsx`) and companion text reports
@@ -933,9 +923,9 @@ For a plain-English reading order for PRAME augmentation outputs, see [Understan
 - `a_metastasis_free_survival/*mfs_validation_summary.txt` and `b_melanoma_specific_survival/*mss_validation_summary.txt` — narrative summaries
 - `*unified_gep_validation_summary.xlsx` at the root of `04_GEP_Validation/` — comparison-only cross-outcome workbook
 - `unified_summary/*simple_gep_validation.*` — optional actual-vs-expected QC output from the simple checker
-- Limited PNGs: KM for MFS and CIF for MSS only when survival curves are generated
+- Limited PNGs: KM for MFS, CIF for MSS, and optional outcome-specific PRAME delta-C plots (`*mfs_prame_delta_c.png`, `*mss_prame_delta_c.png`)
 
-**Schema note:** `PRAME_Summary` is always written in consolidated workbooks, and `PRAME_Comparison` is always written in unified workbooks. Sparse cohorts may receive explanatory placeholder rows instead of full PRAME reclassification results.
+**Schema note:** `PRAME_Summary` is always written in consolidated workbooks, and `PRAME_Comparison` is always written in unified workbooks. Sparse cohorts may receive explanatory placeholder rows instead of full PRAME incremental-comparison results.
 
 ### Quick Interpretation Shortcuts
 
@@ -946,7 +936,7 @@ For a plain-English reading order for PRAME augmentation outputs, see [Understan
 - `Harrell_C`, `Integrated_AUC`, `Cumulative_Discrimination`, `Time_averaged_Discrimination`: higher is better.
 - `IPA`: positive values indicate improvement over the null benchmark.
 - `Optimal_Net_Benefit` and a positive threshold range: suggest potential clinical utility over that threshold region.
-- `NRI_Total` and `IDI`: positive values favor the PRAME-augmented model.
+- `Delta_Harrell_C`: positive values favor the PRAME-enhanced model.
 
 For fuller narrative interpretation and workbook examples, see [GEP Quick Read](INTERPRETATION_GUIDE.md#gep-quick-read), [GEP Calibration Made Simple](INTERPRETATION_GUIDE.md#gep-calibration-made-simple), [GEP Discrimination Made Simple](INTERPRETATION_GUIDE.md#gep-discrimination-made-simple), and [GEP Decision Curve Made Simple](INTERPRETATION_GUIDE.md#gep-decision-curve-made-simple).
 

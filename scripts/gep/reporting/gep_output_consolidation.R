@@ -39,46 +39,39 @@ create_consolidated_gep_tables <- function(validation_results, outcome_type, out
         }
     }
 
-    # Build PRAME summary table using the current nri_results structure
+    # Build PRAME summary table using the incremental discrimination structure
     prame_consolidated <- data.frame()
-    if (!is.null(prame_results) && !is.null(prame_results$nri_results) && is.list(prame_results$nri_results)) {
-        interpret_nri <- function(nri_value, idi_value) {
-            if (is.na(nri_value)) {
-                return("Analysis failed - insufficient data")
-            }
-            if (nri_value > 0) {
-                return(sprintf("Improvement (IDI %.3f)", ifelse(is.na(idi_value), 0, idi_value)))
-            }
-            if (nri_value < 0) {
-                return(sprintf("Worsening (IDI %.3f)", ifelse(is.na(idi_value), 0, idi_value)))
-            }
-            return("No net change in risk classification")
-        }
-
-        rows <- lapply(names(prame_results$nri_results), function(tp_name) {
-            res <- prame_results$nri_results[[tp_name]]
-            counts <- res$reclassification_counts %||% list()
-            model_comp <- res$model_comparison %||% list()
-            nri_total <- suppressWarnings(as.numeric(res$nri_total))
-            idi_val <- suppressWarnings(as.numeric(res$idi))
+    if (!is.null(prame_results) && !is.null(prame_results$comparison_results) && is.list(prame_results$comparison_results)) {
+        rows <- lapply(names(prame_results$comparison_results), function(tp_name) {
+            res <- prame_results$comparison_results[[tp_name]]
             data.frame(
                 Timepoint = res$timepoint %||% tp_name,
                 N = res$n %||% prame_results$n %||% NA,
+                N_PRAME_Positive = res$n_positive %||% NA,
+                N_PRAME_Negative = res$n_negative %||% NA,
                 Events = res$events %||% NA,
-                Non_Events = res$nonevents %||% NA,
-                NRI_Total = nri_total,
-                NRI_Events = suppressWarnings(as.numeric(res$nri_events)),
-                NRI_NonEvents = suppressWarnings(as.numeric(res$nri_nonevents)),
-                IDI = idi_val,
-                McNemar_p = suppressWarnings(as.numeric(res$mcnemar_p)),
-                Event_Up = counts$event_up %||% NA,
-                Event_Down = counts$event_down %||% NA,
-                NonEvent_Up = counts$nonevent_up %||% NA,
-                NonEvent_Down = counts$nonevent_down %||% NA,
-                Base_AUC = suppressWarnings(as.numeric(model_comp$base_auc)),
-                Enhanced_AUC = suppressWarnings(as.numeric(model_comp$enhanced_auc)),
-                AUC_Diff = suppressWarnings(as.numeric(model_comp$auc_difference)),
-                Interpretation = interpret_nri(nri_total, idi_val),
+                Events_PRAME_Positive = res$events_positive %||% NA,
+                Events_PRAME_Negative = res$events_negative %||% NA,
+                Non_Events = res$non_events %||% NA,
+                Event_Rate_Pct = {
+                    n_val <- res$n %||% prame_results$n %||% NA
+                    e_val <- res$events %||% NA
+                    if (is.numeric(n_val) && is.numeric(e_val) && !is.na(n_val) && !is.na(e_val) && n_val > 0)
+                        round(100 * e_val / n_val, 1)
+                    else NA_real_
+                },
+                Bootstrap_Valid_Resamples = res$bootstrap_valid_resamples %||% NA,
+                Base_Harrell_C = suppressWarnings(as.numeric(res$base_harrell_c)),
+                Enhanced_Harrell_C = suppressWarnings(as.numeric(res$enhanced_harrell_c)),
+                Delta_Harrell_C = suppressWarnings(as.numeric(res$delta_harrell_c)),
+                Delta_CI_Lower = suppressWarnings(as.numeric(res$delta_ci_lower)),
+                Delta_CI_Upper = suppressWarnings(as.numeric(res$delta_ci_upper)),
+                LR_p = suppressWarnings(as.numeric(res$lr_p)),
+                PRAME_HR = suppressWarnings(as.numeric(res$prame_hr)),
+                PRAME_HR_CI_Lower = suppressWarnings(as.numeric(res$prame_hr_ci_lower)),
+                PRAME_HR_CI_Upper = suppressWarnings(as.numeric(res$prame_hr_ci_upper)),
+                Analysis_Tier = res$analysis_tier %||% NA_character_,
+                Interpretation = res$interpretation %||% "Analysis not supportable for this timepoint",
                 stringsAsFactors = FALSE
             )
         })
@@ -89,10 +82,13 @@ create_consolidated_gep_tables <- function(validation_results, outcome_type, out
         if (nrow(prame_consolidated) > 0) {
             # Ensure deterministic column order for downstream Excel generation
             desired_cols <- c(
-                "Timepoint", "N", "Events", "Non_Events",
-                "NRI_Total", "NRI_Events", "NRI_NonEvents", "IDI", "McNemar_p",
-                "Event_Up", "Event_Down", "NonEvent_Up", "NonEvent_Down",
-                "Base_AUC", "Enhanced_AUC", "AUC_Diff", "Interpretation"
+                "Timepoint", "N", "N_PRAME_Positive", "N_PRAME_Negative",
+                "Events", "Events_PRAME_Positive", "Events_PRAME_Negative",
+                "Non_Events", "Event_Rate_Pct", "Bootstrap_Valid_Resamples",
+                "Base_Harrell_C", "Enhanced_Harrell_C", "Delta_Harrell_C",
+                "Delta_CI_Lower", "Delta_CI_Upper", "LR_p",
+                "PRAME_HR", "PRAME_HR_CI_Lower", "PRAME_HR_CI_Upper",
+                "Analysis_Tier", "Interpretation"
             )
             missing_cols <- setdiff(desired_cols, names(prame_consolidated))
             if (length(missing_cols) > 0) {
@@ -240,7 +236,7 @@ get_prame_availability_note <- function(prame_results, context_label = "PRAME an
         return(sprintf("%s was not supportable for this cohort/outcome.", context_label))
     }
 
-    sprintf("%s did not produce reclassification results for this cohort/outcome.", context_label)
+    sprintf("%s did not produce incremental comparison results for this cohort/outcome.", context_label)
 }
 
 #' Create a placeholder PRAME summary table
@@ -254,20 +250,24 @@ create_prame_placeholder_table <- function(note) {
     data.frame(
         Timepoint = "Not available",
         N = NA_real_,
+        N_PRAME_Positive = NA_real_,
+        N_PRAME_Negative = NA_real_,
         Events = NA_real_,
+        Events_PRAME_Positive = NA_real_,
+        Events_PRAME_Negative = NA_real_,
         Non_Events = NA_real_,
-        NRI_Total = NA_real_,
-        NRI_Events = NA_real_,
-        NRI_NonEvents = NA_real_,
-        IDI = NA_real_,
-        McNemar_p = NA_real_,
-        Event_Up = NA_real_,
-        Event_Down = NA_real_,
-        NonEvent_Up = NA_real_,
-        NonEvent_Down = NA_real_,
-        Base_AUC = NA_real_,
-        Enhanced_AUC = NA_real_,
-        AUC_Diff = NA_real_,
+        Event_Rate_Pct = NA_real_,
+        Bootstrap_Valid_Resamples = NA_real_,
+        Base_Harrell_C = NA_real_,
+        Enhanced_Harrell_C = NA_real_,
+        Delta_Harrell_C = NA_real_,
+        Delta_CI_Lower = NA_real_,
+        Delta_CI_Upper = NA_real_,
+        LR_p = NA_real_,
+        PRAME_HR = NA_real_,
+        PRAME_HR_CI_Lower = NA_real_,
+        PRAME_HR_CI_Upper = NA_real_,
+        Analysis_Tier = NA_character_,
         Interpretation = note,
         stringsAsFactors = FALSE
     )
@@ -275,7 +275,7 @@ create_prame_placeholder_table <- function(note) {
 
 #' Collect unified PRAME comparison rows
 #'
-#' Convert PRAME reclassification results into a cross-outcome comparison table
+#' Convert PRAME incremental discrimination results into a cross-outcome comparison table
 #' used by the unified workbook.
 #'
 #' @param prame_results PRAME analysis result object.
@@ -283,30 +283,21 @@ create_prame_placeholder_table <- function(note) {
 #' @return Data frame with one row per timepoint, or an empty data frame if no
 #'   comparison rows can be created.
 collect_unified_prame_rows <- function(prame_results, outcome_label) {
-    if (is.null(prame_results) || is.null(prame_results$nri_results) || !is.list(prame_results$nri_results)) {
+    if (is.null(prame_results) || is.null(prame_results$comparison_results) || !is.list(prame_results$comparison_results)) {
         return(data.frame())
     }
 
-    rows <- lapply(names(prame_results$nri_results), function(tp_name) {
-        res <- prame_results$nri_results[[tp_name]]
-        nri_val <- suppressWarnings(as.numeric(res$nri_total))
-        nri_interpretation <- if (is.na(nri_val)) {
-            "Analysis failed - insufficient data"
-        } else if (nri_val == 0) {
-            "No improvement - PRAME does not add value beyond GEP alone"
-        } else if (nri_val > 0) {
-            "Improvement - PRAME enhances risk stratification"
-        } else {
-            "Worsening - PRAME reduces risk stratification accuracy"
-        }
-
+    rows <- lapply(names(prame_results$comparison_results), function(tp_name) {
+        res <- prame_results$comparison_results[[tp_name]]
         data.frame(
             Outcome = outcome_label,
             Timepoint = res$timepoint %||% tp_name,
             N = res$n %||% prame_results$n %||% NA,
-            NRI = nri_val,
-            IDI = suppressWarnings(as.numeric(res$idi)),
-            Interpretation = nri_interpretation,
+            Base_Harrell_C = suppressWarnings(as.numeric(res$base_harrell_c)),
+            Enhanced_Harrell_C = suppressWarnings(as.numeric(res$enhanced_harrell_c)),
+            Delta_Harrell_C = suppressWarnings(as.numeric(res$delta_harrell_c)),
+            LR_p = suppressWarnings(as.numeric(res$lr_p)),
+            Interpretation = res$interpretation %||% "Analysis not supportable for this timepoint",
             stringsAsFactors = FALSE
         )
     })
@@ -327,8 +318,10 @@ create_unified_prame_placeholder_row <- function(outcome_label, note) {
         Outcome = outcome_label,
         Timepoint = "Not available",
         N = NA_real_,
-        NRI = NA_real_,
-        IDI = NA_real_,
+        Base_Harrell_C = NA_real_,
+        Enhanced_Harrell_C = NA_real_,
+        Delta_Harrell_C = NA_real_,
+        LR_p = NA_real_,
         Interpretation = note,
         stringsAsFactors = FALSE
     )
@@ -986,14 +979,22 @@ create_unified_text_summary <- function(mfs_results, mss_results, unified_cal, u
         {
             pr_lines <- c()
             if (!is.null(mfs_results) && !is.null(mfs_results$prame_analysis)) {
-                vals <- mfs_results$prame_analysis
-                pairs <- paste(names(vals), vapply(vals, function(x) if (is.list(x) && !is.null(x$nri)) as.numeric(x$nri) else as.numeric(x), numeric(1)), sep = "=")
-                pr_lines <- c(pr_lines, sprintf("MFS PRAME NRI: %s", paste(pairs, collapse = ", ")))
+                vals <- mfs_results$prame_analysis$comparison_results
+                if (is.list(vals) && length(vals) > 0) {
+                    pairs <- vapply(vals, function(x) {
+                        sprintf("%s=%.3f", x$timepoint %||% NA, suppressWarnings(as.numeric(x$delta_harrell_c)))
+                    }, character(1))
+                    pr_lines <- c(pr_lines, sprintf("MFS PRAME delta C: %s", paste(pairs, collapse = ", ")))
+                }
             }
             if (!is.null(mss_results) && !is.null(mss_results$prame_results)) {
-                vals <- mss_results$prame_results
-                pairs <- paste(names(vals), vapply(vals, function(x) if (is.list(x) && !is.null(x$nri)) as.numeric(x$nri) else as.numeric(x), numeric(1)), sep = "=")
-                pr_lines <- c(pr_lines, sprintf("MSS PRAME NRI: %s", paste(pairs, collapse = ", ")))
+                vals <- mss_results$prame_results$comparison_results
+                if (is.list(vals) && length(vals) > 0) {
+                    pairs <- vapply(vals, function(x) {
+                        sprintf("%s=%.3f", x$timepoint %||% NA, suppressWarnings(as.numeric(x$delta_harrell_c)))
+                    }, character(1))
+                    pr_lines <- c(pr_lines, sprintf("MSS PRAME delta C: %s", paste(pairs, collapse = ", ")))
+                }
             }
             if (length(pr_lines) > 0) {
                 summary_lines <- c(summary_lines, "PRAME SUMMARY:", pr_lines, "")

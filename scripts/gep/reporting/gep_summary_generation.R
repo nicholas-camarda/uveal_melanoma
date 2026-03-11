@@ -203,11 +203,19 @@ create_comprehensive_gep_summary <- function(validation_results, outcome_type, p
             "Detailed metrics table could not be generated due to data structure issues"
         }),
         "",
-        if (!is.null(prame_analysis) && !is.null(prame_analysis$nri)) {
-            nri_val <- tryCatch({
-                if (is.list(prame_analysis$nri) && !is.null(prame_analysis$nri$total)) prame_analysis$nri$total else as.numeric(prame_analysis$nri)
-            }, error = function(e) NA_real_)
-            sprintf("PRAME ADDED VALUE: Net Reclassification Index = %.3f", ifelse(is.na(nri_val), NA, nri_val))
+        if (!is.null(prame_analysis) && !is.null(prame_analysis$comparison_results) && length(prame_analysis$comparison_results) > 0) {
+            comparison_rows <- Filter(function(x) is.list(x) && is.finite(x$delta_harrell_c %||% NA_real_), prame_analysis$comparison_results)
+            if (length(comparison_rows) > 0) {
+                best_row <- comparison_rows[[which.max(vapply(comparison_rows, function(x) x$delta_harrell_c, numeric(1)))]]
+                sprintf(
+                    "PRAME ADDED VALUE: Best delta Harrell's C = %.3f at %s (%s)",
+                    best_row$delta_harrell_c,
+                    paste0(best_row$timepoint, "yr"),
+                    best_row$interpretation %||% "interpretation unavailable"
+                )
+            } else {
+                "PRAME ADDED VALUE: Analysis not available or insufficient data"
+            }
         } else {
             "PRAME ADDED VALUE: Analysis not available or insufficient data"
         },

@@ -723,6 +723,361 @@ calculate_calibration_metrics <- function(data, expected_var, event_var, time_va
     )
 }
 
+#' Calculate concordance from an arbitrary risk score
+#'
+#' Compute Harrell's C using `survcomp::concordance.index()` when available and
+#' fall back to a simple Cox concordance estimate when needed.
+#'
+#' @param risk_score Numeric risk score or linear predictor.
+#' @param observed_time Numeric observed follow-up time.
+#' @param observed_event Integer event indicator (`0/1`).
+#' @return Named list with concordance estimate, CI bounds, and method label.
+calculate_survival_concordance_from_score <- function(risk_score, observed_time, observed_event) {
+    concordance <- list(
+        c_index = NA_real_,
+        ci_lower = NA_real_,
+        ci_upper = NA_real_,
+        method = "unavailable"
+    )
+
+    valid <- is.finite(risk_score) & is.finite(observed_time) & !is.na(observed_event)
+    if (sum(valid) < GEP_MIN_SAMPLE_SIZE) {
+        return(concordance)
+    }
+
+    score_data <- data.frame(
+        risk_score = risk_score[valid],
+        observed_time = observed_time[valid],
+        observed_event = as.integer(observed_event[valid])
+    )
+
+    if (length(unique(score_data$risk_score)) < 2 ||
+        sum(score_data$observed_event == 1, na.rm = TRUE) < GEP_MIN_EVENTS_COMPETING_RISK ||
+        sum(score_data$observed_event == 0, na.rm = TRUE) < GEP_MIN_EVENTS_COMPETING_RISK) {
+        return(concordance)
+    }
+
+    tryCatch(
+        {
+            harrell_result <- survcomp::concordance.index(
+                x = score_data$risk_score,
+                surv.time = score_data$observed_time,
+                surv.event = score_data$observed_event,
+                method = "noether"
+            )
+            concordance$c_index <- harrell_result$c.index
+            concordance$ci_lower <- harrell_result$lower
+            concordance$ci_upper <- harrell_result$upper
+            concordance$method <- "survcomp"
+        },
+        error = function(e) {
+            fallback_fit <- tryCatch(
+                suppressWarnings(
+                    survival::coxph(
+                        survival::Surv(observed_time, observed_event) ~ risk_score,
+                        data = score_data,
+                        model = TRUE
+                    )
+                ),
+                error = function(e2) NULL
+            )
+
+            if (!is.null(fallback_fit)) {
+                concordance$c_index <- summary(fallback_fit)$concordance[1]
+                concordance$method <- "survival"
+            }
+        }
+    )
+
+    concordance
+}
+
+#' Interpret PRAME incremental discrimination results
+#'
+#' Translate the direction and uncertainty of delta Harrell's C into a concise
+#' reader-facing interpretation.
+#'
+#' @param delta_harrell_c Numeric change in Harrell's C after adding PRAME.
+#' @param ci_lower Numeric lower CI bound for delta C.
+#' @param ci_upper Numeric upper CI bound for delta C.
+#' @param lr_p Numeric likelihood-ratio p-value.
+#' @return Character interpretation string.
+interpret_prame_incremental_value <- function(delta_harrell_c, ci_lower, ci_upper, lr_p) {
+    if (!is.finite(delta_harrell_c)) {
+        return("Analysis not supportable for this timepoint")
+    }
+
+    if (is.finite(ci_lower) && is.finite(ci_upper)) {
+        if (ci_lower > 0) {
+            return("PRAME improved discrimination beyond GEP alone")
+        }
+        if (ci_upper < 0) {
+            return("PRAME reduced discrimination versus GEP alone")
+        }
+    }
+
+    if (delta_harrell_c > 0) {
+        if (is.finite(lr_p) && lr_p < 0.05) {
+            return("PRAME showed numerically higher discrimination with supportive model evidence")
+        }
+        return("PRAME showed numerically higher discrimination, but uncertainty includes no clear improvement")
+    }
+
+    if (delta_harrell_c < 0) {
+        return("PRAME showed numerically lower discrimination than GEP alone")
+    }
+
+    "No measurable discrimination change after adding PRAME"
+}
+
+#' Calculate PRAME incremental discrimination metrics
+#'
+#' Fit paired Cox models on the same PRAME-complete cohort at a single
+#' timepoint, then compare Harrell's C between the GEP-only and GEP-plus-PRAME
+#' models.
+#'
+#' @param data Data frame containing PRAME status, outcome fields, and a base
+#'   predicted-risk column.
+#' @param time_var Character observed-time variable name.
+#' @param event_var Character binary event variable name.
+#' @param base_risk_var Character baseline risk variable name.
+#' @param timepoint Numeric landmark timepoint (years).
+#' @param outcome_label Character label such as `"MFS"` or `"MSS"`.
+#' @param analysis_tier Character label such as `"Primary"` or `"Exploratory"`.
+#' @param bootstrap_iterations Integer bootstrap resamples for delta-C CI.
+#' @return Named list with C-statistics, delta-C CI, model terms, and status.
+calculate_prame_incremental_value_metrics <- function(data,
+                                                      time_var,
+                                                      event_var,
+                                                      base_risk_var,
+                                                      timepoint,
+                                                      outcome_label,
+                                                      analysis_tier,
+                                                      bootstrap_iterations = GEP_PRAME_BOOTSTRAP_ITERATIONS) {
+    analysis_data <- data %>%
+        dplyr::filter(
+            !is.na(prame_status),
+            prame_status %in% c("Positive", "Negative"),
+            !is.na(.data[[base_risk_var]]),
+            !is.na(.data[[time_var]]),
+            !is.na(.data[[event_var]])
+        ) %>%
+        dplyr::mutate(
+            base_risk = pmin(
+                pmax(.data[[base_risk_var]], GEP_MIN_RISK_PREDICTION),
+                GEP_MAX_RISK_PREDICTION
+            ),
+            observed_time = .data[[time_var]],
+            observed_event = as.integer(.data[[event_var]]),
+            prame_positive = as.integer(prame_status == "Positive")
+        )
+
+    n_positive    <- sum(analysis_data$prame_positive == 1L, na.rm = TRUE)
+    n_negative    <- sum(analysis_data$prame_positive == 0L, na.rm = TRUE)
+    events_positive <- sum(analysis_data$observed_event == 1L & analysis_data$prame_positive == 1L, na.rm = TRUE)
+    events_negative <- sum(analysis_data$observed_event == 1L & analysis_data$prame_positive == 0L, na.rm = TRUE)
+
+    build_result <- function(status, interpretation) {
+        list(
+            timepoint = timepoint,
+            outcome = outcome_label,
+            analysis_tier = analysis_tier,
+            n = nrow(analysis_data),
+            n_positive = n_positive,
+            n_negative = n_negative,
+            events = sum(analysis_data$observed_event == 1, na.rm = TRUE),
+            events_positive = events_positive,
+            events_negative = events_negative,
+            non_events = sum(analysis_data$observed_event == 0, na.rm = TRUE),
+            status = status,
+            base_harrell_c = NA_real_,
+            enhanced_harrell_c = NA_real_,
+            delta_harrell_c = NA_real_,
+            delta_ci_lower = NA_real_,
+            delta_ci_upper = NA_real_,
+            delta_ci_method = "unavailable",
+            lr_p = NA_real_,
+            prame_hr = NA_real_,
+            prame_hr_ci_lower = NA_real_,
+            prame_hr_ci_upper = NA_real_,
+            base_harrell_method = NA_character_,
+            enhanced_harrell_method = NA_character_,
+            bootstrap_valid_resamples = 0L,
+            interpretation = interpretation
+        )
+    }
+
+    if (nrow(analysis_data) < GEP_MIN_BOOTSTRAP_SAMPLE) {
+        return(build_result("insufficient_data", "Analysis not supportable - insufficient PRAME-complete data"))
+    }
+
+    if (length(unique(analysis_data$prame_positive)) < 2) {
+        return(build_result("insufficient_prame_variation", "Analysis not supportable - PRAME status has no usable variation"))
+    }
+
+    if (length(unique(analysis_data$base_risk)) < 2) {
+        return(build_result("insufficient_gep_variation", "Analysis not supportable - baseline GEP risk has no usable variation"))
+    }
+
+    event_count <- sum(analysis_data$observed_event == 1, na.rm = TRUE)
+    non_event_count <- sum(analysis_data$observed_event == 0, na.rm = TRUE)
+    if (event_count < GEP_MIN_EVENTS_COMPETING_RISK || non_event_count < GEP_MIN_EVENTS_COMPETING_RISK) {
+        return(build_result("insufficient_events", "Analysis not supportable - too few events for stable comparison"))
+    }
+
+    fit_model_pair <- function(model_data) {
+        base_model <- suppressWarnings(
+            survival::coxph(
+                survival::Surv(observed_time, observed_event) ~ base_risk,
+                data = model_data,
+                model = TRUE,
+                x = TRUE
+            )
+        )
+        enhanced_model <- suppressWarnings(
+            survival::coxph(
+                survival::Surv(observed_time, observed_event) ~ base_risk + prame_positive,
+                data = model_data,
+                model = TRUE,
+                x = TRUE
+            )
+        )
+
+        list(
+            base_model = base_model,
+            enhanced_model = enhanced_model,
+            base_score = as.numeric(stats::predict(base_model, type = "lp")),
+            enhanced_score = as.numeric(stats::predict(enhanced_model, type = "lp"))
+        )
+    }
+
+    fitted_models <- tryCatch(fit_model_pair(analysis_data), error = function(e) NULL)
+    if (is.null(fitted_models)) {
+        return(build_result("model_fit_failed", "Analysis not supportable - model fitting failed"))
+    }
+
+    base_concordance <- calculate_survival_concordance_from_score(
+        risk_score = fitted_models$base_score,
+        observed_time = analysis_data$observed_time,
+        observed_event = analysis_data$observed_event
+    )
+    enhanced_concordance <- calculate_survival_concordance_from_score(
+        risk_score = fitted_models$enhanced_score,
+        observed_time = analysis_data$observed_time,
+        observed_event = analysis_data$observed_event
+    )
+
+    delta_harrell_c <- enhanced_concordance$c_index - base_concordance$c_index
+
+    delta_ci_lower <- NA_real_
+    delta_ci_upper <- NA_real_
+    delta_ci_method <- "bootstrap_percentile_unavailable"
+    bootstrap_valid_resamples <- 0L
+
+    if (isTRUE(bootstrap_iterations > 0)) {
+        bootstrap_delta <- rep(NA_real_, bootstrap_iterations)
+
+        for (bootstrap_index in seq_len(bootstrap_iterations)) {
+            sampled_rows <- sample.int(nrow(analysis_data), size = nrow(analysis_data), replace = TRUE)
+            bootstrap_data <- analysis_data[sampled_rows, , drop = FALSE]
+
+            if (length(unique(bootstrap_data$prame_positive)) < 2 ||
+                length(unique(bootstrap_data$base_risk)) < 2 ||
+                sum(bootstrap_data$observed_event == 1, na.rm = TRUE) < GEP_MIN_EVENTS_COMPETING_RISK ||
+                sum(bootstrap_data$observed_event == 0, na.rm = TRUE) < GEP_MIN_EVENTS_COMPETING_RISK) {
+                next
+            }
+
+            bootstrap_models <- tryCatch(fit_model_pair(bootstrap_data), error = function(e) NULL)
+            if (is.null(bootstrap_models)) {
+                next
+            }
+
+            bootstrap_base <- calculate_survival_concordance_from_score(
+                risk_score = bootstrap_models$base_score,
+                observed_time = bootstrap_data$observed_time,
+                observed_event = bootstrap_data$observed_event
+            )
+            bootstrap_enhanced <- calculate_survival_concordance_from_score(
+                risk_score = bootstrap_models$enhanced_score,
+                observed_time = bootstrap_data$observed_time,
+                observed_event = bootstrap_data$observed_event
+            )
+
+            if (is.finite(bootstrap_base$c_index) && is.finite(bootstrap_enhanced$c_index)) {
+                bootstrap_delta[bootstrap_index] <- bootstrap_enhanced$c_index - bootstrap_base$c_index
+            }
+        }
+
+        bootstrap_valid_resamples <- sum(is.finite(bootstrap_delta))
+        if (bootstrap_valid_resamples >= 20) {
+            delta_ci_lower <- as.numeric(stats::quantile(bootstrap_delta, 0.025, na.rm = TRUE, names = FALSE))
+            delta_ci_upper <- as.numeric(stats::quantile(bootstrap_delta, 0.975, na.rm = TRUE, names = FALSE))
+            delta_ci_method <- "bootstrap_percentile"
+        }
+    }
+
+    loglik_base <- tryCatch(stats::logLik(fitted_models$base_model), error = function(e) NULL)
+    loglik_enhanced <- tryCatch(stats::logLik(fitted_models$enhanced_model), error = function(e) NULL)
+    lr_p <- NA_real_
+    if (!is.null(loglik_base) && !is.null(loglik_enhanced)) {
+        lr_stat <- 2 * (as.numeric(loglik_enhanced) - as.numeric(loglik_base))
+        lr_df <- attr(loglik_enhanced, "df") - attr(loglik_base, "df")
+        if (is.finite(lr_stat) && is.finite(lr_df) && lr_stat >= 0 && lr_df > 0) {
+            lr_p <- stats::pchisq(lr_stat, df = lr_df, lower.tail = FALSE)
+        }
+    }
+
+    prame_hr <- NA_real_
+    prame_hr_ci_lower <- NA_real_
+    prame_hr_ci_upper <- NA_real_
+    enhanced_summary <- tryCatch(summary(fitted_models$enhanced_model)$coefficients, error = function(e) NULL)
+    if (!is.null(enhanced_summary) && "prame_positive" %in% rownames(enhanced_summary)) {
+        prame_coef <- enhanced_summary["prame_positive", "coef"]
+        prame_se <- enhanced_summary["prame_positive", "se(coef)"]
+        if (is.finite(prame_coef) && is.finite(prame_se)) {
+            prame_hr <- exp(prame_coef)
+            prame_hr_ci_lower <- exp(prame_coef - 1.96 * prame_se)
+            prame_hr_ci_upper <- exp(prame_coef + 1.96 * prame_se)
+        }
+    }
+
+    interpretation <- interpret_prame_incremental_value(
+        delta_harrell_c = delta_harrell_c,
+        ci_lower = delta_ci_lower,
+        ci_upper = delta_ci_upper,
+        lr_p = lr_p
+    )
+
+    list(
+        timepoint = timepoint,
+        outcome = outcome_label,
+        analysis_tier = analysis_tier,
+        n = nrow(analysis_data),
+        n_positive = n_positive,
+        n_negative = n_negative,
+        events = event_count,
+        events_positive = events_positive,
+        events_negative = events_negative,
+        non_events = non_event_count,
+        status = "ok",
+        base_harrell_c = base_concordance$c_index,
+        enhanced_harrell_c = enhanced_concordance$c_index,
+        delta_harrell_c = delta_harrell_c,
+        delta_ci_lower = delta_ci_lower,
+        delta_ci_upper = delta_ci_upper,
+        delta_ci_method = delta_ci_method,
+        lr_p = lr_p,
+        prame_hr = prame_hr,
+        prame_hr_ci_lower = prame_hr_ci_lower,
+        prame_hr_ci_upper = prame_hr_ci_upper,
+        base_harrell_method = base_concordance$method,
+        enhanced_harrell_method = enhanced_concordance$method,
+        bootstrap_valid_resamples = bootstrap_valid_resamples,
+        interpretation = interpretation
+    )
+}
+
 #' Calculate discrimination metrics (simplified)
     #'
     #' Compute a lightweight discrimination summary based on the rank correlation

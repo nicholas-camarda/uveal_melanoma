@@ -208,7 +208,7 @@ project_working_directory/
 │       │       └── b_melanoma_specific_survival/
 │       ├── uveal_restricted/        # Restricted cohort (n=167)
 │       ├── gksrs/                   # GKSRS-only cohort (n=92)
-│       └── merged_tables/           # Cross-cohort comparisons
+│       └── merged_tables/           # Cross-cohort comparisons, including a separate all-three-cohort baseline table
 ├── logs/                            # Execution logs
 │   ├── txt/
 │   └── json/
@@ -342,6 +342,7 @@ All derived variables calculated once in Objective 0 (`data_derivation.R`) to en
 - Consistency between individual and merged tables
 - Maintainability (one place to update formulas)
 - Auditability (clear calculation logic)
+- Merged baseline outputs now preserve the legacy full-vs-restricted files and add a separately named all-three-cohort comparison
 
 See [CALCULATIONS.md](CALCULATIONS.md) for detailed variable derivation formulas.
 
@@ -451,7 +452,7 @@ The analysis pipeline includes robust error handling for situations where data l
 - Summarize observed-vs-expected performance by GEP class and as an overall O/E ratio with exact Poisson confidence intervals and a Pearson goodness-of-fit p-value across classes.
 - Summarize calibration with Greenwood Nam-D'Agostino, an IPCW-weighted logistic calibration slope, and an ICI that may use grouped-KM fallback when the usable horizon-specific risk support is too discrete; numerically unstable slope fits are withheld instead of reported as extreme coefficients.
 - Summarize discrimination with `Harrell_C`, `Integrated_AUC`, `Cumulative_Discrimination`, `Time_averaged_Discrimination`, and `IPA`. The primary `Harrell_C` implementation differs by outcome: MFS uses horizon-truncated concordance, whereas MSS uses full observed follow-up in the horizon-specific analysis subset.
-- Summarize clinical utility with decision-curve outputs plus optional PRAME-based NRI/IDI reclassification metrics when the PRAME-complete subset is adequate.
+- Summarize clinical utility with decision-curve outputs plus optional PRAME incremental discrimination comparisons when the PRAME-complete subset is adequate.
 
 **Current Outputs:**
 - Outcome-specific consolidated workbooks:
@@ -467,9 +468,9 @@ The analysis pipeline includes robust error handling for situations where data l
    - `*unified_gep_validation_summary.xlsx`
 - Simple QC workbook under `04_GEP_Validation/unified_summary/`:
    - `*simple_gep_validation.xlsx`
-- Limited visuals: KM curves for MFS and CIF curves for MSS (no standalone calibration/decision/discrimination PNGs)
+- Limited visuals: KM curves for MFS, CIF curves for MSS, and optional outcome-specific PRAME delta-C PNGs (`*mfs_prame_delta_c.png`, `*mss_prame_delta_c.png`)
 
-**Current workbook rule:** the consolidated outcome workbook is the primary review-facing artifact. Technical workbooks preserve lower-level sheets only, and no longer repeat summary calibration/discrimination tables already present in the consolidated workbook. Narrative summaries carry the cohort label used at runtime and report the overall O/E ratio with its exact Poisson interval and Pearson goodness-of-fit p-value. The root unified workbook is comparison-only and uses `*_Comparison` sheet names to distinguish it from the outcome-specific summaries. `PRAME_Summary` remains the consolidated-workbook sheet name, while the unified workbook uses `PRAME_Comparison`.
+**Current workbook rule:** the consolidated outcome workbook is the primary review-facing artifact. Technical workbooks preserve lower-level detail only and do not repeat summary calibration/discrimination tables already present in the consolidated workbook. Narrative summaries carry the cohort label used at runtime and report the overall O/E ratio with its exact Poisson interval and Pearson goodness-of-fit p-value. The root unified workbook is comparison-only and uses `*_Comparison` sheet names to distinguish it from the outcome-specific summaries. `PRAME_Summary` remains the consolidated-workbook sheet name, while the unified workbook uses `PRAME_Comparison`. PRAME PNGs, when present, stay inside the owning outcome folder and are supporting visuals rather than primary review artifacts.
 
 **Current display contract:** Objective 4 reader-facing GEP outputs restore canonical labels from `*_derived_precollapse.rds` for `biopsy1_gep`, `gep_class_simple`, `prame_status`, and `gep12_prame_status` when that artifact exists. This keeps KM curves, CIF curves, distribution tables, and simple QC summaries aligned with the intended GEP recode logic, while Cox and competing-risk model fitting still operates on the post-collapse cohort artifact for sparse-cell protection.
 

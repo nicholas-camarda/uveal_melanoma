@@ -240,7 +240,10 @@ analyze_gep_mfs_validation <- function(data,
             logger::log_info(formatted("Creating MFS GEP visualization plots (KM curves, calibration, discrimination)", indent = 1))
             tryCatch({
                 create_mfs_gep_visuals(
-                    mfs_results = validation_results,
+                    mfs_results = list(
+                        validation_results = validation_results,
+                        prame_analysis = prame_analysis
+                    ),
                     mfs_data = km_ph_display_data,
                     output_dir = mfs_output_dir,
                     prefix = prefix,
@@ -460,7 +463,11 @@ analyze_gep_mss_validation <- function(data,
     logger::log_info(formatted("Creating MSS GEP visualization plots (CIF curves, calibration, discrimination)", indent = 1))
     tryCatch({
         create_mss_gep_visuals(
-            mss_results = list(standard_validation = standard_results, competing_risk_validation = competing_results),
+            mss_results = list(
+                standard_validation = standard_results,
+                competing_risk_validation = competing_results,
+                prame_results = prame_results
+            ),
             mss_data = mss_visual_data,
             output_dir = mss_output_dir,
             prefix = prefix,

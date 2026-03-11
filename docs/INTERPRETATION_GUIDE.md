@@ -535,7 +535,7 @@ Gene Expression Profiling (GEP) is an external molecular risk assay for metastat
 | `Calibration_Summary` | Predicted vs observed agreement. | `docs/STATISTICAL_METHODS.md#gep-validation-metrics` (Calibration subsection) |
 | `Discrimination_Summary` | Rank-order performance across timepoints. | `STATISTICAL_METHODS.md` (Discrimination subsection) |
 | `Decision_Curve_Summary` | Net benefit across threshold probabilities. | `STATISTICAL_METHODS.md` (Clinical Utility subsection) |
-| `PRAME_Summary` | Base vs PRAME-augmented comparisons; sparse cohorts may show an explanatory placeholder row instead of full results. | Same Clinical Utility subsection |
+| `PRAME_Summary` | GEP-only vs GEP-plus-PRAME incremental discrimination comparison; sparse cohorts may show an explanatory placeholder row instead of full results. | Same Clinical Utility subsection |
 | `Missing_Data_Summary` | QC signals that contextualize Objective 4. | `STATISTICAL_METHODS.md` (Missing Data diagnostics) |
 
 ### Workbook Naming & Refresh Cadence
@@ -742,13 +742,14 @@ If you want the shortest possible version, read [GEP Decision Curve Made Simple]
 
 #### `PRAME_Summary`
 
-- `N`, `Events`, `Non_Events`: Sample sizes for the PRAME-complete subset.
-- `NRI_Total`, `NRI_Events`, `NRI_NonEvents`: Net Reclassification Improvement overall and stratified by outcome.
-- `IDI`: Integrated Discrimination Improvement.
-- `McNemar_p`: Paired test for risk-tier switches.
-- `Event_Up`, `Event_Down`, `NonEvent_Up`, `NonEvent_Down`: Raw counts describing direction of reclassification.
-- `Base_AUC`, `Enhanced_AUC`, `AUC_Diff`: Dynamic AUCs for the base GEP model and the PRAME-augmented model, plus their difference.
-- `Interpretation`: Auto-generated summary tying NRI/IDI into plain language.
+- `N`, `Events`: Sample sizes for the PRAME-complete subset at that timepoint.
+- `Base_Harrell_C`, `Enhanced_Harrell_C`: Discrimination for the GEP-only and GEP-plus-PRAME models on the same patients.
+- `Delta_Harrell_C`: Improvement in Harrell's C after adding PRAME.
+- `Delta_CI_Lower`, `Delta_CI_Upper`: Bootstrap interval for the delta-C estimate.
+- `LR_p`: Likelihood-ratio p-value for the nested-model comparison.
+- `PRAME_HR`, `PRAME_HR_CI_Lower`, `PRAME_HR_CI_Upper`: PRAME effect estimate from the enhanced model.
+- `Analysis_Tier`: `Primary` for MFS, `Exploratory` for MSS.
+- `Interpretation`: Auto-generated summary tying delta C and model support into plain language.
 
 #### `Missing_Data_Summary`
 
@@ -783,30 +784,26 @@ Single column dictionary:
 
 ---
 
-## Understanding PRAME Enhancement Outputs
+## Understanding PRAME Incremental Outputs
 
-### Why AUC Columns Sometimes Show `NA`
+### What The PRAME Rows Now Mean
 
-- **Small event counts:** ROC/AUC comparisons for the PRAME-enhanced models require at least `GEP_MIN_EVENTS_COMPETING_RISK` events and non-events in the analytic cohort. The exploratory threshold is now 3 events per arm; cohorts below that limit will display `NA` for Base vs Enhanced AUC and log a skip note in the workbook footer.
-- **Missing `pROC` dependency:** AUC estimation relies on the `pROC` package. If it is absent, the pipeline records a warning (“AUC skipped – pROC missing”) and leaves those cells `NA`.
-- **Post-filter attrition:** When `exclude_other_categories()` removes “Other” levels or when PRAME status is missing, the effective sample can dip below the threshold even if raw cohort counts look adequate. Confirm the “evaluated_n” row at the top of the PRAME worksheet before interpreting discrimination columns.
+- The PRAME sheets no longer use heuristic risk multipliers or reclassification counts.
+- Each row compares two models fitted on the same PRAME-complete patients at that timepoint: GEP alone versus GEP plus PRAME.
+- The main question is whether PRAME improves discrimination beyond the imported GEP prediction already supplied by the lab-derived fields.
 
-### Interpreting Reclassification Columns
+### How To Read The Result
 
-| Column | Description |
-|--------|-------------|
-| `Event_Up` | Event patients reclassified into a **higher** risk tier once PRAME is added (desired gain in sensitivity). |
-| `Event_Down` | Event patients reclassified into a **lower** risk tier after PRAME (undesired loss of sensitivity). |
-| `Nonevent_Up` | Event-free patients moved up to a higher tier (false-positive inflation). |
-| `Nonevent_Down` | Event-free patients moved down (desired gain in specificity). |
-
-Use these counts alongside the Net Reclassification Improvement (NRI) and Integrated Discrimination Improvement (IDI) rows to decide whether PRAME meaningfully improves risk categorization beyond the base GEP.
+1. Start with `Delta_Harrell_C`.
+2. Check whether `Delta_CI_Lower` to `Delta_CI_Upper` stays above 0.
+3. Use `LR_p` and the PRAME hazard ratio as support, not as the primary decision rule.
+4. Treat MSS rows as exploratory even when they look favorable, because the MSS concordance estimand differs from MFS in this pipeline.
 
 ### Practical Tips
 
-1. **Check banner messages:** The PRAME tab header repeats sample size, the minimum-event gate, and any warnings about skipped metrics.
-2. **Pair with AUC deltas:** When AUCs are available, examine `Enhanced_AUC - Base_AUC` to confirm reclassification gains translate into better overall discrimination.
-3. **Flag exploratory runs:** Document when thresholds are lowered for hypothesis generation; report resulting AUCs as preliminary until validated in larger cohorts.
+1. Check banner messages and placeholder text first; sparse cohorts can still produce explanatory rows instead of numeric estimates.
+2. If the workbook also contains `mfs_prame_delta_c.png` or `mss_prame_delta_c.png`, use the plot and the table together. They should tell the same story.
+3. Prefer the consolidated workbook over the technical workbook for interpretation; the unified workbook is comparison-only.
 
 ---
 
@@ -1056,7 +1053,7 @@ given PH violation.
 - Insert directly into manuscript
 
 **Tips:**
-- `merged_tables/` folder has cross-cohort comparisons
+- `merged_tables/` folder has cross-cohort comparisons, including a separately labeled baseline table spanning full, restricted, and GKSRS-only cohorts
 - `*_summary.xlsx` has descriptive statistics
 - `*.html` tables have full model details with diagnostics
 

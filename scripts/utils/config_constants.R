@@ -493,8 +493,8 @@ VISION_LINE_CHANGE_CATEGORY_LEVELS <- c(
 # CRITICAL: These settings control the GEP validation analysis (Objective 4)
 # - GEP_VALIDATION_TIMEPOINTS: Years for validation (5, 7, 10 years)
 # - GEP_BOOTSTRAP_ITERATIONS: Number of bootstrap samples for optimism correction
-# - GEP_PRAME_ADJUSTMENT_FACTOR: Risk adjustment for PRAME-positive patients (30% increase)
-# - GEP_RISK_CUTOFFS: Risk stratification categories for NRI analysis
+# - GEP_PRAME_BOOTSTRAP_ITERATIONS: Bootstrap resamples for PRAME delta-C intervals
+# - GEP_PRAME_ADJUSTMENT_FACTOR / GEP_RISK_CUTOFFS: legacy heuristic PRAME constants pending removal
 # - GEP_DCA_THRESHOLD_*: Decision curve analysis thresholds
 
 # Save RDS files for reproducibility (disable by default to avoid unused outputs)
@@ -503,8 +503,9 @@ GEP_SAVE_RDS <- FALSE
 # Core GEP validation settings
 GEP_VALIDATION_TIMEPOINTS <- c(5, 7, 10) # years for validation analysis
 GEP_BOOTSTRAP_ITERATIONS <- 1000
+GEP_PRAME_BOOTSTRAP_ITERATIONS <- 100
 
-# PRAME augmentation constants
+# Legacy PRAME augmentation constants
 GEP_PRAME_ADJUSTMENT_FACTOR <- 1.3 # 30% increase in risk for PRAME positive patients
 GEP_PRAME_REDUCTION_FACTOR <- 0.9 # 10% decrease in risk for PRAME negative patients
 GEP_RISK_CAP_MAXIMUM <- 0.95 # Maximum allowed risk prediction (cap at 95%)

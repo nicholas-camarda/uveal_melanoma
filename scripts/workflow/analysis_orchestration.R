@@ -187,9 +187,10 @@ run_specific_objective <- function(dataset_name, objective_number) {
 #'
 #' @param full_data Data frame for the full cohort
 #' @param restricted_data Data frame for the restricted cohort
+#' @param gksrs_only_data Optional data frame for the GKSRS-only cohort
 #' @return None
 #' @export
-merge_baseline_tables_with_data <- function(full_data, restricted_data) {
+merge_baseline_tables_with_data <- function(full_data, restricted_data, gksrs_only_data = NULL) {
     # Merge baseline tables from all cohorts
     logger::log_info("Merging baseline tables from all cohorts")
     log_phase("STARTING TABLE MERGING: Full and Restricted Cohorts")
@@ -221,6 +222,32 @@ merge_baseline_tables_with_data <- function(full_data, restricted_data) {
     merge_adverse_events_tables(full_data, restricted_data, MERGED_TABLES_DIR)
     logger::log_info("=== COMPLETED ADVERSE EVENTS TABLE MERGING ===")
     logger::log_info("Files created: merged_adverse_events.xlsx and merged_adverse_events.html")
+
+    if (!is.null(gksrs_only_data)) {
+        merge_full_vs_gksrs_baseline_tables(
+            full_cohort_data = full_data,
+            gksrs_only_cohort_data = gksrs_only_data,
+            output_path = MERGED_TABLES_DIR,
+            dataset_names = list(
+                full = "uveal_melanoma_full_cohort",
+                gksrs_only = "uveal_melanoma_gksrs_only_cohort"
+            )
+        )
+
+        merge_all_cohort_baseline_tables(
+            full_cohort_data = full_data,
+            restricted_cohort_data = restricted_data,
+            gksrs_only_cohort_data = gksrs_only_data,
+            output_path = MERGED_TABLES_DIR,
+            dataset_names = list(
+                full = "uveal_melanoma_full_cohort",
+                restricted = "uveal_melanoma_restricted_cohort",
+                gksrs_only = "uveal_melanoma_gksrs_only_cohort"
+            )
+        )
+    } else {
+        logger::log_warn("GKSRS-only cohort data not available; skipping three-cohort baseline merge")
+    }
 }
 
 #' Merge baseline tables from all cohorts
@@ -241,9 +268,10 @@ merge_baseline_tables <- function() {
 
     logger::log_info(formatted(sprintf("Merging tables will be saved to: %s", MERGED_TABLES_DIR)))
 
-    # Load both datasets for merging
+    # Load cohort datasets for merging
     full_data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
     restricted_data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_restricted_cohort.rds"))
+    gksrs_only_data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_gksrs_only_cohort.rds"))
 
     # Create merged baseline characteristics table using the correct function
     merge_cohort_tables(full_data, restricted_data, MERGED_TABLES_DIR,
@@ -265,6 +293,28 @@ merge_baseline_tables <- function() {
     merge_adverse_events_tables(full_data, restricted_data, MERGED_TABLES_DIR)
     logger::log_info("=== COMPLETED ADVERSE EVENTS TABLE MERGING ===")
     logger::log_info("Files created: merged_adverse_events.xlsx and merged_adverse_events.html")
+
+    merge_full_vs_gksrs_baseline_tables(
+        full_cohort_data = full_data,
+        gksrs_only_cohort_data = gksrs_only_data,
+        output_path = MERGED_TABLES_DIR,
+        dataset_names = list(
+            full = "uveal_melanoma_full_cohort",
+            gksrs_only = "uveal_melanoma_gksrs_only_cohort"
+        )
+    )
+
+    merge_all_cohort_baseline_tables(
+        full_cohort_data = full_data,
+        restricted_cohort_data = restricted_data,
+        gksrs_only_cohort_data = gksrs_only_data,
+        output_path = MERGED_TABLES_DIR,
+        dataset_names = list(
+            full = "uveal_melanoma_full_cohort",
+            restricted = "uveal_melanoma_restricted_cohort",
+            gksrs_only = "uveal_melanoma_gksrs_only_cohort"
+        )
+    )
 }
 
 #' Main execution and merging of baseline tables
@@ -331,9 +381,10 @@ main_execution <- function() {
             # Get the two main cohorts for merging
             full_data <- cohort_data[["uveal_melanoma_full_cohort"]]
             restricted_data <- cohort_data[["uveal_melanoma_restricted_cohort"]]
+            gksrs_only_data <- cohort_data[["uveal_melanoma_gksrs_only_cohort"]]
             
             if (!is.null(full_data) && !is.null(restricted_data)) {
-                merge_baseline_tables_with_data(full_data, restricted_data)
+                merge_baseline_tables_with_data(full_data, restricted_data, gksrs_only_data)
             } else {
                 logger::log_warn("Cannot merge tables: required cohort data not available")
             }
