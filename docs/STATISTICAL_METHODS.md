@@ -466,7 +466,7 @@ Gene Expression Profiling (GEP) provides lab-reported probabilities of metastasi
 
 **Goal:** Assess whether lab-reported GEP survival probabilities accurately predict patient outcomes
 
-In Objective 4, the starting predictions are externally supplied patient-level GEP survival probabilities that are already present in the analytic dataset: `biopsy1_gep_mfs` for metastasis-free survival and `biopsy1_gep_mss` for melanoma-specific survival. The pipeline copies those lab-reported 5-year survival values into the 5-year `expected_*` columns, extrapolates 7- and 10-year survival during preprocessing, and converts survival to event risk as $1 - S(t)$ whenever a validation metric needs predicted event probability rather than predicted survival. Objective 4 therefore validates imported GEP predictions; it does not fit a new prognostic model to generate the base GEP probabilities.
+In Objective 4, the starting predictions are externally supplied patient-level GEP survival probabilities that are already present in the analytic dataset: `biopsy1_gep_mfs` for metastasis-free survival and `biopsy1_gep_mss` for melanoma-specific survival. The pipeline copies those lab-reported 5-year survival values into the 5-year `expected_*` columns, then derives the 7- and 10-year survival values from the same 5-year probabilities during preprocessing using an exponential-decay extrapolation: $S(7) = S(5)^{7/5}$ and $S(10) = S(5)^{10/5}$. It then converts survival to event risk as $1 - S(t)$ whenever a validation metric needs predicted event probability rather than predicted survival. Objective 4 therefore validates imported GEP predictions; it does not fit a new prognostic model to generate the base GEP probabilities.
 
 **Analyses:**
 1. **Observed vs Expected / Calibration:** Agreement between lab-reported and realized event rates
@@ -506,7 +506,7 @@ For a workbook-first overview written for non-statistical readers, see [Understa
 
 ### How Expected Counts Are Calculated
 
-For Objective 4, the expected event count at time $t$ is derived from the patient-level GEP survival probability carried into the analytic dataset. At 5 years this comes directly from the lab-reported value; at 7 and 10 years the current pipeline uses the extrapolated survival columns created during preprocessing. If patient $i$ has predicted survival $S_i(t)$, then the predicted event probability is:
+For Objective 4, the expected event count at time $t$ is derived from the patient-level GEP survival probability carried into the analytic dataset. At 5 years this comes directly from the lab-reported value. At 7 and 10 years, the current pipeline does not read separate source columns; instead it extrapolates from the imported 5-year survival using $S(7) = S(5)^{7/5}$ and $S(10) = S(5)^{10/5}$, implemented as `biopsy1_gep_mfs^(7/5)` / `biopsy1_gep_mfs^(10/5)` for MFS and `biopsy1_gep_mss^(7/5)` / `biopsy1_gep_mss^(10/5)` for MSS. If patient $i$ has predicted survival $S_i(t)$, then the predicted event probability is:
 
 $$
 \hat{p}_i(t) = 1 - S_i(t)

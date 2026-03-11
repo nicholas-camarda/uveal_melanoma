@@ -1,6 +1,17 @@
 # GEP Summary Generation Functions
 # Comprehensive summary creation for GEP validation results
 
+create_gep_prediction_source_note <- function() {
+    c(
+        "PREDICTION SOURCE NOTE",
+        "----------------------",
+        "The base GEP predictions are imported lab-reported 5-year survival probabilities, not newly fit model outputs.",
+        "At 5 years the pipeline uses the supplied lab value directly; at 7 and 10 years it derives survival from that same 5-year value using exponential-decay extrapolation:",
+        "  - 7-year survival = (5-year survival)^(7/5)",
+        "  - 10-year survival = (5-year survival)^(10/5)"
+    )
+}
+
 #' Create Comprehensive GEP Validation Summary
 #' 
 #' Generate a comprehensive, interpretable summary that consolidates redundant information
@@ -12,8 +23,11 @@
 #' @param prame_analysis PRAME-augmented analysis results (may be NULL)
 #' @param missing_data_analysis Missing-data diagnostics results
 #' @param dataset_name Optional dataset label used in the report
+#' @param include_prediction_source_note Whether to include the base-prediction
+#'   source note in this summary body.
 #' @return A comprehensive summary text suitable for saving
-create_comprehensive_gep_summary <- function(validation_results, outcome_type, prame_analysis, missing_data_analysis, dataset_name) {
+create_comprehensive_gep_summary <- function(validation_results, outcome_type, prame_analysis, missing_data_analysis, dataset_name,
+                                             include_prediction_source_note = TRUE) {
     logger::log_info(sprintf("Creating comprehensive GEP validation summary for %s", outcome_type))
 
     if (is.null(dataset_name) || !nzchar(dataset_name)) {
@@ -159,6 +173,12 @@ create_comprehensive_gep_summary <- function(validation_results, outcome_type, p
             clinical_implications = "Clinical implications not available"
         )
     })
+
+    prediction_source_note <- if (isTRUE(include_prediction_source_note)) {
+        c("", create_gep_prediction_source_note())
+    } else {
+        character()
+    }
     
     # Build comprehensive report
     report_lines <- c(
@@ -169,6 +189,7 @@ create_comprehensive_gep_summary <- function(validation_results, outcome_type, p
         sprintf("Dataset: %s", dataset_name),
         sprintf("Outcome: %s", outcome_type),
         sprintf("Timepoints analyzed: %s", paste(timepoints, collapse = ", ")),
+        prediction_source_note,
         "",
         "CLINICAL SUMMARY",
         "================",
@@ -301,6 +322,8 @@ create_comprehensive_gep_validation_summary <- function(mfs_results, mss_results
         "This consolidated summary replaces multiple separate reports and eliminates",
         "redundant information across timepoints while maintaining all statistical details.",
         "",
+        create_gep_prediction_source_note(),
+        "",
         "METASTASIS-FREE SURVIVAL (MFS) ANALYSIS",
         "----------------------------------------"
     )
@@ -311,7 +334,8 @@ create_comprehensive_gep_validation_summary <- function(mfs_results, mss_results
             outcome_type = "MFS",
             prame_analysis = mfs_results$prame_analysis,
             missing_data_analysis = NULL, # Will be added if available
-            dataset_name = "uveal_melanoma_full_cohort"
+            dataset_name = "uveal_melanoma_full_cohort",
+            include_prediction_source_note = FALSE
         )
         summary_lines <- c(summary_lines, "", mfs_summary)
     } else {
@@ -331,7 +355,8 @@ create_comprehensive_gep_validation_summary <- function(mfs_results, mss_results
                 outcome_type = "MSS",
                 prame_analysis = NULL, # Will be added if available
                 missing_data_analysis = NULL, # Will be added if available
-                dataset_name = "uveal_melanoma_full_cohort"
+                dataset_name = "uveal_melanoma_full_cohort",
+                include_prediction_source_note = FALSE
             )
             summary_lines <- c(summary_lines, "", mss_summary)
         } else {
@@ -377,6 +402,8 @@ create_clinical_interpretation_summary <- function(mfs_results, mss_results, pre
         "-------",
         "This summary provides clinical interpretation of GEP validation results",
         "to guide clinical decision-making and patient counseling.",
+        "",
+        create_gep_prediction_source_note(),
         "",
         "KEY CLINICAL INSIGHTS",
         "---------------------",
