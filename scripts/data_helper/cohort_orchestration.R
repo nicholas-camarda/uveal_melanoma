@@ -104,6 +104,14 @@ create_analytic_dataset <- function(output_dirs = NULL) {
         logger::log_info(formatted(sprintf("Processing rare categories for cohort: %s", cohort_name)))
         all_vars_to_process <- names(factored_filtered_data[[cohort_name]])
         factor_vars <- all_vars_to_process[sapply(factored_filtered_data[[cohort_name]][all_vars_to_process], is.factor)]
+        protected_gep_vars <- intersect(factor_vars, GEP_NO_OTHER_COLLAPSE_VARIABLES)
+        if (length(protected_gep_vars) > 0) {
+            logger::log_info(formatted(sprintf(
+                "Skipping rare-category collapse for canonical GEP variables: %s",
+                paste(protected_gep_vars, collapse = ", ")
+            ), indent = 1))
+        }
+        factor_vars <- setdiff(factor_vars, protected_gep_vars)
         if (length(factor_vars) > 0) {
             collapse_result <- handle_rare_categories(factored_filtered_data[[cohort_name]], factor_vars)
             factored_filtered_data[[cohort_name]] <- collapse_result$data

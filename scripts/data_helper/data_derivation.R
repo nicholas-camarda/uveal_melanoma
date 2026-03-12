@@ -347,6 +347,21 @@ refresh_gep_analysis_flags <- function(data) {
     if ("biopsy1_gep_raw" %in% names(data)) {
         raw_values <- as.character(data$biopsy1_gep_raw)
         definitive_raw_flag <- !is.na(raw_values) & raw_values %in% GEP_DEFINITIVE_RAW_LEVELS
+
+        if ("biopsy1_gep_text_raw" %in% names(data)) {
+            text_raw_values <- as.character(data$biopsy1_gep_text_raw)
+            collapsed_definitive_rows <- !is.na(raw_values) &
+                raw_values == "Other" &
+                !is.na(text_raw_values) &
+                text_raw_values %in% GEP_DEFINITIVE_RAW_LEVELS
+
+            if (any(collapsed_definitive_rows)) {
+                logger::log_warn(formatted(sprintf(
+                    "Detected %d rows with definitive raw GEP labels collapsed to 'Other'; regenerate Objective 0 analytic artifacts to restore canonical GEP classifications.",
+                    sum(collapsed_definitive_rows)
+                )))
+            }
+        }
     } else {
         definitive_raw_flag <- rep(TRUE, n_rows)
     }

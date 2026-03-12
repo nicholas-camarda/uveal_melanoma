@@ -587,6 +587,13 @@ GEP_DISPLAY_VARIABLES <- c(
     "biopsy1_gep", "gep_class_simple", "prame_status", "gep12_prame_status"
 )
 
+# Canonical GEP classification fields are never collapsed to 'Other'.
+# They define Objective 4 eligibility and must preserve definitive labels.
+GEP_NO_OTHER_COLLAPSE_VARIABLES <- unique(c(
+    "biopsy1_gep_raw",
+    GEP_DISPLAY_VARIABLES
+))
+
 # Objective 4 grouping specs and per-context defaults.
 # Change these mappings when reader-facing or technical GEP groupings need to move together.
 GEP_GROUPING_SPECS <- list(
