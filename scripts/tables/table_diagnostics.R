@@ -62,7 +62,7 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
     # === UNIFIED RAW MODEL OUTPUT ===
     raw_model_output_tab <- create_raw_model_output_tab(
         coefs, conf_int, p_values, factor_label_pvalue_map,
-        effect_measure, filtering_scale, model_fit, data, factor_label_pvalues_tab,
+        effect_measure, filtering_scale, model_fit, data, outcome_var, factor_label_pvalues_tab,
         table_result  # Pass the gtsummary table to ensure consistent ordering
     )
 
@@ -319,9 +319,191 @@ build_covariate_variation_tab <- function(removed_covariates, dataset_name, anal
 }
 
 #' Create raw model output table
-create_raw_model_output_tab <- function(coefs, conf_int, p_values, factor_label_pvalue_map, effect_measure, filtering_scale, model_fit, data, factor_label_pvalues_tab, table_result) {
+extract_model_event_values <- function(model_fit, model_frame, outcome_var) {
+    if ("coxph" %in% class(model_fit)) {
+        if (!is.null(model_fit$y)) {
+            return(suppressWarnings(as.numeric(model_fit$y[, ncol(model_fit$y)])))
+        }
+
+        response <- tryCatch(stats::model.response(model_frame), error = function(e) NULL)
+        if (inherits(response, "Surv")) {
+            return(suppressWarnings(as.numeric(response[, ncol(response)])))
+        }
+
+        return(NULL)
+    }
+
+    if (outcome_var %in% names(model_frame)) {
+        return(suppressWarnings(as.numeric(model_frame[[outcome_var]])))
+    }
+
+    response <- tryCatch(stats::model.response(model_frame), error = function(e) NULL)
+    if (!is.null(response)) {
+        return(suppressWarnings(as.numeric(response)))
+    }
+
+    NULL
+}
+
+build_group_outcome_summary_lookup <- function(model_fit, outcome_var) {
+    model_frame <- tryCatch(stats::model.frame(model_fit), error = function(e) NULL)
+    if (is.null(model_frame) || nrow(model_frame) == 0) {
+        return(list())
+    }
+
+    event_values <- extract_model_event_values(model_fit, model_frame, outcome_var)
+    if (is.null(event_values) || length(event_values) != nrow(model_frame)) {
+        return(list())
+    }
+
+    if (!("coxph" %in% class(model_fit))) {
+        valid_event_values <- sort(unique(event_values[!is.na(event_values)]))
+        if (length(valid_event_values) == 0 || !all(valid_event_values %in% c(0, 1))) {
+            return(list())
+        }
+    }
+
+    predictor_names <- names(model_frame)
+    if (length(predictor_names) == 0) {
+        return(list())
+    }
+
+    predictor_names <- predictor_names[-1]
+    predictor_names <- setdiff(predictor_names, c("(weights)", "(offset)", "surv_obj"))
+
+    group_lookup <- list()
+
+    for (var_name in predictor_names) {
+        var_data <- model_frame[[var_name]]
+        if (!(is.factor(var_data) || is.character(var_data))) {
+            next
+        }
+
+        complete_mask <- !is.na(var_data) & !is.na(event_values)
+        if (!any(complete_mask)) {
+            next
+        }
+
+        var_values <- as.character(var_data[complete_mask])
+        event_subset <- event_values[complete_mask]
+        level_order <- if (is.factor(var_data)) levels(var_data) else unique(var_values)
+        present_levels <- level_order[level_order %in% unique(var_values)]
+
+        if (length(present_levels) == 0) {
+            next
+        }
+
+        level_rows <- lapply(present_levels, function(level_name) {
+            level_mask <- var_values == level_name
+            level_n <- sum(level_mask)
+            level_events <- sum(event_subset[level_mask] == 1, na.rm = TRUE)
+            level_non_events <- sum(!is.na(event_subset[level_mask])) - level_events
+
+            data.frame(
+                level = level_name,
+                group_n = as.integer(level_n),
+                group_events = as.integer(level_events),
+                group_non_events = as.integer(level_non_events),
+                group_event_rate_pct = if (level_n > 0) round(100 * level_events / level_n, 1) else NA_real_,
+                stringsAsFactors = FALSE
+            )
+        })
+
+        level_summary <- do.call(rbind, level_rows)
+        reference_level <- present_levels[1]
+
+        group_lookup[[var_name]] <- list(
+            by_level = level_summary,
+            reference_level = reference_level
+        )
+    }
+
+    group_lookup
+}
+
+initialize_group_outcome_columns <- function(row_df) {
+    row_df$group_n <- NA_integer_
+    row_df$group_events <- NA_integer_
+    row_df$group_non_events <- NA_integer_
+    row_df$group_event_rate_pct <- NA_real_
+    row_df$reference_level <- NA_character_
+    row_df$reference_n <- NA_integer_
+    row_df$reference_events <- NA_integer_
+    row_df$reference_non_events <- NA_integer_
+    row_df$reference_event_rate_pct <- NA_real_
+
+    row_df
+}
+
+attach_group_outcome_summary <- function(row_df, variable_name, level_name = NA_character_, group_lookup) {
+    row_df <- initialize_group_outcome_columns(row_df)
+
+    lookup_entry <- group_lookup[[variable_name]]
+    if (is.null(lookup_entry)) {
+        return(row_df)
+    }
+
+    row_df$reference_level <- lookup_entry$reference_level
+
+    reference_row <- lookup_entry$by_level[lookup_entry$by_level$level == lookup_entry$reference_level, , drop = FALSE]
+    if (nrow(reference_row) == 1) {
+        row_df$reference_n <- reference_row$group_n[[1]]
+        row_df$reference_events <- reference_row$group_events[[1]]
+        row_df$reference_non_events <- reference_row$group_non_events[[1]]
+        row_df$reference_event_rate_pct <- reference_row$group_event_rate_pct[[1]]
+    }
+
+    if (!is.na(level_name) && nzchar(level_name)) {
+        level_row <- lookup_entry$by_level[lookup_entry$by_level$level == level_name, , drop = FALSE]
+        if (nrow(level_row) == 1) {
+            row_df$group_n <- level_row$group_n[[1]]
+            row_df$group_events <- level_row$group_events[[1]]
+            row_df$group_non_events <- level_row$group_non_events[[1]]
+            row_df$group_event_rate_pct <- level_row$group_event_rate_pct[[1]]
+        }
+    }
+
+    row_df
+}
+
+create_group_detail_row <- function(variable_name, level_name, row_type_label, effect_measure, filtering_scale, group_lookup, p_value = NA_real_) {
+    detail_row <- data.frame(
+        variable_base = variable_name,
+        variable = level_name,
+        effect_measure = effect_measure,
+        filtering_scale = filtering_scale,
+        raw_coefficient = NA_real_,
+        raw_ci_lower = NA_real_,
+        raw_ci_upper = NA_real_,
+        exp_estimate = NA_real_,
+        exp_ci_lower = NA_real_,
+        exp_ci_upper = NA_real_,
+        p_value = p_value,
+        row_type = row_type_label,
+        inclusion_status = "Included",
+        filtering_reason = "None",
+        hazard_ratio = NA_real_,
+        hr_ci_lower = NA_real_,
+        hr_ci_upper = NA_real_,
+        odds_ratio = NA_real_,
+        or_ci_lower = NA_real_,
+        or_ci_upper = NA_real_,
+        stringsAsFactors = FALSE
+    )
+
+    detail_row <- attach_group_outcome_summary(detail_row, variable_name, level_name, group_lookup)
+    detail_row$reference_level <- NA_character_
+    detail_row$reference_n <- NA_integer_
+    detail_row$reference_events <- NA_integer_
+    detail_row$reference_non_events <- NA_integer_
+    detail_row$reference_event_rate_pct <- NA_real_
+    detail_row
+}
+
+create_raw_model_output_tab <- function(coefs, conf_int, p_values, factor_label_pvalue_map, effect_measure, filtering_scale, model_fit, data, outcome_var, factor_label_pvalues_tab, table_result) {
     # Use gtsummary table structure as the foundation
     gts_table_body <- table_result$table_body
+    group_summary_lookup <- build_group_outcome_summary_lookup(model_fit, outcome_var)
     
     # Debug: Print the gtsummary structure to understand what we're working with
     logger::log_debug("gtsummary table structure:")
@@ -382,7 +564,9 @@ create_raw_model_output_tab <- function(coefs, conf_int, p_values, factor_label_
             intercept_row$or_ci_lower <- NA_real_
             intercept_row$or_ci_upper <- NA_real_
         }
-        
+
+        intercept_row <- initialize_group_outcome_columns(intercept_row)
+
         table_rows[[current_pos]] <- intercept_row
         current_pos <- current_pos + 1
     }
@@ -427,9 +611,25 @@ create_raw_model_output_tab <- function(coefs, conf_int, p_values, factor_label_
             factor_label_row$odds_ratio <- NA_real_
             factor_label_row$or_ci_lower <- NA_real_
             factor_label_row$or_ci_upper <- NA_real_
-            
+            factor_label_row <- initialize_group_outcome_columns(factor_label_row)
+
             table_rows[[current_pos]] <- factor_label_row
             current_pos <- current_pos + 1
+
+            lookup_entry <- group_summary_lookup[[var_name]]
+            if (!is.null(lookup_entry)) {
+                reference_row <- create_group_detail_row(
+                    variable_name = var_name,
+                    level_name = lookup_entry$reference_level,
+                    row_type_label = "Reference Level",
+                    effect_measure = effect_measure,
+                    filtering_scale = filtering_scale,
+                    group_lookup = group_summary_lookup
+                )
+
+                table_rows[[current_pos]] <- reference_row
+                current_pos <- current_pos + 1
+            }
             
         } else if (row_type == "level") {
             # This is a level row - check if it's a reference level or coefficient
@@ -442,6 +642,9 @@ create_raw_model_output_tab <- function(coefs, conf_int, p_values, factor_label_
                     level_name <- sub(paste0("^", var_name), "", coeff_name)
                     if (level_name == "") {
                         level_name <- coeff_name
+                    }
+                    if ("label" %in% names(gts_row) && !is.na(gts_row$label) && nzchar(gts_row$label)) {
+                        level_name <- as.character(gts_row$label)
                     }
                     
                     # Get coefficient data
@@ -499,6 +702,8 @@ create_raw_model_output_tab <- function(coefs, conf_int, p_values, factor_label_
                         coeff_row$or_ci_lower <- NA_real_
                         coeff_row$or_ci_upper <- NA_real_
                     }
+
+                    coeff_row <- attach_group_outcome_summary(coeff_row, var_name, level_name, group_summary_lookup)
                     
                     table_rows[[current_pos]] <- coeff_row
                     current_pos <- current_pos + 1
@@ -528,6 +733,58 @@ create_raw_model_output_tab <- function(coefs, conf_int, p_values, factor_label_
         
         return(raw_model_output_tab)
     } else {
+        if (length(group_summary_lookup) > 0) {
+            summary_rows <- lapply(names(group_summary_lookup), function(var_name) {
+                factor_pvalue <- if (var_name %in% factor_label_pvalues_tab$variable) {
+                    factor_label_pvalues_tab$factor_label_pvalue[factor_label_pvalues_tab$variable == var_name][1]
+                } else {
+                    NA_real_
+                }
+
+                factor_label_row <- data.frame(
+                    variable_base = var_name,
+                    variable = var_name,
+                    effect_measure = effect_measure,
+                    filtering_scale = filtering_scale,
+                    raw_coefficient = NA_real_,
+                    raw_ci_lower = NA_real_,
+                    raw_ci_upper = NA_real_,
+                    exp_estimate = NA_real_,
+                    exp_ci_lower = NA_real_,
+                    exp_ci_upper = NA_real_,
+                    p_value = factor_pvalue,
+                    row_type = "Factor Label",
+                    inclusion_status = "Included",
+                    filtering_reason = "None",
+                    hazard_ratio = NA_real_,
+                    hr_ci_lower = NA_real_,
+                    hr_ci_upper = NA_real_,
+                    odds_ratio = NA_real_,
+                    or_ci_lower = NA_real_,
+                    or_ci_upper = NA_real_,
+                    stringsAsFactors = FALSE
+                )
+                factor_label_row <- initialize_group_outcome_columns(factor_label_row)
+
+                lookup_entry <- group_summary_lookup[[var_name]]
+                detail_rows <- lapply(lookup_entry$by_level$level, function(level_name) {
+                    row_type_label <- if (identical(level_name, lookup_entry$reference_level)) "Reference Level" else "Group Summary"
+                    create_group_detail_row(
+                        variable_name = var_name,
+                        level_name = level_name,
+                        row_type_label = row_type_label,
+                        effect_measure = effect_measure,
+                        filtering_scale = filtering_scale,
+                        group_lookup = group_summary_lookup
+                    )
+                })
+
+                do.call(rbind, c(list(factor_label_row), detail_rows))
+            })
+
+            return(do.call(rbind, summary_rows))
+        }
+
         # Fallback to empty table if something went wrong
         return(data.frame(
             variable_base = character(),
@@ -544,6 +801,15 @@ create_raw_model_output_tab <- function(coefs, conf_int, p_values, factor_label_
             row_type = character(),
             inclusion_status = character(),
             filtering_reason = character(),
+            group_n = integer(),
+            group_events = integer(),
+            group_non_events = integer(),
+            group_event_rate_pct = numeric(),
+            reference_level = character(),
+            reference_n = integer(),
+            reference_events = integer(),
+            reference_non_events = integer(),
+            reference_event_rate_pct = numeric(),
             stringsAsFactors = FALSE
         ))
     }
@@ -556,7 +822,7 @@ apply_filtering_logic <- function(raw_model_output_tab, filtered_variables, extr
     raw_model_output_tab$inclusion_status[infinite_ci_mask] <- "Filtered"
     raw_model_output_tab$filtering_reason[infinite_ci_mask] <- "Infinite CI"
 
-    na_estimate_mask <- is.na(raw_model_output_tab$raw_coefficient) & raw_model_output_tab$row_type != "Factor Label"
+    na_estimate_mask <- is.na(raw_model_output_tab$raw_coefficient) & !raw_model_output_tab$row_type %in% c("Factor Label", "Reference Level", "Group Summary")
     raw_model_output_tab$inclusion_status[na_estimate_mask] <- "Filtered"
     raw_model_output_tab$filtering_reason[na_estimate_mask] <- "NA estimate (convergence issue)"
 
@@ -643,10 +909,11 @@ create_excluded_rows_tab <- function(raw_model_output_tab) {
 
 #' Create filtering summary table
 create_filtering_summary_tab <- function(raw_model_output_tab, excluded_rows_tab, conf_int, predictor_vars) {
-    filtered_count <- sum(raw_model_output_tab$inclusion_status == "Filtered", na.rm = TRUE)
-    remaining_count <- sum(raw_model_output_tab$inclusion_status == "Included", na.rm = TRUE)
+    coefficient_mask <- raw_model_output_tab$row_type == "Coefficient"
+    filtered_count <- sum(raw_model_output_tab$inclusion_status == "Filtered" & coefficient_mask, na.rm = TRUE)
+    remaining_count <- sum(raw_model_output_tab$inclusion_status == "Included" & coefficient_mask, na.rm = TRUE)
     excluded_count <- if (nrow(excluded_rows_tab) > 0) {
-        length(unique(excluded_rows_tab$variable[!is.na(excluded_rows_tab$variable)]))
+        length(unique(excluded_rows_tab$variable[excluded_rows_tab$row_type == "Coefficient" & !is.na(excluded_rows_tab$variable)]))
     } else {
         0
     }
@@ -676,13 +943,13 @@ create_filtering_summary_tab <- function(raw_model_output_tab, excluded_rows_tab
     }
 
     data.frame(
-        total_coefficients = nrow(raw_model_output_tab),
+        total_coefficients = sum(coefficient_mask, na.rm = TRUE),
         extreme_estimates_removed = final_filtered_count,
         rows_removed = final_filtered_count,
         sparse_table_warning = FALSE,
         confint_error = all(is.na(conf_int)),
-        remaining_coefficients = nrow(raw_model_output_tab) - final_filtered_count,
-        table_has_meaningful_content = (nrow(raw_model_output_tab) - final_filtered_count) > 0,
+        remaining_coefficients = remaining_count,
+        table_has_meaningful_content = remaining_count > 0,
         main_predictor_filtered = main_predictor_filtered
     )
 }

@@ -74,12 +74,15 @@ create_simple_gep_plots <- function(mfs_results, mss_results, mfs_output_dir, ms
     simple_plot_width <- 6.75
     simple_plot_height <- 6
 
+    validation_mfs_dir <- ensure_output_dir(mfs_output_dir)
+    validation_mss_dir <- ensure_output_dir(mss_output_dir)
+
     mfs_plot <- build_simple_gep_plot(
         mfs_results,
         "5-Year MFS: Expected vs Actual Rates"
     )
 
-    ggsave(file.path(mfs_output_dir, paste0(prefix, "simple_mfs_validation.png")),
+    ggsave(file.path(validation_mfs_dir, paste0(prefix, "simple_mfs_validation.png")),
         mfs_plot,
         width = simple_plot_width, height = simple_plot_height, dpi = PLOT_DPI, bg = "white"
     )
@@ -89,7 +92,7 @@ create_simple_gep_plots <- function(mfs_results, mss_results, mfs_output_dir, ms
         "5-Year MSS: Expected vs Actual Rates"
     )
 
-    ggsave(file.path(mss_output_dir, paste0(prefix, "simple_mss_validation.png")),
+    ggsave(file.path(validation_mss_dir, paste0(prefix, "simple_mss_validation.png")),
         mss_plot,
         width = simple_plot_width, height = simple_plot_height, dpi = PLOT_DPI, bg = "white"
     )
@@ -187,10 +190,12 @@ simple_gep_validation <- function(data, output_dirs, prefix, dataset_name = NULL
     # Resolve directories
     mfs_dir <- output_dirs$obj4_mfs
     mss_dir <- output_dirs$obj4_mss
+    mfs_validation_dir <- output_dirs$obj4_mfs_validation %||% mfs_dir
+    mss_validation_dir <- output_dirs$obj4_mss_validation %||% mss_dir
     gep_base_dir <- dirname(mfs_dir)
     unified_dir <- file.path(gep_base_dir, "unified_summary")
 
-    for (d in c(mfs_dir, mss_dir, unified_dir)) {
+    for (d in c(mfs_dir, mss_dir, mfs_validation_dir, mss_validation_dir, unified_dir)) {
         if (!dir.exists(d)) dir.create(d, recursive = TRUE, showWarnings = FALSE)
     }
 
@@ -298,7 +303,7 @@ simple_gep_validation <- function(data, output_dirs, prefix, dataset_name = NULL
         "Overall_Summary" = overall_summary
     ), file.path(unified_dir, paste0(prefix, "simple_gep_validation.xlsx")))
 
-    create_simple_gep_plots(mfs_results, mss_results, mfs_dir, mss_dir, prefix)
+    create_simple_gep_plots(mfs_results, mss_results, mfs_validation_dir, mss_validation_dir, prefix)
     create_simple_gep_report(mfs_results, mss_results, overall_summary, unified_dir, prefix)
 
     logger::log_info("Simple GEP validation completed")

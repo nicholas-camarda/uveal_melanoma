@@ -47,9 +47,20 @@ create_output_structure <- function(cohort_dir) {
         obj3_ph_diagnostics = file.path(cohort_dir, "03_Repeat_Radiation", "b_proportional_hazards_diagnostics"),
 
         # OBJECTIVE 4: GEP Predictive Accuracy
+        # Base outcome folders (kept for compatibility)
         obj4_mfs = file.path(cohort_dir, "04_GEP_Validation", "a_metastasis_free_survival"),
         obj4_mss = file.path(cohort_dir, "04_GEP_Validation", "b_melanoma_specific_survival"),
         obj4_ph_diagnostics = file.path(cohort_dir, "04_GEP_Validation", "c_proportional_hazards_diagnostics"),
+        # MFS-specific subfolders
+        obj4_mfs_km = file.path(cohort_dir, "04_GEP_Validation", "a_metastasis_free_survival", "01_km_curves"),
+        obj4_mfs_cox = file.path(cohort_dir, "04_GEP_Validation", "a_metastasis_free_survival", "02_cox_models"),
+        obj4_mfs_rmst = file.path(cohort_dir, "04_GEP_Validation", "a_metastasis_free_survival", "03_rmst_analysis"),
+        obj4_mfs_validation = file.path(cohort_dir, "04_GEP_Validation", "a_metastasis_free_survival", "04_validation"),
+        obj4_mfs_summary = file.path(cohort_dir, "04_GEP_Validation", "a_metastasis_free_survival", "05_summary_tables"),
+        # MSS-specific subfolders (intentionally asymmetric with MFS)
+        obj4_mss_cif = file.path(cohort_dir, "04_GEP_Validation", "b_melanoma_specific_survival", "01_cif_curves"),
+        obj4_mss_validation = file.path(cohort_dir, "04_GEP_Validation", "b_melanoma_specific_survival", "02_validation"),
+        obj4_mss_summary = file.path(cohort_dir, "04_GEP_Validation", "b_melanoma_specific_survival", "03_summary_tables"),
 
         # Cross-cutting analyses (baseline characteristics go here for each cohort)
         baseline_characteristics = file.path(cohort_dir, "00_General", "baseline_characteristics"),
@@ -69,6 +80,62 @@ create_output_structure <- function(cohort_dir) {
 
 
     return(dirs)
+}
+
+safe_normalize_path <- function(path) {
+    if (is.null(path) || is.na(path) || !nzchar(path)) {
+        return(NA_character_)
+    }
+    normalizePath(path, winslash = "/", mustWork = FALSE)
+}
+
+resolve_obj4_output_dir <- function(output_dirs, base_dir, artifact_type = c("base", "km", "cox", "rmst", "validation", "summary", "cif")) {
+    artifact_type <- match.arg(artifact_type)
+
+    if (is.null(output_dirs) || is.null(base_dir)) {
+        return(base_dir)
+    }
+
+    normalized_base <- safe_normalize_path(base_dir)
+    normalized_mfs <- safe_normalize_path(output_dirs$obj4_mfs %||% NULL)
+    normalized_mss <- safe_normalize_path(output_dirs$obj4_mss %||% NULL)
+
+    if (!is.na(normalized_base) && !is.na(normalized_mfs) && identical(normalized_base, normalized_mfs)) {
+        key <- switch(
+            artifact_type,
+            base = "obj4_mfs",
+            km = "obj4_mfs_km",
+            cox = "obj4_mfs_cox",
+            rmst = "obj4_mfs_rmst",
+            validation = "obj4_mfs_validation",
+            summary = "obj4_mfs_summary",
+            cif = "obj4_mfs_summary"
+        )
+        return(output_dirs[[key]] %||% base_dir)
+    }
+
+    if (!is.na(normalized_base) && !is.na(normalized_mss) && identical(normalized_base, normalized_mss)) {
+        key <- switch(
+            artifact_type,
+            base = "obj4_mss",
+            km = "obj4_mss_cif",
+            cox = "obj4_mss_summary",
+            rmst = "obj4_mss_summary",
+            validation = "obj4_mss_validation",
+            summary = "obj4_mss_summary",
+            cif = "obj4_mss_cif"
+        )
+        return(output_dirs[[key]] %||% base_dir)
+    }
+
+    base_dir
+}
+
+ensure_output_dir <- function(dir_path) {
+    if (!dir.exists(dir_path)) {
+        dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
+    }
+    dir_path
 }
 
 #' Apply standardized level formatting to categorical display variables

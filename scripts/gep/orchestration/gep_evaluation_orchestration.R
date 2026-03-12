@@ -44,8 +44,16 @@ analyze_gep_mfs_validation <- function(data,
         }
     }
     mfs_output_dir <- output_dirs$obj4_mfs
+    mfs_summary_output_dir <- output_dirs$obj4_mfs_summary %||% mfs_output_dir
+    mfs_validation_output_dir <- output_dirs$obj4_mfs_validation %||% mfs_output_dir
     if (!dir.exists(mfs_output_dir)) {
         dir.create(mfs_output_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+    if (!dir.exists(mfs_summary_output_dir)) {
+        dir.create(mfs_summary_output_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+    if (!dir.exists(mfs_validation_output_dir)) {
+        dir.create(mfs_validation_output_dir, recursive = TRUE, showWarnings = FALSE)
     }
     display_data <- restore_gep_display_variables(data, dataset_name = dataset_name)
     restored_gep_rows <- sum(
@@ -73,7 +81,7 @@ analyze_gep_mfs_validation <- function(data,
         total <- class_1 + class_2 + no_gep
         logger::log_info(formatted(sprintf("%s: %d patients (Class1:%d, Class2:%d, No:%d)", set_name, total, class_1, class_2, no_gep), indent = 2))
     }
-    write_gep_workbook(gep_distribution, file.path(mfs_output_dir, paste0(prefix, "gep_validation_distribution.xlsx")))
+    write_gep_workbook(gep_distribution, file.path(mfs_summary_output_dir, paste0(prefix, "gep_validation_distribution.xlsx")))
     logger::log_info(formatted("Filtering data for MFS validation", indent = 1))
     required_vars <- c("biopsy1_gep", "expected_mfs_5yr", "expected_mfs_7yr", "expected_mfs_10yr", "prame_status", "gep_validation_set")
     missing_vars <- setdiff(required_vars, names(data))
@@ -155,7 +163,7 @@ analyze_gep_mfs_validation <- function(data,
     
     # NEW: Use comprehensive GEP summary system instead of old repetitive reports
     # The save_mfs_validation_results function now creates comprehensive summaries automatically
-    save_mfs_validation_results(validation_results, missing_data_analysis, prame_analysis, mfs_output_dir, prefix, dataset_name = dataset_name)
+    save_mfs_validation_results(validation_results, missing_data_analysis, prame_analysis, mfs_summary_output_dir, prefix, dataset_name = dataset_name)
 
     # Optionally create unified visuals at the GEP objective root directory
     if (create_unified_at_base) {
@@ -248,6 +256,8 @@ analyze_gep_mfs_validation <- function(data,
                     ),
                     mfs_data = km_ph_display_data,
                     output_dir = mfs_output_dir,
+                    validation_output_dir = mfs_validation_output_dir,
+                    output_dirs = output_dirs,
                     prefix = prefix,
                     group_var = "biopsy1_gep",
                     model_group_var = "biopsy1_gep_model",
@@ -345,8 +355,20 @@ analyze_gep_mss_validation <- function(data,
     
     logger::log_info(formatted("DEBUG: Setting up output directory", indent = 1))
     mss_output_dir <- output_dirs$obj4_mss
+    mss_summary_output_dir <- output_dirs$obj4_mss_summary %||% mss_output_dir
+    mss_validation_output_dir <- output_dirs$obj4_mss_validation %||% mss_output_dir
+    mss_cif_output_dir <- output_dirs$obj4_mss_cif %||% mss_output_dir
     if (!dir.exists(mss_output_dir)) {
         dir.create(mss_output_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+    if (!dir.exists(mss_summary_output_dir)) {
+        dir.create(mss_summary_output_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+    if (!dir.exists(mss_validation_output_dir)) {
+        dir.create(mss_validation_output_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+    if (!dir.exists(mss_cif_output_dir)) {
+        dir.create(mss_cif_output_dir, recursive = TRUE, showWarnings = FALSE)
     }
     mss_observed_expected_grouping <- get_gep_grouping_for_context("mss", "observed_expected")
     mss_competing_risk_grouping <- get_gep_grouping_for_context("mss", "competing_risk")
@@ -480,7 +502,7 @@ analyze_gep_mss_validation <- function(data,
     # The save_mss_validation_results function now creates comprehensive summaries automatically
     save_mss_validation_results(
         standard_results, competing_results,
-        missing_data_analysis, prame_results, mss_output_dir, prefix,
+        missing_data_analysis, prame_results, mss_summary_output_dir, prefix,
         group_var = mss_reporting_grouping$var,
         dataset_name = dataset_name
     )
@@ -496,6 +518,8 @@ analyze_gep_mss_validation <- function(data,
             ),
             mss_data = mss_visual_data,
             output_dir = mss_output_dir,
+            cif_output_dir = mss_cif_output_dir,
+            validation_output_dir = mss_validation_output_dir,
             prefix = prefix,
             group_var = mss_visual_grouping$var,
             technical_group_var = mss_competing_risk_grouping$var,

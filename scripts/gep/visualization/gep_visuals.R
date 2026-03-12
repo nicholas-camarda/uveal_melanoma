@@ -10,7 +10,7 @@
 #' @param mfs_data data.frame Raw data for MFS survival curve
 #' @param output_dir character Destination directory (MFS outcome folder)
 #' @param prefix character Filename prefix
-create_mfs_gep_visuals <- function(mfs_results, mfs_data, output_dir, prefix, group_var = "biopsy1_gep", model_group_var = group_var, other_map = list(), dataset_name = "GEP Validation") {
+create_mfs_gep_visuals <- function(mfs_results, mfs_data, output_dir, prefix, group_var = "biopsy1_gep", model_group_var = group_var, other_map = list(), dataset_name = "GEP Validation", validation_output_dir = output_dir, output_dirs = NULL) {
     # Directly write into centralized visuals folder created by create_output_structure()
     prame_results <- NULL
     if (!is.null(mfs_results$prame_analysis)) {
@@ -30,10 +30,19 @@ create_mfs_gep_visuals <- function(mfs_results, mfs_data, output_dir, prefix, gr
 
     # Survival curves (KM)
     if (!is.null(mfs_data) && nrow(mfs_data) > 0) {
-        create_mfs_survival_curves(mfs_data, output_dir, prefix, group_var = group_var, model_group_var = model_group_var, other_map = other_map, dataset_name = dataset_name)
+        create_mfs_survival_curves(
+            mfs_data,
+            output_dir,
+            prefix,
+            group_var = group_var,
+            model_group_var = model_group_var,
+            other_map = other_map,
+            dataset_name = dataset_name,
+            output_dirs = output_dirs
+        )
     }
 
-    create_prame_incremental_value_plot(prame_results, "MFS", output_dir, prefix)
+    create_prame_incremental_value_plot(prame_results, "MFS", validation_output_dir, prefix)
 
     invisible(NULL)
 }
@@ -47,7 +56,7 @@ create_mfs_gep_visuals <- function(mfs_results, mfs_data, output_dir, prefix, gr
 #' @param mss_data data.frame Raw data for CIF curves
 #' @param output_dir character Destination directory (MSS outcome folder)
 #' @param prefix character Filename prefix
-create_mss_gep_visuals <- function(mss_results, mss_data, output_dir, prefix, group_var = "biopsy1_gep", technical_group_var = NULL, other_map = list()) {
+create_mss_gep_visuals <- function(mss_results, mss_data, output_dir, prefix, group_var = "biopsy1_gep", technical_group_var = NULL, other_map = list(), cif_output_dir = output_dir, validation_output_dir = output_dir) {
     # Directly write into centralized visuals folder created by create_output_structure()
     prame_results <- mss_results$prame_results %||% NULL
 
@@ -72,7 +81,7 @@ create_mss_gep_visuals <- function(mss_results, mss_data, output_dir, prefix, gr
         }
 
         create_mss_cumulative_incidence_curves(
-            mss_data, 5, output_dir, prefix,
+            mss_data, 5, cif_output_dir, prefix,
             group_var = group_var,
             technical_group_var = technical_group_var,
             other_map = other_map,
@@ -80,7 +89,7 @@ create_mss_gep_visuals <- function(mss_results, mss_data, output_dir, prefix, gr
         )
     }
 
-    create_prame_incremental_value_plot(prame_results, "MSS", output_dir, prefix)
+    create_prame_incremental_value_plot(prame_results, "MSS", validation_output_dir, prefix)
 
     invisible(NULL)
 }
@@ -274,10 +283,8 @@ create_calibration_plots <- function(results, outcome_type, output_dir, prefix) 
                     plot.background = element_rect(fill = "white"),
                     panel.background = element_rect(fill = "white")
                 )
-            # ensure calibration subfolder exists under the outcome folder
-            cal_dir <- file.path(output_dir, "calibration")
-            if (!dir.exists(cal_dir)) dir.create(cal_dir, recursive = TRUE, showWarnings = FALSE)
-            plot_path <- file.path(cal_dir, paste0(prefix, outcome_type, "_calibration_", tp_name, ".png"))
+            if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+            plot_path <- file.path(output_dir, paste0(prefix, outcome_type, "_calibration_", tp_name, ".png"))
             ggsave(plot_path, cal_plot, width = SMALL_PLOT_WIDTH, height = SMALL_PLOT_HEIGHT, dpi = PLOT_DPI, bg = "white")
         } else {
             logger::log_warn(sprintf("Skipping calibration plot for %s - %s: no valid observed_expected data", outcome_type, tp_name))
@@ -883,18 +890,20 @@ create_single_outcome_performance_plot <- function(results, outcome_type, output
 #' @param output_dir Output directory for saved plots
 #' @param prefix Filename prefix
 #' @return Invisibly returns NULL after saving plots
-create_mfs_survival_curves <- function(data, output_dir, prefix, group_var = "biopsy1_gep", model_group_var = group_var, other_map = list(), dataset_name = "GEP Validation") {
+create_mfs_survival_curves <- function(data, output_dir, prefix, group_var = "biopsy1_gep", model_group_var = group_var, other_map = list(), dataset_name = "GEP Validation", output_dirs = NULL) {
     logger::log_info("Creating MFS survival curves by GEP class using existing survival analysis infrastructure")
 
-    # Use the existing analyze_time_to_event_outcomes function that handles all the complexity
-    # Set up output directories for the existing function
-    temp_output_dirs <- list(
-        obj1_os = output_dir,
-        obj1_pfs = output_dir,
-        obj3_pfs2 = output_dir,
-        obj4_mfs = output_dir, # Add missing MFS mapping
-        baseline_characteristics = output_dir
-    )
+    # Use the existing analyze_time_to_event_outcomes function with centralized output mapping
+    resolved_output_dirs <- output_dirs
+    if (is.null(resolved_output_dirs)) {
+        resolved_output_dirs <- list(
+            obj1_os = output_dir,
+            obj1_pfs = output_dir,
+            obj3_pfs2 = output_dir,
+            obj4_mfs = output_dir,
+            baseline_characteristics = output_dir
+        )
+    }
 
     # Call the existing comprehensive survival analysis function (now supports non-binary grouping)
     logger::log_info(sprintf("DEBUG: About to call analyze_time_to_event_outcomes with group_var = %s", group_var))
@@ -916,7 +925,7 @@ create_mfs_survival_curves <- function(data, output_dir, prefix, group_var = "bi
                 analysis_type = "post_treatment_only",
                 dataset_name = dataset_name,
                 other_map = other_map,
-                output_dirs = temp_output_dirs,
+                output_dirs = resolved_output_dirs,
                 prefix = prefix
             )
         },
@@ -935,6 +944,7 @@ create_mfs_survival_curves <- function(data, output_dir, prefix, group_var = "bi
     create_mfs_simplified_survival_curves(
         data = data,
         output_dir = output_dir,
+        km_output_dir = resolve_obj4_output_dir(resolved_output_dirs, output_dir, "km"),
         prefix = prefix,
         dataset_name = dataset_name
     )
@@ -944,7 +954,8 @@ create_mfs_survival_curves <- function(data, output_dir, prefix, group_var = "bi
         output_dir = output_dir,
         prefix = prefix,
         other_map = other_map,
-        dataset_name = dataset_name
+        dataset_name = dataset_name,
+        output_dirs = resolved_output_dirs
     )
 
     invisible(NULL)
@@ -961,7 +972,7 @@ create_mfs_survival_curves <- function(data, output_dir, prefix, group_var = "bi
 #' @param other_map Additional variable mappings used by Cox helpers
 #' @param dataset_name Dataset label used in subtitles and reports
 #' @return Invisibly returns the survival-analysis result list or NULL
-create_mfs_simple_binary_survival_analysis <- function(data, output_dir, prefix, other_map = list(), dataset_name = "GEP Validation") {
+create_mfs_simple_binary_survival_analysis <- function(data, output_dir, prefix, other_map = list(), dataset_name = "GEP Validation", output_dirs = NULL) {
     logger::log_info("Creating binary simple-GEP MFS survival analysis using the standard survival workflow")
 
     plot_data <- data %>%
@@ -1005,13 +1016,16 @@ create_mfs_simple_binary_survival_analysis <- function(data, output_dir, prefix,
         )
     ))
 
-    temp_output_dirs <- list(
-        obj1_os = output_dir,
-        obj1_pfs = output_dir,
-        obj3_pfs2 = output_dir,
-        obj4_mfs = output_dir,
-        baseline_characteristics = output_dir
-    )
+    resolved_output_dirs <- output_dirs
+    if (is.null(resolved_output_dirs)) {
+        resolved_output_dirs <- list(
+            obj1_os = output_dir,
+            obj1_pfs = output_dir,
+            obj3_pfs2 = output_dir,
+            obj4_mfs = output_dir,
+            baseline_characteristics = output_dir
+        )
+    }
 
     binary_prefix <- paste0(prefix, "simple_gep_binary_")
     binary_dataset_name <- if (!is.null(dataset_name)) {
@@ -1034,7 +1048,7 @@ create_mfs_simple_binary_survival_analysis <- function(data, output_dir, prefix,
                 dataset_name = binary_dataset_name,
                 legend_labels = c("Class 1", "Class 2"),
                 other_map = other_map,
-                output_dirs = temp_output_dirs,
+                output_dirs = resolved_output_dirs,
                 prefix = binary_prefix
             )
         },
@@ -1063,7 +1077,7 @@ create_mfs_simple_binary_survival_analysis <- function(data, output_dir, prefix,
 #' @param prefix Filename prefix
 #' @param dataset_name Dataset label used in the subtitle
 #' @return Invisibly returns NULL after saving plots
-create_mfs_simplified_survival_curves <- function(data, output_dir, prefix, dataset_name = "GEP Validation") {
+create_mfs_simplified_survival_curves <- function(data, output_dir, prefix, dataset_name = "GEP Validation", km_output_dir = output_dir) {
     logger::log_info("Creating simplified MFS survival curves for Class 1, Class 2, and GEP Not Tested")
 
     plot_data <- data %>%
@@ -1113,7 +1127,6 @@ create_mfs_simplified_survival_curves <- function(data, output_dir, prefix, data
     x_breaks <- seq(0, ceiling(max_time / base_by) * base_by, by = base_by)
     plot_scale <- SURVIVAL_PLOT_SCALE
     color_palette <- get_palette_by_variable("biopsy1_gep", present_levels)
-
     surv_plot <- survminer::ggsurvplot(
         fit = surv_fit,
         data = plot_data,
@@ -1218,7 +1231,8 @@ create_mfs_simplified_survival_curves <- function(data, output_dir, prefix, data
         )
     )
 
-    km_path <- file.path(output_dir, paste0(prefix, "mfs_simplified_gep_km.png"))
+    target_km_dir <- ensure_output_dir(km_output_dir)
+    km_path <- file.path(target_km_dir, paste0(prefix, "mfs_simplified_gep_km.png"))
     ggplot2::ggsave(
         km_path,
         combined_km,

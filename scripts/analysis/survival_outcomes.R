@@ -359,7 +359,7 @@ summarize_cox_hr <- function(model, dataset_name, analysis_label, model_label, g
 #' @param output_dirs Output directories by analysis type
 #' @param prefix File prefix for outputs
 #' @return List with KM/cox outputs and diagnostics
-analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var = "treatment_group", model_group_var = group_var, confounders = NULL, ylab = "Survival Probability", analysis_type = "post_treatment_only", dataset_name = NULL, legend_labels = NULL, other_map = list(), output_dirs = NULL, prefix = NULL) {
+analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var = "treatment_group", model_group_var = group_var, confounders = NULL, ylab = "Survival Probability", analysis_type = "post_treatment_only", dataset_name = NULL, legend_labels = NULL, other_map = list(), output_dirs = NULL, prefix = NULL, risk_table_height = 0.18, risk_table_rel_heights = c(0.78, 0.22), risk_table_y_expand = c(0.18, 0.18), saved_plot_height = NULL) {
     plot_group_var <- group_var
     palette_group_var <- group_var
 
@@ -498,6 +498,25 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     # Get plot scaling factor from config (allows global adjustment via SURVIVAL_PLOT_SCALE)
     plot_scale <- SURVIVAL_PLOT_SCALE
 
+    n_risk_rows <- length(legend_labels)
+    
+    # Dynamically calculate risk table spacing based on number of rows
+    # Principle: allocate ~3.5% of figure per row for the table, with minimum 0.15 and maximum 0.25
+    # Then adjust row padding (y_expand) inversely: fewer rows = more padding, more rows = less padding
+    if (is.null(risk_table_height) || risk_table_height == 0.18) {
+        risk_table_height <- min(0.25, max(0.15, n_risk_rows * 0.035))
+    }
+    if (all(risk_table_rel_heights == c(0.78, 0.22))) {
+        plot_fraction <- 1 - risk_table_height
+        risk_table_rel_heights <- c(plot_fraction, risk_table_height)
+    }
+    if (all(risk_table_y_expand == c(0.18, 0.18))) {
+        risk_table_y_expand <- c(
+            max(0.05, 0.35 - n_risk_rows * 0.04),  # More rows = less top/bottom padding
+            max(0.05, 0.35 - n_risk_rows * 0.04)
+        )
+    }
+
     # Generate Kaplan-Meier plot with risk table (all sizes scaled proportionally)
     surv_plot <- survminer::ggsurvplot(
         fit = surv_fit,
@@ -511,7 +530,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         subtitle = if (!is.null(dataset_name)) paste("Cohort:", dataset_name) else NULL,
         xlab = "Time (months)",
         ylab = ylab,
-        risk.table.height = 0.18,
+        risk.table.height = risk_table_height,
         ggtheme = theme_minimal(),
         break.time.by = base_by,
         xlim = c(0, max(x_breaks)),
@@ -639,20 +658,21 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     surv_plot$table <- surv_plot$table +
         ggplot2::scale_y_discrete(
             limits = rev(legend_labels),
-            expand = ggplot2::expansion(mult = c(0.18, 0.18))
+            expand = ggplot2::expansion(mult = risk_table_y_expand)
         )
     
     # Save KM plot if output_dirs are provided
     if (!is.null(output_dirs)) {
         output_dir <- determine_survival_output_dir(ylab, output_dirs)
-        km_path <- file.path(output_dir, paste0(prefix, make_filename_safe(ylab), "_km.png"))
+        km_dir <- ensure_output_dir(resolve_obj4_output_dir(output_dirs, output_dir, "km"))
+        km_path <- file.path(km_dir, paste0(prefix, make_filename_safe(ylab), "_km.png"))
         # Combine main plot and risk table vertically so the saved image includes both
         combined_km <- cowplot::plot_grid(
             surv_plot$plot,
             surv_plot$table,
             ncol = 1,
             align = "v",
-            rel_heights = c(0.78, 0.22)
+            rel_heights = risk_table_rel_heights
         )
         # Dynamic height scaling: base on number of strata in the KM fit
         n_groups <- tryCatch(
@@ -666,7 +686,11 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         dynamic_height <- KM_BASE_HEIGHT + extra_groups * KM_HEIGHT_PER_STRATUM
         # Prefer taller PFS-2 default if applicable, but cap at KM_MAX_HEIGHT
         base_pref <- if (grepl("PFS-2", ylab)) max(PFS2_PLOT_HEIGHT, SURVIVAL_PLOT_HEIGHT) else SURVIVAL_PLOT_HEIGHT
-        plot_height <- min(KM_MAX_HEIGHT, max(base_pref, dynamic_height))
+        plot_height <- if (!is.null(saved_plot_height)) {
+            min(KM_MAX_HEIGHT, saved_plot_height)
+        } else {
+            min(KM_MAX_HEIGHT, max(base_pref, dynamic_height))
+        }
         # Save the combined plot with dynamic height
         ggplot2::ggsave(km_path, combined_km, width = SURVIVAL_PLOT_WIDTH, height = plot_height, dpi = PLOT_DPI, bg = "white")
         logger::log_info(sprintf("KM plot (with risk table) saved: %s", km_path))
@@ -1009,13 +1033,14 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     # Write outputs to Excel files if output_dirs provided
     if (!is.null(output_dirs)) {
         output_dir <- determine_survival_output_dir(ylab, output_dirs)
+        summary_dir <- ensure_output_dir(resolve_obj4_output_dir(output_dirs, output_dir, "summary"))
         writexl::write_xlsx(
             surv_rates,
-            path = file.path(output_dir, paste0(prefix, make_filename_safe(ylab), "_survival_rates.xlsx"))
+            path = file.path(summary_dir, paste0(prefix, make_filename_safe(ylab), "_survival_rates.xlsx"))
         )
         writexl::write_xlsx(
             surv_rates_wide_with_rmst,
-            path = file.path(output_dir, paste0(prefix, make_filename_safe(ylab), "_survival_rates_wide.xlsx"))
+            path = file.path(summary_dir, paste0(prefix, make_filename_safe(ylab), "_survival_rates_wide.xlsx"))
         )
         # Only save RMST file if there's actual RMST data (not just "Not applicable" rows)
         rmst_has_data <- nrow(rmst_results) > 0 && any(
@@ -1023,16 +1048,18 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
                 (!is.na(rmst_results$RMST_Group1_Months) & !is.na(rmst_results$RMST_Group2_Months))
         )
         if (rmst_has_data) {
+            rmst_dir <- ensure_output_dir(resolve_obj4_output_dir(output_dirs, output_dir, "rmst"))
             writexl::write_xlsx(
                 rmst_results,
-                path = file.path(output_dir, paste0(prefix, make_filename_safe(ylab), "_rmst_analysis.xlsx"))
+                path = file.path(rmst_dir, paste0(prefix, make_filename_safe(ylab), "_rmst_analysis.xlsx"))
             )
             logger::log_info(sprintf("RMST analysis file saved: %s", paste0(prefix, make_filename_safe(ylab), "_rmst_analysis.xlsx")))
         } else {
             logger::log_info(sprintf("Skipping RMST file creation - no valid RMST data available for %s", ylab))
         }
         if (rmst_has_data && nrow(rmst_survival_summary) > 0) {
-            combined_path <- file.path(output_dir, paste0(prefix, make_filename_safe(ylab), "_survival_rmst_summary.xlsx"))
+            rmst_dir <- ensure_output_dir(resolve_obj4_output_dir(output_dirs, output_dir, "rmst"))
+            combined_path <- file.path(rmst_dir, paste0(prefix, make_filename_safe(ylab), "_survival_rmst_summary.xlsx"))
             writexl::write_xlsx(rmst_survival_summary, path = combined_path)
             logger::log_info(sprintf("Survival + RMST summary saved: %s", basename(combined_path)))
         } else if (!rmst_has_data) {
@@ -1042,7 +1069,8 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             ))
         }
         if (rmst_has_data && nrow(rmst_timepoint_table) > 0) {
-            rmst_table_path <- file.path(output_dir, paste0(prefix, make_filename_safe(ylab), "_rmst_timepoint_table.xlsx"))
+            rmst_dir <- ensure_output_dir(resolve_obj4_output_dir(output_dirs, output_dir, "rmst"))
+            rmst_table_path <- file.path(rmst_dir, paste0(prefix, make_filename_safe(ylab), "_rmst_timepoint_table.xlsx"))
             writexl::write_xlsx(rmst_timepoint_table, path = rmst_table_path)
             logger::log_info(sprintf("RMST timepoint table saved: %s", basename(rmst_table_path)))
         }
@@ -1054,6 +1082,13 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     if (cox_ready) {
         logger::log_info(sprintf("DEBUG: About to call generate_regression_table for %s", paste0(ylab, "_cox")))
         cox_result <- tryCatch({
+            cox_dir <- if (!is.null(output_dirs)) {
+                cox_output_dir <- determine_survival_output_dir(ylab, output_dirs)
+                ensure_output_dir(resolve_obj4_output_dir(output_dirs, cox_output_dir, "cox"))
+            } else {
+                "test_output"
+            }
+            
             generate_regression_table(
                 data = cox_data,
                 outcome_var = event_var,
@@ -1063,7 +1098,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
                 effect_measure = "HR",
                 analysis_name = cox_analysis_name,
                 dataset_name = dataset_name,
-                output_dir = if (!is.null(output_dirs)) output_dir else "test_output",
+                output_dir = cox_dir,
                 prefix = prefix,
                 time_var = time_var,
                 event_var = event_var,
@@ -1142,7 +1177,9 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     hazard_ratio_summary <- if (length(hr_rows) > 0) dplyr::bind_rows(hr_rows) else data.frame()
 
     if (!is.null(output_dirs) && nrow(hazard_ratio_summary) > 0) {
-        hr_dir <- determine_survival_output_dir(ylab, output_dirs)
+        hr_output_dir <- determine_survival_output_dir(ylab, output_dirs)
+        hr_dir <- ensure_output_dir(resolve_obj4_output_dir(output_dirs, hr_output_dir, "cox"))
+        
         hr_filename <- paste0(prefix, make_filename_safe(ylab), "_hazard_ratio_summary.xlsx")
         writexl::write_xlsx(hazard_ratio_summary, file.path(hr_dir, hr_filename))
         logger::log_info(sprintf("Hazard ratio summary saved: %s", hr_filename))
