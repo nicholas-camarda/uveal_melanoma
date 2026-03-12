@@ -182,6 +182,8 @@ create_simple_gep_report <- function(mfs_results, mss_results, overall_summary, 
 simple_gep_validation <- function(data, output_dirs, prefix, dataset_name = NULL) {
     logger::log_info("Starting SIMPLE GEP validation (Project Goals)")
 
+    data <- refresh_gep_analysis_flags(data)
+
     # Resolve directories
     mfs_dir <- output_dirs$obj4_mfs
     mss_dir <- output_dirs$obj4_mss

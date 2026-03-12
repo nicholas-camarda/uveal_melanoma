@@ -545,6 +545,38 @@ GEP_MISSING_DATA_THRESHOLD <- 10 # Minimum patients needed for missing data anal
 GEP_RECOMMENDED_VALIDATION_SAMPLE <- 100 # Recommended minimum for robust validation
 GEP_RECOMMENDED_TESTING_SAMPLE <- 30 # Recommended minimum for testing set
 
+GEP_DEFINITIVE_SIMPLE_LEVELS <- c("Class 1", "Class 2")
+GEP_CLASS_1_DEFINITIVE_RAW_LEVELS <- c(
+    "Class_1A_PRAME_negative",
+    "Class_1A_PRAME_positive",
+    "Class_1B_PRAME_negative",
+    "Class_1B_PRAME_positive"
+)
+GEP_CLASS_2_DEFINITIVE_RAW_LEVELS <- c(
+    "Class_2_PRAME_negative",
+    "Class_2_PRAME_positive"
+)
+GEP_DEFINITIVE_RAW_LEVELS <- c(
+    GEP_CLASS_1_DEFINITIVE_RAW_LEVELS,
+    GEP_CLASS_2_DEFINITIVE_RAW_LEVELS
+)
+GEP_FAILED_OR_INDETERMINATE_RAW_LEVELS <- c(
+    "Failed",
+    "Class_1A_PRAME_not_reported",
+    "Class_2_PRAME_not_reported",
+    "Class_2_PRAME_Unknown",
+    "Class_1A_PRAME_discordant",
+    "Unknown",
+    "Other"
+)
+GEP_NOT_TESTED_RAW_LEVELS <- c("No", "N/A")
+GEP_INVALID_ANALYSIS_LABELS <- c(
+    GEP_FAILED_OR_INDETERMINATE_RAW_LEVELS,
+    GEP_NOT_TESTED_RAW_LEVELS,
+    "GEP Failed/Indeterminate",
+    "GEP Not Tested"
+)
+
 # GEP-specific derived variables
 GEP_DERIVED_VARIABLES <- c(
     "gep_class_simple", "prame_status", "expected_mfs_5yr", "expected_mfs_7yr",

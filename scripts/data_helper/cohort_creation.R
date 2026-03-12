@@ -220,13 +220,10 @@ prepare_factor_levels <- function(data) {
             # Simple GEP class is now binary: Class 1 vs Class 2
             gep_class_simple = factor(
                 case_when(
-                    grepl("Class_1", biopsy1_gep_raw, fixed = TRUE) ~ "Class 1",
-                    grepl("Class_2", biopsy1_gep_raw, fixed = TRUE) ~ "Class 2",
-                    biopsy1_gep_raw %in% c("No", "N/A") | is.na(biopsy1_gep_raw) ~ "GEP Not Tested",
-                    biopsy1_gep_raw %in% c(
-                        "Failed", "Class_1A_PRAME_not_reported", "Class_2_PRAME_not_reported",
-                        "Class_2_PRAME_Unknown", "Class_1A_PRAME_discordant", "Unknown", "Other"
-                    ) ~ "GEP Failed/Indeterminate",
+                    biopsy1_gep_raw %in% GEP_CLASS_1_DEFINITIVE_RAW_LEVELS ~ "Class 1",
+                    biopsy1_gep_raw %in% GEP_CLASS_2_DEFINITIVE_RAW_LEVELS ~ "Class 2",
+                    biopsy1_gep_raw %in% GEP_NOT_TESTED_RAW_LEVELS | is.na(biopsy1_gep_raw) ~ "GEP Not Tested",
+                    biopsy1_gep_raw %in% GEP_FAILED_OR_INDETERMINATE_RAW_LEVELS ~ "GEP Failed/Indeterminate",
                     TRUE ~ NA_character_
                 ),
                 levels = c("Class 1", "Class 2", "GEP Failed/Indeterminate", "GEP Not Tested"), ordered = FALSE

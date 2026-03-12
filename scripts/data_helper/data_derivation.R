@@ -148,9 +148,10 @@ create_derived_variables <- function(data) {
         mutate(mets_free_at_baseline = !(mets_progression == "Y" & mets_progression_date < treatment_date)) %>%
         mutate(
             gep_class_simple = case_when(
-                str_detect(biopsy1_gep, "Class_1") ~ "Class 1",
-                str_detect(biopsy1_gep, "Class_2") ~ "Class 2",
-                # We treat DISCORDANT as NA
+                biopsy1_gep %in% GEP_CLASS_1_DEFINITIVE_RAW_LEVELS ~ "Class 1",
+                biopsy1_gep %in% GEP_CLASS_2_DEFINITIVE_RAW_LEVELS ~ "Class 2",
+                biopsy1_gep %in% GEP_FAILED_OR_INDETERMINATE_RAW_LEVELS ~ "GEP Failed/Indeterminate",
+                biopsy1_gep %in% GEP_NOT_TESTED_RAW_LEVELS ~ "GEP Not Tested",
                 TRUE ~ NA_character_
             ),
             expected_mfs_5yr = biopsy1_gep_mfs,
@@ -189,7 +190,7 @@ create_derived_variables <- function(data) {
             # Use a simpler approach that doesn't rely on factor levels
             gep_validation_set = if_else(
                 !is.na(biopsy1_gep_mfs) & !is.na(biopsy1_gep_mss) &
-                    !is.na(gep_class_simple) & gep_class_simple %in% c("Class 1", "Class 2"),
+                    !is.na(gep_class_simple) & gep_class_simple %in% GEP_DEFINITIVE_SIMPLE_LEVELS,
                 "Eligible",
                 "No GEP Data"
             )
@@ -296,6 +297,8 @@ create_derived_variables <- function(data) {
         ) %>%
         mutate()
 
+    new_data <- refresh_gep_analysis_flags(new_data)
+
     new_variables <- setdiff(colnames(new_data), old_variables)
     if (length(new_variables) > 0) {
         logger::log_info("New derived variables created:")
@@ -323,6 +326,80 @@ create_derived_variables <- function(data) {
     }
         
     return(new_data)
+}
+
+refresh_gep_analysis_flags <- function(data) {
+    if (!"gep_class_simple" %in% names(data)) {
+        return(data)
+    }
+
+    n_rows <- nrow(data)
+    simple_values <- as.character(data$gep_class_simple)
+    definitive_simple_flag <- !is.na(simple_values) & simple_values %in% GEP_DEFINITIVE_SIMPLE_LEVELS
+
+    if ("biopsy1_gep" %in% names(data)) {
+        biopsy_values <- as.character(data$biopsy1_gep)
+        definitive_biopsy_flag <- !is.na(biopsy_values) & !biopsy_values %in% GEP_INVALID_ANALYSIS_LABELS
+    } else {
+        definitive_biopsy_flag <- rep(TRUE, n_rows)
+    }
+
+    if ("biopsy1_gep_raw" %in% names(data)) {
+        raw_values <- as.character(data$biopsy1_gep_raw)
+        definitive_raw_flag <- !is.na(raw_values) & raw_values %in% GEP_DEFINITIVE_RAW_LEVELS
+    } else {
+        definitive_raw_flag <- rep(TRUE, n_rows)
+    }
+
+    definitive_gep_flag <- definitive_simple_flag & definitive_biopsy_flag & definitive_raw_flag
+
+    valid_mfs_prediction_flag <- if ("biopsy1_gep_mfs" %in% names(data)) {
+        !is.na(data$biopsy1_gep_mfs) & data$biopsy1_gep_mfs >= 0 & data$biopsy1_gep_mfs <= 1
+    } else {
+        rep(FALSE, n_rows)
+    }
+
+    valid_mss_prediction_flag <- if ("biopsy1_gep_mss" %in% names(data)) {
+        !is.na(data$biopsy1_gep_mss) & data$biopsy1_gep_mss >= 0 & data$biopsy1_gep_mss <= 1
+    } else {
+        rep(FALSE, n_rows)
+    }
+
+    has_prame_flag <- if ("prame_status" %in% names(data)) {
+        prame_values <- as.character(data$prame_status)
+        !is.na(prame_values) & prame_values %in% c("Positive", "Negative")
+    } else {
+        rep(FALSE, n_rows)
+    }
+
+    data %>%
+        mutate(
+            gep_validation_set = if_else(
+                definitive_gep_flag & valid_mfs_prediction_flag & valid_mss_prediction_flag,
+                "Eligible",
+                "No GEP Data"
+            ),
+            mfs_analysis_eligible = definitive_gep_flag &
+                !is.na(tt_mets_months) &
+                !is.na(mets_event) &
+                tt_mets_months >= 0 &
+                valid_mfs_prediction_flag,
+            mss_analysis_eligible = definitive_gep_flag &
+                !is.na(tt_death_years) &
+                !is.na(melanoma_death_event) &
+                !is.na(competing_death_event) &
+                tt_death_years >= 0 &
+                valid_mss_prediction_flag,
+            has_gep = definitive_gep_flag,
+            has_gep_mfs = valid_mfs_prediction_flag,
+            has_gep_mss = valid_mss_prediction_flag,
+            has_prame = has_prame_flag,
+            missing_gep_group = case_when(
+                definitive_gep_flag & valid_mfs_prediction_flag & valid_mss_prediction_flag ~ "Complete GEP",
+                definitive_gep_flag & (valid_mfs_prediction_flag | valid_mss_prediction_flag) ~ "Partial GEP",
+                TRUE ~ "No GEP"
+            )
+        )
 }
 
 #' Create binned continuous variables for subgroup analysis
