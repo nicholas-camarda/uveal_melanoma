@@ -935,6 +935,7 @@ create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, 
 
     # Ensure group_var is a string
     group_var_char <- as.character(group_var)
+    simplified_display <- identical(group_var_char, "gep_class_simple")
 
     # Prepare data for competing risk analysis using pre-processed variables
     logger::log_info("Preparing MSS visual dataset for cumulative incidence curves")
@@ -964,6 +965,12 @@ create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, 
         dplyr::filter(!is.na(.data[[group_var_char]]), !is.na(.data[[time_var_char]])) %>%
         as.data.frame() # Convert to data.frame to avoid tibble subsetting issues
 
+    if (simplified_display) {
+        surv_data <- surv_data %>%
+            dplyr::filter(.data[[group_var_char]] %in% c("Class 1", "Class 2")) %>%
+            as.data.frame()
+    }
+
     melanoma_death_total <- sum(surv_data[[event_type_var_char]] == 1, na.rm = TRUE)
 
     # Convert event variable to factor for tidycmprsk compatibility
@@ -980,10 +987,14 @@ create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, 
     }
 
     # Create enhanced title with statistical context
-    base_title <- sprintf("Melanoma-Specific Death by GEP Class (%d-Year Analysis)", timepoint)
+    base_title <- if (simplified_display) {
+        sprintf("Melanoma-Specific Death by Simplified GEP Class (%d-Year Analysis)", timepoint)
+    } else {
+        sprintf("Melanoma-Specific Death by GEP Class (%d-Year Analysis)", timepoint)
+    }
 
     # Add competing risks statistics to title if available
-    if (!is.null(competing_results)) {
+    if (!is.null(competing_results) && !simplified_display) {
         # Extract Fine-Gray model results if available
         fine_gray_stats <- ""
         if (!is.null(competing_results$fine_gray) && nrow(competing_results$fine_gray) > 0) {
@@ -1035,7 +1046,11 @@ create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, 
             plot_title <- paste0(base_title, "\n(Competing risks models not fitted due to insufficient data quality)")
         }
     } else {
-        plot_title <- paste0(base_title, "\n(No competing risks results available)")
+        plot_title <- if (simplified_display) {
+            paste0(base_title, "\n(Display curves grouped as Class 1 vs Class 2)")
+        } else {
+            paste0(base_title, "\n(No competing risks results available)")
+        }
     }
 
     # Use ggsurvfit's ggcuminc function for much simpler CIF plotting
@@ -1059,8 +1074,12 @@ create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, 
             ),
             x = "Time (years)",
             y = "Cumulative Incidence of Melanoma Death",
-            color = "GEP Class",
-            caption = "Fine-Gray subdistribution hazard ratios shown for significant associations\n* p < 0.05 indicates significant difference"
+            color = if (simplified_display) "GEP Class (Simple)" else "GEP Class",
+            caption = if (simplified_display) {
+                "Display curves use simplified Class 1 vs Class 2 grouping for readability.\nTechnical competing-risk model summaries remain available in the companion workbook."
+            } else {
+                "Fine-Gray subdistribution hazard ratios shown for significant associations\n* p < 0.05 indicates significant difference"
+            }
         ) +
         ggplot2::theme_classic() +
         ggplot2::theme(
@@ -1084,7 +1103,13 @@ create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, 
 
     caption_lines <- character()
 
-    if (!is.null(competing_results)) {
+    if (simplified_display) {
+        caption_lines <- c(
+            caption_lines,
+            "Display note: curves are collapsed to Class 1 vs Class 2 for reader-facing visualization.",
+            "Technical competing-risk models and tables remain grouped by the more granular biopsy1_gep labels."
+        )
+    } else if (!is.null(competing_results)) {
         # Add Fine-Gray results
         if (!is.null(competing_results$fine_gray) && nrow(competing_results$fine_gray) > 0) {
             caption_lines <- c(caption_lines, "Fine-Gray models:")

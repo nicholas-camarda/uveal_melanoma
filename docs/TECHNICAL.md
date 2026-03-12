@@ -474,6 +474,8 @@ The analysis pipeline includes robust error handling for situations where data l
 
 **Current display contract:** Objective 4 reader-facing GEP outputs restore canonical labels from `*_derived_precollapse.rds` for `biopsy1_gep`, `gep_class_simple`, `prame_status`, and `gep12_prame_status` when that artifact exists. This keeps KM curves, CIF curves, distribution tables, and simple QC summaries aligned with the intended GEP recode logic, while Cox and competing-risk model fitting still operates on the post-collapse cohort artifact for sparse-cell protection.
 
+For readability, the reader-facing MSS CIF PNG now uses `gep_class_simple` and shows only definitive `Class 1` versus `Class 2` strata. This does not change the technical MSS competing-risk tables or model fits, which still use the more granular `biopsy1_gep` grouping in the companion outputs.
+
 **Important layout note:** cross-cutting cohort outputs such as baseline characteristics and treatment-duration summaries belong in `00_General/` inside each cohort folder, not in a shared top-level `Analysis/General/` directory.
 
 See [STATISTICAL_METHODS.md](STATISTICAL_METHODS.md#gep-validation-metrics) for the metric definitions and code-level methodology, and [INTERPRETATION_GUIDE.md](INTERPRETATION_GUIDE.md#understanding-gep-analysis) for workbook-reading guidance.

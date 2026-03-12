@@ -471,7 +471,7 @@ analyze_gep_mss_validation <- function(data,
             mss_data = mss_visual_data,
             output_dir = mss_output_dir,
             prefix = prefix,
-            group_var = "biopsy1_gep",
+            group_var = "gep_class_simple",
             other_map = other_map
         )
         logger::log_info(formatted("MSS GEP visualization plots created successfully", indent = 2))

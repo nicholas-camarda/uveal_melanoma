@@ -288,6 +288,8 @@ The 5-year overall survival was 75% for PBT and 82% for GKSRS (log-rank p=0.12).
 - More accurate event probabilities
 - Gray's test instead of log-rank test
 
+**Current Objective 4 display note:** the reader-facing MSS CIF PNG is intentionally simplified to `Class 1` versus `Class 2` using `gep_class_simple`, and excludes `GEP Not Tested` / `GEP Failed/Indeterminate` from the plotted strata. The companion technical competing-risk tables and models still use the more granular `biopsy1_gep` grouping, so the plot is a cleaner display layer rather than a redefinition of the technical MSS analysis.
+
 ---
 
 ## Understanding RMST Analysis
@@ -560,6 +562,7 @@ Gene Expression Profiling (GEP) is an external molecular risk assay for metastat
 - **Fallback + method columns** (`*_Fallback_Used`, `*_Method`) surface whenever the preferred estimator fails; cite them whenever they read `TRUE` to explain unexpected `NA`s.
 - **Missing = `NA`** means "metric skipped" rather than "zero." Cross-check the run log (`logs/json/*.jsonl`) for warnings before imputing values.
 - **Displayed GEP labels are canonical labels, not sparse-model buckets.** When a cohort has a matching `*_derived_precollapse.rds` artifact, reader-facing Objective 4 outputs restore `biopsy1_gep`, `gep_class_simple`, `prame_status`, and `gep12_prame_status` from that artifact. A literal `Other` label should therefore be interpreted as a bug or an intentionally non-GEP output, not as a valid biological class.
+- **The MSS CIF PNG is more collapsed than the technical MSS workbook.** The figure is shown at the `gep_class_simple` level (`Class 1` vs `Class 2`) for readability, while the technical competing-risk tables may still report the more granular `biopsy1_gep` group structure.
 
 ### GEP Quick Read
 
