@@ -147,25 +147,46 @@ create_prame_incremental_value_plot <- function(prame_results, outcome_type, out
         subtitle_label <- NA_character_
     }
 
+    x_range <- range(
+        c(plot_data$Delta_Harrell_C, plot_data$Delta_CI_Lower, plot_data$Delta_CI_Upper, 0),
+        na.rm = TRUE
+    )
+    x_padding <- max(diff(x_range) * 0.04, 0.003)
+    plot_width <- 8.5
+    plot_height <- max(4.5, 1.3 * nrow(plot_data) + 0.5)
+
     p <- ggplot(plot_data, aes(x = Delta_Harrell_C, y = Timepoint)) +
-        geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") +
+        geom_vline(xintercept = 0, linetype = "dashed", linewidth = 0.8, color = "gray50") +
         geom_errorbarh(
             aes(xmin = Delta_CI_Lower, xmax = Delta_CI_Upper),
-            height = 0.18,
+            height = 0.10,
+            linewidth = 0.9,
             color = "gray35",
             na.rm = TRUE
         ) +
-        geom_point(size = 3, color = get_qualitative_palette(1)[1]) +
+        geom_point(size = 4.5, color = get_qualitative_palette(1)[1]) +
         labs(
             title = sprintf("%s PRAME Incremental Discrimination", outcome_type),
             subtitle = ifelse(is.na(subtitle_label), NULL, sprintf("%s analysis", subtitle_label)),
             x = "Delta Harrell's C (GEP + PRAME minus GEP only)",
             y = "Timepoint"
         ) +
-        theme_classic() +
+        scale_x_continuous(
+            limits = c(x_range[1] - x_padding, x_range[2] + x_padding),
+            expand = expansion(mult = c(0.01, 0.01))
+        ) +
+        scale_y_discrete(expand = expansion(mult = c(0.08, 0.08))) +
+        theme_classic(base_size = 18) +
         theme(
-            plot.background = element_rect(fill = "white"),
-            panel.background = element_rect(fill = "white")
+            plot.background = element_rect(fill = "white", color = NA),
+            panel.background = element_rect(fill = "white", color = NA),
+            plot.title = element_text(size = 22, face = "bold"),
+            plot.subtitle = element_text(size = 18, margin = margin(b = 8)),
+            axis.title = element_text(size = 19),
+            axis.text = element_text(size = 16),
+            plot.margin = margin(8, 12, 8, 8),
+            axis.line = element_line(linewidth = 0.9),
+            axis.ticks = element_line(linewidth = 0.9)
         )
 
     plot_name <- if (identical(outcome_type, "MFS")) {
@@ -177,8 +198,8 @@ create_prame_incremental_value_plot <- function(prame_results, outcome_type, out
     ggsave(
         file.path(output_dir, plot_name),
         p,
-        width = DEFAULT_PLOT_WIDTH,
-        height = DEFAULT_PLOT_HEIGHT,
+        width = plot_width,
+        height = plot_height,
         dpi = PLOT_DPI,
         bg = "white"
     )
@@ -910,6 +931,303 @@ create_mfs_survival_curves <- function(data, output_dir, prefix, group_var = "bi
     } else {
         logger::log_warn("MFS survival curves creation returned no plot")
     }
+
+    create_mfs_simplified_survival_curves(
+        data = data,
+        output_dir = output_dir,
+        prefix = prefix,
+        dataset_name = dataset_name
+    )
+
+    create_mfs_simple_binary_survival_analysis(
+        data = data,
+        output_dir = output_dir,
+        prefix = prefix,
+        other_map = other_map,
+        dataset_name = dataset_name
+    )
+
+    invisible(NULL)
+}
+
+#' Create binary simple-GEP MFS survival analysis using the standard workflow
+#'
+#' Reuses the existing KM/Cox/RMST pipeline for a Class 1 vs Class 2 analysis,
+#' excluding GEP Not Tested and GEP Failed/Indeterminate.
+#'
+#' @param data Data frame with survival data and GEP labels
+#' @param output_dir Output directory for saved plots and tables
+#' @param prefix Filename prefix
+#' @param other_map Additional variable mappings used by Cox helpers
+#' @param dataset_name Dataset label used in subtitles and reports
+#' @return Invisibly returns the survival-analysis result list or NULL
+create_mfs_simple_binary_survival_analysis <- function(data, output_dir, prefix, other_map = list(), dataset_name = "GEP Validation") {
+    logger::log_info("Creating binary simple-GEP MFS survival analysis using the standard survival workflow")
+
+    plot_data <- data %>%
+        dplyr::filter(
+            !is.na(.data$gep_class_simple),
+            .data$gep_class_simple %in% c("Class 1", "Class 2"),
+            !is.na(.data$tt_mets_months),
+            !is.na(.data$mets_event),
+            .data$tt_mets_months >= 0
+        ) %>%
+        dplyr::mutate(
+            gep_class_simple = factor(
+                as.character(.data$gep_class_simple),
+                levels = c("Class 1", "Class 2")
+            )
+        ) %>%
+        as.data.frame()
+
+    if (nrow(plot_data) == 0 || length(unique(stats::na.omit(plot_data$gep_class_simple))) < 2) {
+        logger::log_warn("Insufficient data/groups for binary simple-GEP MFS survival analysis")
+        return(invisible(NULL))
+    }
+
+    group_summary <- plot_data %>%
+        dplyr::group_by(.data$gep_class_simple) %>%
+        dplyr::summarise(
+            n = dplyr::n(),
+            metastasis_events = sum(.data$mets_event == 1, na.rm = TRUE),
+            .groups = "drop"
+        )
+    logger::log_info(sprintf(
+        "Binary simple-GEP MFS groups: %s",
+        paste(
+            sprintf(
+                "%s n=%d events=%d",
+                group_summary$gep_class_simple,
+                group_summary$n,
+                group_summary$metastasis_events
+            ),
+            collapse = ", "
+        )
+    ))
+
+    temp_output_dirs <- list(
+        obj1_os = output_dir,
+        obj1_pfs = output_dir,
+        obj3_pfs2 = output_dir,
+        obj4_mfs = output_dir,
+        baseline_characteristics = output_dir
+    )
+
+    binary_prefix <- paste0(prefix, "simple_gep_binary_")
+    binary_dataset_name <- if (!is.null(dataset_name)) {
+        paste0(dataset_name, " - Simple GEP (Class 1 vs Class 2)")
+    } else {
+        "Simple GEP (Class 1 vs Class 2)"
+    }
+
+    binary_result <- tryCatch(
+        {
+            analyze_time_to_event_outcomes(
+                data = plot_data,
+                time_var = "tt_mets_months",
+                event_var = "mets_event",
+                group_var = "gep_class_simple",
+                model_group_var = "gep_class_simple",
+                confounders = NULL,
+                ylab = "Metastasis-Free Survival Probability",
+                analysis_type = "post_treatment_only",
+                dataset_name = binary_dataset_name,
+                legend_labels = c("Class 1", "Class 2"),
+                other_map = other_map,
+                output_dirs = temp_output_dirs,
+                prefix = binary_prefix
+            )
+        },
+        error = function(e) {
+            logger::log_error(sprintf("ERROR in binary simple-GEP MFS survival analysis: %s", e$message))
+            NULL
+        }
+    )
+
+    if (!is.null(binary_result$plot)) {
+        logger::log_info("Binary simple-GEP MFS survival analysis created successfully")
+    } else {
+        logger::log_warn("Binary simple-GEP MFS survival analysis returned no plot")
+    }
+
+    invisible(binary_result)
+}
+
+#' Create simplified MFS survival curves for Class 1, Class 2, and GEP Not Tested
+#'
+#' Adds a reader-facing companion KM plot that collapses PRAME subgroups,
+#' retains GEP Not Tested, and excludes GEP Failed/Indeterminate.
+#'
+#' @param data Data frame with survival data and GEP labels
+#' @param output_dir Output directory for saved plots
+#' @param prefix Filename prefix
+#' @param dataset_name Dataset label used in the subtitle
+#' @return Invisibly returns NULL after saving plots
+create_mfs_simplified_survival_curves <- function(data, output_dir, prefix, dataset_name = "GEP Validation") {
+    logger::log_info("Creating simplified MFS survival curves for Class 1, Class 2, and GEP Not Tested")
+
+    plot_data <- data %>%
+        dplyr::mutate(
+            gep_km_simple = dplyr::case_when(
+                .data$biopsy1_gep == "GEP Not Tested" ~ "GEP Not Tested",
+                .data$gep_class_simple %in% c("Class 1", "Class 2") ~ as.character(.data$gep_class_simple),
+                TRUE ~ NA_character_
+            )
+        ) %>%
+        dplyr::filter(
+            !is.na(.data$gep_km_simple),
+            !is.na(.data$tt_mets_months),
+            !is.na(.data$mets_event),
+            .data$tt_mets_months >= 0
+        ) %>%
+        dplyr::mutate(
+            gep_km_simple = factor(
+                .data$gep_km_simple,
+                levels = c("Class 1", "Class 2", "GEP Not Tested")
+            )
+        ) %>%
+        as.data.frame()
+
+    present_levels <- levels(droplevels(plot_data$gep_km_simple))
+    if (nrow(plot_data) == 0 || length(unique(stats::na.omit(plot_data$gep_km_simple))) < 2) {
+        logger::log_warn("Insufficient data/groups for simplified MFS survival curves")
+        return(invisible(NULL))
+    }
+
+    logger::log_info(sprintf(
+        "Simplified MFS KM groups: %s",
+        paste(
+            capture.output(print(table(plot_data$gep_km_simple, useNA = "no"))),
+            collapse = " "
+        )
+    ))
+
+    surv_fit <- survival::survfit(
+        survival::Surv(tt_mets_months, mets_event) ~ gep_km_simple,
+        data = plot_data
+    )
+
+    raw_max_time <- max(plot_data$tt_mets_months, na.rm = TRUE)
+    max_time <- min(raw_max_time, SURVIVAL_XAXIS_MAX_MONTHS)
+    base_by <- if (max_time <= 60) 6 else 12
+    x_breaks <- seq(0, ceiling(max_time / base_by) * base_by, by = base_by)
+    plot_scale <- SURVIVAL_PLOT_SCALE
+    color_palette <- get_palette_by_variable("biopsy1_gep", present_levels)
+
+    surv_plot <- survminer::ggsurvplot(
+        fit = surv_fit,
+        data = plot_data,
+        palette = color_palette,
+        risk.table = TRUE,
+        conf.int = FALSE,
+        pval = TRUE,
+        pval.size = 6 * plot_scale,
+        title = paste("Kaplan-Meier Survival Curves", "Metastasis-Free Survival Probability", sep = "\n"),
+        subtitle = paste(
+            c(
+                if (!is.null(dataset_name)) paste("Cohort:", dataset_name) else NULL,
+                "Simplified display: Class 1, Class 2, and GEP Not Tested"
+            ),
+            collapse = "\n"
+        ),
+        xlab = "Time (months)",
+        ylab = "Metastasis-Free Survival Probability",
+        risk.table.height = 0.18,
+        ggtheme = ggplot2::theme_minimal(),
+        break.time.by = base_by,
+        xlim = c(0, max(x_breaks)),
+        ylim = c(0, 1),
+        legend.labs = present_levels,
+        risk.table.y.text = TRUE,
+        tables.y.text = TRUE,
+        risk.table.title = "Number at risk",
+        font.x = 14 * plot_scale,
+        font.y = 14 * plot_scale,
+        font.tickslab = 12 * plot_scale,
+        font.legend = 14 * plot_scale,
+        censor.size = 7 * plot_scale,
+        size = 1.2 * plot_scale
+    )
+
+    surv_plot$plot <- surv_plot$plot +
+        ggplot2::guides(color = ggplot2::guide_legend(ncol = 1, byrow = TRUE)) +
+        ggplot2::theme(
+            legend.position = "bottom",
+            legend.box = "vertical",
+            legend.text = ggplot2::element_text(size = 16 * plot_scale, color = "black"),
+            legend.title = ggplot2::element_text(size = 16 * plot_scale, color = "black"),
+            axis.title = ggplot2::element_text(size = 18 * plot_scale, color = "black"),
+            axis.title.x = ggplot2::element_text(size = 18 * plot_scale, color = "black", face = "bold", margin = ggplot2::margin(t = 15, r = 0, b = 0, l = 0)),
+            axis.title.y = ggplot2::element_text(size = 18 * plot_scale, color = "black", face = "bold", margin = ggplot2::margin(t = 0, r = 6, b = 0, l = 0)),
+            axis.text = ggplot2::element_text(size = 14 * plot_scale, color = "black"),
+            axis.text.x = ggplot2::element_text(color = "black"),
+            axis.text.y = ggplot2::element_text(color = "black"),
+            axis.line = ggplot2::element_blank(),
+            axis.ticks = ggplot2::element_blank(),
+            plot.title = ggplot2::element_text(size = 18 * plot_scale, face = "bold"),
+            plot.subtitle = ggplot2::element_text(size = 14 * plot_scale),
+            plot.margin = ggplot2::margin(t = 10, r = 10, b = 6, l = 4)
+        ) +
+        ggplot2::scale_y_continuous(
+            limits = c(0, 1),
+            breaks = seq(0, 1, by = 0.1),
+            labels = function(x) x * 100,
+            name = "Metastasis-Free Survival Probability (%)"
+        ) +
+        ggplot2::labs(x = "Time (months)") +
+        ggplot2::geom_hline(yintercept = 0.5, linetype = "solid", color = "black", linewidth = 0.9)
+
+    surv_plot$table <- surv_plot$table +
+        ggplot2::theme_minimal() +
+        ggplot2::theme(
+            axis.title = ggplot2::element_text(size = 12 * plot_scale, color = "black"),
+            axis.text.y = ggplot2::element_text(size = 12 * plot_scale, color = "black"),
+            axis.text.x = ggplot2::element_text(size = 12 * plot_scale, color = "black"),
+            strip.text = ggplot2::element_text(size = 12 * plot_scale, color = "black"),
+            plot.margin = ggplot2::margin(t = 10, r = 10, b = 4, l = 10)
+        )
+
+    surv_plot$table <- surv_plot$table +
+        ggplot2::scale_y_discrete(
+            limits = rev(present_levels),
+            expand = ggplot2::expansion(mult = c(0.18, 0.18))
+        )
+
+    if (length(surv_plot$table$layers) > 0) {
+        for (i in seq_along(surv_plot$table$layers)) {
+            if ("GeomText" %in% class(surv_plot$table$layers[[i]]$geom)) {
+                surv_plot$table$layers[[i]]$aes_params$size <- 3.4 * plot_scale
+            }
+        }
+    }
+
+    combined_km <- cowplot::plot_grid(
+        surv_plot$plot,
+        surv_plot$table,
+        ncol = 1,
+        align = "v",
+        rel_heights = c(0.78, 0.22)
+    )
+
+    simplified_plot_width <- 13
+    simplified_plot_height <- min(
+        KM_MAX_HEIGHT,
+        max(
+            SURVIVAL_PLOT_HEIGHT * 1.35,
+            KM_BASE_HEIGHT + max(0, length(present_levels) - 2) * KM_HEIGHT_PER_STRATUM + 2.0
+        )
+    )
+
+    km_path <- file.path(output_dir, paste0(prefix, "mfs_simplified_gep_km.png"))
+    ggplot2::ggsave(
+        km_path,
+        combined_km,
+        width = simplified_plot_width,
+        height = simplified_plot_height,
+        dpi = PLOT_DPI,
+        bg = "white"
+    )
+    logger::log_info(sprintf("Simplified MFS survival curves saved: %s", km_path))
 
     invisible(NULL)
 }

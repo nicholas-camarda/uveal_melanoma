@@ -13,68 +13,85 @@
 #' @param prefix Filename prefix for saved files
 #' @return Invisibly returns NULL after writing files
 create_simple_gep_plots <- function(mfs_results, mss_results, mfs_output_dir, mss_output_dir, prefix) {
-    mfs_plot <- ggplot(mfs_results, aes(x = gep_class_simple)) +
-        geom_point(aes(y = expected_rate, color = "Expected"), size = 3) +
-        geom_point(aes(y = actual_rate, color = "Actual"), size = 3) +
-        geom_segment(
-            aes(
-                x = gep_class_simple, xend = gep_class_simple,
-                y = expected_rate, yend = actual_rate
-            ),
-            linetype = "dashed", alpha = 0.5
-        ) +
-        labs(
-            title = "5-Year MFS: Expected vs Actual Rates",
-            x = "GEP Class",
-            y = "Survival Rate",
-            color = "Rate Type"
-        ) +
-        theme_classic() +
-        theme(
-            plot.background = element_rect(fill = "white"),
-            panel.background = element_rect(fill = "white")
-        ) +
-        scale_color_manual(values = {
-            pal <- get_qualitative_palette(2)
-            names(pal) <- c("Expected", "Actual")
-            pal
-        })
-    
-    ggsave(file.path(mfs_output_dir, paste0(prefix, "simple_mfs_validation.png")),
-        mfs_plot,
-        width = SMALL_PLOT_WIDTH, height = SMALL_PLOT_HEIGHT, dpi = PLOT_DPI, bg = "white"
+    build_simple_gep_plot <- function(results_df, title_text) {
+        rate_range <- range(c(results_df$expected_rate, results_df$actual_rate), na.rm = TRUE)
+        y_padding <- max(diff(rate_range) * 0.2, 0.03)
+        y_min <- max(0, rate_range[1] - y_padding)
+        y_max <- min(1, rate_range[2] + y_padding)
+
+        ggplot(results_df, aes(x = gep_class_simple)) +
+            geom_segment(
+                aes(
+                    x = gep_class_simple, xend = gep_class_simple,
+                    y = expected_rate, yend = actual_rate
+                ),
+                linetype = "dashed",
+                linewidth = 0.8,
+                alpha = 0.6,
+                color = "gray45"
+            ) +
+            geom_point(aes(y = expected_rate, color = "Expected"), size = 4.5) +
+            geom_point(aes(y = actual_rate, color = "Actual"), size = 4.5) +
+            labs(
+                title = title_text,
+                x = "GEP Class",
+                y = "Survival Rate",
+                color = "Rate Type"
+            ) +
+            scale_y_continuous(
+                limits = c(y_min, y_max),
+                expand = expansion(mult = c(0.01, 0.02))
+            ) +
+            scale_x_discrete(expand = expansion(mult = c(0.15, 0.15))) +
+            scale_color_manual(
+                values = {
+                    pal <- get_qualitative_palette(2)
+                    names(pal) <- c("Expected", "Actual")
+                    pal
+                },
+                breaks = c("Actual", "Expected")
+            ) +
+            guides(color = guide_legend(override.aes = list(size = 5))) +
+            theme_classic(base_size = 18) +
+            theme(
+                plot.background = element_rect(fill = "white", color = NA),
+                panel.background = element_rect(fill = "white", color = NA),
+                plot.title = element_text(size = 22, face = "bold", margin = margin(b = 10)),
+                axis.title = element_text(size = 19),
+                axis.text = element_text(size = 16),
+                legend.position = "top",
+                legend.direction = "horizontal",
+                legend.title = element_text(size = 17, face = "bold"),
+                legend.text = element_text(size = 15),
+                legend.margin = margin(),
+                legend.box.margin = margin(b = 2),
+                plot.margin = margin(8, 12, 8, 8),
+                axis.line = element_line(linewidth = 0.9),
+                axis.ticks = element_line(linewidth = 0.9)
+            )
+    }
+
+    simple_plot_width <- 6.75
+    simple_plot_height <- 6
+
+    mfs_plot <- build_simple_gep_plot(
+        mfs_results,
+        "5-Year MFS: Expected vs Actual Rates"
     )
 
-    mss_plot <- ggplot(mss_results, aes(x = gep_class_simple)) +
-        geom_point(aes(y = expected_rate, color = "Expected"), size = 3) +
-        geom_point(aes(y = actual_rate, color = "Actual"), size = 3) +
-        geom_segment(
-            aes(
-                x = gep_class_simple, xend = gep_class_simple,
-                y = expected_rate, yend = actual_rate
-            ),
-            linetype = "dashed", alpha = 0.5
-        ) +
-        labs(
-            title = "5-Year MSS: Expected vs Actual Rates",
-            x = "GEP Class",
-            y = "Survival Rate",
-            color = "Rate Type"
-        ) +
-        theme_classic() +
-        theme(
-            plot.background = element_rect(fill = "white"),
-            panel.background = element_rect(fill = "white")
-        ) +
-        scale_color_manual(values = {
-            pal <- get_qualitative_palette(2)
-            names(pal) <- c("Expected", "Actual")
-            pal
-        })
-    
+    ggsave(file.path(mfs_output_dir, paste0(prefix, "simple_mfs_validation.png")),
+        mfs_plot,
+        width = simple_plot_width, height = simple_plot_height, dpi = PLOT_DPI, bg = "white"
+    )
+
+    mss_plot <- build_simple_gep_plot(
+        mss_results,
+        "5-Year MSS: Expected vs Actual Rates"
+    )
+
     ggsave(file.path(mss_output_dir, paste0(prefix, "simple_mss_validation.png")),
         mss_plot,
-        width = SMALL_PLOT_WIDTH, height = SMALL_PLOT_HEIGHT, dpi = PLOT_DPI, bg = "white"
+        width = simple_plot_width, height = simple_plot_height, dpi = PLOT_DPI, bg = "white"
     )
 }
 

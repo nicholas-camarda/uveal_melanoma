@@ -85,21 +85,38 @@ build_rmst_survival_summary <- function(rmst_results, surv_rates, group_var = "t
         logger::log_info(format("RMST summary treatment groups correctly labeled as 'PBT' (Group 1) and 'GKSRS' (Group 2).", indent = 1))
     }
 
+    group1_summary_label <- if (identical(group_var, "treatment_group")) {
+        "PBT"
+    } else {
+        valid_group1 <- unique(stats::na.omit(summary_df$Group1_Name))
+        if (length(valid_group1) > 0) valid_group1[1] else "Group 1"
+    }
+    group2_summary_label <- if (identical(group_var, "treatment_group")) {
+        "GKSRS"
+    } else {
+        valid_group2 <- unique(stats::na.omit(summary_df$Group2_Name))
+        if (length(valid_group2) > 0) valid_group2[1] else "Group 2"
+    }
+
     summary_df_final <- summary_df %>%
-        dplyr::select(-Group1_Name, -Group2_Name, -RMST_Difference_Months, -Analysis_Type) %>%
-        dplyr::rename(
-            `Time Point` = Time_Point_Label,
-            # `Group 1` = Group1_Name,
-            `PBT Survival (%)` = Group1_Survival_Percent,
-            `PBT RMST (Years)` = RMST_Group1_Years,
-            # `Group 2` = Group2_Name,
-            `GKSRS Survival (%)` = Group2_Survival_Percent,
-            `GKSRS RMST (Years)` = RMST_Group2_Years,
-            # `RMST Difference (Months)` = RMST_Difference_Months,
-            `RMST Diff (Years)` = RMST_Difference_Years,
-            `RMST P-Value` = RMST_P_Value
-            # `Analysis Type` = Analysis_Type
-        ) 
+        dplyr::select(
+            Time_Point_Label,
+            Group1_Survival_Percent,
+            RMST_Group1_Years,
+            Group2_Survival_Percent,
+            RMST_Group2_Years,
+            RMST_Difference_Years,
+            RMST_P_Value
+        )
+    names(summary_df_final) <- c(
+        "Time Point",
+        sprintf("%s Survival (%%)", group1_summary_label),
+        sprintf("%s RMST (Years)", group1_summary_label),
+        sprintf("%s Survival (%%)", group2_summary_label),
+        sprintf("%s RMST (Years)", group2_summary_label),
+        "RMST Diff (Years)",
+        "RMST P-Value"
+    )
 
     return(summary_df_final)
 }
