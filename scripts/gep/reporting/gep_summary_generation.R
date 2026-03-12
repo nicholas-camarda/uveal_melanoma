@@ -12,6 +12,57 @@ create_gep_prediction_source_note <- function() {
     )
 }
 
+create_prame_added_value_summary_line <- function(prame_analysis) {
+    if (!is.null(prame_analysis) && !is.null(prame_analysis$comparison_results) && length(prame_analysis$comparison_results) > 0) {
+        comparison_rows <- Filter(function(x) is.list(x) && is.finite(x$delta_harrell_c %||% NA_real_), prame_analysis$comparison_results)
+        if (length(comparison_rows) > 0) {
+            best_row <- comparison_rows[[which.max(vapply(comparison_rows, function(x) x$delta_harrell_c, numeric(1)))]]
+            return(sprintf(
+                "PRAME ADDED VALUE: Best delta Harrell's C = %.3f at %s (%s)",
+                best_row$delta_harrell_c,
+                paste0(best_row$timepoint, "yr"),
+                best_row$interpretation %||% "interpretation unavailable"
+            ))
+        }
+    }
+
+    if (is.null(prame_analysis)) {
+        return("PRAME ADDED VALUE: Analysis not run")
+    }
+
+    n_prame <- prame_analysis$n %||% NA_real_
+    n_positive <- prame_analysis$n_positive %||% NA_real_
+    n_negative <- prame_analysis$n_negative %||% NA_real_
+    status <- as.character(prame_analysis$status %||% "unavailable")
+
+    if (!is.null(prame_analysis$prame_distribution) && (is.na(n_positive) || is.na(n_negative))) {
+        n_positive <- as.numeric(prame_analysis$prame_distribution[["Positive"]] %||% NA_real_)
+        n_negative <- as.numeric(prame_analysis$prame_distribution[["Negative"]] %||% NA_real_)
+    }
+
+    if (!is.null(prame_analysis$prame_available) && identical(prame_analysis$prame_available, FALSE)) {
+        if (!is.na(n_prame) && identical(status, "insufficient_data")) {
+            return(sprintf(
+                "PRAME ADDED VALUE: Not run due to insufficient PRAME-complete sample (n=%d; Positive=%d, Negative=%d; required minimum=%d)",
+                as.integer(n_prame),
+                as.integer(n_positive %||% NA_integer_),
+                as.integer(n_negative %||% NA_integer_),
+                GEP_MIN_BOOTSTRAP_SAMPLE
+            ))
+        }
+
+        return(sprintf(
+            "PRAME ADDED VALUE: Not run (status=%s)",
+            status
+        ))
+    }
+
+    sprintf(
+        "PRAME ADDED VALUE: Analysis unavailable (status=%s)",
+        status
+    )
+}
+
 #' Create Comprehensive GEP Validation Summary
 #' 
 #' Generate a comprehensive, interpretable summary that consolidates redundant information
@@ -224,22 +275,7 @@ create_comprehensive_gep_summary <- function(validation_results, outcome_type, p
             "Detailed metrics table could not be generated due to data structure issues"
         }),
         "",
-        if (!is.null(prame_analysis) && !is.null(prame_analysis$comparison_results) && length(prame_analysis$comparison_results) > 0) {
-            comparison_rows <- Filter(function(x) is.list(x) && is.finite(x$delta_harrell_c %||% NA_real_), prame_analysis$comparison_results)
-            if (length(comparison_rows) > 0) {
-                best_row <- comparison_rows[[which.max(vapply(comparison_rows, function(x) x$delta_harrell_c, numeric(1)))]]
-                sprintf(
-                    "PRAME ADDED VALUE: Best delta Harrell's C = %.3f at %s (%s)",
-                    best_row$delta_harrell_c,
-                    paste0(best_row$timepoint, "yr"),
-                    best_row$interpretation %||% "interpretation unavailable"
-                )
-            } else {
-                "PRAME ADDED VALUE: Analysis not available or insufficient data"
-            }
-        } else {
-            "PRAME ADDED VALUE: Analysis not available or insufficient data"
-        },
+        create_prame_added_value_summary_line(prame_analysis),
         "",
         sprintf("Missing data patterns: %d", ifelse(is.null(missing_data_analysis$missing_patterns), 0, nrow(missing_data_analysis$missing_patterns))),
         "",

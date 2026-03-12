@@ -177,21 +177,27 @@ perform_prame_augmented_analysis_mss <- function(data, timepoints) {
             !is.na(biopsy1_gep)
         )
 
+    prame_dist <- table(prame_data$prame_status)
+    n_positive <- sum(prame_data$prame_status == "Positive", na.rm = TRUE)
+    n_negative <- sum(prame_data$prame_status == "Negative", na.rm = TRUE)
+
     if (nrow(prame_data) < GEP_MIN_BOOTSTRAP_SAMPLE) {
         logger::log_warn(formatted(sprintf("Insufficient PRAME data for MSS analysis (n=%d)", nrow(prame_data)), indent = 2))
         return(list(
             n = nrow(prame_data),
             status = "insufficient_data",
-            prame_available = FALSE
+            prame_available = FALSE,
+            prame_distribution = prame_dist,
+            n_positive = n_positive,
+            n_negative = n_negative
         ))
     }
 
     logger::log_info(formatted(sprintf("MSS PRAME comparison using %d patients", nrow(prame_data)), indent = 2))
-    prame_dist <- table(prame_data$prame_status)
     logger::log_info(formatted(sprintf(
         "PRAME distribution (MSS): Positive=%d, Negative=%d",
-        sum(prame_data$prame_status == "Positive", na.rm = TRUE),
-        sum(prame_data$prame_status == "Negative", na.rm = TRUE)
+        n_positive,
+        n_negative
     ), indent = 2))
 
     comparison_results <- list()
@@ -230,6 +236,8 @@ perform_prame_augmented_analysis_mss <- function(data, timepoints) {
         n = nrow(prame_data),
         prame_available = TRUE,
         prame_distribution = prame_dist,
+        n_positive = n_positive,
+        n_negative = n_negative,
         analysis_type = "incremental_discrimination",
         comparison_results = comparison_results
     ))
