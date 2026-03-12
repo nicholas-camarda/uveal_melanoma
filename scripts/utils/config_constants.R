@@ -555,6 +555,70 @@ GEP_DISPLAY_VARIABLES <- c(
     "biopsy1_gep", "gep_class_simple", "prame_status", "gep12_prame_status"
 )
 
+# Objective 4 grouping specs and per-context defaults.
+# Change these mappings when reader-facing or technical GEP groupings need to move together.
+GEP_GROUPING_SPECS <- list(
+    biopsy1_gep = list(
+        key = "biopsy1_gep",
+        var = "biopsy1_gep",
+        label = "GEP Class",
+        legend_title = "GEP Class",
+        allowed_levels = NULL,
+        reader_facing = FALSE
+    ),
+    biopsy1_gep_model = list(
+        key = "biopsy1_gep_model",
+        var = "biopsy1_gep_model",
+        label = "GEP Class",
+        legend_title = "GEP Class",
+        allowed_levels = NULL,
+        reader_facing = FALSE
+    ),
+    gep_class_simple = list(
+        key = "gep_class_simple",
+        var = "gep_class_simple",
+        label = "Simplified GEP Class",
+        legend_title = "GEP Class (Simple)",
+        allowed_levels = c("Class 1", "Class 2"),
+        reader_facing = TRUE
+    )
+)
+
+GEP_OBJECTIVE4_GROUPING <- list(
+    mfs = list(
+        observed_expected = "biopsy1_gep",
+        visuals = "biopsy1_gep",
+        visuals_model = "biopsy1_gep_model"
+    ),
+    mss = list(
+        observed_expected = "biopsy1_gep",
+        competing_risk = "biopsy1_gep",
+        reporting = "biopsy1_gep",
+        visuals = "gep_class_simple"
+    )
+)
+
+get_gep_grouping_spec <- function(grouping_key) {
+    if (!grouping_key %in% names(GEP_GROUPING_SPECS)) {
+        stop(sprintf("Unknown Objective 4 grouping key: %s", grouping_key))
+    }
+
+    GEP_GROUPING_SPECS[[grouping_key]]
+}
+
+get_gep_grouping_for_context <- function(outcome, context) {
+    if (!outcome %in% names(GEP_OBJECTIVE4_GROUPING)) {
+        stop(sprintf("Unknown Objective 4 outcome grouping scope: %s", outcome))
+    }
+
+    outcome_grouping <- GEP_OBJECTIVE4_GROUPING[[outcome]]
+    if (!context %in% names(outcome_grouping)) {
+        stop(sprintf("Unknown Objective 4 grouping context '%s' for outcome '%s'", context, outcome))
+    }
+
+    get_gep_grouping_spec(outcome_grouping[[context]])
+}
+
 # =============================================================================
 # SUMMARY: This file contains ALL configuration constants for the analysis pipeline
 # =============================================================================

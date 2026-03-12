@@ -476,6 +476,8 @@ The analysis pipeline includes robust error handling for situations where data l
 
 For readability, the reader-facing MSS CIF PNG now uses `gep_class_simple` and shows only definitive `Class 1` versus `Class 2` strata. This does not change the technical MSS competing-risk tables or model fits, which still use the more granular `biopsy1_gep` grouping in the companion outputs.
 
+The grouping choices for Objective 4 are now centralized in `scripts/utils/config_constants.R` via `GEP_GROUPING_SPECS` and `GEP_OBJECTIVE4_GROUPING`. Changing reader-facing or technical GEP grouping variables should be done there first, then propagated automatically through MSS orchestration, reporting, and visualization.
+
 **Important layout note:** cross-cutting cohort outputs such as baseline characteristics and treatment-duration summaries belong in `00_General/` inside each cohort folder, not in a shared top-level `Analysis/General/` directory.
 
 See [STATISTICAL_METHODS.md](STATISTICAL_METHODS.md#gep-validation-metrics) for the metric definitions and code-level methodology, and [INTERPRETATION_GUIDE.md](INTERPRETATION_GUIDE.md#understanding-gep-analysis) for workbook-reading guidance.

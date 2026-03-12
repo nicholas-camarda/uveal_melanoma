@@ -344,6 +344,17 @@ analyze_gep_mss_validation <- function(data,
     if (!dir.exists(mss_output_dir)) {
         dir.create(mss_output_dir, recursive = TRUE, showWarnings = FALSE)
     }
+    mss_observed_expected_grouping <- get_gep_grouping_for_context("mss", "observed_expected")
+    mss_competing_risk_grouping <- get_gep_grouping_for_context("mss", "competing_risk")
+    mss_reporting_grouping <- get_gep_grouping_for_context("mss", "reporting")
+    mss_visual_grouping <- get_gep_grouping_for_context("mss", "visuals")
+    logger::log_info(formatted(sprintf(
+        "MSS grouping config: O/E=%s, competing-risk=%s, reporting=%s, visuals=%s",
+        mss_observed_expected_grouping$var,
+        mss_competing_risk_grouping$var,
+        mss_reporting_grouping$var,
+        mss_visual_grouping$var
+    ), indent = 1))
     display_data <- restore_gep_display_variables(data, dataset_name = dataset_name)
     restored_gep_rows <- sum(
         !is.na(display_data$biopsy1_gep) &
@@ -386,8 +397,16 @@ analyze_gep_mss_validation <- function(data,
         nrow(mss_visual_data)
     ), indent = 1))
     if (nrow(mss_visual_data) > 0) {
+        if (!is.null(mss_visual_grouping$allowed_levels)) {
+            visual_counts <- table(mss_visual_data[[mss_visual_grouping$var]], useNA = "ifany")
+            logger::log_info(formatted(sprintf(
+                "Visual grouping '%s' raw counts: %s",
+                mss_visual_grouping$var,
+                paste(names(visual_counts), visual_counts, sep = "=", collapse = ", ")
+            ), indent = 2))
+        }
         mss_visual_summary <- mss_visual_data %>%
-            group_by(biopsy1_gep) %>%
+            group_by(.data[[mss_visual_grouping$var]]) %>%
             summarise(
                 n = n(),
                 melanoma_deaths = sum(melanoma_death_event == 1, na.rm = TRUE),
@@ -397,7 +416,7 @@ analyze_gep_mss_validation <- function(data,
         for (i in seq_len(nrow(mss_visual_summary))) {
             logger::log_info(formatted(sprintf(
                 "%s: n = %d (melanoma deaths = %d, competing deaths = %d)",
-                mss_visual_summary$biopsy1_gep[i],
+                mss_visual_summary[[mss_visual_grouping$var]][i],
                 mss_visual_summary$n[i],
                 mss_visual_summary$melanoma_deaths[i],
                 mss_visual_summary$other_deaths[i]
@@ -424,7 +443,8 @@ analyze_gep_mss_validation <- function(data,
             tp,
             bootstrap_iterations,
             time_var = "tt_death_months",
-            oe_data = display_analysis_data
+            oe_data = display_analysis_data,
+            group_var = mss_observed_expected_grouping$var
         )
     }
     logger::log_info(formatted("Performing competing risk MSS validation", indent = 1))
@@ -436,7 +456,8 @@ analyze_gep_mss_validation <- function(data,
                 analysis_data,
                 tp,
                 time_var = "tt_death_months",
-                cif_data = display_analysis_data
+                cif_data = display_analysis_data,
+                group_var = mss_competing_risk_grouping$var
             )
         }, error = function(e) {
             logger::log_warn(formatted(sprintf("Competing risk analysis failed for %d-year timepoint: %s", tp, e$message), indent = 3))
@@ -456,6 +477,7 @@ analyze_gep_mss_validation <- function(data,
     save_mss_validation_results(
         standard_results, competing_results,
         missing_data_analysis, prame_results, mss_output_dir, prefix,
+        group_var = mss_reporting_grouping$var,
         dataset_name = dataset_name
     )
 
@@ -471,7 +493,8 @@ analyze_gep_mss_validation <- function(data,
             mss_data = mss_visual_data,
             output_dir = mss_output_dir,
             prefix = prefix,
-            group_var = "gep_class_simple",
+            group_var = mss_visual_grouping$var,
+            technical_group_var = mss_competing_risk_grouping$var,
             other_map = other_map
         )
         logger::log_info(formatted("MSS GEP visualization plots created successfully", indent = 2))

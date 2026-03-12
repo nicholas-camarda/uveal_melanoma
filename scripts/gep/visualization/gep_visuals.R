@@ -47,7 +47,7 @@ create_mfs_gep_visuals <- function(mfs_results, mfs_data, output_dir, prefix, gr
 #' @param mss_data data.frame Raw data for CIF curves
 #' @param output_dir character Destination directory (MSS outcome folder)
 #' @param prefix character Filename prefix
-create_mss_gep_visuals <- function(mss_results, mss_data, output_dir, prefix, group_var = "biopsy1_gep", other_map = list()) {
+create_mss_gep_visuals <- function(mss_results, mss_data, output_dir, prefix, group_var = "biopsy1_gep", technical_group_var = NULL, other_map = list()) {
     # Directly write into centralized visuals folder created by create_output_structure()
     prame_results <- mss_results$prame_results %||% NULL
 
@@ -74,6 +74,7 @@ create_mss_gep_visuals <- function(mss_results, mss_data, output_dir, prefix, gr
         create_mss_cumulative_incidence_curves(
             mss_data, 5, output_dir, prefix,
             group_var = group_var,
+            technical_group_var = technical_group_var,
             other_map = other_map,
             competing_results = competing_results_5yr
         )
@@ -927,7 +928,7 @@ create_mfs_survival_curves <- function(data, output_dir, prefix, group_var = "bi
 #' @param other_map list Additional variable mappings
 #' @param competing_results list Competing risks results (optional)
 #' @return Invisibly returns NULL after saving plots
-create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, prefix, group_var = "biopsy1_gep", time_var = "tt_death_months", other_map = list(), competing_results = NULL) {
+create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, prefix, group_var = "biopsy1_gep", technical_group_var = NULL, time_var = "tt_death_months", other_map = list(), competing_results = NULL) {
     logger::log_info(sprintf("Creating MSS cumulative incidence curves by GEP class for %d-year timepoint using ggsurvfit", timepoint))
 
     # Convert timepoint to months for consistency with survival time units
@@ -935,7 +936,13 @@ create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, 
 
     # Ensure group_var is a string
     group_var_char <- as.character(group_var)
-    simplified_display <- identical(group_var_char, "gep_class_simple")
+    grouping_spec <- get_gep_grouping_spec(group_var_char)
+    technical_group_spec <- if (is.null(technical_group_var)) {
+        get_gep_grouping_spec(group_var_char)
+    } else {
+        get_gep_grouping_spec(as.character(technical_group_var))
+    }
+    simplified_display <- isTRUE(grouping_spec$reader_facing)
 
     # Prepare data for competing risk analysis using pre-processed variables
     logger::log_info("Preparing MSS visual dataset for cumulative incidence curves")
@@ -965,9 +972,9 @@ create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, 
         dplyr::filter(!is.na(.data[[group_var_char]]), !is.na(.data[[time_var_char]])) %>%
         as.data.frame() # Convert to data.frame to avoid tibble subsetting issues
 
-    if (simplified_display) {
+    if (!is.null(grouping_spec$allowed_levels)) {
         surv_data <- surv_data %>%
-            dplyr::filter(.data[[group_var_char]] %in% c("Class 1", "Class 2")) %>%
+            dplyr::filter(.data[[group_var_char]] %in% grouping_spec$allowed_levels) %>%
             as.data.frame()
     }
 
@@ -988,9 +995,9 @@ create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, 
 
     # Create enhanced title with statistical context
     base_title <- if (simplified_display) {
-        sprintf("Melanoma-Specific Death by Simplified GEP Class (%d-Year Analysis)", timepoint)
+        sprintf("Melanoma-Specific Death by %s (%d-Year Analysis)", grouping_spec$label, timepoint)
     } else {
-        sprintf("Melanoma-Specific Death by GEP Class (%d-Year Analysis)", timepoint)
+        sprintf("Melanoma-Specific Death by %s (%d-Year Analysis)", grouping_spec$label, timepoint)
     }
 
     # Add competing risks statistics to title if available
@@ -1074,7 +1081,7 @@ create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, 
             ),
             x = "Time (years)",
             y = "Cumulative Incidence of Melanoma Death",
-            color = if (simplified_display) "GEP Class (Simple)" else "GEP Class",
+            color = grouping_spec$legend_title,
             caption = if (simplified_display) {
                 "Display curves use simplified Class 1 vs Class 2 grouping for readability.\nTechnical competing-risk model summaries remain available in the companion workbook."
             } else {
@@ -1107,7 +1114,10 @@ create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, 
         caption_lines <- c(
             caption_lines,
             "Display note: curves are collapsed to Class 1 vs Class 2 for reader-facing visualization.",
-            "Technical competing-risk models and tables remain grouped by the more granular biopsy1_gep labels."
+            sprintf(
+                "Technical competing-risk models and tables remain grouped by the %s labels.",
+                technical_group_spec$var
+            )
         )
     } else if (!is.null(competing_results)) {
         # Add Fine-Gray results

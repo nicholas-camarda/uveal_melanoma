@@ -12,8 +12,9 @@
 #' @param bootstrap_iterations Integer number of bootstrap iterations for discrimination metrics where applicable
 #' @param time_var Character name of time variable (default 'tt_death_months' for months-based analysis)
 #' @param oe_data Optional data frame used only for reader-facing observed vs expected summaries
+#' @param group_var Character grouping variable used for observed/expected summaries
 #' @return A list with `observed_expected`, `calibration`, `discrimination`, `decision_curve`, and `timepoint`.
-perform_standard_mss_validation <- function(data, timepoint, bootstrap_iterations, time_var = "tt_death_months", oe_data = NULL) {
+perform_standard_mss_validation <- function(data, timepoint, bootstrap_iterations, time_var = "tt_death_months", oe_data = NULL, group_var = "biopsy1_gep") {
     logger::log_debug(sprintf("Performing standard MSS validation for %d-year timepoint", timepoint))
 
     # Convert timepoint to months for consistency with survival time units
@@ -39,7 +40,7 @@ perform_standard_mss_validation <- function(data, timepoint, bootstrap_iteration
         expected_var = paste0("expected_mss_", timepoint, "yr"),
         event_var = "event_occurred",
         time_var = "time_to_event",
-        group_var = "biopsy1_gep"
+        group_var = group_var
     )
 
     # Calculate calibration metrics
@@ -82,8 +83,9 @@ perform_standard_mss_validation <- function(data, timepoint, bootstrap_iteration
 #' @param timepoint Numeric year value for evaluation (e.g., 5, 7, 10)
 #' @param time_var Character name of time variable (default 'tt_death_months' for months-based competing risks)
 #' @param cif_data Optional data frame used only for reader-facing cumulative incidence summaries
+#' @param group_var Character grouping variable used for competing-risk summaries
 #' @return A list with `cumulative_incidence`, `cause_specific_hazards`, and `timepoint`.
-perform_competing_risk_mss_validation <- function(data, timepoint, time_var = "tt_death_months", cif_data = NULL) {
+perform_competing_risk_mss_validation <- function(data, timepoint, time_var = "tt_death_months", cif_data = NULL, group_var = "biopsy1_gep") {
     logger::log_debug(sprintf("Performing competing risk MSS validation for %d-year timepoint", timepoint))
 
     # Convert timepoint to months for consistency with survival time units
@@ -109,7 +111,7 @@ perform_competing_risk_mss_validation <- function(data, timepoint, time_var = "t
         data = cif_analysis_data,
         time_var = "time_to_event",
         event_var = "event_type",
-        group_var = "biopsy1_gep"
+        group_var = group_var
     )
 
     # Add CIF with 95% CI at the evaluation time (bootstrap)
@@ -120,6 +122,7 @@ perform_competing_risk_mss_validation <- function(data, timepoint, time_var = "t
             event_type_var = "event_type",
             eval_time = timepoint_months,
             n_boot = GEP_BOOTSTRAP_ITERATIONS,
+            group_var = group_var,
             eligibility_filter = "mss_analysis_eligible"
         )
     }, error = function(e) {
@@ -132,7 +135,7 @@ perform_competing_risk_mss_validation <- function(data, timepoint, time_var = "t
         data = analysis_data,
         time_var = "time_to_event",
         event_var = "event_type",
-        group_var = "biopsy1_gep",
+        group_var = group_var,
         eligibility_filter = "mss_analysis_eligible"
     )
 
@@ -141,7 +144,7 @@ perform_competing_risk_mss_validation <- function(data, timepoint, time_var = "t
         data = analysis_data,
         time_var = "time_to_event",
         event_var = "event_type",
-        group_var = "biopsy1_gep",
+        group_var = group_var,
         eligibility_filter = "mss_analysis_eligible"
     )
 
