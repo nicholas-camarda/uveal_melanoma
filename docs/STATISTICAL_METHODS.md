@@ -468,6 +468,8 @@ Gene Expression Profiling (GEP) provides lab-reported probabilities of metastasi
 
 In Objective 4, the starting predictions are externally supplied patient-level GEP survival probabilities that are already present in the analytic dataset: `biopsy1_gep_mfs` for metastasis-free survival and `biopsy1_gep_mss` for melanoma-specific survival. The pipeline copies those lab-reported 5-year survival values into the 5-year `expected_*` columns, then derives the 7- and 10-year survival values from the same 5-year probabilities during preprocessing using an exponential-decay extrapolation: $S(7) = S(5)^{7/5}$ and $S(10) = S(5)^{10/5}$. It then converts survival to event risk as $1 - S(t)$ whenever a validation metric needs predicted event probability rather than predicted survival. Objective 4 therefore validates imported GEP predictions; it does not fit a new prognostic model to generate the base GEP probabilities.
 
+The analyzable Objective 4 subset is narrower than “any row with a GEP-related field.” MFS and MSS validation require a definitive raw DecisionDx label, valid endpoint-specific imported GEP probabilities, and the required observed outcome fields. Definitive raw labels are `Class_1A_PRAME_negative`, `Class_1A_PRAME_positive`, `Class_1B_PRAME_negative`, `Class_1B_PRAME_positive`, `Class_2_PRAME_negative`, and `Class_2_PRAME_positive`. Nondefinitive labels such as `*_not_reported`, `Class_2_PRAME_Unknown`, `Class_1A_PRAME_discordant`, `Failed`, `Unknown`, `Other`, and `No` are excluded from `mfs_analysis_eligible` and `mss_analysis_eligible`. Objective 4 entry points defensively refresh these flags before analysis so reruns from older saved cohort artifacts still respect the definitive-label rule.
+
 **Analyses:**
 1. **Observed vs Expected / Calibration:** Agreement between lab-reported and realized event rates
 2. **Discrimination:** Ability to separate patients with vs without events
@@ -883,7 +885,7 @@ For a plain-English reading order for PRAME outputs, see [Understanding PRAME In
 **Step 1: Data Preparation**
 - Load GEP predictions (lab-reported probabilities)
 - Link to 5-, 7-, and 10-year survival outcomes (MFS, MSS)
-- Exclude patients with missing GEP data
+- Exclude patients without definitive analyzable GEP labels or valid endpoint-specific GEP predictions
 - For MSS, define the primary event as melanoma-specific death and retain competing death indicators for companion competing-risk analyses
 
 **Step 2: Calibration Analysis**

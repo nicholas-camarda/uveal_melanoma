@@ -520,6 +520,8 @@ Global test          6.89     3      0.075
 
 Gene Expression Profiling (GEP) is an external molecular risk assay for metastatic spread. Objective 4 does not recompute the Castle-type 15-gene signature inside this pipeline. Instead, it takes the lab-reported patient-level 5-year GEP survival predictions already present in the analytic dataset, uses those values directly for the 5-year `expected_*` columns, derives the 7-year and 10-year values from the same 5-year probabilities using $S(7) = S(5)^{7/5}$ and $S(10) = S(5)^{10/5}$, and then converts those horizon-specific survival values into risk quantities needed for validation. The downstream methods then ask different questions: Kaplan-Meier or competing-risk summaries estimate observed outcome risk from follow-up data, calibration tools assess agreement between supplied GEP risk and observed risk, discrimination tools test rank-ordering, and PRAME-based analyses evaluate whether reclassification improves clinical utility.
 
+The main Objective 4 denominator is deliberately stricter than “any row with a GEP-related label.” Only tumors with definitive raw DecisionDx Class 1 or Class 2 calls plus valid endpoint-specific imported probabilities enter the MFS and MSS eligible subsets. Rows representing `GEP Failed/Indeterminate`, `GEP Not Tested`, `Other`, PRAME-not-reported, unknown, or discordant raw labels are excluded from the main analytic denominators even though reader-facing display restoration may still show canonical labels elsewhere in the workbook ecosystem.
+
 ### Where to Find the Files
 
 - Objective 4 outputs live under `04_GEP_Validation/` inside each cohort directory.
@@ -556,12 +558,13 @@ Gene Expression Profiling (GEP) is an external molecular risk assay for metastat
 
 ### Shared Conventions
 
-- **`N`** counts patients who contribute data at that horizon after censoring and predictor filtering.
+- **`N`** counts patients who contribute data at that horizon after censoring, predictor filtering, and the definitive-label eligibility rule. For Objective 4, this means only analyzable raw Class 1 / Class 2 DecisionDx calls with valid endpoint-specific imported GEP probabilities enter the main MFS and MSS validation subsets.
 - **`Events` / `Non_Events`** always tie to the outcome being modeled (metastasis for MFS, melanoma-specific death for MSS). Non-events are censored survivors.
 - **`Timepoint`** corresponds to the year label in `GEP_VALIDATION_TIMEPOINTS`; interpretation tips should explicitly quote it.
 - **Fallback + method columns** (`*_Fallback_Used`, `*_Method`) surface whenever the preferred estimator fails; cite them whenever they read `TRUE` to explain unexpected `NA`s.
 - **Missing = `NA`** means "metric skipped" rather than "zero." Cross-check the run log (`logs/json/*.jsonl`) for warnings before imputing values.
 - **Displayed GEP labels are canonical labels, not sparse-model buckets.** When a cohort has a matching `*_derived_precollapse.rds` artifact, reader-facing Objective 4 outputs restore `biopsy1_gep`, `gep_class_simple`, `prame_status`, and `gep12_prame_status` from that artifact. A literal `Other` label should therefore be interpreted as a bug or an intentionally non-GEP output, not as a valid biological class.
+- **The simple QC workbook now follows the same refreshed eligibility rule as the main Objective 4 analysis.** If a row does not have a definitive raw Class 1 / Class 2 DecisionDx label, it should not appear in the simple Class 1 vs Class 2 summary counts.
 - **The MSS CIF PNG is more collapsed than the technical MSS workbook.** The figure is shown at the `gep_class_simple` level (`Class 1` vs `Class 2`) for readability, while the technical competing-risk tables may still report the more granular `biopsy1_gep` group structure.
 
 ### GEP Quick Read

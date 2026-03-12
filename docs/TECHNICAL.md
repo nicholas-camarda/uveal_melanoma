@@ -203,7 +203,7 @@ project_working_directory/
 │       │   ├── 03_Repeat_Radiation/
 │       │   │   ├── a_pfs2/
 │       │   │   └── b_proportional_hazards_diagnostics/
-│       │   └── 04_GEP_Validation/  # 🚧 Under construction
+│       │   └── 04_GEP_Validation/
 │       │       ├── a_metastasis_free_survival/
 │       │       └── b_melanoma_specific_survival/
 │       ├── uveal_restricted/        # Restricted cohort (n=167)
@@ -437,7 +437,7 @@ The analysis pipeline includes robust error handling for situations where data l
 
 **Note:** Analysis automatically skips survival modeling when insufficient events present (minimum: 5 total events across 2+ treatment groups)
 
-### Objective 4: GEP Predictive Accuracy (🚧 IN PROGRESS)
+### Objective 4: GEP Predictive Accuracy
 
 **Purpose:** Validate externally supplied lab-reported GEP survival probabilities against real outcomes for metastasis-free survival (MFS) and melanoma-specific survival (MSS)
 
@@ -447,6 +447,7 @@ The analysis pipeline includes robust error handling for situations where data l
 
 **Current methods:**
 - Validate lab-reported GEP survival probabilities at 5, 7, and 10 years. The 5-year values are carried into the analytic dataset directly from `biopsy1_gep_mfs` and `biopsy1_gep_mss`; the 7- and 10-year survival values are then derived during preprocessing from those same 5-year probabilities using an exponential-decay extrapolation (`expected_7yr = (5-year survival)^(7/5)`, `expected_10yr = (5-year survival)^(10/5)`). Downstream analyses convert survival to event risk as needed; Objective 4 does not fit a new prognostic model to generate the base GEP predictions.
+- Restrict the analyzable MFS and MSS subsets to definitive raw DecisionDx labels only. Eligible raw labels are `Class_1A_PRAME_negative`, `Class_1A_PRAME_positive`, `Class_1B_PRAME_negative`, `Class_1B_PRAME_positive`, `Class_2_PRAME_negative`, and `Class_2_PRAME_positive`. Nondefinitive labels such as `*_not_reported`, `Class_2_PRAME_Unknown`, `Class_1A_PRAME_discordant`, `Failed`, `Unknown`, `Other`, and `No` are excluded from `mfs_analysis_eligible`, `mss_analysis_eligible`, and the simple QC summaries.
 - Use metastasis events for MFS and melanoma-specific death for MSS.
 - Run companion competing-risk MSS analyses so non-melanoma death is handled explicitly rather than folded into the primary MSS endpoint.
 - Summarize observed-vs-expected performance by GEP class and as an overall O/E ratio with exact Poisson confidence intervals and a Pearson goodness-of-fit p-value across classes.
@@ -472,7 +473,7 @@ The analysis pipeline includes robust error handling for situations where data l
 
 **Current workbook rule:** the consolidated outcome workbook is the primary review-facing artifact. Technical workbooks preserve lower-level detail only and do not repeat summary calibration/discrimination tables already present in the consolidated workbook. Narrative summaries carry the cohort label used at runtime and report the overall O/E ratio with its exact Poisson interval and Pearson goodness-of-fit p-value. The root unified workbook is comparison-only and uses `*_Comparison` sheet names to distinguish it from the outcome-specific summaries. `PRAME_Summary` remains the consolidated-workbook sheet name, while the unified workbook uses `PRAME_Comparison`. PRAME PNGs, when present, stay inside the owning outcome folder and are supporting visuals rather than primary review artifacts.
 
-**Current display contract:** Objective 4 reader-facing GEP outputs restore canonical labels from `*_derived_precollapse.rds` for `biopsy1_gep`, `gep_class_simple`, `prame_status`, and `gep12_prame_status` when that artifact exists. This keeps KM curves, CIF curves, distribution tables, and simple QC summaries aligned with the intended GEP recode logic, while Cox and competing-risk model fitting still operates on the post-collapse cohort artifact for sparse-cell protection.
+**Current display contract:** Objective 4 reader-facing GEP outputs restore canonical labels from `*_derived_precollapse.rds` for `biopsy1_gep`, `gep_class_simple`, `prame_status`, and `gep12_prame_status` when that artifact exists. This keeps KM curves, CIF curves, distribution tables, and simple QC summaries aligned with the intended GEP recode logic. Objective 4 entry points also refresh the eligibility flags from the stored raw GEP labels before analysis so stale saved cohort artifacts cannot leak `Other`, not-reported, unknown, discordant, failed, or untested rows into definitive `Class 1` / `Class 2` analytic denominators.
 
 For readability, the reader-facing MSS CIF PNG now uses `gep_class_simple` and shows only definitive `Class 1` versus `Class 2` strata. This does not change the technical MSS competing-risk tables or model fits, which still use the more granular `biopsy1_gep` grouping in the companion outputs.
 
