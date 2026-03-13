@@ -908,7 +908,7 @@ For a plain-English reading order for PRAME outputs, see [Understanding PRAME In
 
 **Step 5: Reporting**
 - Export outcome-specific consolidated Excel workbooks (`*_MFS_consolidated_summary.xlsx`, `*_MSS_consolidated_summary.xlsx`) and companion text reports
-- Export outcome-specific technical workbooks (`*mfs_validation_summary.xlsx`, `*mss_validation_summary.xlsx`) for lower-level observed/expected and competing-risk detail that complements, rather than duplicates, the consolidated summaries
+- Export outcome-specific technical workbooks (`*mfs_validation_technical_details.xlsx`, `*mss_validation_technical_details.xlsx`) for lower-level observed/expected and competing-risk detail that complements, rather than duplicates, the consolidated summaries
 - Export the root-level cross-outcome workbook `*unified_gep_validation_summary.xlsx`
 - Export the simple QC workbook `unified_summary/*simple_gep_validation.xlsx`
 - Ensure narrative summaries preserve the cohort label used for the run and print the overall O/E ratio with its Poisson CI and Pearson goodness-of-fit p-value
@@ -921,8 +921,8 @@ For a plain-English reading order for PRAME outputs, see [Understanding PRAME In
 **Files:**
 - `a_metastasis_free_survival/*_MFS_consolidated_summary.xlsx` — primary MFS review workbook, including `Observed_Expected_Summary`
 - `b_melanoma_specific_survival/*_MSS_consolidated_summary.xlsx` — primary MSS review workbook, including `Observed_Expected_Summary`
-- `a_metastasis_free_survival/*mfs_validation_summary.xlsx` and `b_melanoma_specific_survival/*mss_validation_summary.xlsx` — technical-detail workbooks without duplicated high-level calibration/discrimination summary sheets
-- `a_metastasis_free_survival/*mfs_validation_summary.txt` and `b_melanoma_specific_survival/*mss_validation_summary.txt` — narrative summaries
+- `a_metastasis_free_survival/*mfs_validation_technical_details.xlsx` and `b_melanoma_specific_survival/*mss_validation_technical_details.xlsx` — technical-detail workbooks without duplicated high-level calibration/discrimination summary sheets
+- `a_metastasis_free_survival/*mfs_validation_narrative_summary.txt` and `b_melanoma_specific_survival/*mss_validation_narrative_summary.txt` — narrative summaries
 - `*unified_gep_validation_summary.xlsx` at the root of `04_GEP_Validation/` — comparison-only cross-outcome workbook
 - `unified_summary/*simple_gep_validation.*` — optional actual-vs-expected QC output from the simple checker
 - Limited PNGs: KM for MFS, CIF for MSS, and optional outcome-specific PRAME delta-C plots (`*mfs_prame_delta_c.png`, `*mss_prame_delta_c.png`)

@@ -460,11 +460,11 @@ The analysis pipeline includes robust error handling for situations where data l
    - `a_metastasis_free_survival/*_MFS_consolidated_summary.xlsx`
    - `b_melanoma_specific_survival/*_MSS_consolidated_summary.xlsx`
 - Outcome-specific technical workbooks in the outcome folders:
-   - `a_metastasis_free_survival/*mfs_validation_summary.xlsx`
-   - `b_melanoma_specific_survival/*mss_validation_summary.xlsx`
+   - `a_metastasis_free_survival/*mfs_validation_technical_details.xlsx`
+   - `b_melanoma_specific_survival/*mss_validation_technical_details.xlsx`
 - Comprehensive text summaries describing interpretation and data-quality flags
-   - `a_metastasis_free_survival/*mfs_validation_summary.txt`
-   - `b_melanoma_specific_survival/*mss_validation_summary.txt`
+   - `a_metastasis_free_survival/*mfs_validation_narrative_summary.txt`
+   - `b_melanoma_specific_survival/*mss_validation_narrative_summary.txt`
 - Cross-outcome workbook at the root of `04_GEP_Validation/`:
    - `*unified_gep_validation_summary.xlsx`
 - Simple QC workbook under `04_GEP_Validation/unified_summary/`:
