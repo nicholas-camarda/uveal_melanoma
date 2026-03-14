@@ -893,6 +893,16 @@ create_single_outcome_performance_plot <- function(results, outcome_type, output
 create_mfs_survival_curves <- function(data, output_dir, prefix, group_var = "biopsy1_gep", model_group_var = group_var, other_map = list(), dataset_name = "GEP Validation", output_dirs = NULL) {
     logger::log_info("Creating MFS survival curves by GEP class using existing survival analysis infrastructure")
 
+    gep_prame_display_order <- c(
+        "Class 1 PRAME Negative",
+        "Class 1 PRAME Positive",
+        "Class 2 PRAME Negative",
+        "Class 2 PRAME Positive",
+        "GEP Failed/Indeterminate",
+        "GEP Not Tested"
+    )
+    legend_labels <- if (identical(group_var, "biopsy1_gep")) gep_prame_display_order else NULL
+
     # Use the existing analyze_time_to_event_outcomes function with centralized output mapping
     resolved_output_dirs <- output_dirs
     if (is.null(resolved_output_dirs)) {
@@ -924,6 +934,7 @@ create_mfs_survival_curves <- function(data, output_dir, prefix, group_var = "bi
                 ylab = "Metastasis-Free Survival Probability",
                 analysis_type = "post_treatment_only",
                 dataset_name = dataset_name,
+                legend_labels = legend_labels,
                 other_map = other_map,
                 output_dirs = resolved_output_dirs,
                 prefix = prefix

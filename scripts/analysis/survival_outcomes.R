@@ -487,18 +487,116 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     base_by <- if (max_time <= 60) 6 else 12
     x_breaks <- seq(0, ceiling(max_time / base_by) * base_by, by = base_by)
 
+    clean_strata_label <- function(x) {
+        x_chr <- as.character(x)
+        ifelse(grepl("=", x_chr), sub("^[^=]*=", "", x_chr), x_chr)
+    }
+
+    fit_strata_order <- names(surv_fit$strata)
+    fit_strata_order <- unique(stats::na.omit(clean_strata_label(fit_strata_order)))
+    if (length(fit_strata_order) == 0) {
+        fit_strata_order <- unique(stats::na.omit(as.character(km_data[[plot_group_var]])))
+    }
+
     # Set legend labels and color palette (centralized)
     if (is.null(legend_labels)) {
-        legend_labels <- levels(factor(km_data[[plot_group_var]]))
+        legend_labels <- fit_strata_order
     }
-    color_palette <- get_palette_by_variable(palette_group_var, legend_labels)
+    legend_labels <- unique(as.character(legend_labels))
+
+    legend_labels_are_group_names <- all(fit_strata_order %in% legend_labels)
+    legend_order_is_relabel_only <- length(legend_labels) == length(fit_strata_order) &&
+        setequal(legend_labels, fit_strata_order)
+    if (legend_order_is_relabel_only && !identical(legend_labels, fit_strata_order)) {
+        logger::log_info(formatted(
+            "Risk table display order differs from survfit strata order; reordering rows to keep counts attached to the correct labels.",
+            indent = 1
+        ))
+    }
+
+    display_strata_order <- if (legend_order_is_relabel_only) {
+        legend_labels
+    } else {
+        present_requested_levels <- legend_labels[legend_labels %in% fit_strata_order]
+        unique(c(present_requested_levels, setdiff(fit_strata_order, present_requested_levels)))
+    }
+    if (length(display_strata_order) == 0) {
+        display_strata_order <- fit_strata_order
+    }
+
+    legend_labels_for_fit <- if (legend_order_is_relabel_only || legend_labels_are_group_names) {
+        fit_strata_order
+    } else if (length(legend_labels) == length(fit_strata_order)) {
+        legend_labels
+    } else {
+        fit_strata_order
+    }
+    color_palette <- get_palette_by_variable(
+        palette_group_var,
+        unique(c(display_strata_order, legend_labels_for_fit))
+    )
     # Identify strata requiring de-emphasis (thinner line/partial transparency)
-    deemphasised_levels <- intersect(legend_labels, c("GEP Failed/Indeterminate"))
+    deemphasised_levels <- intersect(display_strata_order, c("GEP Failed/Indeterminate"))
 
     # Get plot scaling factor from config (allows global adjustment via SURVIVAL_PLOT_SCALE)
     plot_scale <- SURVIVAL_PLOT_SCALE
 
-    n_risk_rows <- length(legend_labels)
+    n_risk_rows <- length(display_strata_order)
+
+    remap_risk_table_rows <- function(table_frame) {
+        if (is.null(table_frame) || nrow(table_frame) == 0) {
+            return(table_frame)
+        }
+
+        mapped_labels <- NULL
+        if ("strata" %in% names(table_frame)) {
+            candidate_labels <- clean_strata_label(table_frame$strata)
+            if (all(stats::na.omit(candidate_labels) %in% fit_strata_order)) {
+                mapped_labels <- candidate_labels
+            }
+        }
+
+        if (is.null(mapped_labels) && "y" %in% names(table_frame)) {
+            y_as_integer <- suppressWarnings(as.integer(as.character(table_frame$y)))
+            if (length(y_as_integer) > 0 && any(!is.na(y_as_integer))) {
+                candidate_labels <- fit_strata_order[y_as_integer]
+                if (all(stats::na.omit(candidate_labels) %in% fit_strata_order)) {
+                    mapped_labels <- candidate_labels
+                }
+            }
+
+            if (is.null(mapped_labels)) {
+                candidate_labels <- clean_strata_label(table_frame$y)
+                if (all(stats::na.omit(candidate_labels) %in% fit_strata_order)) {
+                    mapped_labels <- candidate_labels
+                }
+            }
+        }
+
+        if (is.null(mapped_labels)) {
+            return(table_frame)
+        }
+
+        row_levels <- display_strata_order
+        mapped_factor <- factor(mapped_labels, levels = row_levels)
+
+        if ("strata" %in% names(table_frame)) {
+            table_frame$strata <- mapped_factor
+        }
+        if ("y" %in% names(table_frame)) {
+            table_frame$y <- mapped_factor
+        }
+
+        ordering_time <- if ("time" %in% names(table_frame)) {
+            table_frame$time
+        } else if ("x" %in% names(table_frame)) {
+            table_frame$x
+        } else {
+            seq_len(nrow(table_frame))
+        }
+
+        table_frame[order(mapped_factor, ordering_time), , drop = FALSE]
+    }
     
     # Dynamically calculate risk table spacing based on number of rows
     # Principle: allocate ~3.5% of figure per row for the table, with minimum 0.15 and maximum 0.25
@@ -535,7 +633,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         break.time.by = base_by,
         xlim = c(0, max(x_breaks)),
         ylim = c(0, 1),
-        legend.labs = legend_labels,
+        legend.labs = legend_labels_for_fit,
         risk.table.y.text = TRUE,
         tables.y.text = TRUE,
         risk.table.title = "Number at risk",
@@ -549,15 +647,11 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
 
     legend_override <- NULL
     if (length(deemphasised_levels) > 0) {
-        clean_strata <- function(x) {
-            ifelse(grepl("=", x), sub("^[^=]*=", "", x), x)
-        }
-
         if (!is.null(surv_plot$plot$data)) {
             surv_plot$plot$data <- surv_plot$plot$data %>%
                 dplyr::mutate(
-                    line_alpha = ifelse(clean_strata(as.character(strata)) %in% deemphasised_levels, 0.6, 1),
-                    line_size = ifelse(clean_strata(as.character(strata)) %in% deemphasised_levels, 0.7, 1)
+                    line_alpha = ifelse(clean_strata_label(as.character(strata)) %in% deemphasised_levels, 0.6, 1),
+                    line_size = ifelse(clean_strata_label(as.character(strata)) %in% deemphasised_levels, 0.7, 1)
                 )
         }
         if (length(surv_plot$plot$layers) > 0) {
@@ -566,8 +660,8 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
                 if (!is.null(layer_data) && "strata" %in% names(layer_data)) {
                     surv_plot$plot$layers[[layer_idx]]$data <- layer_data %>%
                         dplyr::mutate(
-                            line_alpha = ifelse(clean_strata(as.character(strata)) %in% deemphasised_levels, 0.6, 1),
-                            line_size = ifelse(clean_strata(as.character(strata)) %in% deemphasised_levels, 0.7, 1)
+                            line_alpha = ifelse(clean_strata_label(as.character(strata)) %in% deemphasised_levels, 0.6, 1),
+                            line_size = ifelse(clean_strata_label(as.character(strata)) %in% deemphasised_levels, 0.7, 1)
                         )
                 }
             }
@@ -575,26 +669,27 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
 
         surv_plot$plot <- surv_plot$plot +
             ggplot2::aes(alpha = line_alpha, size = line_size) +
-            ggplot2::scale_color_manual(values = color_palette, guide = "none") +
+            ggplot2::scale_color_manual(values = color_palette, breaks = display_strata_order, guide = "none") +
             ggplot2::scale_alpha_identity(guide = "none") +
             ggplot2::scale_size_identity(guide = "none")
 
-        legend_override_alpha <- ifelse(legend_labels %in% deemphasised_levels, 0.6, 1)
-        legend_override_size <- ifelse(legend_labels %in% deemphasised_levels, 0.7, 1)
+        legend_override_alpha <- ifelse(display_strata_order %in% deemphasised_levels, 0.6, 1)
+        legend_override_size <- ifelse(display_strata_order %in% deemphasised_levels, 0.7, 1)
         legend_override <- list(
             alpha = legend_override_alpha,
             size = legend_override_size,
-            colour = color_palette[legend_labels]
+            colour = color_palette[display_strata_order]
         )
     } else {
-        surv_plot$plot <- surv_plot$plot + ggplot2::scale_color_manual(values = color_palette, guide = "none")
+        surv_plot$plot <- surv_plot$plot +
+            ggplot2::scale_color_manual(values = color_palette, breaks = display_strata_order, guide = "none")
     }
 
-    legend_cols <- if (length(legend_labels) > 4) 2 else 1
+    legend_cols <- if (length(display_strata_order) > 4) 2 else 1
     has_linetype <- "linetype" %in% names(surv_plot$plot$mapping) || any(vapply(surv_plot$plot$layers, function(layer) "linetype" %in% names(layer$mapping), logical(1)))
     guide_params <- list(ncol = legend_cols, byrow = TRUE)
     if (!is.null(legend_override)) {
-        legend_override$colour <- color_palette[legend_labels]
+        legend_override$colour <- color_palette[display_strata_order]
         guide_params$override.aes <- legend_override
     }
     guide_args <- list(color = do.call(ggplot2::guide_legend, guide_params))
@@ -652,12 +747,28 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             if ("GeomText" %in% class(surv_plot$table$layers[[i]]$geom)) {
                 surv_plot$table$layers[[i]]$aes_params$size <- 3.4 * plot_scale
             }
+
+            if (!is.null(surv_plot$table$layers[[i]]$data)) {
+                surv_plot$table$layers[[i]]$data <- remap_risk_table_rows(surv_plot$table$layers[[i]]$data)
+            }
         }
     }
 
+    surv_plot$table$data <- remap_risk_table_rows(surv_plot$table$data)
+
+    # ggsurvplot builds the risk table with y = rev(strata), which flips the
+    # row/count association after we reorder strata labels. Replace that mapping
+    # so the rendered row positions use the remapped strata directly.
+    surv_plot$table$mapping <- ggplot2::aes(
+        x = time,
+        y = strata,
+        label = llabels,
+        shape = strata
+    )
+
     surv_plot$table <- surv_plot$table +
         ggplot2::scale_y_discrete(
-            limits = rev(legend_labels),
+            limits = rev(display_strata_order),
             expand = ggplot2::expansion(mult = risk_table_y_expand)
         )
     
