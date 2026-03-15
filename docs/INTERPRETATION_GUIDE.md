@@ -566,6 +566,9 @@ Use this reading order:
   - This tab says what was computed, what the main findings were, and how cautious the interpretation should be.
   - If the summary says the surrogate model is only modest, do not treat the surrogate probability as a recovered Class 1 or Class 2 call.
   - Read the surrogate output as: among patients with known Class 1 and Class 2 results, which known clinical pattern does this no-GEP patient look more like?
+  - The surrogate is a binary Class 2-vs-Class 1 model, so the stored probability is specifically `P(Class 2-like | baseline features)`.
+  - By complement, `1 - surrogate_class2_probability` is the implied `Class 1-like` probability within that surrogate only.
+  - Neither number is the probability of the patient's true molecular assay result.
 2. Read `Predictor_Contribution`.
   - This tab shows which retained baseline predictors are doing the most work in the exploratory models.
   - Larger absolute ridge coefficients mean stronger contribution to the model's risk ordering, not stronger statistical proof.
@@ -577,6 +580,8 @@ Use this reading order:
   - This is the patient-level output for the two no-GEP groups.
   - `surrogate_class2_probability` is descriptive only.
   - It is a clinical resemblance score showing how much the patient's baseline profile resembles the observed Class 2 pattern versus the observed Class 1 pattern in the definitive-GEP reference set.
+  - If you mentally convert it to the opposite pole, `1 - surrogate_class2_probability` means `Class 1-like` resemblance only.
+  - Do not write or say that either of these values is a true molecular `Class 1` or `Class 2` probability.
   - `predicted_mfs_5yr_risk` and `predicted_mss_5yr_risk` are the main clinically usable outputs.
 5. Read `Sensitivity_Pooled_No_GEP`.
   - This checks whether pooled low/intermediate/high predicted-risk bins show increasing observed event rates.
@@ -598,6 +603,7 @@ Plain-English bottom line:
 
 - The exploratory workbook is best used to support direct baseline risk estimation when GEP is unavailable.
 - The surrogate score is best used to say which definitive-GEP clinical pattern a no-GEP patient looks more like, not to say what their true molecular class was.
+- If you want the opposite resemblance score, use `1 - surrogate_class2_probability`, but call it `Class 1-like` probability rather than true `Class 1` probability.
 - It should not be used to claim true molecular reclassification.
 - Group-level separation is usually more reliable than any single patient-level probability.
 

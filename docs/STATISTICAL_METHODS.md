@@ -971,7 +971,7 @@ The derived `ciliary_involvement` field is included in no-GEP prediction outputs
 
 Three ridge-penalized logistic regression models are fit with `glmnet::cv.glmnet(..., family = "binomial", alpha = 0)`:
 
-1. surrogate `Class 2-like` model fitted only on definitive `Class 1` versus `Class 2` patients
+1. surrogate `Class 2-like` model fitted only on definitive `Class 1` versus `Class 2` patients, with binary outcome coding `class2_outcome = 1` for `Class 2` and `0` for `Class 1`
 2. direct 5-year MFS risk model fitted on the full eligible cohort with a 5-year metastasis endpoint
 3. direct 5-year MSS risk model fitted on the full eligible cohort with a 5-year melanoma-specific death endpoint
 
@@ -1000,6 +1000,20 @@ The coefficient tables in this report are ridge-shrunken design-matrix coefficie
 
 For clarity, the surrogate model is not trying to reconstruct the molecular assay itself. It uses patients with known definitive GEP labels as a teaching set, learns what the observed baseline clinicopathologic patterns of the Class 1 and Class 2 groups look like in this cohort, and then outputs for each no-GEP patient the probability that their baseline profile more closely resembles the observed Class 2 pattern than the observed Class 1 pattern. This is best interpreted as a clinical resemblance score anchored to the known definitive-GEP patients.
 
+Because the surrogate is a binary logistic model, the reported `surrogate_class2_probability` is mathematically:
+
+$$
+P(\text{Class 2-like} \mid \text{baseline features})
+$$
+
+and its complement is:
+
+$$
+1 - P(\text{Class 2-like} \mid \text{baseline features}) = P(\text{Class 1-like} \mid \text{baseline features})
+$$
+
+within this two-class surrogate framework. That complement may therefore be read as a `Class 1-like` clinical resemblance probability, but it must not be described as the probability of a true molecular `Class 1` assay result. Symmetrically, `surrogate_class2_probability` must not be described as the probability of a true molecular `Class 2` assay result. Both quantities are only probabilities of resembling one of the two definitive-GEP clinical-pattern reference groups used to train the surrogate.
+
 #### Prediction summaries
 
 The exploratory workbook includes:
@@ -1013,6 +1027,7 @@ The exploratory workbook includes:
 The surrogate `Class 2-like` probability is descriptive and should not be interpreted as recovered molecular class. The direct MFS/MSS outputs are the primary clinically useful quantities from this workflow. In other words:
 
 - use surrogate probabilities to describe whether a no-GEP patient clinically resembles the higher-risk definitive-GEP population more than the lower-risk definitive-GEP population
+- if needed, the implied `Class 1-like` probability is simply `1 - surrogate_class2_probability`, but this is still only a clinical resemblance probability, not a recovered molecular-class probability
 - use direct 5-year MFS/MSS predictions as the main risk estimates when a future patient has failed or unavailable GEP
 - interpret both as internally validated exploratory outputs rather than externally confirmed bedside calculators
 
