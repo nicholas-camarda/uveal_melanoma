@@ -1087,8 +1087,14 @@ create_mfs_simple_binary_survival_analysis <- function(data, output_dir, prefix,
 #' @param output_dir Output directory for saved plots
 #' @param prefix Filename prefix
 #' @param dataset_name Dataset label used in the subtitle
-#' @return Invisibly returns NULL after saving plots
-create_mfs_simplified_survival_curves <- function(data, output_dir, prefix, dataset_name = "GEP Validation", km_output_dir = output_dir) {
+#' @param km_output_dir Directory used for the saved simplified KM figure.
+#' @param return_plot When `TRUE`, returns the assembled plot objects for
+#'   verification or testing instead of only writing files.
+#' @param save_plot When `FALSE`, skips writing the PNG to disk.
+#'
+#' @return Invisibly returns `NULL` after saving plots, or a list of plot
+#'   objects when `return_plot = TRUE`.
+create_mfs_simplified_survival_curves <- function(data, output_dir, prefix, dataset_name = "GEP Validation", km_output_dir = output_dir, return_plot = FALSE, save_plot = TRUE) {
     logger::log_info("Creating simplified MFS survival curves for Class 1, Class 2, and GEP Not Tested")
 
     plot_data <- data %>%
@@ -1211,19 +1217,90 @@ create_mfs_simplified_survival_curves <- function(data, output_dir, prefix, data
             plot.margin = ggplot2::margin(t = 10, r = 10, b = 4, l = 10)
         )
 
-    surv_plot$table <- surv_plot$table +
-        ggplot2::scale_y_discrete(
-            limits = rev(present_levels),
-            expand = ggplot2::expansion(mult = c(0.18, 0.18))
-        )
+    clean_strata_label <- function(x) {
+        x_chr <- as.character(x)
+        ifelse(grepl("=", x_chr), sub("^[^=]*=", "", x_chr), x_chr)
+    }
+
+    remap_risk_table_rows <- function(table_frame) {
+        if (is.null(table_frame) || nrow(table_frame) == 0) {
+            return(table_frame)
+        }
+
+        mapped_labels <- NULL
+        if ("strata" %in% names(table_frame)) {
+            candidate_labels <- clean_strata_label(table_frame$strata)
+            if (all(stats::na.omit(candidate_labels) %in% present_levels)) {
+                mapped_labels <- candidate_labels
+            }
+        }
+
+        if (is.null(mapped_labels) && "y" %in% names(table_frame)) {
+            y_as_integer <- suppressWarnings(as.integer(as.character(table_frame$y)))
+            if (length(y_as_integer) > 0 && any(!is.na(y_as_integer))) {
+                candidate_labels <- present_levels[y_as_integer]
+                if (all(stats::na.omit(candidate_labels) %in% present_levels)) {
+                    mapped_labels <- candidate_labels
+                }
+            }
+
+            if (is.null(mapped_labels)) {
+                candidate_labels <- clean_strata_label(table_frame$y)
+                if (all(stats::na.omit(candidate_labels) %in% present_levels)) {
+                    mapped_labels <- candidate_labels
+                }
+            }
+        }
+
+        if (is.null(mapped_labels)) {
+            return(table_frame)
+        }
+
+        mapped_factor <- factor(mapped_labels, levels = present_levels)
+
+        if ("strata" %in% names(table_frame)) {
+            table_frame$strata <- mapped_factor
+        }
+        if ("y" %in% names(table_frame)) {
+            table_frame$y <- mapped_factor
+        }
+
+        ordering_time <- if ("time" %in% names(table_frame)) {
+            table_frame$time
+        } else if ("x" %in% names(table_frame)) {
+            table_frame$x
+        } else {
+            seq_len(nrow(table_frame))
+        }
+
+        table_frame[order(mapped_factor, ordering_time), , drop = FALSE]
+    }
 
     if (length(surv_plot$table$layers) > 0) {
         for (i in seq_along(surv_plot$table$layers)) {
             if ("GeomText" %in% class(surv_plot$table$layers[[i]]$geom)) {
                 surv_plot$table$layers[[i]]$aes_params$size <- 3.4 * plot_scale
             }
+
+            if (!is.null(surv_plot$table$layers[[i]]$data)) {
+                surv_plot$table$layers[[i]]$data <- remap_risk_table_rows(surv_plot$table$layers[[i]]$data)
+            }
         }
     }
+
+    surv_plot$table$data <- remap_risk_table_rows(surv_plot$table$data)
+    surv_plot$table$mapping <- ggplot2::aes(
+        x = time,
+        y = strata,
+        label = llabels,
+        shape = strata
+    )
+
+    surv_plot$table <- surv_plot$table +
+        ggplot2::scale_y_discrete(
+            limits = rev(present_levels),
+            expand = ggplot2::expansion(mult = c(0.18, 0.18))
+        )
 
     combined_km <- cowplot::plot_grid(
         surv_plot$plot,
@@ -1242,17 +1319,28 @@ create_mfs_simplified_survival_curves <- function(data, output_dir, prefix, data
         )
     )
 
-    target_km_dir <- ensure_output_dir(km_output_dir)
-    km_path <- file.path(target_km_dir, paste0(prefix, "mfs_simplified_gep_km.png"))
-    ggplot2::ggsave(
-        km_path,
-        combined_km,
-        width = simplified_plot_width,
-        height = simplified_plot_height,
-        dpi = PLOT_DPI,
-        bg = "white"
-    )
-    logger::log_info(sprintf("Simplified MFS survival curves saved: %s", km_path))
+    if (save_plot) {
+        target_km_dir <- ensure_output_dir(km_output_dir)
+        km_path <- file.path(target_km_dir, paste0(prefix, "mfs_simplified_gep_km.png"))
+        ggplot2::ggsave(
+            km_path,
+            combined_km,
+            width = simplified_plot_width,
+            height = simplified_plot_height,
+            dpi = PLOT_DPI,
+            bg = "white"
+        )
+        logger::log_info(sprintf("Simplified MFS survival curves saved: %s", km_path))
+    }
+
+    if (return_plot) {
+        return(list(
+            plot = surv_plot,
+            combined_plot = combined_km,
+            plot_data = plot_data,
+            present_levels = present_levels
+        ))
+    }
 
     invisible(NULL)
 }

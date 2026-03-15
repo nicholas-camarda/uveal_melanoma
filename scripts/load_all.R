@@ -178,6 +178,9 @@ source(here("scripts", "gep", "reporting", "gep_simple_validation.R"))
 # Source the GEP evaluation orchestration script
 source(here("scripts", "gep", "orchestration", "gep_evaluation_orchestration.R"))
 
+# Source the GEP exploratory analysis script 
+source(here("scripts", "gep", "orchestration", "gep_exploratory_no_gep_report.R"))
+
 # Source the forest plot script (commented out to use modular version)
 # source(here("scripts", "visualization", "forest_plot.R"))
 # Source modular forest plot helpers
