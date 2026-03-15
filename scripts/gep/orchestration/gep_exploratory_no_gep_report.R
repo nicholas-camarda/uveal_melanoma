@@ -150,14 +150,16 @@ derive_binary_endpoint <- function(data, event_col, time_col, horizon_months) {
 
 #' Prepare Data for Exploratory No-GEP Modeling
 #'
-#' Restores GEP display labels, derives the no-GEP groupings, creates the fixed
-#' baseline predictors, and splits the cohort into training and prediction sets.
+#' Restores GEP display labels, derives the exploratory grouping variables,
+#' standardizes the candidate baseline predictors, collapses sparse factor
+#' levels using the existing rare-category helper, and prepares screened model
+#' datasets for the surrogate and direct-risk models.
 #'
 #' @param data The analytic cohort.
 #' @param dataset_name Dataset identifier used by existing restoration helpers.
 #'
-#' @return A list containing the full prepared data, definitive-GEP training
-#'   data, no-GEP prediction data, predictor names, and an optional ID column.
+#' @return A list containing the prepared full data, screened modeling datasets,
+#'   predictor metadata, screening diagnostics, and an optional ID column.
 prepare_exploratory_no_gep_data <- function(data, dataset_name = "uveal_melanoma_full_cohort") {
     prepared <- data %>%
         refresh_gep_analysis_flags() %>%
@@ -175,6 +177,11 @@ prepare_exploratory_no_gep_data <- function(data, dataset_name = "uveal_melanoma
                 TRUE ~ NA_character_
             ),
             ciliary_involvement = as.integer(grepl("cilio|ciliary", as.character(.data$location), ignore.case = TRUE)),
+            sex = factor(as.character(.data$sex)),
+            location = factor(as.character(.data$location)),
+            initial_t_stage_simple = factor(as.character(.data$initial_t_stage_simple)),
+            internal_reflectivity = factor(as.character(.data$internal_reflectivity)),
+            srf = factor(as.character(.data$srf)),
             optic_nerve_involvement = dplyr::case_when(
                 as.character(.data$optic_nerve) %in% c("Yes", "Y", "Involved") ~ 1L,
                 as.character(.data$optic_nerve) %in% c("No", "N", "Not Involved") ~ 0L,
@@ -182,38 +189,227 @@ prepare_exploratory_no_gep_data <- function(data, dataset_name = "uveal_melanoma
             ),
             mfs_event_5yr = derive_binary_endpoint(prepared, "mfs_event_5yr", "tt_mets_months", 60),
             mss_event_5yr = derive_binary_endpoint(prepared, "mss_event_5yr", "tt_death_months", 60)
-        )
+        ) %>%
+        enforce_unordered_factors()
 
-    predictors <- c(
+    candidate_predictors <- c(
         "age_at_diagnosis",
+        "sex",
         "initial_tumor_height",
         "initial_tumor_diameter",
-        "ciliary_involvement",
+        "location",
+        "initial_t_stage_simple",
+        "internal_reflectivity",
+        "srf",
+        "initial_vision",
         "optic_nerve_involvement"
     )
+    factor_predictors <- c("sex", "location", "initial_t_stage_simple", "internal_reflectivity", "srf")
 
-    complete_predictors <- stats::complete.cases(prepared[, predictors])
+    collapse_result <- handle_rare_categories(
+        prepared,
+        vars = factor_predictors[factor_predictors %in% names(prepared)],
+        threshold = 5
+    )
+    prepared <- collapse_result$data %>%
+        enforce_unordered_factors()
 
-    definitive_training <- prepared %>%
-        dplyr::filter(
-            .data$exploratory_gep_group %in% GEP_DEFINITIVE_SIMPLE_LEVELS,
-            complete_predictors
-        ) %>%
-        dplyr::mutate(class2_outcome = as.integer(.data$exploratory_gep_group == "Class 2"))
+    screening <- screen_exploratory_predictors(
+        prepared,
+        candidate_predictors = candidate_predictors,
+        factor_predictors = factor_predictors,
+        completeness_threshold = 0.9,
+        min_level_count = 5
+    )
+    retained_predictors <- screening %>%
+        dplyr::filter(.data$status == "retained") %>%
+        dplyr::pull(.data$predictor)
 
-    no_gep_prediction <- prepared %>%
-        dplyr::filter(
-            .data$exploratory_gep_group %in% c("GEP Failed/Indeterminate", "GEP Not Tested"),
-            complete_predictors
-        )
+    if (length(retained_predictors) == 0) {
+        stop("Exploratory no-GEP report could not retain any baseline predictors after screening.")
+    }
+
+    definitive_training <- build_exploratory_model_dataset(
+        prepared,
+        predictors = retained_predictors,
+        factor_predictors = intersect(factor_predictors, retained_predictors),
+        other_map = collapse_result$other_map,
+        outcome_var = "class2_outcome",
+        group_levels = c("Class 1", "Class 2")
+    )
+    no_gep_prediction <- build_exploratory_model_dataset(
+        prepared,
+        predictors = retained_predictors,
+        factor_predictors = intersect(factor_predictors, retained_predictors),
+        other_map = collapse_result$other_map,
+        outcome_var = NULL,
+        group_levels = c("GEP Failed/Indeterminate", "GEP Not Tested")
+    )
+    mfs_model_data <- build_exploratory_model_dataset(
+        prepared,
+        predictors = retained_predictors,
+        factor_predictors = intersect(factor_predictors, retained_predictors),
+        other_map = collapse_result$other_map,
+        outcome_var = "mfs_event_5yr"
+    )
+    mss_model_data <- build_exploratory_model_dataset(
+        prepared,
+        predictors = retained_predictors,
+        factor_predictors = intersect(factor_predictors, retained_predictors),
+        other_map = collapse_result$other_map,
+        outcome_var = "mss_event_5yr"
+    )
 
     list(
         full_data = prepared,
         definitive_training = definitive_training,
         no_gep_prediction = no_gep_prediction,
-        predictors = predictors,
+        mfs_model_data = mfs_model_data,
+        mss_model_data = mss_model_data,
+        candidate_predictors = candidate_predictors,
+        factor_predictors = factor_predictors,
+        predictors = retained_predictors,
+        predictor_screening = screening,
+        other_map = collapse_result$other_map,
         patient_id_col = pick_exploratory_patient_id_col(prepared)
     )
+}
+
+#' Screen Candidate Predictors for the Exploratory Models
+#'
+#' Applies shared completeness and post-collapse level-count rules across the
+#' surrogate and direct-risk modeling datasets.
+#'
+#' @param data Prepared exploratory cohort.
+#' @param candidate_predictors Character vector of candidate predictor names.
+#' @param factor_predictors Character vector of factor predictors.
+#' @param completeness_threshold Minimum required non-missing proportion.
+#' @param min_level_count Minimum required count for non-reference levels.
+#'
+#' @return A data frame describing retained and dropped predictors.
+screen_exploratory_predictors <- function(data,
+                                          candidate_predictors,
+                                          factor_predictors,
+                                          completeness_threshold = 0.9,
+                                          min_level_count = 5) {
+    dataset_map <- list(
+        surrogate = data %>% dplyr::filter(.data$exploratory_gep_group %in% c("Class 1", "Class 2")),
+        direct_mfs = data %>% dplyr::filter(!is.na(.data$mfs_event_5yr)),
+        direct_mss = data %>% dplyr::filter(!is.na(.data$mss_event_5yr))
+    )
+
+    purrr::map_dfr(candidate_predictors, function(predictor) {
+        completeness_values <- purrr::map_dbl(dataset_map, function(dataset) {
+            mean(!is.na(dataset[[predictor]]))
+        })
+        completeness_ok <- all(completeness_values >= completeness_threshold)
+
+        level_check_reason <- NA_character_
+        if (completeness_ok && predictor %in% factor_predictors) {
+            for (dataset_name in names(dataset_map)) {
+                dataset <- dataset_map[[dataset_name]]
+                values <- dataset[[predictor]]
+                values <- values[!is.na(values) & values != "Other"]
+                level_counts <- table(values)
+
+                if (length(level_counts) <= 1) {
+                    level_check_reason <- sprintf("%s lacks enough non-'Other' levels after collapse", dataset_name)
+                    break
+                }
+
+                non_reference_counts <- level_counts[-1]
+                if (length(non_reference_counts) > 0 && any(non_reference_counts < min_level_count)) {
+                    rare_levels <- names(non_reference_counts)[non_reference_counts < min_level_count]
+                    level_check_reason <- sprintf(
+                        "%s has sparse non-reference levels after collapse: %s",
+                        dataset_name,
+                        paste(rare_levels, collapse = ", ")
+                    )
+                    break
+                }
+            }
+        }
+
+        status <- if (!completeness_ok) {
+            "dropped"
+        } else if (!is.na(level_check_reason)) {
+            "dropped"
+        } else {
+            "retained"
+        }
+
+        reason <- if (!completeness_ok) {
+            paste(
+                sprintf("%s completeness %.1f%%", names(completeness_values), 100 * completeness_values),
+                collapse = "; "
+            )
+        } else if (!is.na(level_check_reason)) {
+            level_check_reason
+        } else {
+            "passes completeness and level-count screening"
+        }
+
+        tibble::tibble(
+            predictor = predictor,
+            predictor_type = ifelse(predictor %in% factor_predictors, "factor", "numeric"),
+            surrogate_completeness = completeness_values[["surrogate"]],
+            direct_mfs_completeness = completeness_values[["direct_mfs"]],
+            direct_mss_completeness = completeness_values[["direct_mss"]],
+            status = status,
+            reason = reason
+        )
+    })
+}
+
+#' Build a Screened Modeling Dataset for the Exploratory Workflow
+#'
+#' Reuses the existing `exclude_other_categories()` behavior for retained factor
+#' predictors, then filters to complete rows for the requested outcome.
+#'
+#' @param data Prepared exploratory cohort.
+#' @param predictors Retained predictor names.
+#' @param factor_predictors Retained factor predictor names.
+#' @param other_map Collapsed-level mapping from `handle_rare_categories()`.
+#' @param outcome_var Optional outcome variable name.
+#' @param group_levels Optional character vector of `exploratory_gep_group`
+#'   levels to keep.
+#'
+#' @return A filtered modeling data frame.
+build_exploratory_model_dataset <- function(data,
+                                            predictors,
+                                            factor_predictors,
+                                            other_map = list(),
+                                            outcome_var = NULL,
+                                            group_levels = NULL) {
+    model_data <- data
+
+    if (!is.null(group_levels)) {
+        model_data <- model_data %>%
+            dplyr::filter(.data$exploratory_gep_group %in% group_levels)
+    }
+
+    if (!is.null(outcome_var) && identical(outcome_var, "class2_outcome")) {
+        model_data <- model_data %>%
+            dplyr::mutate(class2_outcome = as.integer(.data$exploratory_gep_group == "Class 2"))
+    }
+
+    if (length(factor_predictors) > 0) {
+        exclusion_result <- exclude_other_categories(
+            model_data,
+            variables = factor_predictors,
+            other_map = other_map
+        )
+        model_data <- exclusion_result$data
+    }
+
+    required_vars <- predictors
+    if (!is.null(outcome_var)) {
+        required_vars <- c(required_vars, outcome_var)
+    }
+
+    model_data %>%
+        dplyr::filter(stats::complete.cases(dplyr::across(all_of(required_vars)))) %>%
+        enforce_unordered_factors()
 }
 
 #' Verify the Simplified KM Risk-Table Fix for No-GEP Reporting
@@ -363,8 +559,22 @@ format_baseline_value <- function(data, variable) {
         return(sprintf("%.1f (%.1f, %.1f)", median_value, q1, q3))
     }
 
-    percent_yes <- mean(values == 1, na.rm = TRUE) * 100
-    sprintf("%d/%d (%.1f%%)", sum(values == 1, na.rm = TRUE), sum(!is.na(values)), percent_yes)
+    level_counts <- sort(table(as.character(values), useNA = "no"), decreasing = TRUE)
+    if (length(level_counts) == 0) {
+        return("No data")
+    }
+
+    total_n <- sum(level_counts)
+    paste(
+        sprintf(
+            "%s=%d/%d (%.1f%%)",
+            names(level_counts),
+            as.integer(level_counts),
+            total_n,
+            100 * as.integer(level_counts) / total_n
+        ),
+        collapse = "; "
+    )
 }
 
 #' Calculate a Baseline Comparison P-Value
@@ -390,17 +600,18 @@ calculate_baseline_p_value <- function(data, variable, group_var) {
 
     if (is_binary_numeric) {
         contingency <- table(values[valid], groups[valid])
+        use_fisher <- any(contingency < 5)
         result <- tryCatch(
-            stats::chisq.test(contingency),
+            if (use_fisher) stats::fisher.test(contingency) else suppressWarnings(stats::chisq.test(contingency)),
             error = function(e) NULL
         )
         return(list(
-            test = "Chi-square",
+            test = if (use_fisher) "Fisher's exact" else "Chi-square",
             p_value = if (is.null(result)) NA_real_ else result$p.value
         ))
     }
 
-    if (is.numeric(values)) {
+    if (is.numeric(values) && !is_binary_numeric) {
         result <- tryCatch(
             stats::kruskal.test(values[valid] ~ groups[valid]),
             error = function(e) NULL
@@ -412,12 +623,13 @@ calculate_baseline_p_value <- function(data, variable, group_var) {
     }
 
     contingency <- table(values[valid], groups[valid])
+    use_fisher <- any(contingency < 5)
     result <- tryCatch(
-        stats::chisq.test(contingency),
+        if (use_fisher) stats::fisher.test(contingency) else suppressWarnings(stats::chisq.test(contingency)),
         error = function(e) NULL
     )
     list(
-        test = "Chi-square",
+        test = if (use_fisher) "Fisher's exact" else "Chi-square",
         p_value = if (is.null(result)) NA_real_ else result$p.value
     )
 }
@@ -434,13 +646,7 @@ summarize_exploratory_baseline_comparisons <- function(prepared_data) {
     baseline_data <- prepared_data$full_data %>%
         dplyr::filter(!is.na(.data$exploratory_gep_group))
 
-    baseline_vars <- c(
-        "age_at_diagnosis",
-        "initial_tumor_height",
-        "initial_tumor_diameter",
-        "ciliary_involvement",
-        "optic_nerve_involvement"
-    )
+    baseline_vars <- unique(c(prepared_data$candidate_predictors, "ciliary_involvement"))
 
     group_levels <- levels(baseline_data$exploratory_gep_group)
 
@@ -536,10 +742,90 @@ summarize_mss_cif_timepoints <- function(data, group_var, times) {
     })
 }
 
+#' Build a Design Matrix for the Exploratory Ridge Models
+#'
+#' Uses `model.matrix()` so factor expansion follows standard R contrasts, then
+#' aligns prediction matrices back to the training design columns.
+#'
+#' @param data Modeling data frame.
+#' @param predictors Retained predictor names.
+#' @param reference_columns Optional training design column names used to align
+#'   prediction matrices.
+#'
+#' @return A numeric matrix ready for `glmnet`.
+build_exploratory_design_matrix <- function(data, predictors, reference_columns = NULL) {
+    design_formula <- stats::as.formula(sprintf("~ %s", paste(predictors, collapse = " + ")))
+    design_matrix <- stats::model.matrix(design_formula, data = data)
+    design_matrix <- design_matrix[, colnames(design_matrix) != "(Intercept)", drop = FALSE]
+
+    if (!is.null(reference_columns)) {
+        missing_columns <- setdiff(reference_columns, colnames(design_matrix))
+        extra_columns <- setdiff(colnames(design_matrix), reference_columns)
+
+        if (length(missing_columns) > 0) {
+            zero_block <- matrix(
+                0,
+                nrow = nrow(design_matrix),
+                ncol = length(missing_columns),
+                dimnames = list(NULL, missing_columns)
+            )
+            design_matrix <- cbind(design_matrix, zero_block)
+        }
+
+        if (length(extra_columns) > 0) {
+            design_matrix <- design_matrix[, setdiff(colnames(design_matrix), extra_columns), drop = FALSE]
+        }
+
+        design_matrix <- design_matrix[, reference_columns, drop = FALSE]
+    }
+
+    design_matrix
+}
+
+#' Create Stratified Cross-Validation Fold IDs
+#'
+#' Assigns observations to folds while roughly preserving event balance.
+#'
+#' @param outcome Binary outcome vector coded as 0/1.
+#' @param folds Number of folds.
+#' @param seed Random seed.
+#'
+#' @return Integer vector of fold IDs.
+create_stratified_fold_ids <- function(outcome, folds = 5, seed = 123) {
+    set.seed(seed)
+    fold_id <- integer(length(outcome))
+
+    for (class_value in unique(outcome)) {
+        class_indices <- which(outcome == class_value)
+        fold_id[class_indices] <- sample(rep(seq_len(folds), length.out = length(class_indices)))
+    }
+
+    fold_id
+}
+
+#' Choose a Safe Number of CV Folds for Binary Ridge Models
+#'
+#' Caps the fold count so each outcome class can contribute at least one
+#' observation per fold, avoiding `cv.glmnet()` failures in sparse datasets.
+#'
+#' @param outcome Binary outcome vector coded as 0/1.
+#' @param preferred_folds Requested fold count.
+#'
+#' @return Integer fold count.
+choose_binary_cv_folds <- function(outcome, preferred_folds = 5) {
+    class_counts <- table(outcome)
+
+    if (length(class_counts) < 2) {
+        return(2L)
+    }
+
+    max_supported <- min(as.integer(class_counts), length(outcome), preferred_folds)
+    as.integer(max(2, max_supported))
+}
+
 #' Cross-Validate Binary Model Predictions
 #'
-#' Performs simple K-fold cross-validation for a logistic regression using the
-#' fixed exploratory predictor set.
+#' Performs simple K-fold cross-validation for a ridge-penalized logistic model.
 #'
 #' @param data Modeling data frame.
 #' @param outcome_var Name of the binary outcome column.
@@ -551,14 +837,15 @@ summarize_mss_cif_timepoints <- function(data, group_var, times) {
 #'   the input rows.
 cross_validate_binary_predictions <- function(data, outcome_var, predictors, folds = 5, seed = 123) {
     n_rows <- nrow(data)
-    if (n_rows < folds || length(unique(data[[outcome_var]])) < 2) {
+    outcome <- data[[outcome_var]]
+    folds <- choose_binary_cv_folds(outcome, preferred_folds = folds)
+
+    if (n_rows < folds || length(unique(outcome)) < 2) {
         return(rep(NA_real_, n_rows))
     }
 
-    set.seed(seed)
-    fold_id <- sample(rep(seq_len(folds), length.out = n_rows))
+    fold_id <- create_stratified_fold_ids(outcome, folds = folds, seed = seed)
     predictions <- rep(NA_real_, n_rows)
-    model_formula <- stats::as.formula(sprintf("%s ~ %s", outcome_var, paste(predictors, collapse = " + ")))
 
     for (fold in seq_len(folds)) {
         train_data <- data[fold_id != fold, , drop = FALSE]
@@ -568,13 +855,33 @@ cross_validate_binary_predictions <- function(data, outcome_var, predictors, fol
             next
         }
 
-        fold_model <- stats::glm(
-            formula = model_formula,
-            data = train_data,
-            family = stats::binomial()
+        x_train <- build_exploratory_design_matrix(train_data, predictors = predictors)
+        x_test <- build_exploratory_design_matrix(
+            test_data,
+            predictors = predictors,
+            reference_columns = colnames(x_train)
         )
 
-        predictions[fold_id == fold] <- stats::predict(fold_model, newdata = test_data, type = "response")
+        fold_fit <- tryCatch(
+            suppressWarnings(glmnet::cv.glmnet(
+                x = x_train,
+                y = train_data[[outcome_var]],
+                family = "binomial",
+                alpha = 0,
+                nfolds = choose_binary_cv_folds(train_data[[outcome_var]], preferred_folds = 5),
+                standardize = TRUE,
+                type.measure = "deviance"
+            )),
+            error = function(e) NULL
+        )
+
+        if (is.null(fold_fit)) {
+            next
+        }
+
+        predictions[fold_id == fold] <- as.numeric(
+            stats::predict(fold_fit, newx = x_test, s = "lambda.min", type = "response")
+        )
     }
 
     predictions
@@ -635,58 +942,84 @@ summarize_binary_calibration <- function(outcome, predicted) {
     )
 }
 
-#' Extract Logistic Model Coefficients for Reporting
+#' Map Ridge Design Terms Back to Source Predictors
 #'
-#' Converts a fitted generalized linear model into a tidy coefficient table with
-#' optional exponentiation of odds ratios and confidence intervals.
+#' @param term Design-matrix term name.
+#' @param predictors Retained predictor names.
 #'
-#' @param model_fit A fitted logistic regression model.
-#' @param exponentiate Whether to exponentiate estimates and confidence bounds.
-#'
-#' @return A data frame of coefficient summaries.
-extract_binary_model_coefficients <- function(model_fit, exponentiate = TRUE) {
-    coefficient_summary <- stats::coef(summary(model_fit))
-    coefficient_names <- rownames(coefficient_summary)
-    confidence_intervals <- tryCatch(
-        stats::confint.default(model_fit),
-        error = function(e) {
-            fallback <- matrix(NA_real_, nrow = length(coefficient_names), ncol = 2)
-            rownames(fallback) <- coefficient_names
-            fallback
-        }
-    )
-    confidence_intervals <- confidence_intervals[coefficient_names, , drop = FALSE]
-
-    estimates <- coefficient_summary[, "Estimate"]
-    std_errors <- coefficient_summary[, "Std. Error"]
-    z_values <- coefficient_summary[, "z value"]
-    p_values <- coefficient_summary[, "Pr(>|z|)"]
-
-    if (exponentiate) {
-        estimate_display <- exp(estimates)
-        lower_display <- exp(confidence_intervals[, 1])
-        upper_display <- exp(confidence_intervals[, 2])
-    } else {
-        estimate_display <- estimates
-        lower_display <- confidence_intervals[, 1]
-        upper_display <- confidence_intervals[, 2]
+#' @return A predictor name.
+map_design_term_to_predictor <- function(term, predictors) {
+    matched <- predictors[startsWith(term, predictors)]
+    if (length(matched) == 0) {
+        return(term)
     }
 
+    matched[which.max(nchar(matched))][1]
+}
+
+#' Extract Penalized Coefficients for Reporting
+#'
+#' Returns the ridge coefficients at `lambda.min`. These are standardized,
+#' shrunken coefficients for ranking and directionality, not classical
+#' inferential estimates.
+#'
+#' @param model_fit A fitted `cv.glmnet` object.
+#' @param predictors Retained predictor names.
+#'
+#' @return A data frame of coefficient summaries.
+extract_binary_model_coefficients <- function(model_fit, predictors) {
+    coefficient_matrix <- as.matrix(stats::coef(model_fit, s = "lambda.min"))
     tibble::tibble(
-        term = rownames(coefficient_summary),
-        estimate = estimate_display,
-        conf_low = lower_display,
-        conf_high = upper_display,
-        std_error = std_errors,
-        z_value = z_values,
-        p_value = p_values
+        term = rownames(coefficient_matrix),
+        estimate = as.numeric(coefficient_matrix[, 1]),
+        conf_low = NA_real_,
+        conf_high = NA_real_,
+        std_error = NA_real_,
+        z_value = NA_real_,
+        p_value = NA_real_,
+        predictor = vapply(rownames(coefficient_matrix), map_design_term_to_predictor, character(1), predictors = predictors),
+        coefficient_type = "ridge_penalized"
     )
+}
+
+#' Summarize Predictor Contributions for a Ridge Model
+#'
+#' Ranks predictors by the largest absolute standardized coefficient assigned to
+#' any of their design-matrix terms.
+#'
+#' @param coefficient_data Output from `extract_binary_model_coefficients()`.
+#' @param model_name Display name for the model.
+#'
+#' @return A ranked predictor-contribution table.
+summarize_predictor_contributions <- function(coefficient_data, model_name) {
+    coefficient_data %>%
+        dplyr::filter(.data$term != "(Intercept)") %>%
+        dplyr::mutate(abs_estimate = abs(.data$estimate)) %>%
+        dplyr::group_by(.data$predictor) %>%
+        dplyr::slice_max(order_by = .data$abs_estimate, n = 1, with_ties = FALSE) %>%
+        dplyr::ungroup() %>%
+        dplyr::arrange(dplyr::desc(.data$abs_estimate)) %>%
+        dplyr::mutate(
+            model = model_name,
+            rank = dplyr::row_number(),
+            direction = dplyr::if_else(.data$estimate >= 0, "higher predicted risk", "lower predicted risk")
+        ) %>%
+        dplyr::transmute(
+            model = .data$model,
+            rank = .data$rank,
+            predictor = .data$predictor,
+            dominant_term = .data$term,
+            standardized_coefficient = .data$estimate,
+            standardized_abs_coefficient = .data$abs_estimate,
+            direction = .data$direction
+        )
 }
 
 #' Fit an Exploratory Binary Model
 #'
-#' Fits a logistic regression, derives apparent and cross-validated performance,
-#' and packages model outputs for workbook reporting.
+#' Fits a ridge-penalized logistic regression, derives apparent and
+#' cross-validated performance, and packages model outputs for workbook
+#' reporting.
 #'
 #' @param data Modeling data frame.
 #' @param outcome_var Name of the binary outcome column.
@@ -694,38 +1027,60 @@ extract_binary_model_coefficients <- function(model_fit, exponentiate = TRUE) {
 #' @param model_name Display label for the model.
 #' @param seed Random seed for cross-validation.
 #'
-#' @return A list containing the fit object, coefficients, metrics, and
-#'   calibration data.
+#' @return A list containing the fit object, coefficients, contributions,
+#'   metrics, and calibration data.
 fit_exploratory_binary_model <- function(data, outcome_var, predictors, model_name, seed = 123) {
-    model_formula <- stats::as.formula(sprintf("%s ~ %s", outcome_var, paste(predictors, collapse = " + ")))
-    fitted_model <- stats::glm(
-        formula = model_formula,
-        data = data,
-        family = stats::binomial()
-    )
+    design_matrix <- build_exploratory_design_matrix(data, predictors = predictors)
+    outcome <- data[[outcome_var]]
+    cv_folds <- choose_binary_cv_folds(outcome, preferred_folds = 5)
 
-    apparent_predictions <- stats::predict(fitted_model, type = "response")
-    cv_predictions <- cross_validate_binary_predictions(data, outcome_var = outcome_var, predictors = predictors, seed = seed)
-    calibration <- summarize_binary_calibration(data[[outcome_var]], apparent_predictions)
+    fitted_model <- suppressWarnings(glmnet::cv.glmnet(
+        x = design_matrix,
+        y = outcome,
+        family = "binomial",
+        alpha = 0,
+        nfolds = cv_folds,
+        standardize = TRUE,
+        type.measure = "deviance"
+    ))
+
+    apparent_predictions <- as.numeric(
+        stats::predict(fitted_model, newx = design_matrix, s = "lambda.min", type = "response")
+    )
+    cv_predictions <- cross_validate_binary_predictions(
+        data,
+        outcome_var = outcome_var,
+        predictors = predictors,
+        seed = seed
+    )
+    calibration <- summarize_binary_calibration(outcome, apparent_predictions)
+    coefficient_data <- extract_binary_model_coefficients(fitted_model, predictors = predictors)
+    predictor_contributions <- summarize_predictor_contributions(coefficient_data, model_name = model_name)
 
     metrics <- tibble::tibble(
         model = model_name,
         n = nrow(data),
-        events = sum(data[[outcome_var]] == 1, na.rm = TRUE),
-        apparent_auc = calculate_binary_auc(data[[outcome_var]], apparent_predictions),
-        cv_auc = calculate_binary_auc(data[[outcome_var]], cv_predictions),
-        apparent_brier = calculate_binary_brier(data[[outcome_var]], apparent_predictions),
-        cv_brier = calculate_binary_brier(data[[outcome_var]], cv_predictions),
+        events = sum(outcome == 1, na.rm = TRUE),
+        apparent_auc = calculate_binary_auc(outcome, apparent_predictions),
+        cv_auc = calculate_binary_auc(outcome, cv_predictions),
+        apparent_brier = calculate_binary_brier(outcome, apparent_predictions),
+        cv_brier = calculate_binary_brier(outcome, cv_predictions),
         calibration_status = calibration$status,
         calibration_intercept = calibration$intercept,
-        calibration_slope = calibration$slope
+        calibration_slope = calibration$slope,
+        cv_folds = cv_folds,
+        lambda_min = fitted_model$lambda.min,
+        lambda_1se = fitted_model$lambda.1se
     )
 
     list(
         model = fitted_model,
         metrics = metrics,
-        coefficients = extract_binary_model_coefficients(fitted_model),
-        calibration_curve = calibration$curve
+        coefficients = coefficient_data,
+        predictor_contributions = predictor_contributions,
+        calibration_curve = calibration$curve,
+        predictors = predictors,
+        design_columns = colnames(design_matrix)
     )
 }
 
@@ -746,6 +1101,27 @@ create_model_workbook_tab <- function(model_results) {
         dplyr::mutate(section = "calibration_curve")
 
     dplyr::bind_rows(metrics_section, coefficient_section, calibration_section)
+}
+
+#' Predict from an Exploratory Ridge Model
+#'
+#' Aligns new-data design columns to the model's training matrix and returns
+#' predicted probabilities at `lambda.min`.
+#'
+#' @param model_results Output from `fit_exploratory_binary_model()`.
+#' @param newdata New data frame for prediction.
+#'
+#' @return Numeric vector of predicted probabilities.
+predict_exploratory_binary_model <- function(model_results, newdata) {
+    new_design <- build_exploratory_design_matrix(
+        newdata,
+        predictors = model_results$predictors,
+        reference_columns = model_results$design_columns
+    )
+
+    as.numeric(
+        stats::predict(model_results$model, newx = new_design, s = "lambda.min", type = "response")
+    )
 }
 
 #' Summarize No-GEP Patient-Level Predictions
@@ -1014,6 +1390,105 @@ create_event_rate_bin_plot <- function(summary_data, analysis_name, event_col, p
     invisible(output_path)
 }
 
+#' Prepend Short Guide Text to a Workbook Sheet
+#'
+#' @param sheet_data Data frame to be written to the workbook.
+#' @param guide_lines Character vector of helper text lines.
+#'
+#' @return A data frame with guide rows prepended.
+prepend_sheet_guide <- function(sheet_data, guide_lines) {
+    guide_frame <- tibble::tibble(
+        section = "guide",
+        guide_text = guide_lines
+    )
+
+    dplyr::bind_rows(guide_frame, sheet_data)
+}
+
+#' Create the Workbook Summary and Guide Tab
+#'
+#' @param prepared_data Prepared exploratory data bundle.
+#' @param surrogate_model Surrogate model bundle.
+#' @param mfs_model Direct MFS model bundle.
+#' @param mss_model Direct MSS model bundle.
+#' @param no_gep_summary No-GEP group summary table.
+#'
+#' @return A summary-and-guide data frame.
+create_exploratory_summary_guide_tab <- function(prepared_data,
+                                                 surrogate_model,
+                                                 mfs_model,
+                                                 mss_model,
+                                                 no_gep_summary) {
+    top_surrogate <- surrogate_model$predictor_contributions %>% dplyr::slice_head(n = 3)
+    top_mfs <- mfs_model$predictor_contributions %>% dplyr::slice_head(n = 3)
+    top_mss <- mss_model$predictor_contributions %>% dplyr::slice_head(n = 3)
+
+    summary_rows <- tibble::tribble(
+        ~section, ~item, ~detail,
+        "What was computed", "Surrogate model", "Ridge-penalized logistic model trained only on patients with definitive Class 1 or Class 2 GEP results. It learns which baseline clinical features are more typical of the observed Class 1 and Class 2 groups, then gives each no-GEP patient a clinical resemblance probability showing how much their baseline profile looks like the observed Class 2 pattern rather than the observed Class 1 pattern in this cohort.",
+        "What was computed", "Direct MFS model", "Ridge-penalized logistic model estimating 5-year metastasis risk in the full eligible cohort.",
+        "What was computed", "Direct MSS model", "Ridge-penalized logistic model estimating 5-year melanoma-specific death risk in the full eligible cohort.",
+        "Primary findings", "Molecular reassignment", "The surrogate output is a clinical resemblance score anchored to definitive Class 1 and Class 2 patients. It is descriptive only and should not be treated as a recovered molecular class label.",
+        "Primary findings", "Direct risk use", "Direct MFS/MSS outputs are the primary clinically usable outputs for no-GEP patients.",
+        "How to interpret", "AUC", "AUC near 0.5 means poor discrimination; 0.6 to 0.7 means modest but usable ranking; >0.7 is stronger separation.",
+        "How to interpret", "Calibration", "Calibration slope/intercept summarize whether predicted risks are systematically too high or too low; sparse data can limit interpretation.",
+        "How to interpret", "Density plots", "A right-shifted density indicates a subgroup receiving higher predicted risk overall.",
+        "How to interpret", "Bin plots", "Observed event rates should generally increase from low to high predicted-risk bins if ranking is clinically useful.",
+        "How to interpret", "Individual use", "Treat patient-level predictions as exploratory risk support. The surrogate score answers which known class pattern a patient looks more like clinically, not what their true assay result must have been."
+    )
+
+    metric_rows <- tibble::tribble(
+        ~section, ~item, ~detail,
+        "Key metrics", "Surrogate CV AUC", sprintf("%.3f", surrogate_model$metrics$cv_auc[[1]]),
+        "Key metrics", "Direct MFS CV AUC", sprintf("%.3f", mfs_model$metrics$cv_auc[[1]]),
+        "Key metrics", "Direct MSS CV AUC", sprintf("%.3f", mss_model$metrics$cv_auc[[1]]),
+        "Key metrics", "Failed/Indeterminate median 5-year MFS risk", sprintf("%.3f", no_gep_summary$median_predicted_mfs_5yr_risk[no_gep_summary$no_gep_group == "GEP Failed/Indeterminate"]),
+        "Key metrics", "Not Tested median 5-year MFS risk", sprintf("%.3f", no_gep_summary$median_predicted_mfs_5yr_risk[no_gep_summary$no_gep_group == "GEP Not Tested"])
+    )
+
+    top_rows <- dplyr::bind_rows(
+        top_surrogate %>% dplyr::transmute(section = "Top predictors", item = paste0("Surrogate rank ", .data$rank), detail = sprintf("%s (%s)", .data$predictor, .data$direction)),
+        top_mfs %>% dplyr::transmute(section = "Top predictors", item = paste0("Direct MFS rank ", .data$rank), detail = sprintf("%s (%s)", .data$predictor, .data$direction)),
+        top_mss %>% dplyr::transmute(section = "Top predictors", item = paste0("Direct MSS rank ", .data$rank), detail = sprintf("%s (%s)", .data$predictor, .data$direction))
+    )
+
+    predictor_rows <- dplyr::bind_rows(
+        prepared_data$predictor_screening %>%
+            dplyr::filter(.data$status == "retained") %>%
+            dplyr::transmute(section = "Predictor screening", item = paste0("Retained: ", .data$predictor), detail = .data$reason),
+        prepared_data$predictor_screening %>%
+            dplyr::filter(.data$status == "dropped") %>%
+            dplyr::transmute(section = "Predictor screening", item = paste0("Dropped: ", .data$predictor), detail = .data$reason)
+    )
+
+    dplyr::bind_rows(summary_rows, metric_rows, top_rows, predictor_rows)
+}
+
+#' Create the Predictor Contribution Workbook Tab
+#'
+#' @param prepared_data Prepared exploratory data bundle.
+#' @param surrogate_model Surrogate model bundle.
+#' @param mfs_model Direct MFS model bundle.
+#' @param mss_model Direct MSS model bundle.
+#'
+#' @return A workbook-ready contribution table.
+create_predictor_contribution_tab <- function(prepared_data,
+                                              surrogate_model,
+                                              mfs_model,
+                                              mss_model) {
+    screening_section <- prepared_data$predictor_screening %>%
+        dplyr::mutate(section = "predictor_screening")
+
+    contribution_section <- dplyr::bind_rows(
+        surrogate_model$predictor_contributions,
+        mfs_model$predictor_contributions,
+        mss_model$predictor_contributions
+    ) %>%
+        dplyr::mutate(section = "model_contribution")
+
+    dplyr::bind_rows(screening_section, contribution_section)
+}
+
 #' Write the Exploratory No-GEP Narrative Summary
 #'
 #' Generates the short reader-facing text summary that accompanies the workbook.
@@ -1031,6 +1506,7 @@ create_event_rate_bin_plot <- function(summary_data, analysis_name, event_col, p
 create_exploratory_no_gep_summary_text <- function(dataset_name,
                                                    data_audit,
                                                    baseline_summary,
+                                                   predictor_screening,
                                                    surrogate_model,
                                                    mfs_model,
                                                    mss_model,
@@ -1038,6 +1514,29 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
                                                    output_path) {
     failed_row <- no_gep_summary %>% dplyr::filter(.data$no_gep_group == "GEP Failed/Indeterminate")
     not_tested_row <- no_gep_summary %>% dplyr::filter(.data$no_gep_group == "GEP Not Tested")
+    retained_predictors <- predictor_screening %>%
+        dplyr::filter(.data$status == "retained") %>%
+        dplyr::pull(.data$predictor)
+    dropped_predictors <- predictor_screening %>%
+        dplyr::filter(.data$status == "dropped") %>%
+        dplyr::transmute(text = sprintf("%s (%s)", .data$predictor, .data$reason)) %>%
+        dplyr::pull(.data$text)
+    top_surrogate <- surrogate_model$predictor_contributions %>%
+        dplyr::slice_head(n = 3) %>%
+        dplyr::transmute(text = sprintf("%s [%s]", .data$predictor, .data$direction)) %>%
+        dplyr::pull(.data$text)
+    top_mfs <- mfs_model$predictor_contributions %>%
+        dplyr::slice_head(n = 3) %>%
+        dplyr::transmute(text = sprintf("%s [%s]", .data$predictor, .data$direction)) %>%
+        dplyr::pull(.data$text)
+    top_mss <- mss_model$predictor_contributions %>%
+        dplyr::slice_head(n = 3) %>%
+        dplyr::transmute(text = sprintf("%s [%s]", .data$predictor, .data$direction)) %>%
+        dplyr::pull(.data$text)
+
+    best_baseline_row <- baseline_summary %>%
+        dplyr::filter(is.finite(.data$p_value)) %>%
+        dplyr::slice_min(.data$p_value, n = 1, with_ties = FALSE)
 
     summary_lines <- c(
         "EXPLORATORY NO-GEP RISK REPORT",
@@ -1045,12 +1544,15 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
         "",
         sprintf("Dataset: %s", dataset_name),
         "",
-        "Purpose:",
-        "Estimate direct MFS/MSS risk for patients without usable GEP while reporting surrogate Class 2-like probability as a secondary descriptive measure.",
+        "What was computed:",
+        "- A ridge-penalized surrogate model was trained only on patients with definitive Class 1 or Class 2 GEP results.",
+        "- That model learned what the baseline clinical patterns of the observed Class 1 and Class 2 patients looked like in this cohort, then assigned each no-GEP patient a Class 2-like clinical resemblance probability from those baseline features.",
+        "- Two ridge-penalized direct clinical models estimated 5-year MFS and 5-year MSS risk using baseline variables available without a usable GEP result.",
         "",
         "Interpretation guardrails:",
         "- This report improves clinical risk assessment; it does not claim to recover the true molecular GEP class.",
         "- GEP Failed/Indeterminate and GEP Not Tested are reported separately because they behave like distinct clinical populations.",
+        "- The surrogate output should be read as: among patients with known Class 1 and Class 2 results, which known clinical pattern does this no-GEP patient look more like?",
         "",
         "Data audit highlights:",
         sprintf(
@@ -1073,6 +1575,11 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
             mss_model$metrics$cv_auc[1]
         ),
         "",
+        "Result interpretation:",
+        "- The surrogate Class 2-like model is a clinical resemblance score only and shows only modest discrimination, so it should not be used to relabel patients as true Class 1 or Class 2.",
+        "- The direct MFS/MSS models provide moderate risk stratification and are the preferred outputs when a patient has no usable GEP.",
+        "- Higher predicted-risk bins should be interpreted as clinically higher-risk groups, not as precise deterministic individual forecasts.",
+        "",
         "No-GEP prediction summary:",
         sprintf(
             "- Failed/Indeterminate: median Class 2-like probability %.3f, median predicted 5-year MFS risk %.3f, median predicted 5-year MSS risk %.3f",
@@ -1087,19 +1594,30 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
             not_tested_row$median_predicted_mss_5yr_risk[[1]]
         ),
         "",
-        "Predictor set used in all exploratory models:",
-        "- age at diagnosis",
-        "- initial tumor height",
-        "- initial tumor diameter",
-        "- ciliary involvement/location",
-        "- optic nerve involvement",
+        "Retained baseline predictors used in all exploratory models:",
+        paste0("- ", retained_predictors),
         "",
-        "Baseline comparison note:",
+        "Dropped candidate predictors:",
+        if (length(dropped_predictors) > 0) paste0("- ", dropped_predictors) else "- None",
+        "",
+        "Best predictors by penalized contribution:",
+        sprintf("- Surrogate Class 2-like: %s", paste(top_surrogate, collapse = ", ")),
+        sprintf("- Direct 5-year MFS: %s", paste(top_mfs, collapse = ", ")),
+        sprintf("- Direct 5-year MSS: %s", paste(top_mss, collapse = ", ")),
+        "",
+        "Baseline separation note:",
         sprintf(
-            "- The strongest 4-group separation in the fixed predictor set was %s (p=%s).",
-            baseline_summary$variable[[which.min(dplyr::coalesce(baseline_summary$p_value, Inf))]],
-            format_gep_p_value(min(baseline_summary$p_value, na.rm = TRUE))
+            "- The strongest 4-group separation among candidate baseline predictors was %s (p=%s).",
+            best_baseline_row$variable[[1]],
+            format_gep_p_value(best_baseline_row$p_value[[1]])
         )
+    )
+
+    summary_lines <- c(
+        summary_lines,
+        "",
+        "Ciliary coding note:",
+        "- Ciliary involvement is now derived from location values containing 'Cilio' or 'Ciliary'. The earlier all-zero derivation was incorrect because the source data encode this location as 'Cilio-Choroidal'."
     )
 
     writeLines(summary_lines, output_path)
@@ -1186,19 +1704,14 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
         model_name = "Surrogate Class 2 Probability"
     )
 
-    mfs_model_data <- full_data %>%
-        dplyr::filter(stats::complete.cases(dplyr::across(all_of(c(prepared_data$predictors, "mfs_event_5yr")))))
-    mss_model_data <- full_data %>%
-        dplyr::filter(stats::complete.cases(dplyr::across(all_of(c(prepared_data$predictors, "mss_event_5yr")))))
-
     direct_mfs_model <- fit_exploratory_binary_model(
-        mfs_model_data,
+        prepared_data$mfs_model_data,
         outcome_var = "mfs_event_5yr",
         predictors = prepared_data$predictors,
         model_name = "Direct 5-Year MFS Risk"
     )
     direct_mss_model <- fit_exploratory_binary_model(
-        mss_model_data,
+        prepared_data$mss_model_data,
         outcome_var = "mss_event_5yr",
         predictors = prepared_data$predictors,
         model_name = "Direct 5-Year MSS Risk"
@@ -1206,9 +1719,9 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
 
     no_gep_predictions <- prepared_data$no_gep_prediction %>%
         dplyr::mutate(
-            surrogate_class2_probability = stats::predict(surrogate_model$model, newdata = ., type = "response"),
-            predicted_mfs_5yr_risk = stats::predict(direct_mfs_model$model, newdata = ., type = "response"),
-            predicted_mss_5yr_risk = stats::predict(direct_mss_model$model, newdata = ., type = "response")
+            surrogate_class2_probability = predict_exploratory_binary_model(surrogate_model, .),
+            predicted_mfs_5yr_risk = predict_exploratory_binary_model(direct_mfs_model, .),
+            predicted_mss_5yr_risk = predict_exploratory_binary_model(direct_mss_model, .)
         ) %>%
         dplyr::mutate(
             surrogate_probability_bin = create_quantile_bins(.data$surrogate_class2_probability),
@@ -1217,38 +1730,92 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
         )
 
     patient_id_col <- prepared_data$patient_id_col
-    no_gep_predictions_sheet <- no_gep_predictions %>%
-        dplyr::transmute(
-            patient_id = if (!is.null(patient_id_col)) .data[[patient_id_col]] else seq_len(dplyr::n()),
-            no_gep_group = .data$no_gep_group,
-            age_at_diagnosis = .data$age_at_diagnosis,
-            initial_tumor_height = .data$initial_tumor_height,
-            initial_tumor_diameter = .data$initial_tumor_diameter,
-            ciliary_involvement = .data$ciliary_involvement,
-            optic_nerve_involvement = .data$optic_nerve_involvement,
-            mfs_event_5yr = .data$mfs_event_5yr,
-            mss_event_5yr = .data$mss_event_5yr,
-            surrogate_class2_probability = .data$surrogate_class2_probability,
-            surrogate_probability_bin = .data$surrogate_probability_bin,
-            predicted_mfs_5yr_risk = .data$predicted_mfs_5yr_risk,
-            mfs_risk_bin = .data$mfs_risk_bin,
-            predicted_mss_5yr_risk = .data$predicted_mss_5yr_risk,
-            mss_risk_bin = .data$mss_risk_bin
-        )
+    patient_id_values <- if (!is.null(patient_id_col)) {
+        no_gep_predictions[[patient_id_col]]
+    } else {
+        seq_len(nrow(no_gep_predictions))
+    }
+    no_gep_predictions_sheet <- dplyr::bind_cols(
+        tibble::tibble(patient_id = patient_id_values),
+        no_gep_predictions %>%
+            dplyr::select(
+                no_gep_group,
+                dplyr::any_of(prepared_data$predictors),
+                ciliary_involvement,
+                mfs_event_5yr,
+                mss_event_5yr,
+                surrogate_class2_probability,
+                surrogate_probability_bin,
+                predicted_mfs_5yr_risk,
+                mfs_risk_bin,
+                predicted_mss_5yr_risk,
+                mss_risk_bin
+            )
+    )
 
     no_gep_summary <- summarize_no_gep_predictions(no_gep_predictions)
     sensitivity_summary <- summarize_pooled_no_gep_sensitivity(no_gep_predictions)
+    summary_guide <- create_exploratory_summary_guide_tab(
+        prepared_data = prepared_data,
+        surrogate_model = surrogate_model,
+        mfs_model = direct_mfs_model,
+        mss_model = direct_mss_model,
+        no_gep_summary = no_gep_summary
+    )
+    predictor_contribution <- create_predictor_contribution_tab(
+        prepared_data = prepared_data,
+        surrogate_model = surrogate_model,
+        mfs_model = direct_mfs_model,
+        mss_model = direct_mss_model
+    )
 
     workbook_data <- list(
+        Summary_and_Guide = summary_guide,
+        Predictor_Contribution = predictor_contribution,
         Data_Audit = data_audit,
         Baseline_Comparisons = baseline_summary,
         KM_Corrected_MFS = km_corrected_mfs,
         KM_Corrected_MSS = km_corrected_mss,
-        Surrogate_Class2_Model = create_model_workbook_tab(surrogate_model),
-        Direct_MFS_Risk_Model = create_model_workbook_tab(direct_mfs_model),
-        Direct_MSS_Risk_Model = create_model_workbook_tab(direct_mss_model),
-        No_GEP_Predictions = no_gep_predictions_sheet,
-        Sensitivity_Pooled_No_GEP = sensitivity_summary
+        Surrogate_Class2_Model = prepend_sheet_guide(
+            create_model_workbook_tab(surrogate_model),
+            c(
+                "Surrogate Class 2-like probability is a clinical resemblance score based on known Class 1 versus Class 2 baseline patterns; it is not equivalent to true molecular class reassignment.",
+                "Metrics summarize how well baseline features distinguish the known classes in this cohort; coefficients are ridge-shrunken terms for directionality and ranking, not p-value-based inference.",
+                sprintf("Retained predictors: %s", paste(prepared_data$predictors, collapse = ", "))
+            )
+        ),
+        Direct_MFS_Risk_Model = prepend_sheet_guide(
+            create_model_workbook_tab(direct_mfs_model),
+            c(
+                "This is the primary direct-risk model for 5-year metastasis-free survival in patients with no usable GEP.",
+                "Use CV AUC/Brier and calibration rows to judge overall support; use predictor contributions for ranked driver summaries.",
+                sprintf("Retained predictors: %s", paste(prepared_data$predictors, collapse = ", "))
+            )
+        ),
+        Direct_MSS_Risk_Model = prepend_sheet_guide(
+            create_model_workbook_tab(direct_mss_model),
+            c(
+                "This is the primary direct-risk model for 5-year melanoma-specific survival risk in patients with no usable GEP.",
+                "Sparse event support can weaken MSS calibration and make interpretation more cautious than MFS.",
+                sprintf("Retained predictors: %s", paste(prepared_data$predictors, collapse = ", "))
+            )
+        ),
+        No_GEP_Predictions = prepend_sheet_guide(
+            no_gep_predictions_sheet,
+            c(
+                "Each row is a patient with failed/indeterminate or not-tested GEP and baseline-only exploratory predictions.",
+                "Surrogate Class 2-like probability answers which known definitive-GEP clinical pattern the patient resembles more; direct MFS/MSS risks are the main clinically usable outputs.",
+                "Risk bins are pooled low/intermediate/high quantile groupings used for descriptive calibration checks."
+            )
+        ),
+        Sensitivity_Pooled_No_GEP = prepend_sheet_guide(
+            sensitivity_summary,
+            c(
+                "This sheet pools failed/indeterminate and not-tested patients only for sensitivity summaries.",
+                "Higher observed event rates across bins support useful risk ordering, but this is still exploratory internal validation.",
+                "Primary interpretation should stay with the separate subgroup summaries rather than the pooled rows alone."
+            )
+        )
     )
 
     workbook_path <- file.path(output_dir, "full_cohort_exploratory_no_gep_report.xlsx")
@@ -1259,6 +1826,7 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
         dataset_name = dataset_name,
         data_audit = data_audit,
         baseline_summary = baseline_summary,
+        predictor_screening = prepared_data$predictor_screening,
         surrogate_model = surrogate_model,
         mfs_model = direct_mfs_model,
         mss_model = direct_mss_model,
@@ -1337,6 +1905,8 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
             mfs = direct_mfs_model,
             mss = direct_mss_model
         ),
+        predictor_contribution = predictor_contribution,
+        summary_and_guide = summary_guide,
         no_gep_summary = no_gep_summary,
         no_gep_predictions = no_gep_predictions_sheet,
         sensitivity_summary = sensitivity_summary,

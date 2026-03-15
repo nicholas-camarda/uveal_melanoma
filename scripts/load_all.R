@@ -107,6 +107,7 @@ use("pROC") # ROC analysis
 use("rmda") # Risk-model decision analysis
 use("VIM") # Visualization & imputation of missing values
 use("mice") # Multiple imputation by chained equations
+use("glmnet") # Penalized generalized linear models for exploratory no-GEP models
 
 ######################################################################
 ############### SOURCE ALL NECESSARY SCRIPTS #########################

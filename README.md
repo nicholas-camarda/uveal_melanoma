@@ -150,6 +150,14 @@ For Objective 4, the current artifact hierarchy is:
 3. cross-outcome workbook at the root of `04_GEP_Validation/`: `*unified_gep_validation_summary.xlsx`
 4. simple QC workbook in `04_GEP_Validation/unified_summary/`: `*simple_gep_validation.xlsx`
 
+Objective 4 also contains an exploratory standalone no-GEP report under `04_GEP_Validation/d_exploratory_no_gep/`. This is intentionally separate from the production Objective 4 validation outputs. It generates:
+
+1. `full_cohort_exploratory_no_gep_report.xlsx` with guide text, model summaries, predictor contributions, and patient-level no-GEP predictions
+2. `full_cohort_exploratory_no_gep_summary.txt` with a concise interpretation of what the exploratory models do and do not support
+3. `plots/` with corrected no-GEP KM/CIF displays, prediction-density plots, and observed-event-rate-by-bin checks
+
+The exploratory no-GEP report uses baseline clinicopathologic variables to estimate direct 5-year MFS/MSS risk for `GEP Failed/Indeterminate` and `GEP Not Tested` patients, plus a secondary surrogate `Class 2-like` probability. It is meant to support clinical risk stratification when no usable GEP exists; it does not recover the true molecular assay result.
+
 Objective 4 validates externally supplied lab-reported GEP survival probabilities for MFS and MSS. The pipeline copies the lab-reported 5-year survival values (`biopsy1_gep_mfs` and `biopsy1_gep_mss`) into the 5-year `expected_*` columns, then derives the 7-year and 10-year values from those same 5-year probabilities during preprocessing using an exponential-decay extrapolation: `expected_7yr = (5-year survival)^(7/5)` and `expected_10yr = (5-year survival)^(10/5)`. It then converts survival to event risk for observed-vs-expected, calibration, discrimination, and decision-curve analyses. Objective 4 does not fit a new prognostic model to generate the base GEP predictions. MSS uses melanoma-specific death as the primary event definition, with competing non-melanoma death handled in the companion competing-risk analyses.
 
 Objective 4 grouping choices are now centralized in `scripts/utils/config_constants.R` through `GEP_GROUPING_SPECS` and `GEP_OBJECTIVE4_GROUPING`, so switching reader-facing or technical GEP grouping variables should no longer require broad search-and-replace edits across orchestration, reporting, and visualization code.
@@ -205,7 +213,7 @@ gtsummary, gt, forestploter, ggplot2
 ### Advanced Packages (for GEP validation)
 
 ```r
-rms, pec, riskRegression, cmprsk, pROC, rmda
+rms, pec, riskRegression, cmprsk, pROC, rmda, glmnet
 ```
 
 📦 **Automatic installation via `scripts/load_all.R`**

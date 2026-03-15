@@ -556,6 +556,51 @@ The main Objective 4 denominator is deliberately stricter than “any row with a
 | Timepoints | Driven by `GEP_VALIDATION_TIMEPOINTS` (defaults: 5, 7, 10 years). Every sheet carries one row per timepoint requested. |
 | How to regenerate | Run Objective 4 via `run_specific_objective("uveal_melanoma_<cohort>", 4)` or the full pipeline. New runs overwrite existing workbooks after passing QC. |
 
+### How to Read the Exploratory No-GEP Workbook
+
+The exploratory no-GEP workbook lives in `04_GEP_Validation/d_exploratory_no_gep/` and is separate from the main Objective 4 validation workbooks. It is designed for patients with `GEP Failed/Indeterminate` or `GEP Not Tested`, where the question is not “did the imported GEP prediction validate?” but rather “what baseline risk estimate is still supportable without a usable GEP result?”
+
+Use this reading order:
+
+1. Start with `Summary_and_Guide`.
+  - This tab says what was computed, what the main findings were, and how cautious the interpretation should be.
+  - If the summary says the surrogate model is only modest, do not treat the surrogate probability as a recovered Class 1 or Class 2 call.
+  - Read the surrogate output as: among patients with known Class 1 and Class 2 results, which known clinical pattern does this no-GEP patient look more like?
+2. Read `Predictor_Contribution`.
+  - This tab shows which retained baseline predictors are doing the most work in the exploratory models.
+  - Larger absolute ridge coefficients mean stronger contribution to the model's risk ordering, not stronger statistical proof.
+3. Check `Surrogate_Class2_Model`, `Direct_MFS_Risk_Model`, and `Direct_MSS_Risk_Model`.
+  - `CV AUC` tells you whether the model can rank higher-risk versus lower-risk patients better than chance.
+  - `CV Brier` gives a compact overall prediction-error summary.
+  - Calibration rows tell you whether risks are systematically too high or too low, when the data are rich enough to estimate that reliably.
+4. Read `No_GEP_Predictions`.
+  - This is the patient-level output for the two no-GEP groups.
+  - `surrogate_class2_probability` is descriptive only.
+  - It is a clinical resemblance score showing how much the patient's baseline profile resembles the observed Class 2 pattern versus the observed Class 1 pattern in the definitive-GEP reference set.
+  - `predicted_mfs_5yr_risk` and `predicted_mss_5yr_risk` are the main clinically usable outputs.
+5. Read `Sensitivity_Pooled_No_GEP`.
+  - This checks whether pooled low/intermediate/high predicted-risk bins show increasing observed event rates.
+  - If observed event rates increase across bins, the model is at least ordering patients in a clinically meaningful direction.
+
+How to interpret the exploratory plots:
+
+- Corrected KM/CIF plots:
+  - These show where `GEP Failed/Indeterminate` and `GEP Not Tested` sit relative to definitive `Class 1` and `Class 2`.
+  - An intermediate curve suggests an intermediate-risk phenotype at the group level.
+- Density plots:
+  - A right-shifted density means the subgroup is receiving higher predicted probability overall.
+  - If `GEP Failed/Indeterminate` is shifted to the right of `GEP Not Tested`, it suggests the failed group is clinically higher risk on the retained baseline features.
+- Event-rate-by-bin plots:
+  - These are a practical check on risk ordering.
+  - Rising observed event rates from low to high bins support useful stratification.
+
+Plain-English bottom line:
+
+- The exploratory workbook is best used to support direct baseline risk estimation when GEP is unavailable.
+- The surrogate score is best used to say which definitive-GEP clinical pattern a no-GEP patient looks more like, not to say what their true molecular class was.
+- It should not be used to claim true molecular reclassification.
+- Group-level separation is usually more reliable than any single patient-level probability.
+
 ### Shared Conventions
 
 - **`N`** counts patients who contribute data at that horizon after censoring, predictor filtering, and the definitive-label eligibility rule. For Objective 4, this means only analyzable raw Class 1 / Class 2 DecisionDx calls with valid endpoint-specific imported GEP probabilities enter the main MFS and MSS validation subsets.
