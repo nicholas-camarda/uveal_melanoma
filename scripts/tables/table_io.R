@@ -196,10 +196,6 @@ save_table_outputs <- function(table_result, raw_output, model_fit, analysis_nam
                     addWorksheet(wb, "Sparse_level_diagnostics")
                     writeData(wb, "Sparse_level_diagnostics", diagnostics$sparse_level_diagnostics)
                 }
-                if (!is.null(diagnostics$excluded_rows)) {
-                    addWorksheet(wb, "Excluded_Rows")
-                    writeData(wb, "Excluded_Rows", diagnostics$excluded_rows)
-                }
                 if (!is.null(diagnostics$raw_model_output)) {
                     addWorksheet(wb, "Raw_model_output")
                     if (is.data.frame(diagnostics$raw_model_output)) {

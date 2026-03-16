@@ -71,11 +71,8 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
         raw_model_output_tab, filtered_variables, extreme_diagnostics, factor_label_pvalues_tab
     )
 
-    # === UNIFIED EXCLUDED ROWS ===
-    excluded_rows_tab <- create_excluded_rows_tab(raw_model_output_tab)
-
     # === UNIFIED FILTERING SUMMARY ===
-    filtering_summary_tab <- create_filtering_summary_tab(raw_model_output_tab, excluded_rows_tab, conf_int, predictor_vars)
+    filtering_summary_tab <- create_filtering_summary_tab(raw_model_output_tab, conf_int, predictor_vars)
 
     # === UNIFIED REFERENCE LEVELS ===
     reference_levels_tab <- create_reference_levels_tab(extreme_diagnostics)
@@ -91,7 +88,6 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
         model_diagnostics_tab = model_diagnostics_tab,
         data_characteristics = data_characteristics_tab,
         sparse_level_diagnostics = sparse_level_diagnostics_tab,
-        excluded_rows = excluded_rows_tab,
         raw_model_output = raw_model_output_tab,
         filtering_summary = filtering_summary_tab,
         reference_levels = reference_levels_tab,
@@ -848,52 +844,11 @@ apply_filtering_logic <- function(raw_model_output_tab, filtered_variables, extr
     return(raw_model_output_tab)
 }
 
-#' Create excluded rows table
-create_excluded_rows_tab <- function(raw_model_output_tab) {
-    excluded_mask <- raw_model_output_tab$inclusion_status == "Filtered"
-    if (any(excluded_mask)) {
-        data.frame(
-            variable_base = raw_model_output_tab$variable_base[excluded_mask],
-            variable = raw_model_output_tab$variable[excluded_mask],
-            raw_coefficient = raw_model_output_tab$raw_coefficient[excluded_mask],
-            raw_ci_lower = raw_model_output_tab$raw_ci_lower[excluded_mask],
-            raw_ci_upper = raw_model_output_tab$raw_ci_upper[excluded_mask],
-            hazard_ratio = raw_model_output_tab$hazard_ratio[excluded_mask],
-            hr_ci_lower = raw_model_output_tab$hr_ci_lower[excluded_mask],
-            hr_ci_upper = raw_model_output_tab$hr_ci_upper[excluded_mask],
-            odds_ratio = raw_model_output_tab$odds_ratio[excluded_mask],
-            or_ci_lower = raw_model_output_tab$or_ci_lower[excluded_mask],
-            or_ci_upper = raw_model_output_tab$or_ci_upper[excluded_mask],
-            p_value = raw_model_output_tab$p_value[excluded_mask],
-            row_type = raw_model_output_tab$row_type[excluded_mask],
-            exclusion_reason = raw_model_output_tab$filtering_reason[excluded_mask],
-            stringsAsFactors = FALSE
-        )
-    } else {
-        data.frame(
-            term = character(),
-            variable = character(),
-            label = character(),
-            estimate = numeric(),
-            conf_low = numeric(),
-            conf_high = numeric(),
-            exclusion_reason = character(),
-            stringsAsFactors = FALSE
-        )
-    }
-}
-
 #' Create filtering summary table
-create_filtering_summary_tab <- function(raw_model_output_tab, excluded_rows_tab, conf_int, predictor_vars) {
+create_filtering_summary_tab <- function(raw_model_output_tab, conf_int, predictor_vars) {
     coefficient_mask <- raw_model_output_tab$row_type == "Coefficient"
     filtered_count <- sum(raw_model_output_tab$inclusion_status == "Filtered" & coefficient_mask, na.rm = TRUE)
     remaining_count <- sum(raw_model_output_tab$inclusion_status == "Included" & coefficient_mask, na.rm = TRUE)
-    excluded_count <- if (nrow(excluded_rows_tab) > 0) {
-        length(unique(excluded_rows_tab$variable[excluded_rows_tab$row_type == "Coefficient" & !is.na(excluded_rows_tab$variable)]))
-    } else {
-        0
-    }
-    final_filtered_count <- max(filtered_count, excluded_count)
 
     main_predictor_filtered <- FALSE
     if (!is.null(predictor_vars) && length(predictor_vars) > 0) {
@@ -920,8 +875,8 @@ create_filtering_summary_tab <- function(raw_model_output_tab, excluded_rows_tab
 
     data.frame(
         total_coefficients = sum(coefficient_mask, na.rm = TRUE),
-        extreme_estimates_removed = final_filtered_count,
-        rows_removed = final_filtered_count,
+        extreme_estimates_removed = filtered_count,
+        rows_removed = filtered_count,
         sparse_table_warning = FALSE,
         confint_error = all(is.na(conf_int)),
         remaining_coefficients = remaining_count,
