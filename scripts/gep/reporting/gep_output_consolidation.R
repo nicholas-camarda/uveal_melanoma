@@ -642,10 +642,12 @@ create_comprehensive_text_summary <- function(validation_results, outcome_type,
 #'
 #' @param mfs_results MFS validation results
 #' @param mss_results MSS validation results
+#' @param no_gep_results Optional exploratory no-GEP summary object for the full
+#'   cohort. When provided, compact no-GEP comparison sheets are appended.
 #' @param output_dir Output directory
 #' @param prefix Filename prefix
 #' @return List of created summary files
-create_unified_gep_validation_summary <- function(mfs_results, mss_results, output_dir, prefix) {
+create_unified_gep_validation_summary <- function(mfs_results, mss_results, output_dir, prefix, no_gep_results = NULL) {
     logger::log_info(formatted("Creating unified GEP validation summary to eliminate redundancy", indent = 1))
 
     # Create unified calibration comparison
@@ -723,6 +725,17 @@ create_unified_gep_validation_summary <- function(mfs_results, mss_results, outp
     if (nrow(unified_disc) > 0) unified_workbook[["Discrimination_Comparison"]] <- unified_disc
     if (nrow(unified_prame) > 0) unified_workbook[["PRAME_Comparison"]] <- unified_prame
     if (nrow(unified_missing) > 0) unified_workbook[["Missing_Data_Comparison"]] <- unified_missing
+    if (!is.null(no_gep_results)) {
+        if (!is.null(no_gep_results$unified_no_gep_overview) && nrow(no_gep_results$unified_no_gep_overview) > 0) {
+            unified_workbook[["No_GEP_Overview"]] <- no_gep_results$unified_no_gep_overview
+        }
+        if (!is.null(no_gep_results$unified_no_gep_model_comparison) && nrow(no_gep_results$unified_no_gep_model_comparison) > 0) {
+            unified_workbook[["No_GEP_Model_Comparison"]] <- no_gep_results$unified_no_gep_model_comparison
+        }
+        if (!is.null(no_gep_results$unified_no_gep_risk_strata) && nrow(no_gep_results$unified_no_gep_risk_strata) > 0) {
+            unified_workbook[["No_GEP_Risk_Strata"]] <- no_gep_results$unified_no_gep_risk_strata
+        }
+    }
 
     # Save unified workbook
     if (length(unified_workbook) > 0) {
@@ -740,6 +753,9 @@ create_unified_gep_validation_summary <- function(mfs_results, mss_results, outp
     return(list(
         calibration = unified_cal,
         discrimination = unified_disc,
+        no_gep_overview = no_gep_results$unified_no_gep_overview %||% data.frame(),
+        no_gep_model_comparison = no_gep_results$unified_no_gep_model_comparison %||% data.frame(),
+        no_gep_risk_strata = no_gep_results$unified_no_gep_risk_strata %||% data.frame(),
         text_summary = unified_text
     ))
 }

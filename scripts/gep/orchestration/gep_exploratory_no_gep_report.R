@@ -1198,6 +1198,357 @@ summarize_pooled_no_gep_sensitivity <- function(prediction_data) {
     )
 }
 
+#' Summarize No-GEP Risk Strata by Subgroup
+#'
+#' Produces tidy subgroup-by-bin summaries for the surrogate and direct-risk
+#' outputs so the same summaries can feed both the appendix workbook and the
+#' compact Objective 4 unified workbook.
+#'
+#' @param prediction_data Row-level prediction output.
+#'
+#' @return A tidy data frame with one row per subgroup, analysis, and bin.
+summarize_no_gep_risk_strata <- function(prediction_data) {
+    dplyr::bind_rows(
+        prediction_data %>%
+            dplyr::group_by(.data$no_gep_group, .data$surrogate_probability_bin) %>%
+            dplyr::summarise(
+                Analysis = "Surrogate_Class2_Probability",
+                N = dplyr::n(),
+                Mean_Predicted = mean(.data$surrogate_class2_probability, na.rm = TRUE),
+                Observed_MFS_5yr_Event_Rate = mean(.data$mfs_event_5yr == 1, na.rm = TRUE),
+                Observed_MSS_5yr_Event_Rate = mean(.data$mss_event_5yr == 1, na.rm = TRUE),
+                Events_MFS_5yr = sum(.data$mfs_event_5yr == 1, na.rm = TRUE),
+                Events_MSS_5yr = sum(.data$mss_event_5yr == 1, na.rm = TRUE),
+                .groups = "drop"
+            ) %>%
+            dplyr::rename(
+                No_GEP_Group = no_gep_group,
+                Bin = surrogate_probability_bin
+            ),
+        prediction_data %>%
+            dplyr::group_by(.data$no_gep_group, .data$mfs_risk_bin) %>%
+            dplyr::summarise(
+                Analysis = "Direct_MFS_5yr_Risk",
+                N = dplyr::n(),
+                Mean_Predicted = mean(.data$predicted_mfs_5yr_risk, na.rm = TRUE),
+                Observed_MFS_5yr_Event_Rate = mean(.data$mfs_event_5yr == 1, na.rm = TRUE),
+                Observed_MSS_5yr_Event_Rate = mean(.data$mss_event_5yr == 1, na.rm = TRUE),
+                Events_MFS_5yr = sum(.data$mfs_event_5yr == 1, na.rm = TRUE),
+                Events_MSS_5yr = sum(.data$mss_event_5yr == 1, na.rm = TRUE),
+                .groups = "drop"
+            ) %>%
+            dplyr::rename(
+                No_GEP_Group = no_gep_group,
+                Bin = mfs_risk_bin
+            ),
+        prediction_data %>%
+            dplyr::group_by(.data$no_gep_group, .data$mss_risk_bin) %>%
+            dplyr::summarise(
+                Analysis = "Direct_MSS_5yr_Risk",
+                N = dplyr::n(),
+                Mean_Predicted = mean(.data$predicted_mss_5yr_risk, na.rm = TRUE),
+                Observed_MFS_5yr_Event_Rate = mean(.data$mfs_event_5yr == 1, na.rm = TRUE),
+                Observed_MSS_5yr_Event_Rate = mean(.data$mss_event_5yr == 1, na.rm = TRUE),
+                Events_MFS_5yr = sum(.data$mfs_event_5yr == 1, na.rm = TRUE),
+                Events_MSS_5yr = sum(.data$mss_event_5yr == 1, na.rm = TRUE),
+                .groups = "drop"
+            ) %>%
+            dplyr::rename(
+                No_GEP_Group = no_gep_group,
+                Bin = mss_risk_bin
+            )
+    ) %>%
+        dplyr::filter(!is.na(.data$Bin))
+}
+
+#' Create the Patient-Level No-GEP Prediction Sheet
+#'
+#' @param prepared_data Prepared exploratory data bundle.
+#' @param no_gep_predictions Row-level no-GEP prediction data.
+#'
+#' @return Workbook-ready patient-level prediction table.
+create_no_gep_predictions_sheet <- function(prepared_data, no_gep_predictions) {
+    patient_id_col <- prepared_data$patient_id_col
+    patient_id_values <- if (!is.null(patient_id_col)) {
+        no_gep_predictions[[patient_id_col]]
+    } else {
+        seq_len(nrow(no_gep_predictions))
+    }
+
+    dplyr::bind_cols(
+        tibble::tibble(patient_id = patient_id_values),
+        no_gep_predictions %>%
+            dplyr::select(
+                no_gep_group,
+                dplyr::any_of(prepared_data$predictors),
+                ciliary_involvement,
+                mfs_event_5yr,
+                mss_event_5yr,
+                surrogate_class2_probability,
+                surrogate_probability_bin,
+                predicted_mfs_5yr_risk,
+                mfs_risk_bin,
+                predicted_mss_5yr_risk,
+                mss_risk_bin
+            )
+    )
+}
+
+#' Build Unified No-GEP Overview Rows
+#'
+#' @param analysis_results Output from `collect_exploratory_no_gep_analysis()`.
+#'
+#' @return Compact overview table for the Objective 4 unified workbook.
+create_no_gep_unified_overview <- function(analysis_results) {
+    group_rows <- analysis_results$data_audit %>%
+        dplyr::filter(.data$section == "Group Counts") %>%
+        dplyr::transmute(
+            Group = .data$group,
+            N = .data$n,
+            Metastasis_Events_Any = .data$metastasis_events,
+            Melanoma_Deaths_Any = .data$melanoma_deaths,
+            MFS_5yr_Events = .data$mfs_5yr_events,
+            MSS_5yr_Events = .data$mss_5yr_events,
+            Complete_Predictors_N = .data$complete_predictors
+        ) %>%
+        dplyr::left_join(
+            analysis_results$no_gep_summary %>%
+                dplyr::transmute(
+                    Group = .data$no_gep_group,
+                    Median_Surrogate_Class2_Probability = .data$median_surrogate_class2_probability,
+                    Median_Predicted_MFS_5yr_Risk = .data$median_predicted_mfs_5yr_risk,
+                    Median_Predicted_MSS_5yr_Risk = .data$median_predicted_mss_5yr_risk
+                ),
+            by = "Group"
+        ) %>%
+        dplyr::mutate(
+            Interpretation_Note = dplyr::case_when(
+                .data$Group == "Class 1" ~ "Reference low-risk definitive GEP group.",
+                .data$Group == "Class 2" ~ "Reference high-risk definitive GEP group.",
+                .data$Group == "GEP Failed/Indeterminate" ~ "No-GEP subgroup with higher median baseline-only predicted risk than GEP Not Tested.",
+                .data$Group == "GEP Not Tested" ~ "Larger no-GEP subgroup with intermediate observed risk between definitive Class 1 and Class 2.",
+                TRUE ~ NA_character_
+            )
+        )
+
+    best_baseline_row <- analysis_results$baseline_comparisons %>%
+        dplyr::filter(is.finite(.data$p_value)) %>%
+        dplyr::slice_min(.data$p_value, n = 1, with_ties = FALSE)
+
+    baseline_note <- tibble::tibble(
+        Group = "Baseline_Separation_Note",
+        N = NA_real_,
+        Metastasis_Events_Any = NA_real_,
+        Melanoma_Deaths_Any = NA_real_,
+        MFS_5yr_Events = NA_real_,
+        MSS_5yr_Events = NA_real_,
+        Complete_Predictors_N = NA_real_,
+        Median_Surrogate_Class2_Probability = NA_real_,
+        Median_Predicted_MFS_5yr_Risk = NA_real_,
+        Median_Predicted_MSS_5yr_Risk = NA_real_,
+        Interpretation_Note = if (nrow(best_baseline_row) == 1) {
+            sprintf(
+                "Strongest 4-group baseline separator: %s (p=%s).",
+                best_baseline_row$variable[[1]],
+                format_gep_p_value(best_baseline_row$p_value[[1]])
+            )
+        } else {
+            "Strongest 4-group baseline separator unavailable."
+        }
+    )
+
+    dplyr::bind_rows(group_rows, baseline_note)
+}
+
+#' Build Unified No-GEP Model Comparison Rows
+#'
+#' @param analysis_results Output from `collect_exploratory_no_gep_analysis()`.
+#'
+#' @return Compact model-comparison table for the unified workbook.
+create_no_gep_unified_model_comparison <- function(analysis_results) {
+    model_specs <- list(
+        list(
+            key = "surrogate",
+            label = "Surrogate Class 2 Probability",
+            training_set = "Definitive Class 1 vs Class 2 only",
+            use_case = "Descriptive Class 2-like clinical resemblance only; do not use for molecular reassignment."
+        ),
+        list(
+            key = "mfs",
+            label = "Direct 5-Year MFS Risk",
+            training_set = "Full eligible cohort with 5-year metastasis endpoint",
+            use_case = "Primary baseline-only clinical risk estimate when GEP is unusable."
+        ),
+        list(
+            key = "mss",
+            label = "Direct 5-Year MSS Risk",
+            training_set = "Full eligible cohort with 5-year melanoma-specific death endpoint",
+            use_case = "Primary baseline-only melanoma-specific risk estimate when GEP is unusable."
+        )
+    )
+
+    purrr::map_dfr(model_specs, function(spec) {
+        model_results <- if (identical(spec$key, "surrogate")) analysis_results$surrogate_model else analysis_results$direct_models[[spec$key]]
+        top_predictors <- model_results$predictor_contributions %>%
+            dplyr::slice_head(n = 3) %>%
+            dplyr::mutate(
+                formatted = sprintf(
+                    "%s (%s; %s=%.3f)",
+                    .data$predictor,
+                    .data$dominant_term,
+                    "coef",
+                    .data$standardized_coefficient
+                )
+            ) %>%
+            dplyr::pull(.data$formatted)
+
+        tibble::tibble(
+            Model = spec$label,
+            Training_Set = spec$training_set,
+            N = model_results$metrics$n[[1]],
+            Events = model_results$metrics$events[[1]],
+            Apparent_AUC = model_results$metrics$apparent_auc[[1]],
+            CV_AUC = model_results$metrics$cv_auc[[1]],
+            Apparent_Brier = model_results$metrics$apparent_brier[[1]],
+            CV_Brier = model_results$metrics$cv_brier[[1]],
+            Calibration_Status = model_results$metrics$calibration_status[[1]],
+            Calibration_Intercept = model_results$metrics$calibration_intercept[[1]],
+            Calibration_Slope = model_results$metrics$calibration_slope[[1]],
+            Top_Predictor_1 = top_predictors[[1]] %||% NA_character_,
+            Top_Predictor_2 = top_predictors[[2]] %||% NA_character_,
+            Top_Predictor_3 = top_predictors[[3]] %||% NA_character_,
+            Use_Case = spec$use_case
+        )
+    })
+}
+
+#' Collect Exploratory No-GEP Analysis Results
+#'
+#' Computes the reusable no-GEP summary objects shared by the standalone
+#' appendix workbook and the compact Objective 4 unified workbook.
+#'
+#' @param data Cohort data frame.
+#' @param dataset_name Dataset identifier.
+#' @param verify_km_fix Whether to run the KM verification helper.
+#' @param visual_file Retained for compatibility with the verification helper.
+#'
+#' @return A list of reusable no-GEP analysis objects and summary tables.
+collect_exploratory_no_gep_analysis <- function(data,
+                                                dataset_name = "uveal_melanoma_full_cohort",
+                                                verify_km_fix = TRUE,
+                                                visual_file = here("scripts", "gep", "visualization", "gep_visuals.R")) {
+    if (!identical(dataset_name, "uveal_melanoma_full_cohort")) {
+        stop("collect_exploratory_no_gep_analysis() currently supports only uveal_melanoma_full_cohort.")
+    }
+
+    km_verification <- if (isTRUE(verify_km_fix)) {
+        verify_exploratory_no_gep_km_fix(data, dataset_name = dataset_name, visual_file = visual_file)
+    } else {
+        prepare_exploratory_no_gep_data(data, dataset_name = dataset_name)$full_data %>%
+            dplyr::filter(!is.na(.data$exploratory_gep_group)) %>%
+            dplyr::count(.data$exploratory_gep_group, name = "observed_n") %>%
+            dplyr::mutate(
+                expected_n = c(58L, 27L, 13L, 162L),
+                status = "verification_skipped"
+            )
+    }
+
+    prepared_data <- prepare_exploratory_no_gep_data(data, dataset_name = dataset_name)
+    full_data <- prepared_data$full_data
+    data_audit <- summarize_exploratory_data_audit(prepared_data, km_verification = km_verification)
+    baseline_summary <- summarize_exploratory_baseline_comparisons(prepared_data)
+
+    km_times <- c(60, 84, 120)
+    km_corrected_mfs <- summarize_km_timepoints(
+        full_data %>% dplyr::filter(!is.na(.data$exploratory_gep_group)),
+        group_var = "exploratory_gep_group",
+        time_var = "tt_mets_months",
+        event_var = "mets_event",
+        times = km_times
+    )
+    km_corrected_mss <- summarize_mss_cif_timepoints(
+        full_data %>% dplyr::filter(!is.na(.data$exploratory_gep_group)),
+        group_var = "exploratory_gep_group",
+        times = km_times
+    )
+
+    surrogate_model <- fit_exploratory_binary_model(
+        prepared_data$definitive_training,
+        outcome_var = "class2_outcome",
+        predictors = prepared_data$predictors,
+        model_name = "Surrogate Class 2 Probability"
+    )
+    direct_mfs_model <- fit_exploratory_binary_model(
+        prepared_data$mfs_model_data,
+        outcome_var = "mfs_event_5yr",
+        predictors = prepared_data$predictors,
+        model_name = "Direct 5-Year MFS Risk"
+    )
+    direct_mss_model <- fit_exploratory_binary_model(
+        prepared_data$mss_model_data,
+        outcome_var = "mss_event_5yr",
+        predictors = prepared_data$predictors,
+        model_name = "Direct 5-Year MSS Risk"
+    )
+
+    no_gep_predictions <- prepared_data$no_gep_prediction %>%
+        dplyr::mutate(
+            surrogate_class2_probability = predict_exploratory_binary_model(surrogate_model, .),
+            predicted_mfs_5yr_risk = predict_exploratory_binary_model(direct_mfs_model, .),
+            predicted_mss_5yr_risk = predict_exploratory_binary_model(direct_mss_model, .)
+        ) %>%
+        dplyr::mutate(
+            surrogate_probability_bin = create_quantile_bins(.data$surrogate_class2_probability),
+            mfs_risk_bin = create_quantile_bins(.data$predicted_mfs_5yr_risk),
+            mss_risk_bin = create_quantile_bins(.data$predicted_mss_5yr_risk)
+        )
+
+    no_gep_predictions_sheet <- create_no_gep_predictions_sheet(prepared_data, no_gep_predictions)
+    no_gep_summary <- summarize_no_gep_predictions(no_gep_predictions)
+    sensitivity_summary <- summarize_pooled_no_gep_sensitivity(no_gep_predictions)
+    risk_strata_summary <- summarize_no_gep_risk_strata(no_gep_predictions)
+    predictor_contribution <- create_predictor_contribution_tab(
+        prepared_data = prepared_data,
+        surrogate_model = surrogate_model,
+        mfs_model = direct_mfs_model,
+        mss_model = direct_mss_model
+    )
+    summary_guide <- create_exploratory_summary_guide_tab(
+        prepared_data = prepared_data,
+        surrogate_model = surrogate_model,
+        mfs_model = direct_mfs_model,
+        mss_model = direct_mss_model,
+        no_gep_summary = no_gep_summary
+    )
+
+    analysis_results <- list(
+        prepared_data = prepared_data,
+        km_verification = km_verification,
+        data_audit = data_audit,
+        baseline_comparisons = baseline_summary,
+        km_corrected_mfs = km_corrected_mfs,
+        km_corrected_mss = km_corrected_mss,
+        surrogate_model = surrogate_model,
+        direct_models = list(
+            mfs = direct_mfs_model,
+            mss = direct_mss_model
+        ),
+        predictor_contribution = predictor_contribution,
+        summary_and_guide = summary_guide,
+        no_gep_summary = no_gep_summary,
+        no_gep_predictions = no_gep_predictions,
+        no_gep_predictions_sheet = no_gep_predictions_sheet,
+        sensitivity_summary = sensitivity_summary,
+        risk_strata_summary = risk_strata_summary
+    )
+
+    analysis_results$unified_no_gep_overview <- create_no_gep_unified_overview(analysis_results)
+    analysis_results$unified_no_gep_model_comparison <- create_no_gep_unified_model_comparison(analysis_results)
+    analysis_results$unified_no_gep_risk_strata <- risk_strata_summary
+
+    analysis_results
+}
+
 #' Create a Corrected Exploratory MFS KM Plot
 #'
 #' Builds a lightweight KM figure using the four exploratory GEP groupings for
@@ -1489,6 +1840,167 @@ create_predictor_contribution_tab <- function(prepared_data,
     dplyr::bind_rows(screening_section, contribution_section)
 }
 
+format_exploratory_group_percentages <- function(values) {
+    paste(
+        sprintf("%s=%.1f%%", names(values), 100 * values),
+        collapse = ", "
+    )
+}
+
+format_exploratory_group_medians <- function(values) {
+    paste(
+        sprintf("%s=%.1f", names(values), values),
+        collapse = ", "
+    )
+}
+
+trim_exploratory_dominant_term <- function(predictor, dominant_term) {
+    if (is.na(dominant_term) || !nzchar(dominant_term)) {
+        return("term not recorded")
+    }
+
+    trimmed <- sub(sprintf("^%s", predictor), "", dominant_term)
+    if (!nzchar(trimmed)) {
+        dominant_term
+    } else {
+        trimmed
+    }
+}
+
+summarize_exploratory_predictor_context <- function(prepared_data, predictor) {
+    data <- prepared_data$full_data %>%
+        dplyr::filter(!is.na(.data$exploratory_gep_group))
+
+    if (identical(predictor, "initial_t_stage_simple")) {
+        advanced_stage <- data %>%
+            dplyr::group_by(.data$exploratory_gep_group) %>%
+            dplyr::summarise(
+                value = mean(.data$initial_t_stage_simple %in% c("T3", "T4"), na.rm = TRUE),
+                .groups = "drop"
+            )
+
+        return(sprintf(
+            "Advanced stage (T3/T4) was %s across the four exploratory groups.",
+            format_exploratory_group_percentages(stats::setNames(advanced_stage$value, advanced_stage$exploratory_gep_group))
+        ))
+    }
+
+    if (predictor %in% c("age_at_diagnosis", "initial_tumor_height", "initial_tumor_diameter", "initial_vision")) {
+        medians <- data %>%
+            dplyr::group_by(.data$exploratory_gep_group) %>%
+            dplyr::summarise(
+                value = stats::median(.data[[predictor]], na.rm = TRUE),
+                .groups = "drop"
+            )
+
+        label <- c(
+            age_at_diagnosis = "Group medians were",
+            initial_tumor_height = "Tumor-height medians were",
+            initial_tumor_diameter = "Tumor-diameter medians were",
+            initial_vision = "Baseline-vision medians were"
+        )[[predictor]]
+
+        return(sprintf(
+            "%s %s.",
+            label,
+            format_exploratory_group_medians(stats::setNames(medians$value, medians$exploratory_gep_group))
+        ))
+    }
+
+    if (identical(predictor, "sex")) {
+        male_share <- data %>%
+            dplyr::group_by(.data$exploratory_gep_group) %>%
+            dplyr::summarise(
+                value = mean(as.character(.data$sex) == "Male", na.rm = TRUE),
+                .groups = "drop"
+            )
+
+        return(sprintf(
+            "Male share was %s; sex distributions were broadly similar across groups, so this should be read as model-specific weighting rather than strong stand-alone separation.",
+            format_exploratory_group_percentages(stats::setNames(male_share$value, male_share$exploratory_gep_group))
+        ))
+    }
+
+    if (identical(predictor, "srf")) {
+        srf_share <- data %>%
+            dplyr::group_by(.data$exploratory_gep_group) %>%
+            dplyr::summarise(
+                value = mean(as.character(.data$srf) == "Yes", na.rm = TRUE),
+                .groups = "drop"
+            )
+
+        return(sprintf(
+            "SRF prevalence was %s, so the coefficient direction is more supportable than a strong four-group separation claim.",
+            format_exploratory_group_percentages(stats::setNames(srf_share$value, srf_share$exploratory_gep_group))
+        ))
+    }
+
+    if (identical(predictor, "optic_nerve_involvement")) {
+        optic_share <- data %>%
+            dplyr::group_by(.data$exploratory_gep_group) %>%
+            dplyr::summarise(
+                value = mean(.data$optic_nerve_involvement == 1, na.rm = TRUE),
+                .groups = "drop"
+            )
+
+        return(sprintf(
+            "Optic-nerve involvement was %s, so this term appears to be a model-level discriminator rather than a single dominant baseline separator.",
+            format_exploratory_group_percentages(stats::setNames(optic_share$value, optic_share$exploratory_gep_group))
+        ))
+    }
+
+    sprintf("%s ranked highly in the penalized model, but only coefficient direction is directly supportable from the current descriptive summaries.", predictor)
+}
+
+summarize_exploratory_bin_pattern <- function(sensitivity_summary, analysis_name, event_col) {
+    rows <- sensitivity_summary %>%
+        dplyr::filter(.data$analysis == analysis_name, .data$bin %in% c("Low", "Intermediate", "High")) %>%
+        dplyr::mutate(bin = factor(.data$bin, levels = c("Low", "Intermediate", "High"))) %>%
+        dplyr::arrange(.data$bin)
+
+    if (nrow(rows) != 3) {
+        return("Observed risk-bin separation was unavailable from the current summary table.")
+    }
+
+    sprintf(
+        "%s-event rates across pooled %s bins were Low=%.1f%%, Intermediate=%.1f%%, and High=%.1f%%.",
+        if (identical(event_col, "observed_mfs_5yr_event_rate")) "5-year MFS " else "5-year MSS ",
+        analysis_name,
+        100 * rows[[event_col]][[1]],
+        100 * rows[[event_col]][[2]],
+        100 * rows[[event_col]][[3]]
+    )
+}
+
+create_exploratory_top_predictor_block <- function(model_label,
+                                                   model_results,
+                                                   prepared_data,
+                                                   sensitivity_summary,
+                                                   analysis_name,
+                                                   event_col,
+                                                   model_context) {
+    top_rows <- model_results$predictor_contributions %>%
+        dplyr::slice_head(n = 3)
+
+    predictor_lines <- purrr::map_chr(seq_len(nrow(top_rows)), function(i) {
+        row <- top_rows[i, , drop = FALSE]
+        sprintf(
+            "  * %s ranked %s (dominant term %s, standardized coefficient %.3f; %s). %s",
+            row$predictor[[1]],
+            c("first", "second", "third")[[i]],
+            trim_exploratory_dominant_term(row$predictor[[1]], row$dominant_term[[1]]),
+            row$standardized_coefficient[[1]],
+            row$direction[[1]],
+            summarize_exploratory_predictor_context(prepared_data, row$predictor[[1]])
+        )
+    })
+
+    c(
+        sprintf("- %s: %s %s", model_label, model_context, summarize_exploratory_bin_pattern(sensitivity_summary, analysis_name, event_col)),
+        predictor_lines
+    )
+}
+
 #' Write the Exploratory No-GEP Narrative Summary
 #'
 #' Generates the short reader-facing text summary that accompanies the workbook.
@@ -1506,11 +2018,13 @@ create_predictor_contribution_tab <- function(prepared_data,
 create_exploratory_no_gep_summary_text <- function(dataset_name,
                                                    data_audit,
                                                    baseline_summary,
+                                                   prepared_data,
                                                    predictor_screening,
                                                    surrogate_model,
                                                    mfs_model,
                                                    mss_model,
                                                    no_gep_summary,
+                                                   sensitivity_summary,
                                                    output_path) {
     failed_row <- no_gep_summary %>% dplyr::filter(.data$no_gep_group == "GEP Failed/Indeterminate")
     not_tested_row <- no_gep_summary %>% dplyr::filter(.data$no_gep_group == "GEP Not Tested")
@@ -1521,22 +2035,49 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
         dplyr::filter(.data$status == "dropped") %>%
         dplyr::transmute(text = sprintf("%s (%s)", .data$predictor, .data$reason)) %>%
         dplyr::pull(.data$text)
-    top_surrogate <- surrogate_model$predictor_contributions %>%
-        dplyr::slice_head(n = 3) %>%
-        dplyr::transmute(text = sprintf("%s [%s]", .data$predictor, .data$direction)) %>%
-        dplyr::pull(.data$text)
-    top_mfs <- mfs_model$predictor_contributions %>%
-        dplyr::slice_head(n = 3) %>%
-        dplyr::transmute(text = sprintf("%s [%s]", .data$predictor, .data$direction)) %>%
-        dplyr::pull(.data$text)
-    top_mss <- mss_model$predictor_contributions %>%
-        dplyr::slice_head(n = 3) %>%
-        dplyr::transmute(text = sprintf("%s [%s]", .data$predictor, .data$direction)) %>%
-        dplyr::pull(.data$text)
-
     best_baseline_row <- baseline_summary %>%
         dplyr::filter(is.finite(.data$p_value)) %>%
         dplyr::slice_min(.data$p_value, n = 1, with_ties = FALSE)
+
+    top_predictor_block <- c(
+        "Top predictors with data-backed context:",
+        create_exploratory_top_predictor_block(
+            model_label = "Surrogate Class 2-like",
+            model_results = surrogate_model,
+            prepared_data = prepared_data,
+            sensitivity_summary = sensitivity_summary,
+            analysis_name = "Surrogate_Class2_Probability",
+            event_col = "observed_mfs_5yr_event_rate",
+            model_context = sprintf(
+                "This is a descriptive Class 2-like clinical resemblance model rather than a molecular classifier. CV AUC was %.3f.",
+                surrogate_model$metrics$cv_auc[[1]]
+            )
+        ),
+        create_exploratory_top_predictor_block(
+            model_label = "Direct 5-year MFS",
+            model_results = mfs_model,
+            prepared_data = prepared_data,
+            sensitivity_summary = sensitivity_summary,
+            analysis_name = "Direct_MFS_5yr_Risk",
+            event_col = "observed_mfs_5yr_event_rate",
+            model_context = sprintf(
+                "This is the main baseline-only metastasis-risk model for no-GEP patients. CV AUC was %.3f.",
+                mfs_model$metrics$cv_auc[[1]]
+            )
+        ),
+        create_exploratory_top_predictor_block(
+            model_label = "Direct 5-year MSS",
+            model_results = mss_model,
+            prepared_data = prepared_data,
+            sensitivity_summary = sensitivity_summary,
+            analysis_name = "Direct_MSS_5yr_Risk",
+            event_col = "observed_mss_5yr_event_rate",
+            model_context = sprintf(
+                "This is the main baseline-only melanoma-specific risk model for no-GEP patients. CV AUC was %.3f.",
+                mss_model$metrics$cv_auc[[1]]
+            )
+        )
+    )
 
     summary_lines <- c(
         "EXPLORATORY NO-GEP RISK REPORT",
@@ -1553,6 +2094,7 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
         "- This report improves clinical risk assessment; it does not claim to recover the true molecular GEP class.",
         "- GEP Failed/Indeterminate and GEP Not Tested are reported separately because they behave like distinct clinical populations.",
         "- The surrogate output should be read as: among patients with known Class 1 and Class 2 results, which known clinical pattern does this no-GEP patient look more like?",
+        "- The surrogate stores P(Class 2-like | baseline features); its complement, 1 - P(Class 2-like | baseline features), is only Class 1-like resemblance within this surrogate and is not a true molecular Class 1 probability.",
         "",
         "Data audit highlights:",
         sprintf(
@@ -1576,7 +2118,7 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
         ),
         "",
         "Result interpretation:",
-        "- The surrogate Class 2-like model is a clinical resemblance score only and shows only modest discrimination, so it should not be used to relabel patients as true Class 1 or Class 2.",
+        "- The surrogate Class 2-like model is a descriptive only clinical resemblance score and shows only modest discrimination, so it should not be used to relabel patients as true Class 1 or Class 2.",
         "- The direct MFS/MSS models provide moderate risk stratification and are the preferred outputs when a patient has no usable GEP.",
         "- Higher predicted-risk bins should be interpreted as clinically higher-risk groups, not as precise deterministic individual forecasts.",
         "",
@@ -1600,10 +2142,7 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
         "Dropped candidate predictors:",
         if (length(dropped_predictors) > 0) paste0("- ", dropped_predictors) else "- None",
         "",
-        "Best predictors by penalized contribution:",
-        sprintf("- Surrogate Class 2-like: %s", paste(top_surrogate, collapse = ", ")),
-        sprintf("- Direct 5-year MFS: %s", paste(top_mfs, collapse = ", ")),
-        sprintf("- Direct 5-year MSS: %s", paste(top_mss, collapse = ", ")),
+        top_predictor_block,
         "",
         "Baseline separation note:",
         sprintf(
@@ -1639,6 +2178,9 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
 #' @param data Optional in-memory cohort data. When `NULL`, the function reads
 #'   the processed cohort from disk.
 #' @param visual_file Retained for compatibility with the verification helper.
+#' @param collected_results Optional output from
+#'   `collect_exploratory_no_gep_analysis()`. When supplied, the report reuses
+#'   those results instead of recomputing them.
 #'
 #' @return A list containing the major report tables, model objects, and output
 #'   file paths.
@@ -1646,7 +2188,8 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
                                           output_dir = NULL,
                                           verify_km_fix = TRUE,
                                           data = NULL,
-                                          visual_file = here("scripts", "gep", "visualization", "gep_visuals.R")) {
+                                          visual_file = here("scripts", "gep", "visualization", "gep_visuals.R"),
+                                          collected_results = NULL) {
     if (!identical(dataset_name, "uveal_melanoma_full_cohort")) {
         stop("run_exploratory_no_gep_report() currently supports only uveal_melanoma_full_cohort.")
     }
@@ -1664,110 +2207,28 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
 
     output_dir <- ensure_output_dir(output_dir)
     plots_dir <- ensure_output_dir(file.path(output_dir, "plots"))
+    analysis_results <- collected_results %||% collect_exploratory_no_gep_analysis(
+        data = data,
+        dataset_name = dataset_name,
+        verify_km_fix = verify_km_fix,
+        visual_file = visual_file
+    )
 
-    km_verification <- if (isTRUE(verify_km_fix)) {
-        verify_exploratory_no_gep_km_fix(data, dataset_name = dataset_name, visual_file = visual_file)
-    } else {
-        prepare_exploratory_no_gep_data(data, dataset_name = dataset_name)$full_data %>%
-            dplyr::filter(!is.na(.data$exploratory_gep_group)) %>%
-            dplyr::count(.data$exploratory_gep_group, name = "observed_n") %>%
-            dplyr::mutate(
-                expected_n = c(58L, 27L, 13L, 162L),
-                status = "verification_skipped"
-            )
-    }
-
-    prepared_data <- prepare_exploratory_no_gep_data(data, dataset_name = dataset_name)
+    prepared_data <- analysis_results$prepared_data
     full_data <- prepared_data$full_data
-
-    data_audit <- summarize_exploratory_data_audit(prepared_data, km_verification = km_verification)
-    baseline_summary <- summarize_exploratory_baseline_comparisons(prepared_data)
-
-    km_times <- c(60, 84, 120)
-    km_corrected_mfs <- summarize_km_timepoints(
-        full_data %>% dplyr::filter(!is.na(.data$exploratory_gep_group)),
-        group_var = "exploratory_gep_group",
-        time_var = "tt_mets_months",
-        event_var = "mets_event",
-        times = km_times
-    )
-    km_corrected_mss <- summarize_mss_cif_timepoints(
-        full_data %>% dplyr::filter(!is.na(.data$exploratory_gep_group)),
-        group_var = "exploratory_gep_group",
-        times = km_times
-    )
-
-    surrogate_model <- fit_exploratory_binary_model(
-        prepared_data$definitive_training,
-        outcome_var = "class2_outcome",
-        predictors = prepared_data$predictors,
-        model_name = "Surrogate Class 2 Probability"
-    )
-
-    direct_mfs_model <- fit_exploratory_binary_model(
-        prepared_data$mfs_model_data,
-        outcome_var = "mfs_event_5yr",
-        predictors = prepared_data$predictors,
-        model_name = "Direct 5-Year MFS Risk"
-    )
-    direct_mss_model <- fit_exploratory_binary_model(
-        prepared_data$mss_model_data,
-        outcome_var = "mss_event_5yr",
-        predictors = prepared_data$predictors,
-        model_name = "Direct 5-Year MSS Risk"
-    )
-
-    no_gep_predictions <- prepared_data$no_gep_prediction %>%
-        dplyr::mutate(
-            surrogate_class2_probability = predict_exploratory_binary_model(surrogate_model, .),
-            predicted_mfs_5yr_risk = predict_exploratory_binary_model(direct_mfs_model, .),
-            predicted_mss_5yr_risk = predict_exploratory_binary_model(direct_mss_model, .)
-        ) %>%
-        dplyr::mutate(
-            surrogate_probability_bin = create_quantile_bins(.data$surrogate_class2_probability),
-            mfs_risk_bin = create_quantile_bins(.data$predicted_mfs_5yr_risk),
-            mss_risk_bin = create_quantile_bins(.data$predicted_mss_5yr_risk)
-        )
-
-    patient_id_col <- prepared_data$patient_id_col
-    patient_id_values <- if (!is.null(patient_id_col)) {
-        no_gep_predictions[[patient_id_col]]
-    } else {
-        seq_len(nrow(no_gep_predictions))
-    }
-    no_gep_predictions_sheet <- dplyr::bind_cols(
-        tibble::tibble(patient_id = patient_id_values),
-        no_gep_predictions %>%
-            dplyr::select(
-                no_gep_group,
-                dplyr::any_of(prepared_data$predictors),
-                ciliary_involvement,
-                mfs_event_5yr,
-                mss_event_5yr,
-                surrogate_class2_probability,
-                surrogate_probability_bin,
-                predicted_mfs_5yr_risk,
-                mfs_risk_bin,
-                predicted_mss_5yr_risk,
-                mss_risk_bin
-            )
-    )
-
-    no_gep_summary <- summarize_no_gep_predictions(no_gep_predictions)
-    sensitivity_summary <- summarize_pooled_no_gep_sensitivity(no_gep_predictions)
-    summary_guide <- create_exploratory_summary_guide_tab(
-        prepared_data = prepared_data,
-        surrogate_model = surrogate_model,
-        mfs_model = direct_mfs_model,
-        mss_model = direct_mss_model,
-        no_gep_summary = no_gep_summary
-    )
-    predictor_contribution <- create_predictor_contribution_tab(
-        prepared_data = prepared_data,
-        surrogate_model = surrogate_model,
-        mfs_model = direct_mfs_model,
-        mss_model = direct_mss_model
-    )
+    data_audit <- analysis_results$data_audit
+    baseline_summary <- analysis_results$baseline_comparisons
+    km_corrected_mfs <- analysis_results$km_corrected_mfs
+    km_corrected_mss <- analysis_results$km_corrected_mss
+    surrogate_model <- analysis_results$surrogate_model
+    direct_mfs_model <- analysis_results$direct_models$mfs
+    direct_mss_model <- analysis_results$direct_models$mss
+    predictor_contribution <- analysis_results$predictor_contribution
+    summary_guide <- analysis_results$summary_and_guide
+    no_gep_summary <- analysis_results$no_gep_summary
+    no_gep_predictions <- analysis_results$no_gep_predictions
+    no_gep_predictions_sheet <- analysis_results$no_gep_predictions_sheet
+    sensitivity_summary <- analysis_results$sensitivity_summary
 
     workbook_data <- list(
         Summary_and_Guide = summary_guide,
@@ -1826,11 +2287,13 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
         dataset_name = dataset_name,
         data_audit = data_audit,
         baseline_summary = baseline_summary,
+        prepared_data = prepared_data,
         predictor_screening = prepared_data$predictor_screening,
         surrogate_model = surrogate_model,
         mfs_model = direct_mfs_model,
         mss_model = direct_mss_model,
         no_gep_summary = no_gep_summary,
+        sensitivity_summary = sensitivity_summary,
         output_path = summary_path
     )
 
@@ -1910,6 +2373,10 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
         no_gep_summary = no_gep_summary,
         no_gep_predictions = no_gep_predictions_sheet,
         sensitivity_summary = sensitivity_summary,
+        risk_strata_summary = analysis_results$risk_strata_summary,
+        unified_no_gep_overview = analysis_results$unified_no_gep_overview,
+        unified_no_gep_model_comparison = analysis_results$unified_no_gep_model_comparison,
+        unified_no_gep_risk_strata = analysis_results$unified_no_gep_risk_strata,
         output_paths = c(
             list(workbook = workbook_path, summary = summary_path),
             plot_paths

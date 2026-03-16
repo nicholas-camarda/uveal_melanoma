@@ -529,6 +529,7 @@ The main Objective 4 denominator is deliberately stricter than “any row with a
 - Technical-detail workbooks `<prefix>mfs_validation_technical_details.xlsx` and `<prefix>mss_validation_technical_details.xlsx` sit in the matching outcome folders. They are now companion detail files rather than alternate summary workbooks.
 - Narrative text summaries `<prefix>mfs_validation_narrative_summary.txt` and `<prefix>mss_validation_narrative_summary.txt` sit alongside those technical workbooks.
 - Unified cross-outcome summaries live at the root of `04_GEP_Validation/` as `<prefix>unified_gep_validation_summary.xlsx`. This workbook is comparison-only rather than a second outcome-summary workbook.
+- For the full cohort, that unified workbook now also includes compact no-GEP tabs: `No_GEP_Overview`, `No_GEP_Model_Comparison`, and `No_GEP_Risk_Strata`.
 - Simple actual-vs-expected QC outputs live in `04_GEP_Validation/unified_summary/` as `<prefix>simple_gep_validation.xlsx`.
 
 ### Workbook Layout at a Glance
@@ -549,16 +550,28 @@ The main Objective 4 denominator is deliberately stricter than “any row with a
 | Primary workbook pattern | `<prefix>MFS_consolidated_summary.xlsx` or `<prefix>MSS_consolidated_summary.xlsx`. |
 | Technical workbooks | `<prefix>mfs_validation_technical_details.xlsx` and `<prefix>mss_validation_technical_details.xlsx` in the outcome folders; these keep lower-level detail and no longer repeat the consolidated summary calibration/discrimination tables. |
 | Narrative summaries | `<prefix>mfs_validation_narrative_summary.txt` and `<prefix>mss_validation_narrative_summary.txt`. |
-| Unified workbook | `<prefix>unified_gep_validation_summary.xlsx` at the root of `04_GEP_Validation/`; this workbook uses comparison-only sheet names such as `Calibration_Comparison`, `Discrimination_Comparison`, `PRAME_Comparison`, and `Missing_Data_Comparison`. |
+| Unified workbook | `<prefix>unified_gep_validation_summary.xlsx` at the root of `04_GEP_Validation/`; this workbook uses comparison-only sheet names such as `Calibration_Comparison`, `Discrimination_Comparison`, `PRAME_Comparison`, and `Missing_Data_Comparison`. The full cohort additionally appends `No_GEP_Overview`, `No_GEP_Model_Comparison`, and `No_GEP_Risk_Strata`. |
 | Simple QC workbook | `unified_summary/<prefix>simple_gep_validation.xlsx`. |
 | Default directory | `final_data/Analysis/<cohort>/04_GEP_Validation/` with `a_metastasis_free_survival/`, `b_melanoma_specific_survival/`, and `unified_summary/`. |
-| Outcomes covered | MFS and MSS; unified workbooks stack both. |
+| Outcomes covered | MFS and MSS; unified workbooks stack both. Full-cohort unified workbooks may also append no-GEP comparison sheets. |
 | Timepoints | Driven by `GEP_VALIDATION_TIMEPOINTS` (defaults: 5, 7, 10 years). Every sheet carries one row per timepoint requested. |
 | How to regenerate | Run Objective 4 via `run_specific_objective("uveal_melanoma_<cohort>", 4)` or the full pipeline. New runs overwrite existing workbooks after passing QC. |
 
 ### How to Read the Exploratory No-GEP Workbook
 
-The exploratory no-GEP workbook lives in `04_GEP_Validation/d_exploratory_no_gep/` and is separate from the main Objective 4 validation workbooks. It is designed for patients with `GEP Failed/Indeterminate` or `GEP Not Tested`, where the question is not “did the imported GEP prediction validate?” but rather “what baseline risk estimate is still supportable without a usable GEP result?”
+The exploratory no-GEP workbook lives in `04_GEP_Validation/d_exploratory_no_gep/` and is separate from the main Objective 4 validation workbooks. It is designed for patients with `GEP Failed/Indeterminate` or `GEP Not Tested`, where the question is not “did the imported GEP prediction validate?” but rather “what baseline risk estimate is still supportable without a usable GEP result?” The full-cohort unified Objective 4 workbook now mirrors the highest-yield no-GEP summaries in compact comparison tabs, while this appendix workbook retains the row-level detail.
+
+If you only need the highest-yield no-GEP summary inside the root Objective 4 workbook, use this order:
+
+1. `No_GEP_Overview`
+  - Use this first for counts, observed outcomes, median no-GEP predicted risks, and the strongest baseline-separation note.
+2. `No_GEP_Model_Comparison`
+  - Use this next to compare the surrogate, direct 5-year MFS, and direct 5-year MSS models side by side.
+  - The `Use_Case` column distinguishes the descriptive surrogate from the clinically preferred direct-risk outputs.
+3. `No_GEP_Risk_Strata`
+  - Use this to confirm whether low/intermediate/high predicted bins actually show increasing observed 5-year MFS or MSS event rates.
+
+Then open the appendix workbook only if you need the full baseline table, patient-level predictions, or the full predictor-contribution sheets.
 
 Use this reading order:
 

@@ -58,12 +58,35 @@ run_objective_4 <- function(data, dataset_name, output_dirs, prefix, other_map =
         logger::log_info(formatted("MSS GEP validation completed", indent = 1))
     }
 
+    exploratory_no_gep_results <- NULL
+    if (identical(dataset_name, "uveal_melanoma_full_cohort")) {
+        logger::log_info(formatted("Executing exploratory no-GEP summary integration for the full cohort", indent = 1))
+        exploratory_no_gep_results <- tryCatch({
+            collected_no_gep_results <- collect_exploratory_no_gep_analysis(
+                data = data,
+                dataset_name = dataset_name,
+                verify_km_fix = FALSE
+            )
+            run_exploratory_no_gep_report(
+                dataset_name = dataset_name,
+                output_dir = file.path(dirname(output_dirs$obj4_mfs), "d_exploratory_no_gep"),
+                verify_km_fix = FALSE,
+                data = data,
+                collected_results = collected_no_gep_results
+            )
+        }, error = function(e) {
+            logger::log_warn(formatted(sprintf("Exploratory no-GEP integration failed: %s", e$message), indent = 2))
+            NULL
+        })
+    }
+
     # Unified summary and visuals (only once, with both results)
     gep_base_dir <- dirname(output_dirs$obj4_mfs)
     tryCatch({
         create_unified_gep_validation_summary(
             mfs_results = mfs_gep_results,
             mss_results = mss_gep_results,
+            no_gep_results = exploratory_no_gep_results,
             output_dir = gep_base_dir,
             prefix = prefix
         )
@@ -93,6 +116,7 @@ run_objective_4 <- function(data, dataset_name, output_dirs, prefix, other_map =
     return(list(
         mfs_gep_results = mfs_gep_results,
         mss_gep_results = mss_gep_results,
-        simple_gep_results = simple_gep_results
+        simple_gep_results = simple_gep_results,
+        exploratory_no_gep_results = exploratory_no_gep_results
     ))
 }
