@@ -10,14 +10,12 @@
 #' @param effect_measure Character string for the effect measure (default: "HR")
 #' @param dataset_name Character string for the dataset name
 #' @param output_path Character string for output file path (optional)
-#' @param other_map List mapping variable names to "Other" category contents (optional)
 #' @return A forestploter object
 create_forest_plot <- function(subgroup_results,
                                outcome_name,
                                effect_measure = "HR",
                                dataset_name = "Dataset",
-                               output_path = NULL,
-                               other_map = NULL) {
+                               output_path = NULL) {
     # Handle empty or NULL results
     if (is.null(subgroup_results) || length(subgroup_results) == 0) {
         warning("No subgroup results provided for forest plot")
@@ -42,8 +40,7 @@ create_forest_plot <- function(subgroup_results,
                 variable_order = variable_order,
                 effect_measure = effect_measure,
                 favours_labels = FAVOURS_LABELS,
-                clip = NULL,
-                other_map = other_map
+                clip = NULL
             )
 
             # Save to file if output_path is provided
@@ -77,7 +74,6 @@ create_forest_plot <- function(subgroup_results,
 #' @param favours_labels Character vector of length 2 for axis labels (e.g., c("Favors GKSRS", "Favors PBT"))
 #' @param clip Numeric vector of length 2 for clipping range (default: c(0.1, 10))
 #' @param title Character string for plot title (optional)
-#' @param other_map List mapping variable names to "Other" category contents (optional)
 #' @return A forestploter object
 create_single_cohort_forest_plot <- function(subgroup_results,
                                              outcome_name,
@@ -87,8 +83,7 @@ create_single_cohort_forest_plot <- function(subgroup_results,
                                              effect_measure = "HR",
                                              favours_labels = NULL,
                                              clip = NULL,
-                                             title = NULL,
-                                             other_map = NULL) {
+                                             title = NULL) {
     # Check that variable_order is provided
     if (missing(variable_order) || is.null(variable_order)) {
         stop("variable_order must be provided to ensure consistency across cohorts")
@@ -104,7 +99,7 @@ create_single_cohort_forest_plot <- function(subgroup_results,
     treatment_colors <- tryCatch(get_treatment_palette(treatment_levels), error = function(e) NULL)
 
     # Create the formatted data for forestploter
-    plot_data <- create_forest_plot_data(subgroup_results, variable_order, treatment_labels, effect_measure, other_map)
+    plot_data <- create_forest_plot_data(subgroup_results, variable_order, treatment_labels, effect_measure)
 
     # Set default title
     if (is.null(title)) {

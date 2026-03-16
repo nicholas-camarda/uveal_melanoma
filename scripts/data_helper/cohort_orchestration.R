@@ -3,7 +3,7 @@
 #' Orchestrates the full data processing pipeline: loads, cleans, applies criteria, creates derived variables, summary tables, and saves outputs.
 #'
 #' @param output_dirs Optional list of output directories for each cohort.
-#' @return A list with analytic_data, summary_tables, other_map, validated_confounders_by_cohort
+#' @return A list with analytic_data, summary_tables, and removal_log
 create_analytic_dataset <- function(output_dirs = NULL) {
     logger::log_info("Starting data processing pipeline")
 
@@ -98,39 +98,6 @@ create_analytic_dataset <- function(output_dirs = NULL) {
         }
     }
 
-    logger::log_info("Collapsing rare categories")
-    other_map <- list()
-    for (cohort_name in names(factored_filtered_data)) {
-        logger::log_info(formatted(sprintf("Processing rare categories for cohort: %s", cohort_name)))
-        all_vars_to_process <- names(factored_filtered_data[[cohort_name]])
-        factor_vars <- all_vars_to_process[sapply(factored_filtered_data[[cohort_name]][all_vars_to_process], is.factor)]
-        protected_gep_vars <- intersect(factor_vars, GEP_NO_OTHER_COLLAPSE_VARIABLES)
-        if (length(protected_gep_vars) > 0) {
-            logger::log_info(formatted(sprintf(
-                "Skipping rare-category collapse for canonical GEP variables: %s",
-                paste(protected_gep_vars, collapse = ", ")
-            ), indent = 1))
-        }
-        factor_vars <- setdiff(factor_vars, protected_gep_vars)
-        if (length(factor_vars) > 0) {
-            collapse_result <- handle_rare_categories(factored_filtered_data[[cohort_name]], factor_vars)
-            factored_filtered_data[[cohort_name]] <- collapse_result$data
-            other_map[[cohort_name]] <- collapse_result$other_map
-            if (length(other_map[[cohort_name]]) > 0) {
-                logger::log_info(formatted(sprintf("Categories collapsed into 'Other' for cohort %s:", cohort_name)))
-                for (var_name in names(other_map[[cohort_name]])) {
-                    collapsed_cats <- other_map[[cohort_name]][[var_name]]
-                    logger::log_info(formatted(sprintf("  %s: %s", var_name, paste(collapsed_cats, collapse = ", ")), indent = 1))
-                }
-            } else {
-                logger::log_info(formatted(sprintf("No categories collapsed for cohort %s", cohort_name)))
-            }
-        } else {
-            other_map[[cohort_name]] <- list()
-            logger::log_info(formatted(sprintf("No factor variables to process for cohort %s", cohort_name)))
-        }
-    }
-
     logger::log_info("Creating summary tables")
     summary_tables <- create_summary_tables(factored_filtered_data, output_dirs)
 
@@ -140,13 +107,6 @@ create_analytic_dataset <- function(output_dirs = NULL) {
         write_xlsx(factored_filtered_data[[cohort_name]], file.path(PROCESSED_DATA_DIR, paste0(cohort_name, ".xlsx")))
         saveRDS(factored_filtered_data[[cohort_name]], file.path(PROCESSED_DATA_DIR, paste0(cohort_name, ".rds")))
     }
-
-    logger::log_info("Validating confounders for each cohort")
-    # Previously validated and saved per-cohort confounders; now use configured confounders directly
-    # to avoid introducing new artifacts/folders.
-
-    saveRDS(other_map, file.path(PROCESSED_DATA_DIR, "other_map.rds"))
-    logger::log_info("Saved combined other_map information for all cohorts")
 
     logger::log_info("Exporting cohort summary statistics to JSON")
     export_cohort_summary(
@@ -163,7 +123,6 @@ create_analytic_dataset <- function(output_dirs = NULL) {
     return(list(
         analytic_data = factored_filtered_data,
         summary_tables = summary_tables,
-        other_map = other_map,
         removal_log = removal_log
     ))
 }

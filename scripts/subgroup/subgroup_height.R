@@ -17,23 +17,23 @@ analyze_treatment_effect_subgroups_height <- function(data, subgroup_var, confou
         warning(sprintf("No data remaining after removing missing values for '%s'", subgroup_var))
         return(list(interaction_p = NA, subgroup_effects = data.frame(), model = NULL, subgroup_var_used = NA, formula_used = NA, confounders_used = NA))
     }
-    cohort_other_map <- list()
-    if (!is.null(dataset_name)) cohort_other_map <- tryCatch(get_cohort_specific_other_map(dataset_name), error = function(e) list())
     processed <- process_subgroup_data(data, subgroup_var, confounders, include_baseline_height)
     if (!is.null(processed$error) && processed$error == "insufficient_levels") {
         return(list(interaction_p = NA, subgroup_effects = data.frame(), model = NULL, subgroup_var_used = NA, formula_used = NA, confounders_used = NA, error = "insufficient_levels"))
     }
     outcome_config <- list(type = "continuous", outcome_var = "height_change")
     other_vars <- unique(c("treatment_group", processed$subgroup_var_to_use, processed$confounders_to_use))
-    exclusion_result <- exclude_other_categories(
+    exclusion_result <- apply_sparse_level_exclusions(
         data = processed$data,
         variables = other_vars[other_vars %in% names(processed$data)],
-        other_map = if (!is.null(cohort_other_map)) cohort_other_map else list()
+        analysis_name = paste0("subgroup_height_", subgroup_var),
+        id_col = pick_sparse_level_id_col(processed$data),
+        level_exclusions = MODELING_LEVEL_EXCLUSIONS
     )
 
     if (exclusion_result$removed_row_count > 0) {
         logger::log_info(sprintf(
-            "Removed %d rows labelled 'Other' prior to subgroup modeling for %s",
+            "Excluded %d rows with sparse categorical levels prior to subgroup modeling for %s",
             exclusion_result$removed_row_count,
             subgroup_var
         ))
@@ -47,9 +47,8 @@ analyze_treatment_effect_subgroups_height <- function(data, subgroup_var, confou
             subgroup_var_used = processed$subgroup_var_to_use,
             formula_used = NA,
             confounders_used = processed$confounders_to_use,
-            interaction_diagnostics = list(failure_reason = "No data after removing 'Other' levels"),
-            other_map = cohort_other_map,
-            other_level_details = exclusion_result$other_level_details
+            interaction_diagnostics = list(failure_reason = "No data after sparse-level exclusions"),
+            sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics
         ))
     }
 
@@ -57,13 +56,12 @@ analyze_treatment_effect_subgroups_height <- function(data, subgroup_var, confou
     data_for_effects <- if (!is.null(model_results$filtered_data)) model_results$filtered_data else exclusion_result$data
     subgroup_effects <- calculate_subgroup_effects(model_results$model, data_for_effects, processed$subgroup_var_to_use, outcome_config$type, subgroup_var)
     if (!is.null(model_results$interaction_diagnostics)) {
-        model_results$interaction_diagnostics$other_level_details <- exclusion_result$other_level_details
+        model_results$interaction_diagnostics$sparse_level_diagnostics <- exclusion_result$sparse_level_diagnostics
     }
     list(
         interaction_p = model_results$interaction_p, subgroup_effects = subgroup_effects, model = model_results$model,
         subgroup_var_used = processed$subgroup_var_to_use, formula_used = model_results$formula_used,
         confounders_used = processed$confounders_to_use, interaction_diagnostics = model_results$interaction_diagnostics,
-        other_map = cohort_other_map,
-        other_level_details = exclusion_result$other_level_details
+        sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics
     )
 }

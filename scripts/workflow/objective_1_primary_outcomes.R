@@ -15,10 +15,9 @@
 #' @param dataset_name Character string identifying the cohort for file naming and logging
 #' @param output_dirs List of output directories organized by analysis type (recurrence, mets, os, pfs, height, subgroups)
 #' @param prefix Character string prefix for cohort identification in output files (e.g., "full_cohort_", "restricted_cohort_", "gksrs_only_cohort_")
-#' @param other_map List containing treatment group mappings and categorical variable level mappings for consistent analysis
 #' @param confounders Character vector of confounder variables to use for statistical adjustment
 #' @return List containing all analysis results, model objects, and output file paths for each analysis type
-run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map = list(), confounders = confounders) {
+run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders = confounders) {
     step1_start_time <- Sys.time()
     display_name <- tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name)))
     log_phase(paste("STEP 1: PRIMARY OUTCOMES ANALYSIS", display_name, sep = " - "))
@@ -60,7 +59,6 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         confounders = confounders,
         analysis_type = "post_treatment_only",
         dataset_name = dataset_name,
-        other_map = other_map,
         output_dirs = output_dirs,
         prefix = prefix
     )
@@ -73,8 +71,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         dataset_name = dataset_name,
         output_dirs = output_dirs,
         prefix = prefix,
-        confounders = confounders,
-        other_map = other_map
+        confounders = confounders
     )
     logger::log_info(formatted("Recurrence-stratified overall survival completed", indent = 1))
 
@@ -85,8 +82,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         dataset_name = dataset_name,
         output_dirs = output_dirs,
         prefix = prefix,
-        confounders = confounders,
-        other_map = other_map
+        confounders = confounders
     )
     logger::log_info(formatted("Recurrence-stratified progression-free survival completed", indent = 1))
 
@@ -100,7 +96,6 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         confounders = confounders,
         analysis_type = "post_treatment_only",
         dataset_name = dataset_name,
-        other_map = other_map,
         output_dirs = output_dirs,
         prefix = prefix
     )
@@ -113,8 +108,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         dataset_name = dataset_name,
         output_dirs = output_dirs,
         prefix = prefix,
-        confounders = confounders,
-        other_map = other_map
+        confounders = confounders
     )
     logger::log_info(formatted("Metastasis-stratified overall survival completed", indent = 1))
 
@@ -125,8 +119,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         dataset_name = dataset_name,
         output_dirs = output_dirs,
         prefix = prefix,
-        confounders = confounders,
-        other_map = other_map
+        confounders = confounders
     )
     logger::log_info(formatted("Metastasis-stratified progression-free survival completed", indent = 1))
 
@@ -141,7 +134,6 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         ylab = "Overall Survival Probability",
         analysis_type = "post_treatment_only",
         dataset_name = dataset_name,
-        other_map = other_map,
         output_dirs = output_dirs,
         prefix = prefix
     )
@@ -174,7 +166,6 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         ylab = "Progression-Free Survival Probability",
         analysis_type = "post_treatment_only",
         dataset_name = dataset_name,
-        other_map = other_map,
         output_dirs = output_dirs,
         prefix = prefix
     )
@@ -198,7 +189,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
 
     # 1e. Tumor height changes
     logger::log_info(formatted("Executing analyze_tumor_height_changes: Primary and sensitivity tumor height analysis", indent = 1))
-    height_changes <- analyze_tumor_height_changes(data, output_dirs, prefix, confounders, other_map)
+    height_changes <- analyze_tumor_height_changes(data, output_dirs, prefix, confounders)
     logger::log_info(formatted("Tumor height changes analysis completed", indent = 1))
     logger::log_info(formatted("Creating tumor size by treatment group summary and plot", indent = 1))
     tumor_size_summary <- summarize_tumor_size_by_treatment(
@@ -222,8 +213,6 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     primary_start_time <- Sys.time()
     logger::log_info(formatted("PRIMARY SUBGROUP ANALYSIS (without baseline height adjustment)", indent = 1))
     primary_subgroup_results <- list()
-    primary_other_maps <- list() # Collect other_map from all variables
-
     for (i in seq_along(cohort_subgroup_vars)) {
         subgroup_var <- cohort_subgroup_vars[i]
         logger::log_info(formatted(sprintf(">>> Testing PRIMARY interaction (%d/%d): %s", i, length(cohort_subgroup_vars), subgroup_var)))
@@ -234,21 +223,11 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
             subgroup_var = subgroup_var,
             confounders = confounders, # Pass confounders (will auto-exclude subgroup var)
             include_baseline_height = FALSE, # PRIMARY: no baseline height adjustment
-            dataset_name = dataset_name # Pass dataset name for other_map loading
+            dataset_name = dataset_name
         )
 
         # Store results
         primary_subgroup_results[[subgroup_var]] <- result
-
-        # Collect other_map if available (only if result is not NULL)
-        if (!is.null(result) && !is.null(result$other_map) && length(result$other_map) > 0) {
-            # Use a more robust way to combine lists
-            for (var_name in names(result$other_map)) {
-                if (!is.null(result$other_map[[var_name]]) && length(result$other_map[[var_name]]) > 0) {
-                    primary_other_maps[[var_name]] <- result$other_map[[var_name]]
-                }
-            }
-        }
 
         # Log the interaction p-value
         if (!is.na(result$interaction_p)) {
@@ -264,8 +243,6 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     sensitivity_start_time <- Sys.time()
     logger::log_info(formatted("SENSITIVITY SUBGROUP ANALYSIS (with baseline height adjustment)", indent = 1))
     sensitivity_subgroup_results <- list()
-    sensitivity_other_maps <- list() # Collect other_map from all variables
-
     for (i in seq_along(cohort_subgroup_vars)) {
         subgroup_var <- cohort_subgroup_vars[i]
         logger::log_info(formatted(sprintf(">>> Testing SENSITIVITY interaction (%d/%d): %s", i, length(cohort_subgroup_vars), subgroup_var)))
@@ -276,21 +253,11 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
             subgroup_var = subgroup_var,
             confounders = confounders, # Pass confounders (will auto-exclude subgroup var)
             include_baseline_height = TRUE, # SENSITIVITY: include baseline height adjustment
-            dataset_name = dataset_name # Pass dataset name for other_map loading
+            dataset_name = dataset_name
         )
 
         # Store results
         sensitivity_subgroup_results[[subgroup_var]] <- result
-
-        # Collect other_map if available (only if result is not NULL)
-        if (!is.null(result) && !is.null(result$other_map) && length(result$other_map) > 0) {
-            # Use a more robust way to combine lists
-            for (var_name in names(result$other_map)) {
-                if (!is.null(result$other_map[[var_name]]) && length(result$other_map[[var_name]]) > 0) {
-                    sensitivity_other_maps[[var_name]] <- result$other_map[[var_name]]
-                }
-            }
-        }
 
         # Log the interaction p-value
         if (!is.na(result$interaction_p)) {
@@ -305,10 +272,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     # Create formatted HTML tables for subgroup analyses
     logger::log_info(formatted("Executing format_subgroup_analysis_tables: Creating formatted PRIMARY subgroup analysis tables", indent = 1))
     format_subgroup_analysis_tables(
-        subgroup_results = list(
-            subgroup_results = primary_subgroup_results,
-            other_map = primary_other_maps
-        ),
+        subgroup_results = primary_subgroup_results,
         dataset_name = paste("PRIMARY -", display_name),
         subgroup_dir = output_dirs$obj1_subgroup_primary,
         prefix = paste0(prefix, "primary_")
@@ -316,10 +280,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
 
     logger::log_info(formatted("Executing format_subgroup_analysis_tables: Creating formatted SENSITIVITY subgroup analysis tables", indent = 1))
     format_subgroup_analysis_tables(
-        subgroup_results = list(
-            subgroup_results = sensitivity_subgroup_results,
-            other_map = sensitivity_other_maps
-        ),
+        subgroup_results = sensitivity_subgroup_results,
         dataset_name = paste("SENSITIVITY -", display_name),
         subgroup_dir = output_dirs$obj1_subgroup_sensitivity,
         prefix = paste0(prefix, "sensitivity_")
@@ -340,14 +301,12 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         variable_order = cohort_forest_variable_order,
         effect_measure = "MD", # Mean Difference for continuous outcome
         favours_labels = FAVOURS_LABELS,
-        title = sprintf("Subgroup Analysis: Tumor Height Change - Primary (%s)", display_name),
-        other_map = primary_other_maps # Pass the collected other_maps for diagnostics
+        title = sprintf("Subgroup Analysis: Tumor Height Change - Primary (%s)", display_name)
     )
 
     # Collect diagnostics using dedicated function with raw data
     diagnostics_list[["tumor_height_primary"]] <- create_forest_plot_diagnostics(
         subgroup_results = primary_subgroup_results,
-        other_map = primary_other_maps,
         effect_measure = "MD",
         variable_order = cohort_forest_variable_order
     )
@@ -369,14 +328,12 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         variable_order = cohort_forest_variable_order,
         effect_measure = "MD", # Mean Difference for continuous outcome
         favours_labels = FAVOURS_LABELS,
-        title = sprintf("Subgroup Analysis: Tumor Height Change - Sensitivity (%s)", display_name),
-        other_map = sensitivity_other_maps # Pass the collected other_maps for diagnostics
+        title = sprintf("Subgroup Analysis: Tumor Height Change - Sensitivity (%s)", display_name)
     )
 
     # Collect diagnostics using dedicated function with raw data
     diagnostics_list[["tumor_height_sensitivity"]] <- create_forest_plot_diagnostics(
         subgroup_results = sensitivity_subgroup_results,
-        other_map = sensitivity_other_maps,
         effect_measure = "MD",
         variable_order = cohort_forest_variable_order
     )
@@ -415,7 +372,6 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
             tab_name <- tools::toTitleCase(gsub("_", " ", subgroup_var))
             tab_name <- gsub("[^A-Za-z0-9_]", "_", tab_name)
             tab_name <- substr(tab_name, 1, 31)
-            other_contents <- if (!is.null(primary_other_maps[[subgroup_var]]) && length(primary_other_maps[[subgroup_var]]) > 0) paste(primary_other_maps[[subgroup_var]], collapse = ", ") else ""
             header_row <- data.frame(
                 subgroup_variable = subgroup_var,
                 subgroup_level = "__HEADER__",
@@ -423,7 +379,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
                 events_plaque = NA, events_gksrs = NA,
                 treatment_effect = NA, ci_lower = NA, ci_upper = NA,
                 p_value = result$interaction_p,
-                other_variable_contents = other_contents,
+                other_variable_contents = "",
                 stringsAsFactors = FALSE
             )
             # Ensure detail rows have the column present
@@ -452,7 +408,6 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
             tab_name <- tools::toTitleCase(gsub("_", " ", subgroup_var))
             tab_name <- gsub("[^A-Za-z0-9_]", "_", tab_name)
             tab_name <- substr(tab_name, 1, 31)
-            other_contents <- if (!is.null(sensitivity_other_maps[[subgroup_var]]) && length(sensitivity_other_maps[[subgroup_var]]) > 0) paste(sensitivity_other_maps[[subgroup_var]], collapse = ", ") else ""
             header_row <- data.frame(
                 subgroup_variable = subgroup_var,
                 subgroup_level = "__HEADER__",
@@ -460,7 +415,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
                 events_plaque = NA, events_gksrs = NA,
                 treatment_effect = NA, ci_lower = NA, ci_upper = NA,
                 p_value = result$interaction_p,
-                other_variable_contents = other_contents,
+                other_variable_contents = "",
                 stringsAsFactors = FALSE
             )
             result$subgroup_effects$other_variable_contents <- ""
@@ -490,7 +445,6 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         dataset_name = dataset_name
     )
     recurrence_subgroup_results <- recurrence_subgroup_analysis$subgroup_results
-    recurrence_other_map <- recurrence_subgroup_analysis$other_map
 
     # Create forest plot for local recurrence
     recurrence_forest_plot <- create_single_cohort_forest_plot(
@@ -501,8 +455,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         variable_order = cohort_forest_variable_order,
         effect_measure = "OR",
         favours_labels = FAVOURS_LABELS,
-        title = sprintf("Subgroup Analysis: Local Recurrence (%s)", display_name),
-        other_map = recurrence_other_map # Pass for diagnostics
+        title = sprintf("Subgroup Analysis: Local Recurrence (%s)", display_name)
     )
 
     # Save the forest plot
@@ -524,7 +477,6 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         dataset_name = dataset_name
     )
     mets_subgroup_results <- mets_subgroup_analysis$subgroup_results
-    mets_other_map <- mets_subgroup_analysis$other_map
 
     # Create forest plot for metastatic progression
     mets_forest_plot <- create_single_cohort_forest_plot(
@@ -535,8 +487,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         variable_order = cohort_forest_variable_order,
         effect_measure = "OR",
         favours_labels = FAVOURS_LABELS,
-        title = sprintf("Subgroup Analysis: Metastatic Progression (%s)", display_name),
-        other_map = mets_other_map # Pass for diagnostics
+        title = sprintf("Subgroup Analysis: Metastatic Progression (%s)", display_name)
     )
 
     # Save the forest plot
@@ -559,7 +510,6 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         dataset_name = dataset_name
     )
     os_subgroup_results <- os_subgroup_analysis$subgroup_results
-    os_other_map <- os_subgroup_analysis$other_map
 
     # Create forest plot for overall survival
     os_forest_plot <- create_single_cohort_forest_plot(
@@ -570,8 +520,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         variable_order = cohort_forest_variable_order,
         effect_measure = "HR",
         favours_labels = FAVOURS_LABELS,
-        title = sprintf("Subgroup Analysis: Overall Survival (%s)", display_name),
-        other_map = os_other_map # Pass for diagnostics
+        title = sprintf("Subgroup Analysis: Overall Survival (%s)", display_name)
     )
 
     # Save the forest plot
@@ -594,7 +543,6 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         dataset_name = dataset_name
     )
     pfs_subgroup_results <- pfs_subgroup_analysis$subgroup_results
-    pfs_other_map <- pfs_subgroup_analysis$other_map
 
     # Create forest plot for progression-free survival
     pfs_forest_plot <- create_single_cohort_forest_plot(
@@ -605,8 +553,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
         variable_order = cohort_forest_variable_order,
         effect_measure = "HR",
         favours_labels = FAVOURS_LABELS,
-        title = sprintf("Subgroup Analysis: Progression-Free Survival (%s)", display_name),
-        other_map = pfs_other_map # Pass for diagnostics
+        title = sprintf("Subgroup Analysis: Progression-Free Survival (%s)", display_name)
     )
 
     # Save the forest plot
@@ -673,25 +620,21 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, other_map =
     # FOREST PLOT DIAGNOSTICS COLLECTION
     diagnostics_list[["local_recurrence"]] <- create_forest_plot_diagnostics(
         subgroup_results = recurrence_subgroup_results,
-        other_map = recurrence_other_map,
         effect_measure = "OR",
         variable_order = cohort_forest_variable_order
     )
     diagnostics_list[["metastatic_progression"]] <- create_forest_plot_diagnostics(
         subgroup_results = mets_subgroup_results,
-        other_map = mets_other_map,
         effect_measure = "OR",
         variable_order = cohort_forest_variable_order
     )
     diagnostics_list[["overall_survival"]] <- create_forest_plot_diagnostics(
         subgroup_results = os_subgroup_results,
-        other_map = os_other_map,
         effect_measure = "HR",
         variable_order = cohort_forest_variable_order
     )
     diagnostics_list[["progression_free_survival"]] <- create_forest_plot_diagnostics(
         subgroup_results = pfs_subgroup_results,
-        other_map = pfs_other_map,
         effect_measure = "HR",
         variable_order = cohort_forest_variable_order
     )

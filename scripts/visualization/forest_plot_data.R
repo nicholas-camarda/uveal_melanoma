@@ -6,9 +6,8 @@
 #' @param variable_order Character vector of variables to include (enforced for consistency)
 #' @param treatment_labels Character vector of treatment labels
 #' @param effect_measure Character string for effect measure
-#' @param other_map List mapping variable names to "Other" category contents (optional)
 #' @return List with formatted data for forestploter
-create_forest_plot_data <- function(subgroup_results, variable_order, treatment_labels, effect_measure, other_map = NULL) {
+create_forest_plot_data <- function(subgroup_results, variable_order, treatment_labels, effect_measure) {
     # Initialize data collection
     all_rows <- list()
     est_values <- c()
@@ -506,42 +505,6 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
         data.frame()
     }
 
-    # Add "Other" category information to diagnostics if available
-    if (!is.null(other_map) && length(other_map) > 0) {
-        other_info_rows <- list()
-        for (var_name in names(other_map)) {
-            if (!is.null(other_map[[var_name]]) && length(other_map[[var_name]]) > 0) {
-                other_row <- data.frame(
-                    variable = var_name,
-                    subgroup_level = "Other",
-                    n_total = NA,
-                    n_plaque = NA,
-                    n_gksrs = NA,
-                    events_plaque = NA,
-                    events_gksrs = NA,
-                    treatment_effect = NA,
-                    ci_lower = NA,
-                    ci_upper = NA,
-                    p_value = NA,
-                    status = "OTHER_CATEGORY",
-                    reason = sprintf("Categories collapsed into 'Other': %s", paste(other_map[[var_name]], collapse = ", ")),
-                    stringsAsFactors = FALSE
-                )
-                other_info_rows[[length(other_info_rows) + 1]] <- other_row
-            }
-        }
-
-        # Add other category information to diagnostics
-        if (length(other_info_rows) > 0) {
-            # Filter out NULL or invalid elements
-            valid_other_rows <- other_info_rows[sapply(other_info_rows, function(x) !is.null(x) && is.data.frame(x) && nrow(x) > 0)]
-            if (length(valid_other_rows) > 0) {
-                other_df <- do.call(rbind, valid_other_rows)
-                diagnostics_df <- rbind(diagnostics_df, other_df)
-            }
-        }
-    }
-
     return(list(
         data_frame = final_df,
         est_values = est_values,
@@ -601,4 +564,3 @@ forest_format_p_value <- function(p_value) {
         return(sprintf("%.2f", p_value))
     }
 }
-

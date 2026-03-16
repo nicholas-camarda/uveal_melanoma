@@ -12,7 +12,6 @@
 #' @param output_dirs Named list of output directories for saving analysis results (e.g., recurrence, mets, os, pfs, height, subgroups).
 #' @param prefix Character string used as a prefix for output files (e.g., "full_cohort_") to identify cohort or analysis context.
 #' @param confounders Character vector of confounder variable names to include in regression models.
-#' @param other_map Optional named list for additional mapping or customization used by downstream table generation.
 #'
 #' @return A list with the following elements:
 #'   - `changes`: Summary data frame of tumor height changes by treatment group.
@@ -27,23 +26,24 @@
 #'     data = analytic_data,
 #'     output_dirs = list(obj1_height_primary = "output/height"),
 #'     prefix = "full_cohort_",
-#'     confounders = c("age_at_diagnosis", "sex"),
-#'     other_map = list()
+#'     confounders = c("age_at_diagnosis", "sex")
 #' )
-analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders, other_map = list()) {
+analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders) {
     # Use height_change variable that was already calculated in data_processing.R
     data_with_height_change <- enforce_unordered_factors(data)
 
     height_model_vars <- unique(c("treatment_group", confounders, "initial_tumor_height"))
-    exclusion_result <- exclude_other_categories(
+    exclusion_result <- apply_sparse_level_exclusions(
         data = data_with_height_change,
         variables = height_model_vars[height_model_vars %in% names(data_with_height_change)],
-        other_map = if (is.null(other_map)) list() else other_map
+        analysis_name = "tumor_height_modeling",
+        id_col = pick_sparse_level_id_col(data_with_height_change),
+        level_exclusions = MODELING_LEVEL_EXCLUSIONS
     )
 
     if (exclusion_result$removed_row_count > 0) {
         logger::log_info(sprintf(
-            "Removed %d rows labelled 'Other' prior to tumor height modeling",
+            "Excluded %d rows with sparse categorical levels prior to tumor height modeling",
             exclusion_result$removed_row_count
         ))
     }
@@ -52,7 +52,7 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders,
     sufficient_height_data <- nrow(data_model_ready) > 0 && length(unique(stats::na.omit(data_model_ready$treatment_group))) >= 2
 
     if (!sufficient_height_data) {
-        logger::log_warn("Insufficient non-'Other' data available after exclusions; regression models will be skipped.")
+        logger::log_warn("Insufficient data available after sparse-level exclusions; regression models will be skipped.")
     }
 
     # Summary statistics (grouped)
@@ -120,8 +120,7 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders,
             dataset_name = "tumor_height",
             output_dir = output_dirs$obj1_height_primary,
             prefix = prefix,
-            other_map = other_map,
-            other_level_details = exclusion_result$other_level_details,
+            sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
             filter_stats = exclusion_result$filter_stats
         )
     } else {
@@ -131,8 +130,8 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders,
             diagnostics = NULL
         )
         diagnostics_stub$diagnostics <- list(
-            other_level_details = exclusion_result$other_level_details,
-            raw_model_output = "Model skipped: insufficient data after removing 'Other' levels.",
+            sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
+            raw_model_output = "Model skipped: insufficient data after sparse-level exclusions.",
             sample_size_summary = build_sample_size_summary_tab(
                 filter_stats = exclusion_result$filter_stats,
                 dataset_name = "tumor_height",
@@ -162,8 +161,7 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders,
             dataset_name = "tumor_height",
             output_dir = output_dirs$obj1_height_sensitivity,
             prefix = prefix,
-            other_map = other_map,
-            other_level_details = exclusion_result$other_level_details,
+            sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
             filter_stats = exclusion_result$filter_stats
         )
     } else {
@@ -173,8 +171,8 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders,
             diagnostics = NULL
         )
         diagnostics_stub$diagnostics <- list(
-            other_level_details = exclusion_result$other_level_details,
-            raw_model_output = "Model skipped: insufficient data after removing 'Other' levels.",
+            sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
+            raw_model_output = "Model skipped: insufficient data after sparse-level exclusions.",
             sample_size_summary = build_sample_size_summary_tab(
                 filter_stats = exclusion_result$filter_stats,
                 dataset_name = "tumor_height",

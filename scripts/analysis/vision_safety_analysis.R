@@ -10,7 +10,6 @@
 #' @param data A data frame containing vision-related variables.
 #' @param output_dirs A named list of output directories organized by analysis type (e.g., recurrence, mets, os, pfs, height, subgroups).
 #' @param prefix A character string used as a file prefix for output files (e.g., "full_cohort_") to identify cohort or analysis context in filenames.
-#' @param other_map Optional named list for additional mapping or customization used by downstream table generation.
 #'
 #' @return A list with the following elements:
 #'   - changes: summary data frame of vision changes by treatment group
@@ -20,7 +19,7 @@
 #'
 #' @examples
 #' analyze_visual_acuity_changes(data, output_dirs, prefix)
-analyze_visual_acuity_changes <- function(data, output_dirs, prefix, other_map = list()) {
+analyze_visual_acuity_changes <- function(data, output_dirs, prefix) {
     # Calculate vision changes (row-level)
     # Vision change is already calculated in data derivation (Objective 0)
     # Positive values = vision worsening (higher logMAR), negative = improvement
@@ -64,18 +63,19 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, other_map =
             )
     }
 
-    # Remove "Other" levels prior to modeling and summarisation
     confounders_for_model <- confounders
     exclusion_vars <- unique(c("treatment_group", confounders_for_model))
-    exclusion_result <- exclude_other_categories(
+    exclusion_result <- apply_sparse_level_exclusions(
         data_with_vision_change,
         variables = exclusion_vars[exclusion_vars %in% names(data_with_vision_change)],
-        other_map = other_map
+        analysis_name = "vision_change_linear",
+        id_col = pick_sparse_level_id_col(data_with_vision_change),
+        level_exclusions = MODELING_LEVEL_EXCLUSIONS
     )
 
     if (exclusion_result$removed_row_count > 0) {
         logger::log_info(sprintf(
-            "Removed %d rows labelled 'Other' prior to vision change analysis",
+            "Excluded %d rows with sparse categorical levels prior to vision change analysis",
             exclusion_result$removed_row_count
         ))
     }
@@ -357,9 +357,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, other_map =
         dataset_name = "vision_safety",
         output_dir = output_dirs$obj2_vision,
         prefix = prefix,
-        # handle_rare = FALSE, # REMOVED
-        other_map = other_map,
-        other_level_details = exclusion_result$other_level_details,
+        sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
         filter_stats = exclusion_result$filter_stats
     )
 
@@ -390,14 +388,13 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, other_map =
 #' @param sequela_type Character. The type of sequela to analyze. Must be one of "retinopathy", "nvg", or "srd".
 #' @param confounders Character vector of confounders to adjust for in the analysis. Default is NULL.
 #' @param dataset_name Character. Name of the dataset for output files. Default is NULL.
-#' @param other_map List. Additional mapping or arguments to pass to the analysis. Default is empty list.
 #' @param output_dirs List of output directories organized by analysis type (recurrence, mets, os, pfs, height, subgroups, etc.).
 #' @param prefix Character string used as a file prefix for output files (e.g., "full_cohort_"). Used to identify cohort or analysis context in filenames.
 #'
 #' @return A list of results from analyze_binary_outcome_rates, including model output and summary tables.
 #' @examples
-#' analyze_radiation_complications(data, "retinopathy", confounders, "uveal_full", other_map, output_dirs, prefix)
-analyze_radiation_complications <- function(data, sequela_type, confounders = NULL, dataset_name = NULL, other_map = list(), output_dirs = NULL, prefix = NULL) {
+#' analyze_radiation_complications(data, "retinopathy", confounders, "uveal_full", output_dirs, prefix)
+analyze_radiation_complications <- function(data, sequela_type, confounders = NULL, dataset_name = NULL, output_dirs = NULL, prefix = NULL) {
     # Validate sequela type
     valid_sequelae <- c("retinopathy", "nvg", "srd")
     if (!sequela_type %in% valid_sequelae) {
@@ -457,18 +454,19 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
     # Retain a copy without additional filtering for descriptive outputs
     summary_data <- data
 
-    # Remove "Other" categories prior to modeling only (retain original data for summaries)
     confounders_for_model <- if (is.null(confounders)) character() else confounders
     exclusion_vars <- unique(c("treatment_group", confounders_for_model))
-    exclusion_result <- exclude_other_categories(
+    exclusion_result <- apply_sparse_level_exclusions(
         data,
         variables = exclusion_vars[exclusion_vars %in% names(data)],
-        other_map = other_map
+        analysis_name = paste0(sequela_type, "_logistic"),
+        id_col = pick_sparse_level_id_col(data),
+        level_exclusions = MODELING_LEVEL_EXCLUSIONS
     )
 
     if (exclusion_result$removed_row_count > 0) {
         logger::log_info(sprintf(
-            "Removed %d rows labelled 'Other' prior to %s analysis",
+            "Excluded %d rows with sparse categorical levels prior to %s analysis",
             exclusion_result$removed_row_count,
             sequela_type
         ))
@@ -599,9 +597,7 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
             dataset_name = dataset_name,
             output_dir = output_dir,
             prefix = prefix,
-            # handle_rare = FALSE, # REMOVED
-            other_map = other_map,
-            other_level_details = exclusion_result$other_level_details,
+            sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
             filter_stats = exclusion_result$filter_stats
         )
 
@@ -612,9 +608,9 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
     } else {
         logger::log_warn(sprintf("Insufficient events for regression modeling (%d events)", sum(data[[outcome_var]] == "Y", na.rm = TRUE)))
         safety_diagnostics <- list(
-            other_level_details = exclusion_result$other_level_details,
+            sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
             raw_model_output = sprintf(
-                "Model skipped: only %d events available after removing 'Other' levels.",
+                "Model skipped: only %d events available after sparse-level exclusions.",
                 sum(model_data[[outcome_var]] == 1, na.rm = TRUE)
             ),
             sample_size_summary = build_sample_size_summary_tab(

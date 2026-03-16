@@ -175,9 +175,9 @@ COHORT_CONSTANT_VARIABLES <- list(
 # preserving the confounding adjustment for stages with adequate sample sizes.
 STAGES_TO_EXCLUDE_FROM_MODIFIED <- c("3B", "3C", "4")
 
-# Centralized forced-to-Other configuration for factor variables (code-level)
-# Any levels listed here will always be collapsed into 'Other' for the given variable, regardless of counts
-FORCED_OTHER_BY_VARIABLE <- list(
+# Centralized model-layer level exclusions for sparse-factor handling
+# These exclusions are applied only inside model-specific analysis copies.
+MODELING_LEVEL_EXCLUSIONS <- list(
     initial_overall_stage = STAGES_TO_EXCLUDE_FROM_MODIFIED
 )
 
@@ -586,13 +586,6 @@ GEP_DERIVED_VARIABLES <- c(
 GEP_DISPLAY_VARIABLES <- c(
     "biopsy1_gep", "gep_class_simple", "prame_status", "gep12_prame_status"
 )
-
-# Canonical GEP classification fields are never collapsed to 'Other'.
-# They define Objective 4 eligibility and must preserve definitive labels.
-GEP_NO_OTHER_COLLAPSE_VARIABLES <- unique(c(
-    "biopsy1_gep_raw",
-    GEP_DISPLAY_VARIABLES
-))
 
 # Objective 4 grouping specs and per-context defaults.
 # Change these mappings when reader-facing or technical GEP groupings need to move together.

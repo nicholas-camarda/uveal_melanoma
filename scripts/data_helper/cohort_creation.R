@@ -143,7 +143,7 @@ apply_criteria <- function(data) {
 #'
 #' @param data Data frame. Patient-level data.
 #'
-#' @return A list with elements `data` (factored data) and `other_map` placeholder
+#' @return A list with element `data` containing factored patient-level data
 prepare_factor_levels <- function(data) {
     logger::log_info("Preparing factor levels for variables")
 
@@ -260,7 +260,7 @@ prepare_factor_levels <- function(data) {
 
     data <- enforce_unordered_factors(data, verbose = VERBOSE)
 
-    return(list(data = data, other_map = list()))
+    return(list(data = data))
 }
 
 #' Save each cohort separately (Excel and RDS)

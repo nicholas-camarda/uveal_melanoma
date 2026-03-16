@@ -6,7 +6,7 @@
 #'
 #' Lists all cohort datasets in the processed data directory that follow the
 #' naming convention "uveal_melanoma_*_cohort.rds". Ignores non-cohort artifacts
-#' like other_map.rds or tool outputs.
+#' like legacy pipeline artifacts or tool outputs.
 #'
 #' @return A character vector of dataset names.
 #'
@@ -28,194 +28,216 @@ list_available_datasets <- function() {
     return(gsub("\\.rds$", "", cohort_rds))
 }
 
-#' Handle rare categories in factor variables
-#'
-#' Collapses rare categories in specified factor variables into 'Other' if their count is below a threshold.
-#' Only creates 'Other' category if at least 2 rare categories are being collapsed.
-#'
-#' @param data Data frame containing the variables.
-#' @param vars Character vector of variable names to check.
-#' @param threshold Minimum number of observations required to keep a category (default: 5).
-#'
-#' @return Data frame with rare categories collapsed to 'Other'.
-#' @examples
-#' handle_rare_categories(data, vars = c("sex", "location"), threshold = 5)
-handle_rare_categories <- function(data, vars, threshold = 5) {
-    other_map <- list()
-    if (VERBOSE) {
-        logger::log_info(sprintf("\nChecking for rare categories (threshold: %d):", threshold))
+#' Pick a stable patient identifier column for sparse-level diagnostics
+pick_sparse_level_id_col <- function(data) {
+    key_candidates <- c("id", "patient_id", "record_id", "case_id", "study_id")
+    present <- key_candidates[key_candidates %in% names(data)]
+    if (length(present) == 0) {
+        return(NULL)
     }
-
-    for (var in vars) {
-        if (var %in% names(data) && is.factor(data[[var]])) {
-            logger::log_info(sprintf("Checking for rare categories in %s", var))
-
-            # 1) Forced collapsing based on centralized config (always to 'Other')
-            if (exists("FORCED_OTHER_BY_VARIABLE") && var %in% names(FORCED_OTHER_BY_VARIABLE)) {
-                forced_levels <- FORCED_OTHER_BY_VARIABLE[[var]]
-                # Collapse only levels that actually exist
-                forced_levels_present <- intersect(forced_levels, levels(data[[var]]))
-                if (length(forced_levels_present) > 0) {
-                    if (VERBOSE) {
-                        logger::log_info(sprintf("Forcing collapse of specified levels in %s into 'Other': %s", var, paste(forced_levels_present, collapse = ", ")))
-                    }
-                    # Ensure 'Other' exists in levels to avoid unknown-level warnings when refactoring
-                    collapsed <- fct_collapse(data[[var]], Other = forced_levels_present) %>%
-                        fct_drop()
-                    if ("Other" %in% levels(collapsed)) {
-                        collapsed <- fct_relevel(collapsed, "Other", after = Inf)
-                    }
-                    data[[var]] <- factor(collapsed)
-                    # Track forced-collapsed categories
-                    other_map[[var]] <- unique(c(other_map[[var]], forced_levels_present))
-                }
-            }
-
-            # 2) Rarity-based collapsing (post-forced)
-            # Get category counts after forced collapse
-            cat_counts <- table(data[[var]])
-            rare_cats <- names(cat_counts)[cat_counts < threshold & names(cat_counts) != "Other"]
-            valid_cats <- names(cat_counts)[cat_counts >= threshold | names(cat_counts) == "Other"]
-
-            if (length(rare_cats) > 0) {
-                # Only create/inflate "Other" if at least 2 rare categories to collapse
-                if (length(rare_cats) >= 2) {
-                    collapsed <- fct_collapse(data[[var]], Other = rare_cats) %>%
-                        fct_drop()
-                    if ("Other" %in% levels(collapsed)) {
-                        collapsed <- fct_relevel(collapsed, "Other", after = Inf)
-                    }
-                    data[[var]] <- factor(collapsed)
-                    other_map[[var]] <- unique(c(other_map[[var]], rare_cats))
-                    if (VERBOSE) {
-                        logger::log_info(sprintf("Collapsed rare categories into 'Other' for %s: %s", var, paste(rare_cats, collapse = ", ")))
-                    }
-                } else {
-                    if (VERBOSE) {
-                        logger::log_info(sprintf("Skipping 'Other' creation for %s (only 1 rare category)", var))
-                    }
-                    # Keep categories as-is when only one rare category (no subsetting to avoid length mismatch)
-                    data[[var]] <- factor(data[[var]])
-                }
-            }
-        }
-    }
-
-    return(list(data = data, other_map = other_map))
+    present[[1]]
 }
 
-#' Exclude "Other" categories prior to modeling
-#'
-#' Removes observations where specified variables take the value "Other" so that
-#' downstream models are not fitted on aggregated convenience categories. A
-#' summary of the exclusions is returned so diagnostics can describe what was
-#' removed alongside the collapsed level mappings in `other_map`.
-#'
-#' @param data Data frame that will be supplied to the model fitting routine.
-#' @param variables Character vector of column names to inspect. Defaults to all
-#'   factor or character columns in `data` when NULL.
-#' @param other_label Character string denoting the placeholder level (default:
-#'   "Other").
-#' @param other_map Optional named list describing which original levels were
-#'   collapsed into "Other" for each variable.
-#'
-#' @return List with the filtered data frame (`data`), a diagnostics data frame
-#'   (`other_level_details`), the indices of removed rows (`removed_row_indices`),
-#'   and the number of unique rows excluded (`removed_row_count`).
-exclude_other_categories <- function(data, variables = NULL, other_label = "Other", other_map = list()) {
+#' Return observed counts for a factor/character vector after exclusions
+get_observed_level_counts <- function(values, excluded_levels = character()) {
+    if (is.factor(values)) {
+        values <- droplevels(values)
+    } else {
+        values <- factor(as.character(values))
+    }
+
+    keep_mask <- !is.na(values)
+    if (length(excluded_levels) > 0) {
+        keep_mask <- keep_mask & !(as.character(values) %in% excluded_levels)
+    }
+
+    values <- droplevels(values[keep_mask])
+    counts <- table(values, useNA = "no")
+
+    tibble::tibble(
+        level = names(counts),
+        observed_n = as.integer(counts)
+    )
+}
+
+#' Evaluate sparse categorical levels for one analysis variable
+summarize_sparse_factor_levels <- function(values,
+                                           min_level_count = THRESHOLD_RARITY,
+                                           explicit_exclusions = character()) {
+    counts <- get_observed_level_counts(values)
+
+    explicit_exclusions <- unique(explicit_exclusions[explicit_exclusions %in% counts$level])
+    post_explicit_counts <- get_observed_level_counts(values, excluded_levels = explicit_exclusions)
+    sparse_levels <- post_explicit_counts$level[post_explicit_counts$observed_n < min_level_count]
+    excluded_levels <- unique(c(explicit_exclusions, sparse_levels))
+    retained_counts <- get_observed_level_counts(values, excluded_levels = excluded_levels)
+
+    drop_reason <- NA_character_
+    if (nrow(retained_counts) < 2) {
+        drop_reason <- sprintf(
+            "fewer than 2 observed levels remain after exclusions (threshold=%d)",
+            min_level_count
+        )
+    }
+
+    list(
+        counts = counts,
+        retained_counts = retained_counts,
+        explicit_exclusions = explicit_exclusions,
+        sparse_levels = sparse_levels,
+        excluded_levels = excluded_levels,
+        retained_levels = retained_counts$level,
+        reference_level = retained_counts$level[[1]] %||% NA_character_,
+        drop_reason = drop_reason
+    )
+}
+
+#' Apply sparse-level exclusions to a model-specific analysis copy
+apply_sparse_level_exclusions <- function(data,
+                                          variables = NULL,
+                                          analysis_name = "analysis",
+                                          min_level_count = THRESHOLD_RARITY,
+                                          id_col = NULL,
+                                          level_exclusions = NULL) {
     initial_row_count <- nrow(data)
 
     if (is.null(variables)) {
-        variables <- names(data)[sapply(data, function(col) is.factor(col) || is.character(col))]
+        variables <- names(data)[vapply(data, function(col) is.factor(col) || is.character(col), logical(1))]
+    }
+    variables <- variables[variables %in% names(data)]
+
+    if (is.null(id_col)) {
+        id_col <- pick_sparse_level_id_col(data)
     }
 
     if (length(variables) == 0 || nrow(data) == 0) {
         return(list(
             data = data,
-            other_level_details = NULL,
+            sparse_level_diagnostics = NULL,
+            variable_screening = tibble::tibble(),
             removed_row_indices = integer(0),
+            removed_row_ids = character(0),
             removed_row_count = 0L,
             filter_stats = list(
                 initial_n = initial_row_count,
                 model_n = initial_row_count,
                 removed_n = 0L,
                 removed_pct = 0,
-                removal_reason = "No pre-model exclusions applied"
+                removal_reason = "No sparse-level exclusions applied"
             )
         ))
     }
 
     removal_mask <- rep(FALSE, nrow(data))
-    details_list <- list()
+    diagnostics_rows <- list()
+    screening_rows <- list()
+    exclusions_by_variable <- level_exclusions %||% list()
 
     for (var in variables) {
-        if (!var %in% names(data)) {
-            next
-        }
-
         column <- data[[var]]
         if (!(is.factor(column) || is.character(column))) {
             next
         }
 
-        is_other <- !is.na(column) & column == other_label
-        if (!any(is_other)) {
+        explicit_exclusions <- exclusions_by_variable[[var]] %||% character()
+        sparse_summary <- summarize_sparse_factor_levels(
+            column,
+            min_level_count = min_level_count,
+            explicit_exclusions = explicit_exclusions
+        )
+
+        screening_rows[[length(screening_rows) + 1L]] <- tibble::tibble(
+            analysis_name = analysis_name,
+            variable = var,
+            status = ifelse(is.na(sparse_summary$drop_reason), "retained", "dropped"),
+            reason = ifelse(is.na(sparse_summary$drop_reason),
+                "passes sparse-level screening",
+                sparse_summary$drop_reason
+            ),
+            reference_level = sparse_summary$reference_level,
+            retained_levels = paste(sparse_summary$retained_levels, collapse = ", "),
+            excluded_levels = paste(sparse_summary$excluded_levels, collapse = ", ")
+        )
+
+        if (length(sparse_summary$excluded_levels) == 0) {
             next
         }
 
-        removal_mask <- removal_mask | is_other
-
-        mapped_levels <- if (!is.null(other_map) && length(other_map) > 0 && var %in% names(other_map) && length(other_map[[var]]) > 0) {
-            paste(other_map[[var]], collapse = ", ")
-        } else {
-            "Collapsed level details unavailable"
+        level_values <- as.character(column)
+        variable_mask <- !is.na(level_values) & level_values %in% sparse_summary$excluded_levels
+        if (!any(variable_mask)) {
+            next
         }
 
-        details_list[[length(details_list) + 1L]] <- data.frame(
-            variable = var,
-            has_other_level = TRUE,
-            other_categories = mapped_levels,
-            other_count = sum(is_other),
-            other_pct = round(sum(is_other) / nrow(data) * 100, 1),
-            stringsAsFactors = FALSE
-        )
+        removal_mask <- removal_mask | variable_mask
+
+        for (excluded_level in sparse_summary$excluded_levels) {
+            level_mask <- !is.na(level_values) & level_values == excluded_level
+            if (!any(level_mask)) {
+                next
+            }
+
+            level_count <- sparse_summary$counts$observed_n[
+                match(excluded_level, sparse_summary$counts$level)
+            ]
+            row_ids <- if (!is.null(id_col) && id_col %in% names(data)) {
+                as.character(data[[id_col]][level_mask])
+            } else {
+                character(0)
+            }
+
+            diagnostics_rows[[length(diagnostics_rows) + 1L]] <- tibble::tibble(
+                analysis_name = analysis_name,
+                variable = var,
+                level = excluded_level,
+                observed_n = as.integer(level_count %||% 0L),
+                action = "excluded_rows",
+                reason = ifelse(
+                    excluded_level %in% sparse_summary$explicit_exclusions,
+                    "explicit level exclusion",
+                    sprintf("observed count below threshold (%d)", min_level_count)
+                ),
+                threshold = min_level_count,
+                reference_level = sparse_summary$reference_level,
+                rows_removed = sum(level_mask),
+                row_ids = paste(row_ids, collapse = ", "),
+                source = ifelse(
+                    excluded_level %in% sparse_summary$explicit_exclusions,
+                    "explicit_exclusion",
+                    "sparse_level"
+                )
+            )
+        }
     }
 
     filtered_data <- data[!removal_mask, , drop = FALSE]
-    # Drop unused factor levels so removed categories do not persist in modeling outputs
-    factor_cols <- names(filtered_data)[sapply(filtered_data, is.factor)]
+    factor_cols <- names(filtered_data)[vapply(filtered_data, is.factor, logical(1))]
     if (length(factor_cols) > 0) {
         filtered_data[factor_cols] <- lapply(filtered_data[factor_cols], droplevels)
     }
-    removed_indices <- which(removal_mask)
-    removed_count <- length(removed_indices)
 
-    other_level_details <- if (length(details_list) > 0) {
-        details_df <- do.call(rbind, details_list)
-        details_df <- details_df %>%
-            dplyr::mutate(
-                total_rows = initial_row_count,
-                retained_rows = nrow(filtered_data)
-            )
-        details_df$unique_rows_removed <- removed_count
-        details_df
+    removed_indices <- which(removal_mask)
+    removed_ids <- if (!is.null(id_col) && id_col %in% names(data) && length(removed_indices) > 0) {
+        as.character(data[[id_col]][removed_indices])
     } else {
-        NULL
+        character(0)
     }
 
     filter_stats <- list(
         initial_n = initial_row_count,
         model_n = nrow(filtered_data),
-        removed_n = removed_count,
-        removed_pct = if (initial_row_count > 0) round(removed_count / initial_row_count * 100, 1) else 0,
-        removal_reason = "Excluded rows (rare categories) before modeling"
+        removed_n = length(removed_indices),
+        removed_pct = if (initial_row_count > 0) round(length(removed_indices) / initial_row_count * 100, 1) else 0,
+        removal_reason = "Excluded sparse categorical levels before modeling"
     )
 
     list(
         data = filtered_data,
-        other_level_details = other_level_details,
+        sparse_level_diagnostics = if (length(diagnostics_rows) > 0) dplyr::bind_rows(diagnostics_rows) else NULL,
+        variable_screening = if (length(screening_rows) > 0) dplyr::bind_rows(screening_rows) else tibble::tibble(),
         removed_row_indices = removed_indices,
-        removed_row_count = removed_count,
+        removed_row_ids = removed_ids,
+        removed_row_count = length(removed_indices),
         filter_stats = filter_stats
     )
 }
@@ -236,11 +258,11 @@ generate_valid_confounders <- function(data, confounders, threshold = THRESHOLD_
     keep_cfs <- sapply(confounders, function(var) {
         var_data <- data[[var]]
         if (is.factor(var_data)) {
-            tab <- table(var_data)
-            return(sum(tab >= THRESHOLD_RARITY) >= 2)
+            counts <- get_observed_level_counts(var_data)
+            return(sum(counts$observed_n >= threshold) >= 2)
         } else {
             # For non-factors, require >1 unique value and at least THRESHOLD_RARITY non-NA values
-            return(length(unique(na.omit(var_data))) > 1 && sum(!is.na(var_data)) >= THRESHOLD_RARITY)
+            return(length(unique(na.omit(var_data))) > 1 && sum(!is.na(var_data)) >= threshold)
         }
     })
     valid_confounders <- confounders[keep_cfs]
@@ -392,6 +414,11 @@ calculate_variable_interaction_pvalue <- function(data, variable_name, outcome_v
     data_clean <- data %>%
         filter(if_all(all_of(required_vars), ~ !is.na(.x)))
 
+    factor_cols <- names(data_clean)[vapply(data_clean, is.factor, logical(1))]
+    if (length(factor_cols) > 0) {
+        data_clean[factor_cols] <- lapply(data_clean[factor_cols], droplevels)
+    }
+
     if (nrow(data_clean) == 0) {
         warning("No complete cases available for analysis")
         return(NA)
@@ -399,8 +426,8 @@ calculate_variable_interaction_pvalue <- function(data, variable_name, outcome_v
 
     # Check if variable has sufficient levels/variation
     if (is.factor(data_clean[[variable_name]])) {
-        level_counts <- table(data_clean[[variable_name]])
-        if (length(level_counts) < 2 || any(level_counts == 0)) {
+        level_counts <- get_observed_level_counts(data_clean[[variable_name]])
+        if (nrow(level_counts) < 2) {
             warning(sprintf("Variable '%s' has insufficient levels for interaction testing", variable_name))
             return(NA)
         }
@@ -408,8 +435,8 @@ calculate_variable_interaction_pvalue <- function(data, variable_name, outcome_v
 
     # Check treatment variable has sufficient levels
     if (is.factor(data_clean[[treatment_var]])) {
-        treatment_counts <- table(data_clean[[treatment_var]])
-        if (length(treatment_counts) < 2 || any(treatment_counts == 0)) {
+        treatment_counts <- get_observed_level_counts(data_clean[[treatment_var]])
+        if (nrow(treatment_counts) < 2) {
             warning(sprintf("Treatment variable '%s' has insufficient levels for interaction testing", treatment_var))
             return(NA)
         }
@@ -564,6 +591,11 @@ calculate_variable_overall_significance <- function(data, variable_name, outcome
     data_clean <- data %>%
         filter(if_all(all_of(required_vars), ~ !is.na(.x)))
 
+    factor_cols <- names(data_clean)[vapply(data_clean, is.factor, logical(1))]
+    if (length(factor_cols) > 0) {
+        data_clean[factor_cols] <- lapply(data_clean[factor_cols], droplevels)
+    }
+
     if (nrow(data_clean) == 0) {
         warning("No complete cases available for analysis")
         return(NA)
@@ -571,8 +603,8 @@ calculate_variable_overall_significance <- function(data, variable_name, outcome
 
     # Check if variable has sufficient levels/variation
     if (is.factor(data_clean[[variable_name]])) {
-        level_counts <- table(data_clean[[variable_name]])
-        if (length(level_counts) < 2 || any(level_counts == 0)) {
+        level_counts <- get_observed_level_counts(data_clean[[variable_name]])
+        if (nrow(level_counts) < 2) {
             warning(sprintf("Variable '%s' has insufficient levels for significance testing", variable_name))
             return(NA)
         }
@@ -696,53 +728,4 @@ calculate_variable_overall_significance <- function(data, variable_name, outcome
             return(NA)
         }
     )
-}
-
-#' Load cohort-specific other_map.rds file
-#'
-#' Unified function to load cohort-specific other_map files for consistent handling
-#' across all analysis functions.
-#'
-#' @param dataset_name Character string for dataset name (e.g., "uveal_melanoma_full_cohort")
-#' @param processed_data_dir Character string for processed data directory
-#' @return List containing other_map information for the specific cohort
-#' @examples
-#' other_map <- get_cohort_specific_other_map("uveal_melanoma_full_cohort")
-get_cohort_specific_other_map <- function(dataset_name, processed_data_dir = PROCESSED_DATA_DIR) {
-    other_map_file <- file.path(processed_data_dir, "other_map.rds")
-    if (!file.exists(other_map_file)) {
-        logger::log_info(sprintf("No combined other_map.rds found at %s, using empty list", other_map_file))
-        return(list())
-    }
-
-    fi <- tryCatch(file.info(other_map_file), error = function(e) NULL)
-    if (is.null(fi) || is.na(fi$size) || fi$size <= 0) {
-        logger::log_warn(sprintf("Combined other_map.rds at %s is empty or unreadable; using empty list", other_map_file))
-        return(list())
-    }
-
-    combined_other_map <- tryCatch(readRDS(other_map_file), error = function(e) NULL)
-    if (is.null(combined_other_map) || (!is.list(combined_other_map))) {
-        logger::log_warn(sprintf("Combined other_map.rds at %s could not be parsed as a named list; using empty list", other_map_file))
-        return(list())
-    }
-
-    if (dataset_name %in% names(combined_other_map)) {
-        cohort_other_map <- combined_other_map[[dataset_name]]
-        logger::log_info(sprintf("Loaded cohort-specific other_map for %s with %d variables", dataset_name, length(cohort_other_map)))
-        # Explicit per-cohort log of collapsed levels, if available
-        if (length(cohort_other_map) > 0) {
-            vars_logged <- utils::head(names(cohort_other_map), 10)
-            logger::log_info(sprintf(
-                "Collapsed categories recorded for variables (first %d): %s",
-                length(vars_logged), paste(vars_logged, collapse = ", ")
-            ))
-        } else {
-            logger::log_info(sprintf("No collapsed categories recorded for %s", dataset_name))
-        }
-        return(cohort_other_map)
-    } else {
-        logger::log_info(sprintf("Dataset %s not found in combined other_map, using empty list", dataset_name))
-        return(list())
-    }
 }

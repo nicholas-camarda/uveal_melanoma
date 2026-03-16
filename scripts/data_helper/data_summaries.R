@@ -88,7 +88,7 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
 
         # Baseline tables should reflect raw factor levels present in the derived data (pre-collapse)
         # If the derived (pre-collapsed) dataset is available alongside the collapsed one, prefer it for baseline only.
-        # Otherwise, proceed with current data but expand factor levels using the original levels if captured in other_map.
+        # Otherwise, proceed with current data but expand factor levels using the original declared levels when available.
         try({
             pre_collapsed_path <- file.path(PROCESSED_DATA_DIR, paste0(cohort_name, "_derived_precollapse.rds"))
             if (file.exists(pre_collapsed_path)) {

@@ -11,7 +11,6 @@
 #' @param timepoints Numeric vector of years (default `GEP_VALIDATION_TIMEPOINTS`)
 #' @param bootstrap_iterations Integer bootstrap iterations retained for API compatibility; the current calibration slope uses IPCW-weighted logistic recalibration rather than bootstrap optimism correction
 #' @param create_unified_at_base logical If TRUE, also write unified visuals at the parent objective dir
-#' @param other_map List containing treatment group mappings and categorical variable level mappings for consistent analysis
 #' @param output_dirs Named list of objective-specific output directories
 #' @param prefix Character prefix for all generated files
 #' @return A list with `validation_results`, `prame_analysis`, and `missing_data_analysis`.
@@ -20,7 +19,6 @@ analyze_gep_mfs_validation <- function(data,
                                        timepoints = GEP_VALIDATION_TIMEPOINTS,
                                        bootstrap_iterations = GEP_BOOTSTRAP_ITERATIONS,
                                        create_unified_at_base = FALSE,
-                                       other_map = NULL,
                                        output_dirs = NULL,
                                        prefix = "") {
     logger::log_info("Starting GEP Metastasis-Free Survival validation analysis")
@@ -33,15 +31,6 @@ analyze_gep_mfs_validation <- function(data,
 
     if (is.null(prefix)) {
         prefix <- ""
-    }
-    
-    # Load other_map if not provided
-    if (is.null(other_map)) {
-        if (!is.null(dataset_name)) {
-            other_map <- tryCatch(get_cohort_specific_other_map(dataset_name), error = function(e) list())
-        } else {
-            other_map <- list()
-        }
     }
     mfs_output_dir <- output_dirs$obj4_mfs
     mfs_summary_output_dir <- output_dirs$obj4_mfs_summary %||% mfs_output_dir
@@ -261,7 +250,6 @@ analyze_gep_mfs_validation <- function(data,
                     prefix = prefix,
                     group_var = "biopsy1_gep",
                     model_group_var = "biopsy1_gep_model",
-                    other_map = other_map,
                     dataset_name = dataset_name
                 )
                 logger::log_info(formatted("MFS GEP visualization plots created successfully", indent = 2))
@@ -327,7 +315,6 @@ analyze_gep_mss_validation <- function(data,
                                        timepoints = GEP_VALIDATION_TIMEPOINTS,
                                        bootstrap_iterations = GEP_BOOTSTRAP_ITERATIONS,
                                        create_unified_at_base = FALSE,
-                                       other_map = NULL,
                                        output_dirs = NULL,
                                        prefix = "") {
     logger::log_info("Starting GEP Melanoma-Specific Survival validation analysis")
@@ -342,17 +329,6 @@ analyze_gep_mss_validation <- function(data,
     if (is.null(prefix)) {
         prefix <- ""
     }
-    
-    # Load other_map if not provided
-    if (is.null(other_map)) {
-        logger::log_info(formatted("DEBUG: Loading other_map", indent = 1))
-        if (!is.null(dataset_name)) {
-            other_map <- tryCatch(get_cohort_specific_other_map(dataset_name), error = function(e) list())
-        } else {
-            other_map <- list()
-        }
-    }
-    
     logger::log_info(formatted("DEBUG: Setting up output directory", indent = 1))
     mss_output_dir <- output_dirs$obj4_mss
     mss_summary_output_dir <- output_dirs$obj4_mss_summary %||% mss_output_dir
@@ -522,8 +498,7 @@ analyze_gep_mss_validation <- function(data,
             validation_output_dir = mss_validation_output_dir,
             prefix = prefix,
             group_var = mss_visual_grouping$var,
-            technical_group_var = mss_competing_risk_grouping$var,
-            other_map = other_map
+            technical_group_var = mss_competing_risk_grouping$var
         )
         logger::log_info(formatted("MSS GEP visualization plots created successfully", indent = 2))
     }, error = function(e) {

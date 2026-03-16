@@ -28,7 +28,6 @@ format_subgroup_analysis_tables <- function(subgroup_results, dataset_name, subg
         return(invisible(NULL))
     }
     actual_subgroup_results <- if ("subgroup_results" %in% names(subgroup_results)) subgroup_results$subgroup_results else subgroup_results
-    other_map <- if ("other_map" %in% names(subgroup_results)) subgroup_results$other_map else NULL
     if (is.null(actual_subgroup_results) || length(actual_subgroup_results) == 0) {
         warning("No subgroup results provided for formatting")
         return(invisible(NULL))
@@ -37,15 +36,13 @@ format_subgroup_analysis_tables <- function(subgroup_results, dataset_name, subg
     for (var_name in names(actual_subgroup_results)) {
         var_results <- actual_subgroup_results[[var_name]]
         if (is.null(var_results) || is.null(var_results$subgroup_effects)) next
-        var_other_map <- if (!is.null(other_map) && length(other_map) > 0 && var_name %in% names(other_map) && !is.null(other_map[[var_name]]) && length(other_map[[var_name]]) > 0) setNames(list(other_map[[var_name]]), var_name) else NULL
         tryCatch(
             {
                 formatted_table <- format_subgroup_analysis_results(
                     subgroup_results = setNames(list(var_results), var_name),
                     outcome_name = paste("Tumor Height Change -", dataset_name),
                     effect_measure = "MD",
-                    output_path = file.path(subgroup_dir, paste0(prefix, var_name, "_subgroup_analysis.xlsx")),
-                    other_map = var_other_map
+                    output_path = file.path(subgroup_dir, paste0(prefix, var_name, "_subgroup_analysis.xlsx"))
                 )
             },
             error = function(e) {
@@ -67,9 +64,8 @@ format_subgroup_analysis_tables <- function(subgroup_results, dataset_name, subg
 #' @param outcome_name Outcome name (for labeling, not directly used in this function)
 #' @param effect_measure "HR"|"OR"|"MD" (for labeling, not directly used in this function)
 #' @param output_path Path for Excel (HTML saved alongside if provided)
-#' @param other_map Optional other category mapping (not used in this function)
 #' @return Data frame prepared for Excel (invisible if written to file)
-format_subgroup_analysis_results <- function(subgroup_results, outcome_name, effect_measure = "HR", output_path = NULL, other_map = NULL) {
+format_subgroup_analysis_results <- function(subgroup_results, outcome_name, effect_measure = "HR", output_path = NULL) {
     # Check for empty or NULL input
     if (is.null(subgroup_results) || length(subgroup_results) == 0) {
         warning("No subgroup results provided for formatting")
@@ -78,8 +74,7 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
 
     # List to accumulate all rows for the final table
     all_table_rows <- list()
-    # Collect footnotes for 'Other' level details per variable
-    other_notes <- c()
+    sparse_notes <- c()
 
     # Iterate over each subgroup variable in the results
     for (var_name in names(subgroup_results)) {
@@ -125,10 +120,23 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
 
         # Only proceed if all required columns are present
         if (all(req %in% names(se))) {
-            # Capture 'Other' mapping details for footnote if applicable
-            has_other_level <- any(as.character(se$subgroup_level) == "Other")
-            if (has_other_level && !is.null(other_map) && var_name %in% names(other_map) && length(other_map[[var_name]]) > 0) {
-                other_notes <- c(other_notes, sprintf("Other for %s: %s", variable_display_name, paste(other_map[[var_name]], collapse = ", ")))
+            if (!is.null(result$sparse_level_diagnostics) &&
+                is.data.frame(result$sparse_level_diagnostics) &&
+                nrow(result$sparse_level_diagnostics) > 0) {
+                note_text <- paste(
+                    sprintf(
+                        "%s (n=%d; %s)",
+                        result$sparse_level_diagnostics$level,
+                        result$sparse_level_diagnostics$observed_n,
+                        result$sparse_level_diagnostics$reason
+                    ),
+                    collapse = "; "
+                )
+                sparse_notes <- c(sparse_notes, sprintf(
+                    "Excluded sparse levels for %s: %s",
+                    variable_display_name,
+                    note_text
+                ))
             }
             # Iterate over each subgroup level row
             for (i in seq_len(nrow(se))) {
@@ -191,7 +199,7 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
                     ) %>%
                     tab_source_note(gt::html(paste0(
                         as.character("CI = confidence interval"),
-                        if (length(other_notes) > 0) paste0("<br><br>", paste(other_notes, collapse = "<br><br>")) else ""
+                        if (length(sparse_notes) > 0) paste0("<br><br>", paste(unique(sparse_notes), collapse = "<br><br>")) else ""
                     )))
                 save_gt_html(gt_tbl, filename = html_path)
             },

@@ -10,7 +10,7 @@
 #' @param mfs_data data.frame Raw data for MFS survival curve
 #' @param output_dir character Destination directory (MFS outcome folder)
 #' @param prefix character Filename prefix
-create_mfs_gep_visuals <- function(mfs_results, mfs_data, output_dir, prefix, group_var = "biopsy1_gep", model_group_var = group_var, other_map = list(), dataset_name = "GEP Validation", validation_output_dir = output_dir, output_dirs = NULL) {
+create_mfs_gep_visuals <- function(mfs_results, mfs_data, output_dir, prefix, group_var = "biopsy1_gep", model_group_var = group_var, dataset_name = "GEP Validation", validation_output_dir = output_dir, output_dirs = NULL) {
     # Directly write into centralized visuals folder created by create_output_structure()
     prame_results <- NULL
     if (!is.null(mfs_results$prame_analysis)) {
@@ -36,7 +36,6 @@ create_mfs_gep_visuals <- function(mfs_results, mfs_data, output_dir, prefix, gr
             prefix,
             group_var = group_var,
             model_group_var = model_group_var,
-            other_map = other_map,
             dataset_name = dataset_name,
             output_dirs = output_dirs
         )
@@ -56,7 +55,7 @@ create_mfs_gep_visuals <- function(mfs_results, mfs_data, output_dir, prefix, gr
 #' @param mss_data data.frame Raw data for CIF curves
 #' @param output_dir character Destination directory (MSS outcome folder)
 #' @param prefix character Filename prefix
-create_mss_gep_visuals <- function(mss_results, mss_data, output_dir, prefix, group_var = "biopsy1_gep", technical_group_var = NULL, other_map = list(), cif_output_dir = output_dir, validation_output_dir = output_dir) {
+create_mss_gep_visuals <- function(mss_results, mss_data, output_dir, prefix, group_var = "biopsy1_gep", technical_group_var = NULL, cif_output_dir = output_dir, validation_output_dir = output_dir) {
     # Directly write into centralized visuals folder created by create_output_structure()
     prame_results <- mss_results$prame_results %||% NULL
 
@@ -84,7 +83,6 @@ create_mss_gep_visuals <- function(mss_results, mss_data, output_dir, prefix, gr
             mss_data, 5, cif_output_dir, prefix,
             group_var = group_var,
             technical_group_var = technical_group_var,
-            other_map = other_map,
             competing_results = competing_results_5yr
         )
     }
@@ -890,7 +888,7 @@ create_single_outcome_performance_plot <- function(results, outcome_type, output
 #' @param output_dir Output directory for saved plots
 #' @param prefix Filename prefix
 #' @return Invisibly returns NULL after saving plots
-create_mfs_survival_curves <- function(data, output_dir, prefix, group_var = "biopsy1_gep", model_group_var = group_var, other_map = list(), dataset_name = "GEP Validation", output_dirs = NULL) {
+create_mfs_survival_curves <- function(data, output_dir, prefix, group_var = "biopsy1_gep", model_group_var = group_var, dataset_name = "GEP Validation", output_dirs = NULL) {
     logger::log_info("Creating MFS survival curves by GEP class using existing survival analysis infrastructure")
 
     gep_prame_display_order <- c(
@@ -935,7 +933,6 @@ create_mfs_survival_curves <- function(data, output_dir, prefix, group_var = "bi
                 analysis_type = "post_treatment_only",
                 dataset_name = dataset_name,
                 legend_labels = legend_labels,
-                other_map = other_map,
                 output_dirs = resolved_output_dirs,
                 prefix = prefix
             )
@@ -964,7 +961,6 @@ create_mfs_survival_curves <- function(data, output_dir, prefix, group_var = "bi
         data = data,
         output_dir = output_dir,
         prefix = prefix,
-        other_map = other_map,
         dataset_name = dataset_name,
         output_dirs = resolved_output_dirs
     )
@@ -980,10 +976,9 @@ create_mfs_survival_curves <- function(data, output_dir, prefix, group_var = "bi
 #' @param data Data frame with survival data and GEP labels
 #' @param output_dir Output directory for saved plots and tables
 #' @param prefix Filename prefix
-#' @param other_map Additional variable mappings used by Cox helpers
 #' @param dataset_name Dataset label used in subtitles and reports
 #' @return Invisibly returns the survival-analysis result list or NULL
-create_mfs_simple_binary_survival_analysis <- function(data, output_dir, prefix, other_map = list(), dataset_name = "GEP Validation", output_dirs = NULL) {
+create_mfs_simple_binary_survival_analysis <- function(data, output_dir, prefix, dataset_name = "GEP Validation", output_dirs = NULL) {
     logger::log_info("Creating binary simple-GEP MFS survival analysis using the standard survival workflow")
 
     plot_data <- data %>%
@@ -1058,7 +1053,6 @@ create_mfs_simple_binary_survival_analysis <- function(data, output_dir, prefix,
                 analysis_type = "post_treatment_only",
                 dataset_name = binary_dataset_name,
                 legend_labels = c("Class 1", "Class 2"),
-                other_map = other_map,
                 output_dirs = resolved_output_dirs,
                 prefix = binary_prefix
             )
@@ -1356,10 +1350,9 @@ create_mfs_simplified_survival_curves <- function(data, output_dir, prefix, data
 #' @param prefix character Filename prefix
 #' @param group_var character Grouping variable name
 #' @param time_var character Time variable name (in months)
-#' @param other_map list Additional variable mappings
 #' @param competing_results list Competing risks results (optional)
 #' @return Invisibly returns NULL after saving plots
-create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, prefix, group_var = "biopsy1_gep", technical_group_var = NULL, time_var = "tt_death_months", other_map = list(), competing_results = NULL) {
+create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, prefix, group_var = "biopsy1_gep", technical_group_var = NULL, time_var = "tt_death_months", competing_results = NULL) {
     logger::log_info(sprintf("Creating MSS cumulative incidence curves by GEP class for %d-year timepoint using ggsurvfit", timepoint))
 
     # Convert timepoint to months for consistency with survival time units

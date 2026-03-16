@@ -1,6 +1,6 @@
 # Confounder Analysis and Update Utility
 # This script identifies variables that differ across treatment groups and updates the confounders list
-# CRITICAL: Uses processed data with collapsed categories to match actual analysis pipeline
+# CRITICAL: Uses the processed analytic dataset with original factor levels
 
 source("scripts/utils/load_all.R")
 
@@ -81,30 +81,10 @@ get_effect_interpretation <- function(effect_size, effect_size_type) {
 }
 
 cat("=== CONFOUNDER ANALYSIS AND UPDATE ===\n")
-cat("USING PROCESSED DATA WITH COLLAPSED CATEGORIES\n\n")
+cat("USING PROCESSED ANALYTIC DATASET WITH ORIGINAL FACTOR LEVELS\n\n")
 
-# Load the processed cohort data (with collapsed categories)
+# Load the processed cohort data
 data <- readRDS("final_data/Analytic Dataset/uveal_melanoma_full_cohort.rds")
-
-# Load the other_map to understand what categories were collapsed
-other_map_file <- file.path(PROCESSED_DATA_DIR, "other_map.rds")
-if (file.exists(other_map_file)) {
-    other_map <- readRDS(other_map_file)
-    cat("Loaded other_map with collapsed categories information\n")
-
-    # Display collapsed categories
-    if (length(other_map) > 0) {
-        cat("\nCOLLAPSED CATEGORIES:\n")
-        for (var_name in names(other_map)) {
-            if (length(other_map[[var_name]]) > 0) {
-                cat(sprintf("  %s: %s\n", var_name, paste(other_map[[var_name]], collapse = ", ")))
-            }
-        }
-    }
-} else {
-    other_map <- list()
-    cat("No other_map.rds found - using raw data categories\n")
-}
 
 cat(sprintf("\nLoaded processed cohort with %d patients\n\n", nrow(data)))
 
@@ -475,15 +455,13 @@ if (length(significant_vars) > 0) {
             "Analysis Dataset",
             "Data Processing Applied",
             "Rare Category Threshold",
-            "Variables with Collapsed Categories",
             "Total Variables Tested",
             "Significant Variables Found"
         ),
         Value = c(
-            "Processed cohort with collapsed categories",
-            "Rare categories collapsed into 'Other'",
+            "Processed cohort with original factor levels",
+            "Sparse categorical levels handled only within model-specific analysis subsets",
             as.character(THRESHOLD_RARITY),
-            as.character(length(other_map)),
             as.character(nrow(results_summary)),
             as.character(length(significant_vars))
         ),
@@ -500,43 +478,6 @@ if (length(significant_vars) > 0) {
     openxlsx::writeData(wb, preprocessing_sheet, preprocessing_info, startRow = 3, startCol = 1)
     openxlsx::addStyle(wb, preprocessing_sheet, header_style, rows = 3, cols = 1:2)
 
-    # Add collapsed categories details if available
-    if (length(other_map) > 0) {
-        collapsed_data <- data.frame(
-            Variable = character(),
-            Collapsed_Categories = character(),
-            stringsAsFactors = FALSE
-        )
-
-        for (var_name in names(other_map)) {
-            if (length(other_map[[var_name]]) > 0) {
-                collapsed_data <- rbind(collapsed_data, data.frame(
-                    Variable = var_name,
-                    Collapsed_Categories = paste(other_map[[var_name]], collapse = ", "),
-                    stringsAsFactors = FALSE
-                ))
-            }
-        }
-
-        if (nrow(collapsed_data) > 0) {
-            start_row <- nrow(preprocessing_info) + 5
-
-            openxlsx::writeData(wb, preprocessing_sheet,
-                data.frame(Header = "COLLAPSED CATEGORIES DETAILS"),
-                startRow = start_row, startCol = 1
-            )
-            openxlsx::mergeCells(wb, preprocessing_sheet, cols = 1:2, rows = start_row)
-            openxlsx::addStyle(wb, preprocessing_sheet, header_style, rows = start_row, cols = 1)
-
-            openxlsx::writeData(wb, preprocessing_sheet, collapsed_data,
-                startRow = start_row + 2, startCol = 1
-            )
-            openxlsx::addStyle(wb, preprocessing_sheet, header_style,
-                rows = start_row + 2, cols = 1:2
-            )
-        }
-    }
-
     # Set preprocessing column widths
     openxlsx::setColWidths(wb, preprocessing_sheet, cols = 1, widths = 30)
     openxlsx::setColWidths(wb, preprocessing_sheet, cols = 2, widths = 50)
@@ -549,7 +490,7 @@ if (length(significant_vars) > 0) {
     cat("- Complete analysis results with effect sizes\n")
     cat("- Human-readable effect size interpretations\n")
     cat("- Summary of significant variables\n")
-    cat("- Data preprocessing information and collapsed categories\n")
+    cat("- Data preprocessing information and sparse-level policy notes\n")
     cat("- Professional formatting with headers and styling\n")
 } else {
     cat("No additional variables found with significant differences.\n")

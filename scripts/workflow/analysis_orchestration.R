@@ -24,10 +24,7 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
     # Check dependencies before running analysis objectives
     if (any(objectives_to_run %in% c(1, 2, 3, 4))) {
         # Check if required files exist for analysis objectives
-        required_files <- c(
-            file.path(PROCESSED_DATA_DIR, paste0(dataset_name, ".rds")),
-            file.path(PROCESSED_DATA_DIR, "other_map.rds")
-        )
+        required_files <- c(file.path(PROCESSED_DATA_DIR, paste0(dataset_name, ".rds")))
 
         missing_files <- required_files[!file.exists(required_files)]
 
@@ -71,7 +68,7 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
     # Track errors for this dataset
     errors_this_dataset <- FALSE
 
-    # If Objective 0 is included, run it first so that dependent artifacts (e.g., other_map.rds) exist
+    # If Objective 0 is included, run it first so that dependent artifacts exist
     results <- list()
     if (0 %in% objectives_to_run) {
         with_log_context(cohort = dataset_name, objective = "objective_0_data_processing", subobjective = NULL, expr = {
@@ -82,13 +79,9 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
                 NULL
             })
         })
-        # Reload analytic dataset and other_map after processing
+        # Reload analytic dataset after processing
         data <- readRDS(file.path(PROCESSED_DATA_DIR, paste0(dataset_name, ".rds")))
         logger::log_info(formatted(sprintf("Successfully reloaded %d patients after Objective 0", nrow(data)), indent = 1))
-        other_map <- get_cohort_specific_other_map(dataset_name, PROCESSED_DATA_DIR)
-    } else {
-        # Load cohort-specific other_map information using unified function
-        other_map <- get_cohort_specific_other_map(dataset_name, PROCESSED_DATA_DIR)
     }
 
     # Use configured confounders directly (do not load/save validated_confounders_by_cohort)
@@ -98,7 +91,7 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
     if (1 %in% objectives_to_run) {
         with_log_context(cohort = dataset_name, objective = "objective_1_primary_outcomes", subobjective = NULL, expr = {
             logger::log_info("Running Objective 1: Primary Outcomes")
-            results$objective_1 <- tryCatch(run_objective_1(data, dataset_name, output_dirs, prefix, other_map, confounders = cohort_confounders), error = function(e) {
+            results$objective_1 <- tryCatch(run_objective_1(data, dataset_name, output_dirs, prefix, confounders = cohort_confounders), error = function(e) {
                 errors_this_dataset <<- TRUE
                 logger::log_error(formatted(sprintf("ERROR in Objective 1: %s", e$message)))
                 NULL
@@ -109,7 +102,7 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
     if (2 %in% objectives_to_run) {
         with_log_context(cohort = dataset_name, objective = "objective_2_safety_toxicity", subobjective = NULL, expr = {
             logger::log_info("Running Objective 2: Safety/Toxicity")
-            results$objective_2 <- tryCatch(run_objective_2(data, dataset_name, output_dirs, prefix, other_map, confounders = cohort_confounders), error = function(e) {
+            results$objective_2 <- tryCatch(run_objective_2(data, dataset_name, output_dirs, prefix, confounders = cohort_confounders), error = function(e) {
                 errors_this_dataset <<- TRUE
                 logger::log_error(formatted(sprintf("ERROR in Objective 2: %s", e$message)))
                 NULL
@@ -120,7 +113,7 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
     if (3 %in% objectives_to_run) {
         with_log_context(cohort = dataset_name, objective = "objective_3_repeat_radiation", subobjective = NULL, expr = {
             logger::log_info("Running Objective 3: Repeat Radiation Efficacy")
-            results$objective_3 <- tryCatch(run_objective_3(data, dataset_name, output_dirs, prefix, other_map, confounders = cohort_confounders), error = function(e) {
+            results$objective_3 <- tryCatch(run_objective_3(data, dataset_name, output_dirs, prefix, confounders = cohort_confounders), error = function(e) {
                 errors_this_dataset <<- TRUE
                 logger::log_error(formatted(sprintf("ERROR in Objective 3: %s", e$message)))
                 NULL
@@ -131,7 +124,7 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
     if (4 %in% objectives_to_run) {
         with_log_context(cohort = dataset_name, objective = "objective_4_gep_analysis", subobjective = NULL, expr = {
             logger::log_info("Running Objective 4: GEP Validation")
-            results$objective_4 <- tryCatch(run_objective_4(data, dataset_name, output_dirs, prefix, other_map, confounders = cohort_confounders), error = function(e) {
+            results$objective_4 <- tryCatch(run_objective_4(data, dataset_name, output_dirs, prefix, confounders = cohort_confounders), error = function(e) {
                 errors_this_dataset <<- TRUE
                 logger::log_error(formatted(sprintf("ERROR in Objective 4: %s", e$message)))
                 NULL
@@ -163,10 +156,7 @@ run_specific_objective <- function(dataset_name, objective_number) {
 
     # Check dependencies for analysis objectives (1-4)
     if (objective_number %in% c(1, 2, 3, 4)) {
-        required_files <- c(
-            file.path(PROCESSED_DATA_DIR, paste0(dataset_name, ".rds")),
-            file.path(PROCESSED_DATA_DIR, "other_map.rds")
-        )
+        required_files <- c(file.path(PROCESSED_DATA_DIR, paste0(dataset_name, ".rds")))
 
         missing_files <- required_files[!file.exists(required_files)]
 

@@ -12,7 +12,6 @@
 #' @param confounders Character vector of confounder variable names.
 #' @param analysis_type Type of analysis: "post_treatment_only" or "all_patients".
 #' @param dataset_name Optional label for the dataset.
-#' @param other_map Optional mapping for "Other" category.
 #' @param output_dirs List of output directories by analysis type.
 #' @param prefix File prefix for output files.
 #' @return List with rates, regression table, model object, and diagnostics.
@@ -25,7 +24,6 @@ analyze_binary_outcome_rates <- function(
     confounders = NULL,
     analysis_type = "post_treatment_only",
     dataset_name = NULL,
-    other_map = NULL,
     output_dirs = NULL,
     prefix = NULL) {
     # Check that there are at least two groups to compare
@@ -82,17 +80,19 @@ analyze_binary_outcome_rates <- function(
         }
     }
 
-    # Remove "Other" rows prior to model fitting while keeping summaries consistent
     model_variables <- unique(c(group_var, confounders_to_use))
-    exclusion_result <- exclude_other_categories(
+    analysis_label <- paste0(outcome_var, "_", analysis_type, "_logistic")
+    exclusion_result <- apply_sparse_level_exclusions(
         data = fix_event_data,
         variables = model_variables[model_variables %in% names(fix_event_data)],
-        other_map = if (is.null(other_map)) list() else other_map
+        analysis_name = analysis_label,
+        id_col = pick_sparse_level_id_col(fix_event_data),
+        level_exclusions = MODELING_LEVEL_EXCLUSIONS
     )
 
     if (exclusion_result$removed_row_count > 0) {
         logger::log_info(formatted(sprintf(
-            "Removed %d rows labelled 'Other' prior to logistic regression (%s)",
+            "Excluded %d rows with sparse categorical levels prior to logistic regression (%s)",
             exclusion_result$removed_row_count,
             paste(model_variables, collapse = ", ")
         ), indent = 1))
@@ -100,16 +100,14 @@ analyze_binary_outcome_rates <- function(
 
     model_data <- exclusion_result$data
 
-    analysis_label <- paste0(outcome_var, "_", analysis_type, "_logistic")
-
     if (nrow(model_data) == 0 || length(unique(stats::na.omit(model_data[[group_var]]))) < 2) {
         logger::log_warn(formatted(
-            "Insufficient non-'Other' data available after exclusions; skipping logistic regression.",
+            "Insufficient data available after sparse-level exclusions; skipping logistic regression.",
             indent = 1
         ))
         diagnostics_stub <- list(
-            other_level_details = exclusion_result$other_level_details,
-            raw_model_output = "Model skipped: insufficient data after removing 'Other' levels."
+            sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
+            raw_model_output = "Model skipped: insufficient data after sparse-level exclusions."
         )
         diagnostics_stub$sample_size_summary <- build_sample_size_summary_tab(
             filter_stats = exclusion_result$filter_stats,
@@ -134,9 +132,8 @@ analyze_binary_outcome_rates <- function(
         prefix = prefix,
         time_var = analysis_time_var,
         event_var = event_var,
-        other_map = other_map,
         treatment_var = group_var,
-        other_level_details = exclusion_result$other_level_details,
+        sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
         filter_stats = exclusion_result$filter_stats
     )
 

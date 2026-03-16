@@ -78,7 +78,6 @@ get_subgroup_levels <- function(var_name) {
 #' @param include_baseline_height Logical for height analysis
 #' @return List with processed data and metadata
 process_subgroup_data <- function(data, subgroup_var, confounders, include_baseline_height = FALSE) {
-    other_map <- list()
     if (!subgroup_var %in% names(data)) stop(sprintf("Variable '%s' not found in data", subgroup_var))
     data <- data %>% dplyr::filter(!is.na(.data[[subgroup_var]]))
     if (nrow(data) == 0) stop(sprintf("No data remaining after removing missing values for '%s'", subgroup_var))
@@ -95,7 +94,6 @@ process_subgroup_data <- function(data, subgroup_var, confounders, include_basel
             # Use existing binned variable instead of creating a new one
             subgroup_var_to_use <- subgroup_var_binned
             cutoff_value <- NULL
-            other_map <- list()
         } else {
             # Create new binned variable as before
             cutoff_val <- get_cutoff_value(subgroup_var, data, percentile_cut = 0.5)
@@ -103,7 +101,6 @@ process_subgroup_data <- function(data, subgroup_var, confounders, include_basel
                 processed_data[[subgroup_var_binned]] <- create_clinical_bins(data[[subgroup_var]], cutoff_val, subgroup_var)
                 subgroup_var_to_use <- subgroup_var_binned
                 cutoff_value <- cutoff_val
-                other_map <- list()
             } else {
                 processed_data[[subgroup_var_binned]] <- factor(
                     ifelse(data[[subgroup_var]] < cutoff_val, paste0("< ", round(cutoff_val, 1)), paste0("≥ ", round(cutoff_val, 1))),
@@ -114,22 +111,20 @@ process_subgroup_data <- function(data, subgroup_var, confounders, include_basel
             }
         }
     } else if (is_categorical_factor) {
-        other_map <- list()
         subgroup_var_to_use <- subgroup_var
     } else {
         if (!is.factor(processed_data[[subgroup_var]])) processed_data[[subgroup_var]] <- as.factor(processed_data[[subgroup_var]])
-        other_map <- list()
         subgroup_var_to_use <- subgroup_var
     }
     if (is.factor(processed_data[[subgroup_var_to_use]])) {
-        level_counts <- table(processed_data[[subgroup_var_to_use]])
-        if (sum(level_counts > 0) < 2) {
-            warning(sprintf("Variable %s has insufficient valid levels (%d)", subgroup_var, sum(level_counts > 0)))
+        level_counts <- get_observed_level_counts(processed_data[[subgroup_var_to_use]])
+        if (nrow(level_counts) < 2) {
+            warning(sprintf("Variable %s has insufficient valid levels (%d)", subgroup_var, nrow(level_counts)))
             return(list(data = NULL, subgroup_var_to_use = NULL, confounders_to_use = NULL, was_continuous = FALSE, cutoff_value = NA, error = "insufficient_levels"))
         }
     }
     processed_data <- enforce_unordered_factors(processed_data)
-    list(data = processed_data, subgroup_var_to_use = subgroup_var_to_use, confounders_to_use = confounders_to_use, was_continuous = was_continuous, cutoff_value = cutoff_value, other_map = other_map)
+    list(data = processed_data, subgroup_var_to_use = subgroup_var_to_use, confounders_to_use = confounders_to_use, was_continuous = was_continuous, cutoff_value = cutoff_value)
 }
 
 #' Fit model with interaction for a given outcome type

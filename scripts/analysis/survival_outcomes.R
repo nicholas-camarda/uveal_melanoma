@@ -355,11 +355,10 @@ summarize_cox_hr <- function(model, dataset_name, analysis_label, model_label, g
 #' @param analysis_type 'post_treatment_only' or 'all_patients'
 #' @param dataset_name Dataset label
 #' @param legend_labels Optional legend labels
-#' @param other_map Optional mapping for 'Other'
 #' @param output_dirs Output directories by analysis type
 #' @param prefix File prefix for outputs
 #' @return List with KM/cox outputs and diagnostics
-analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var = "treatment_group", model_group_var = group_var, confounders = NULL, ylab = "Survival Probability", analysis_type = "post_treatment_only", dataset_name = NULL, legend_labels = NULL, other_map = list(), output_dirs = NULL, prefix = NULL, risk_table_height = 0.18, risk_table_rel_heights = c(0.78, 0.22), risk_table_y_expand = c(0.18, 0.18), saved_plot_height = NULL) {
+analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var = "treatment_group", model_group_var = group_var, confounders = NULL, ylab = "Survival Probability", analysis_type = "post_treatment_only", dataset_name = NULL, legend_labels = NULL, output_dirs = NULL, prefix = NULL, risk_table_height = 0.18, risk_table_rel_heights = c(0.78, 0.22), risk_table_y_expand = c(0.18, 0.18), saved_plot_height = NULL) {
     plot_group_var <- group_var
     palette_group_var <- group_var
 
@@ -420,22 +419,24 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             cox_table = NULL,
             ph_diagnostics = NULL,
             diagnostics = list(
-                other_level_details = list(),
+                sparse_level_diagnostics = data.frame(),
                 raw_model_output = "Model skipped: insufficient data for KM fit."
             )
         ))
     }
 
     survival_variables <- unique(c(model_group_var, confounders_to_use))
-    cox_exclusion_result <- exclude_other_categories(
+    cox_exclusion_result <- apply_sparse_level_exclusions(
         data = model_data,
         variables = survival_variables[survival_variables %in% names(model_data)],
-        other_map = if (is.null(other_map)) list() else other_map
+        analysis_name = paste0(make_filename_safe(ylab), "_cox"),
+        id_col = pick_sparse_level_id_col(model_data),
+        level_exclusions = MODELING_LEVEL_EXCLUSIONS
     )
 
     if (cox_exclusion_result$removed_row_count > 0) {
         logger::log_info(formatted(sprintf(
-            "Removed %d rows labelled 'Other' prior to Cox modeling (%s)",
+            "Excluded %d rows with sparse categorical levels prior to Cox modeling (%s)",
             cox_exclusion_result$removed_row_count,
             paste(survival_variables, collapse = ", ")
         ), indent = 1))
@@ -446,7 +447,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     cox_ready <- nrow(cox_data) > 0 && length(unique(stats::na.omit(cox_data[[model_group_var]]))) >= 2
     if (!cox_ready) {
         logger::log_warn(formatted(
-            "Cox model will be skipped: insufficient non-'Other' data after exclusions.",
+            "Cox model will be skipped: insufficient data after sparse-level exclusions.",
             indent = 1
         ))
     }
@@ -1213,9 +1214,8 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
                 prefix = prefix,
                 time_var = time_var,
                 event_var = event_var,
-                other_map = other_map,
                 treatment_var = model_group_var,
-                other_level_details = cox_exclusion_result$other_level_details,
+                sparse_level_diagnostics = cox_exclusion_result$sparse_level_diagnostics,
                 filter_stats = cox_exclusion_result$filter_stats
             )
         }, error = function(e) {
@@ -1224,8 +1224,8 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         })
     } else {
         diagnostics_stub <- list(
-            other_level_details = cox_exclusion_result$other_level_details,
-            raw_model_output = "Cox model skipped: insufficient data after removing 'Other' levels."
+            sparse_level_diagnostics = cox_exclusion_result$sparse_level_diagnostics,
+            raw_model_output = "Cox model skipped: insufficient data after sparse-level exclusions."
         )
         diagnostics_stub$sample_size_summary <- build_sample_size_summary_tab(
             filter_stats = cox_exclusion_result$filter_stats,
@@ -1242,7 +1242,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
 
     if (is.null(cox_result)) {
         diagnostics_stub <- list(
-            other_level_details = cox_exclusion_result$other_level_details,
+            sparse_level_diagnostics = cox_exclusion_result$sparse_level_diagnostics,
             raw_model_output = "Cox model failed to fit; see logs for details."
         )
         diagnostics_stub$sample_size_summary <- build_sample_size_summary_tab(
@@ -1361,7 +1361,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
 #' @param output_dirs Output directory list (obj1_recurrence will be used for files)
 #' @param prefix File prefix (e.g., "full_cohort_")
 #' @return Result list from analyze_time_to_event_outcomes
-analyze_os_by_local_recurrence <- function(data, dataset_name, output_dirs, prefix, confounders = NULL, other_map = list()) {
+analyze_os_by_local_recurrence <- function(data, dataset_name, output_dirs, prefix, confounders = NULL) {
     required_cols <- c("recurrence1", "tt_death_months", "death_event")
     if (!all(required_cols %in% names(data))) {
         logger::log_warn(sprintf(
@@ -1393,7 +1393,6 @@ analyze_os_by_local_recurrence <- function(data, dataset_name, output_dirs, pref
         ylab = "Overall Survival by Local Recurrence Status",
         analysis_type = "post_treatment_only",
         dataset_name = dataset_name,
-        other_map = other_map,
         output_dirs = local_dirs,
         prefix = paste0(prefix, "1a1_recurrence_stratified_")
     )
@@ -1406,7 +1405,7 @@ analyze_os_by_local_recurrence <- function(data, dataset_name, output_dirs, pref
 #'
 #' @inheritParams analyze_os_by_local_recurrence
 #' @return Result list from analyze_time_to_event_outcomes
-analyze_pfs_by_local_recurrence <- function(data, dataset_name, output_dirs, prefix, confounders = NULL, other_map = list()) {
+analyze_pfs_by_local_recurrence <- function(data, dataset_name, output_dirs, prefix, confounders = NULL) {
     required_cols <- c("recurrence1", "tt_pfs_months", "pfs_event")
     if (!all(required_cols %in% names(data))) {
         logger::log_warn(sprintf(
@@ -1438,7 +1437,6 @@ analyze_pfs_by_local_recurrence <- function(data, dataset_name, output_dirs, pre
         ylab = "Progression-Free Survival by Local Recurrence Status",
         analysis_type = "post_treatment_only",
         dataset_name = dataset_name,
-        other_map = other_map,
         output_dirs = local_dirs,
         prefix = paste0(prefix, "1a2_recurrence_stratified_")
     )
@@ -1447,7 +1445,7 @@ analyze_pfs_by_local_recurrence <- function(data, dataset_name, output_dirs, pre
 #' Overall survival stratified by metastatic progression status
 #'
 #' Mirrors recurrence helper but isolates OS curves by mets progression status.
-analyze_os_by_metastatic_progression <- function(data, dataset_name, output_dirs, prefix, confounders = NULL, other_map = list()) {
+analyze_os_by_metastatic_progression <- function(data, dataset_name, output_dirs, prefix, confounders = NULL) {
     required_cols <- c("mets_progression", "tt_death_months", "death_event")
     if (!all(required_cols %in% names(data))) {
         logger::log_warn(sprintf(
@@ -1480,14 +1478,13 @@ analyze_os_by_metastatic_progression <- function(data, dataset_name, output_dirs
         ylab = "Overall Survival by Metastatic Progression Status",
         analysis_type = "post_treatment_only",
         dataset_name = dataset_name,
-        other_map = other_map,
         output_dirs = local_dirs,
         prefix = paste0(prefix, "2a1_metastasis_stratified_")
     )
 }
 
 #' Progression-free survival stratified by metastatic progression status
-analyze_pfs_by_metastatic_progression <- function(data, dataset_name, output_dirs, prefix, confounders = NULL, other_map = list()) {
+analyze_pfs_by_metastatic_progression <- function(data, dataset_name, output_dirs, prefix, confounders = NULL) {
     required_cols <- c("mets_progression", "tt_pfs_months", "pfs_event")
     if (!all(required_cols %in% names(data))) {
         logger::log_warn(sprintf(
@@ -1520,7 +1517,6 @@ analyze_pfs_by_metastatic_progression <- function(data, dataset_name, output_dir
         ylab = "Progression-Free Survival by Metastatic Progression Status",
         analysis_type = "post_treatment_only",
         dataset_name = dataset_name,
-        other_map = other_map,
         output_dirs = local_dirs,
         prefix = paste0(prefix, "2a2_metastasis_stratified_")
     )
@@ -1535,11 +1531,10 @@ analyze_pfs_by_metastatic_progression <- function(data, dataset_name, output_dir
 #' @param data Data frame
 #' @param confounders Character vector of confounder variable names
 #' @param dataset_name Name of the dataset
-#' @param other_map Optional named list for additional mapping
 #' @param output_dirs List of output directories organized by analysis type
 #' @param prefix Character string used as a file prefix for output files
 #' @return List with elements: pfs2_data (data frame), survival_analysis (list), summary_table (gtsummary object)
-analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, other_map = list(), output_dirs = NULL, prefix = NULL) {
+analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_dirs = NULL, prefix = NULL) {
     logger::log_info("Starting PFS-2 analysis for recurrent patients")
 
     # Filter to patients with valid PFS-2 data (variables now created in data processing)
@@ -1580,16 +1575,17 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, other_ma
         ) %>%
         arrange(primary_treatment, desc(n))
 
-    # Remove "Other" categories prior to analysis
     exclusion_vars <- unique(c("recurrence1_treatment_clean", confounders))
-    exclusion_result <- exclude_other_categories(
+    exclusion_result <- apply_sparse_level_exclusions(
         pfs2_data,
         variables = exclusion_vars[exclusion_vars %in% names(pfs2_data)],
-        other_map = other_map
+        analysis_name = "pfs2_survival",
+        id_col = pick_sparse_level_id_col(pfs2_data),
+        level_exclusions = MODELING_LEVEL_EXCLUSIONS
     )
     if (exclusion_result$removed_row_count > 0) {
         logger::log_info(sprintf(
-            "Removed %d rows labelled 'Other' prior to PFS-2 analysis",
+            "Excluded %d rows with sparse categorical levels prior to PFS-2 analysis",
             exclusion_result$removed_row_count
         ))
     }
@@ -1710,7 +1706,6 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, other_ma
             ylab = "PFS-2 Probability (Freedom from 2nd Recurrence)",
             analysis_type = "all_patients", # PFS-2 analysis includes all recurrent patients
             dataset_name = paste0(dataset_name, "_pfs2_recurrent"),
-            other_map = other_map,
             output_dirs = output_dirs,
             prefix = prefix
         )

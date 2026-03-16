@@ -5,17 +5,16 @@
 #' @param model_fit Fitted model object
 #' @param effect_measure Character string for effect measure type
 #' @param analysis_name Character string for analysis name
-#' @param other_map List containing mapping of what categories were collapsed into "Other"
 #' @param data Data frame used for the model (for interaction p-value calculation)
 #' @param outcome_var Name of the outcome variable
 #' @param confounders Character vector of confounders
 #' @param outcome_type Type of outcome ("binary", "survival", "continuous"). If NULL, will be detected from model_fit
 #' @param show_interaction_pvalues Logical, whether to show interaction p-values
-#' @param other_level_details Data frame with details about "Other" levels (optional)
+#' @param sparse_level_diagnostics Data frame with details about excluded sparse levels (optional)
 #' @return gtsummary table object
-create_gtsummary_table <- function(model_fit, effect_measure, analysis_name, other_map = NULL,
+create_gtsummary_table <- function(model_fit, effect_measure, analysis_name,
                                    data = NULL, outcome_var = NULL, confounders = NULL,
-                                   outcome_type = NULL, other_level_details = NULL) {
+                                   outcome_type = NULL, sparse_level_diagnostics = NULL) {
     # Determine model type for caption
     model_type <- detect_model_type(model_fit)
 
@@ -113,8 +112,7 @@ create_gtsummary_table <- function(model_fit, effect_measure, analysis_name, oth
         table$table_body <- table_data_updated[!table_data_updated$variable %in% variables_to_remove, ]
     }
 
-    # Add "Other" level details if present in the data
-    table <- add_other_level_details(table, data, other_map, other_level_details = other_level_details)
+    table <- add_sparse_level_details(table, sparse_level_diagnostics = sparse_level_diagnostics)
 
     return(table)
 }
@@ -237,73 +235,47 @@ format_confidence_intervals_post <- function(x) {
     })
 }
 
-#' Add details about "Other" categories to table source note
+#' Add sparse-level exclusion details to table source note
 #'
 #' @param table A gtsummary table object
-#' @param data Data frame used to create the table
-#' @param other_map List mapping variable names to categories collapsed into "Other" (optional)
+#' @param sparse_level_diagnostics Data frame returned by sparse-level model prep
 #' @return Modified table with source note containing "Other" category details
-add_other_level_details <- function(table, data, other_map = list(), other_level_details = NULL) {
-    other_details <- character()
+add_sparse_level_details <- function(table, sparse_level_diagnostics = NULL) {
+    sparse_details <- character()
 
-    if (!is.null(other_level_details) && is.data.frame(other_level_details) && nrow(other_level_details) > 0) {
-        total_unique_removed <- unique(other_level_details$unique_rows_removed)
-        total_unique_removed <- total_unique_removed[!is.na(total_unique_removed)]
-        for (row_index in seq_len(nrow(other_level_details))) {
-            row <- other_level_details[row_index, , drop = FALSE]
-            var_name <- row$variable[1]
-            count_removed <- row$other_count[1]
-            pct_removed <- row$other_pct[1]
-            pct_text <- if (!is.null(pct_removed) && !is.na(pct_removed)) sprintf("%.1f%%", pct_removed) else "n/a"
-            categories <- row$other_categories[1]
-            if (is.na(categories) || categories == "") {
-                categories <- "Collapsed level details unavailable"
-            }
-            other_details <- c(other_details, sprintf(
-                "%s: removed %d rows labelled 'Other' (%s of analytic input); categories: %s",
-                var_name,
-                count_removed,
-                pct_text,
-                categories
+    if (!is.null(sparse_level_diagnostics) && is.data.frame(sparse_level_diagnostics) && nrow(sparse_level_diagnostics) > 0) {
+        for (row_index in seq_len(nrow(sparse_level_diagnostics))) {
+            row <- sparse_level_diagnostics[row_index, , drop = FALSE]
+            sparse_details <- c(sparse_details, sprintf(
+                "%s: excluded level '%s' (n=%d); reason: %s",
+                row$variable[[1]],
+                row$level[[1]],
+                as.integer(row$observed_n[[1]] %||% 0L),
+                row$reason[[1]]
             ))
         }
-        if (length(total_unique_removed) > 0 && total_unique_removed[1] > 0) {
-            other_details <- c(other_details, sprintf(
-                "Total unique rows removed prior to modeling: %d",
-                as.integer(total_unique_removed[1])
-            ))
-        }
-        other_details <- unique(other_details)
-    } else {
-        # Fallback to legacy behaviour that inspects the model data
-        table_variables <- unique(table$table_body$variable)
-        factor_vars <- names(data)[sapply(data, is.factor)]
-        table_factor_vars <- intersect(factor_vars, table_variables)
 
-        for (var_name in table_factor_vars) {
-            if ("Other" %in% levels(data[[var_name]])) {
-                table_var_data <- table$table_body[table$table_body$variable == var_name, ]
-                if (any(grepl("Other", table_var_data$label, ignore.case = TRUE))) {
-                    if (var_name %in% names(other_map) && length(other_map[[var_name]]) > 0) {
-                        collapsed_cats <- other_map[[var_name]]
-                        other_details <- c(other_details, sprintf("%s: 'Other' category contains %s", var_name, paste(collapsed_cats, collapse = ", ")))
-                    } else {
-                        other_details <- c(other_details, sprintf("%s: 'Other' category present (specific levels not mapped)", var_name))
-                    }
-                }
-            }
+        total_unique_rows_removed <- length(unique(unlist(strsplit(
+            paste(stats::na.omit(sparse_level_diagnostics$row_ids), collapse = ","),
+            ",",
+            fixed = TRUE
+        ))))
+        if (total_unique_rows_removed > 0) {
+            sparse_details <- c(
+                sparse_details,
+                sprintf("Total unique rows removed prior to modeling: %d", total_unique_rows_removed)
+            )
         }
     }
 
-    should_append_note <- length(other_details) > 0 && is.null(other_level_details)
-    if (should_append_note) {
+    if (length(sparse_details) > 0) {
         source_note_parts <- c()
         existing_source_note <- table$source_note
         if (!is.null(existing_source_note) && existing_source_note != "") {
             source_note_parts <- c(source_note_parts, existing_source_note)
         }
-        other_note <- paste("Note:", paste(other_details, collapse = "; "))
-        source_note_parts <- c(source_note_parts, other_note)
+        sparse_note <- paste("Note:", paste(unique(sparse_details), collapse = "; "))
+        source_note_parts <- c(source_note_parts, sparse_note)
         final_source_note <- paste(source_note_parts, collapse = "\n")
         table <- table %>% modify_source_note(final_source_note)
     }

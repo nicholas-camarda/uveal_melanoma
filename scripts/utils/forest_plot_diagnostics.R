@@ -1,11 +1,10 @@
 #' Create forest plot diagnostics from raw subgroup data
 #'
 #' @param subgroup_results List of subgroup analysis results
-#' @param other_map List mapping variable names to "Other" category contents (optional)
 #' @param effect_measure Character string for effect measure ("HR", "OR", etc.)
 #' @param variable_order Character vector of variables to include (optional)
 #' @return Data frame with forest plot diagnostics
-create_forest_plot_diagnostics <- function(subgroup_results, other_map = NULL, effect_measure = "HR", variable_order = NULL) {
+create_forest_plot_diagnostics <- function(subgroup_results, effect_measure = "HR", variable_order = NULL) {
     # Initialize diagnostics collection
     diagnostics_rows <- list()
 
@@ -55,39 +54,29 @@ create_forest_plot_diagnostics <- function(subgroup_results, other_map = NULL, e
                 header_reason <- paste("Missing interaction p-value:", var_data$interaction_diagnostics$failure_reason)
             }
         }
-        other_removal_note <- ""
-        if (!is.null(var_data$other_level_details) && is.data.frame(var_data$other_level_details) && nrow(var_data$other_level_details) > 0) {
-            detail_df <- var_data$other_level_details
-            
-            # Filter to only show details for the current variable
-            # This prevents showing "location: removed X rows" on all header rows
-            detail_df <- detail_df[detail_df$variable == var_name, , drop = FALSE]
-            
+        sparse_removal_note <- ""
+        if (!is.null(var_data$sparse_level_diagnostics) &&
+            is.data.frame(var_data$sparse_level_diagnostics) &&
+            nrow(var_data$sparse_level_diagnostics) > 0) {
+            detail_df <- var_data$sparse_level_diagnostics[
+                var_data$sparse_level_diagnostics$variable == var_name,
+                ,
+                drop = FALSE
+            ]
+
             if (nrow(detail_df) > 0) {
-                unique_removed <- unique(detail_df$unique_rows_removed)
-                unique_removed <- unique_removed[!is.na(unique_removed)]
                 detail_lines <- vapply(seq_len(nrow(detail_df)), function(i) {
                     detail_row <- detail_df[i, , drop = FALSE]
-                    count_removed <- detail_row$other_count
-                    pct_removed <- detail_row$other_pct
-                    pct_numeric <- suppressWarnings(as.numeric(pct_removed))
-                    pct_text <- if (!is.null(pct_numeric) && !is.na(pct_numeric)) sprintf("%.1f%%", pct_numeric) else "n/a"
-                    categories <- detail_row$other_categories
-                    if (is.null(categories) || is.na(categories) || categories == "") {
-                        categories <- "Collapsed level details unavailable"
-                    }
-                    # No need to include variable label in the message since it's in the header row already
-                    sprintf("Removed %s rows labelled 'Other' (%s of analytic input); categories: %s",
-                        count_removed,
-                        pct_text,
-                        categories
+                    sprintf(
+                        "%s level '%s' (observed n=%s, rows removed=%s): %s",
+                        tools::toTitleCase(gsub("_", " ", as.character(detail_row$action %||% "excluded"))),
+                        as.character(detail_row$level %||% NA_character_),
+                        detail_row$observed_n %||% NA,
+                        detail_row$rows_removed %||% 0L,
+                        detail_row$reason %||% "Sparse level excluded"
                     )
                 }, character(1))
-                detail_lines <- unique(detail_lines)
-                if (length(unique_removed) > 0 && unique_removed[1] > 0) {
-                    detail_lines <- c(detail_lines, sprintf("Total unique rows removed: %d", as.integer(unique_removed[1])))
-                }
-                other_removal_note <- paste(detail_lines, collapse = "; ")
+                sparse_removal_note <- paste(unique(detail_lines), collapse = "; ")
             }
         }
 
@@ -105,7 +94,7 @@ create_forest_plot_diagnostics <- function(subgroup_results, other_map = NULL, e
             p_value = header_interaction_p,
             status = "header",
             reason = header_reason,
-            other_variable_contents = other_removal_note,
+            other_variable_contents = sparse_removal_note,
             variable_order = var_index,
             level_order = -1,
             stringsAsFactors = FALSE
@@ -215,13 +204,6 @@ create_forest_plot_diagnostics <- function(subgroup_results, other_map = NULL, e
                     events_plaque <- if ("events_plaque" %in% names(row_data)) row_data$events_plaque else NA
                     events_gksrs <- if ("events_gksrs" %in% names(row_data)) row_data$events_gksrs else NA
 
-                    # Get "other" variable contents if applicable
-                    other_contents <- ""
-                    if (!is.null(other_map) && var_name %in% names(other_map) &&
-                        as.character(row_data$subgroup_level) == "Other") {
-                        other_contents <- paste(other_map[[var_name]], collapse = ", ")
-                    }
-
                     # Record valid subgroup level
                     level_idx <- if (length(level_names) > 0) match(as.character(row_data$subgroup_level), level_names) else NA
                     if (is.na(level_idx)) level_idx <- length(level_names) + 1
@@ -239,11 +221,11 @@ create_forest_plot_diagnostics <- function(subgroup_results, other_map = NULL, e
                         p_value = row_data$p_value,
                         status = "plotted",
                         reason = "",
-                    other_variable_contents = other_contents,
-                    variable_order = var_index,
-                    level_order = level_idx,
-                    stringsAsFactors = FALSE
-                )
+                        other_variable_contents = "",
+                        variable_order = var_index,
+                        level_order = level_idx,
+                        stringsAsFactors = FALSE
+                    )
                 }
             }
 

@@ -735,41 +735,6 @@ validate_processed_files_exist <- function(cohort_list) {
         }
     }
 
-    # Check that other_map.rds exists and is valid
-    other_map_file <- file.path(PROCESSED_DATA_DIR, "other_map.rds")
-    if (!file.exists(other_map_file)) {
-        logger::log_error(formatted("VALIDATION FAILED: other_map.rds file missing", indent = 2))
-        validation_passed <- FALSE
-    } else {
-        file_info <- tryCatch(file.info(other_map_file), error = function(e) NULL)
-        if (is.null(file_info) || is.na(file_info$size) || file_info$size <= 0) {
-            logger::log_error(formatted("VALIDATION FAILED: other_map.rds exists but is empty or unreadable", indent = 2))
-            validation_passed <- FALSE
-        } else {
-            combined_map <- tryCatch(readRDS(other_map_file), error = function(e) NULL)
-            if (is.null(combined_map) || (!is.list(combined_map))) {
-                logger::log_error(formatted("VALIDATION FAILED: other_map.rds could not be parsed as a named list", indent = 2))
-                validation_passed <- FALSE
-            } else {
-                # Per-cohort log of availability
-                for (cohort_name in names(cohort_list)) {
-                    if (cohort_name %in% names(combined_map)) {
-                        cm <- combined_map[[cohort_name]]
-                        logger::log_info(formatted(sprintf(
-                            "other_map entry for %s present with %d variables",
-                            cohort_name, length(cm)
-                        ), indent = 2))
-                    } else {
-                        logger::log_warn(formatted(sprintf(
-                            "No other_map entry for %s (will use empty mapping)",
-                            cohort_name
-                        ), indent = 2))
-                    }
-                }
-            }
-        }
-    }
-
     if (validation_passed) {
         logger::log_info(formatted("✓ All processed files exist", indent = 2))
     }

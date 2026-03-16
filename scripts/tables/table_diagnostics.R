@@ -10,14 +10,14 @@
 #' @param analysis_name Name of the analysis
 #' @param dataset_name Name of the dataset
 #' @param filtered_variables Character vector of filtered variables (optional)
-#' @param other_map List mapping variable names to "Other" categories (optional)
 #' @param extreme_diagnostics List containing extreme estimate diagnostics (optional)
 #' @param treatment_var Name of treatment variable (default: "treatment_group")
 #' @param effect_measure Effect measure type (optional, auto-detected if NULL)
 #' @param table_result gtsummary table object (optional)
+#' @param sparse_level_diagnostics Data frame of excluded sparse levels (optional)
 #' @param filter_stats List summarizing pre/post filtering sample sizes (optional)
 #' @return List containing all diagnostic data frames
-create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predictor_vars, confounders, analysis_name, dataset_name, filtered_variables = NULL, other_map = list(), extreme_diagnostics = NULL, treatment_var = "treatment_group", effect_measure = NULL, table_result = NULL, other_level_details = NULL, filter_stats = NULL) {
+create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predictor_vars, confounders, analysis_name, dataset_name, filtered_variables = NULL, extreme_diagnostics = NULL, treatment_var = "treatment_group", effect_measure = NULL, table_result = NULL, sparse_level_diagnostics = NULL, filter_stats = NULL) {
     # === UNIFIED MODEL EXTRACTION ===
     # Single model summary call - no redundancy
     model_summary <- summary(model_fit)
@@ -56,7 +56,7 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
     model_summary_tab <- create_model_summary_tab(model_fit, data, outcome_var, confounders, analysis_name, extreme_diagnostics, filtered_variables)
     model_diagnostics_tab <- create_model_diagnostics_tab(model_fit, dataset_name, analysis_name, effect_measure, coefs, extreme_diagnostics, filtered_variables)
     data_characteristics_tab <- create_data_characteristics_tab(dataset_name, analysis_name, predictor_vars, confounders, outcome_var, data)
-    other_level_details_tab <- create_other_level_details_tab(model_fit, other_map, other_level_details)
+    sparse_level_diagnostics_tab <- create_sparse_level_diagnostics_tab(sparse_level_diagnostics)
     sample_size_summary_tab <- build_sample_size_summary_tab(filter_stats, dataset_name, analysis_name, modeled_n = nrow(data))
 
     # === UNIFIED RAW MODEL OUTPUT ===
@@ -90,7 +90,7 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
         model_summary = model_summary_tab,
         model_diagnostics_tab = model_diagnostics_tab,
         data_characteristics = data_characteristics_tab,
-        other_level_details = other_level_details_tab,
+        sparse_level_diagnostics = sparse_level_diagnostics_tab,
         excluded_rows = excluded_rows_tab,
         raw_model_output = raw_model_output_tab,
         filtering_summary = filtering_summary_tab,
@@ -251,50 +251,26 @@ create_data_characteristics_tab <- function(dataset_name, analysis_name, predict
     )
 }
 
-#' Create other level details table
-create_other_level_details_tab <- function(model_fit, other_map, provided_details = NULL) {
-    if (!is.null(provided_details) && is.data.frame(provided_details) && nrow(provided_details) > 0) {
-        return(provided_details)
+#' Normalize sparse-level diagnostics for workbook export
+create_sparse_level_diagnostics_tab <- function(sparse_level_diagnostics = NULL) {
+    if (!is.null(sparse_level_diagnostics) && is.data.frame(sparse_level_diagnostics) && nrow(sparse_level_diagnostics) > 0) {
+        return(sparse_level_diagnostics)
     }
 
-    other_level_details_list <- list()
-    model_data <- model_fit$model
-
-    for (var_name in names(model_data)) {
-        if (var_name != "(weights)" && var_name != "(offset)") {
-            var_data <- model_data[[var_name]]
-            if (is.factor(var_data) || is.character(var_data)) {
-                levels_data <- levels(var_data) %||% unique(var_data)
-                if ("Other" %in% levels_data) {
-                    other_count <- sum(var_data == "Other", na.rm = TRUE)
-                    other_categories <- if (var_name %in% names(other_map) && length(other_map[[var_name]]) > 0) {
-                        paste(other_map[[var_name]], collapse = ", ")
-                    } else {
-                        "Original categories not available in model data"
-                    }
-                    other_level_details_list[[length(other_level_details_list) + 1]] <- data.frame(
-                        variable = var_name,
-                        has_other_level = TRUE,
-                        other_categories = other_categories,
-                        other_count = other_count,
-                        stringsAsFactors = FALSE
-                    )
-                }
-            }
-        }
-    }
-
-    if (length(other_level_details_list) > 0) {
-        do.call(rbind, other_level_details_list)
-    } else {
-        data.frame(
-            variable = character(),
-            has_other_level = logical(),
-            other_categories = character(),
-            other_count = integer(),
-            stringsAsFactors = FALSE
-        )
-    }
+    data.frame(
+        analysis_name = character(),
+        variable = character(),
+        level = character(),
+        observed_n = integer(),
+        action = character(),
+        reason = character(),
+        threshold = integer(),
+        reference_level = character(),
+        rows_removed = integer(),
+        row_ids = character(),
+        source = character(),
+        stringsAsFactors = FALSE
+    )
 }
 
 build_covariate_variation_tab <- function(removed_covariates, dataset_name, analysis_name) {

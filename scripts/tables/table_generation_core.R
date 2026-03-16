@@ -120,12 +120,11 @@ detect_model_type <- function(model_fit) {
 #' @param analysis_type Character string for analysis type ("post_treatment_only" or "all_patients")
 #' @param time_var Character string for time variable (Cox models)
 #' @param event_var Character string for event variable (Cox models)
-#' @param other_map List containing mapping of what categories were collapsed into "Other"
 #' @param treatment_var Name of the treatment variable in the model (default: "treatment_group")
-#' @param other_level_details Data frame with details about "Other" levels (optional)
+#' @param sparse_level_diagnostics Data frame with details about excluded sparse levels (optional)
 #' @param filter_stats List summarizing pre- vs post-filter sample sizes (optional)
 #' @return List containing table result and diagnostics
-generate_regression_table <- function(data, outcome_var, predictor_vars, confounders, model_type, effect_measure, analysis_name, dataset_name, output_dir, prefix, time_var = NULL, event_var = NULL, other_map = NULL, treatment_var = "treatment_group", other_level_details = NULL, filter_stats = NULL) {
+generate_regression_table <- function(data, outcome_var, predictor_vars, confounders, model_type, effect_measure, analysis_name, dataset_name, output_dir, prefix, time_var = NULL, event_var = NULL, treatment_var = "treatment_group", sparse_level_diagnostics = NULL, filter_stats = NULL) {
     logger::log_info(sprintf("Generating regression table for %s", analysis_name))
 
     # Build model formula
@@ -156,9 +155,9 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
     if (!is.null(model_fit)) {
         outcome_type <- model_type_to_outcome_type(detect_model_type(model_fit))
         table_result <- create_gtsummary_table(
-            model_fit, effect_measure, analysis_name, other_map,
+            model_fit, effect_measure, analysis_name,
             data, outcome_var, confounders, outcome_type,
-            other_level_details = other_level_details
+            sparse_level_diagnostics = sparse_level_diagnostics
         )
         
         # DEBUG: Check table creation result
@@ -198,12 +197,12 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
 
         diagnostics <- create_comprehensive_diagnostics(model_fit, data, outcome_var,
             predictor_vars, confounders, analysis_name,
-            dataset_name, filtered_variables, other_map,
+            dataset_name, filtered_variables,
             extreme_filtering_result$diagnostics,
             treatment_var = treatment_var,
             effect_measure = effect_measure,
             table_result = table_result,
-            other_level_details = other_level_details,
+            sparse_level_diagnostics = sparse_level_diagnostics,
             filter_stats = filter_stats
         )
 
@@ -255,8 +254,8 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
             )
         )
 
-        if (!is.null(other_level_details)) {
-            diagnostics$other_level_details <- other_level_details
+        if (!is.null(sparse_level_diagnostics)) {
+            diagnostics$sparse_level_diagnostics <- sparse_level_diagnostics
         }
 
         diagnostics$sample_size_summary <- build_sample_size_summary_tab(

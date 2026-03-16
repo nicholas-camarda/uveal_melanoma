@@ -54,7 +54,6 @@ run_objective_0 <- function() {
 
         # Extract the results
         final_analytic_datasets <- analytic_result$analytic_data
-        other_map <- analytic_result$other_map
         summary_tables <- analytic_result$summary_tables
 
         logger::log_info(sprintf(">>> COMPLETED %s (Duration: %.1f seconds)",
