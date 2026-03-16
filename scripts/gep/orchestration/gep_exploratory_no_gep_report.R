@@ -206,14 +206,6 @@ prepare_exploratory_no_gep_data <- function(data, dataset_name = "uveal_melanoma
     )
     factor_predictors <- c("sex", "location", "initial_t_stage_simple", "internal_reflectivity", "srf")
 
-    collapse_result <- handle_rare_categories(
-        prepared,
-        vars = factor_predictors[factor_predictors %in% names(prepared)],
-        threshold = 5
-    )
-    prepared <- collapse_result$data %>%
-        enforce_unordered_factors()
-
     screening <- screen_exploratory_predictors(
         prepared,
         candidate_predictors = candidate_predictors,
@@ -233,7 +225,6 @@ prepare_exploratory_no_gep_data <- function(data, dataset_name = "uveal_melanoma
         prepared,
         predictors = retained_predictors,
         factor_predictors = intersect(factor_predictors, retained_predictors),
-        other_map = collapse_result$other_map,
         outcome_var = "class2_outcome",
         group_levels = c("Class 1", "Class 2")
     )
@@ -241,7 +232,6 @@ prepare_exploratory_no_gep_data <- function(data, dataset_name = "uveal_melanoma
         prepared,
         predictors = retained_predictors,
         factor_predictors = intersect(factor_predictors, retained_predictors),
-        other_map = collapse_result$other_map,
         outcome_var = NULL,
         group_levels = c("GEP Failed/Indeterminate", "GEP Not Tested")
     )
@@ -249,14 +239,12 @@ prepare_exploratory_no_gep_data <- function(data, dataset_name = "uveal_melanoma
         prepared,
         predictors = retained_predictors,
         factor_predictors = intersect(factor_predictors, retained_predictors),
-        other_map = collapse_result$other_map,
         outcome_var = "mfs_event_5yr"
     )
     mss_model_data <- build_exploratory_model_dataset(
         prepared,
         predictors = retained_predictors,
         factor_predictors = intersect(factor_predictors, retained_predictors),
-        other_map = collapse_result$other_map,
         outcome_var = "mss_event_5yr"
     )
 
@@ -270,21 +258,20 @@ prepare_exploratory_no_gep_data <- function(data, dataset_name = "uveal_melanoma
         factor_predictors = factor_predictors,
         predictors = retained_predictors,
         predictor_screening = screening,
-        other_map = collapse_result$other_map,
         patient_id_col = pick_exploratory_patient_id_col(prepared)
     )
 }
 
 #' Screen Candidate Predictors for the Exploratory Models
 #'
-#' Applies shared completeness and post-collapse level-count rules across the
-#' surrogate and direct-risk modeling datasets.
+#' Applies shared completeness and sparse-level rules across the surrogate and
+#' direct-risk modeling datasets.
 #'
 #' @param data Prepared exploratory cohort.
 #' @param candidate_predictors Character vector of candidate predictor names.
 #' @param factor_predictors Character vector of factor predictors.
 #' @param completeness_threshold Minimum required non-missing proportion.
-#' @param min_level_count Minimum required count for non-reference levels.
+#' @param min_level_count Minimum required count for retained levels.
 #'
 #' @return A data frame describing retained and dropped predictors.
 screen_exploratory_predictors <- function(data,
@@ -308,25 +295,21 @@ screen_exploratory_predictors <- function(data,
         if (completeness_ok && predictor %in% factor_predictors) {
             for (dataset_name in names(dataset_map)) {
                 dataset <- dataset_map[[dataset_name]]
-                values <- dataset[[predictor]]
-                values <- values[!is.na(values) & values != "Other"]
-                level_counts <- table(values)
+                sparse_summary <- summarize_sparse_factor_levels(
+                    dataset[[predictor]],
+                    min_level_count = min_level_count,
+                    explicit_exclusions = MODELING_LEVEL_EXCLUSIONS[[predictor]] %||% character()
+                )
 
-                if (length(level_counts) <= 1) {
-                    level_check_reason <- sprintf("%s lacks enough non-'Other' levels after collapse", dataset_name)
-                    break
-                }
-
-                non_reference_counts <- level_counts[-1]
-                if (length(non_reference_counts) > 0 && any(non_reference_counts < min_level_count)) {
-                    rare_levels <- names(non_reference_counts)[non_reference_counts < min_level_count]
+                if (!is.na(sparse_summary$drop_reason)) {
                     level_check_reason <- sprintf(
-                        "%s has sparse non-reference levels after collapse: %s",
+                        "%s %s",
                         dataset_name,
-                        paste(rare_levels, collapse = ", ")
+                        sparse_summary$drop_reason
                     )
                     break
                 }
+
             }
         }
 
@@ -346,7 +329,7 @@ screen_exploratory_predictors <- function(data,
         } else if (!is.na(level_check_reason)) {
             level_check_reason
         } else {
-            "passes completeness and level-count screening"
+            "passes completeness and sparse-level screening"
         }
 
         tibble::tibble(
@@ -363,13 +346,12 @@ screen_exploratory_predictors <- function(data,
 
 #' Build a Screened Modeling Dataset for the Exploratory Workflow
 #'
-#' Reuses the existing `exclude_other_categories()` behavior for retained factor
-#' predictors, then filters to complete rows for the requested outcome.
+#' Applies sparse-level exclusions for retained factor predictors, then filters
+#' to complete rows for the requested outcome.
 #'
 #' @param data Prepared exploratory cohort.
 #' @param predictors Retained predictor names.
 #' @param factor_predictors Retained factor predictor names.
-#' @param other_map Collapsed-level mapping from `handle_rare_categories()`.
 #' @param outcome_var Optional outcome variable name.
 #' @param group_levels Optional character vector of `exploratory_gep_group`
 #'   levels to keep.
@@ -378,7 +360,6 @@ screen_exploratory_predictors <- function(data,
 build_exploratory_model_dataset <- function(data,
                                             predictors,
                                             factor_predictors,
-                                            other_map = list(),
                                             outcome_var = NULL,
                                             group_levels = NULL) {
     model_data <- data
@@ -394,10 +375,12 @@ build_exploratory_model_dataset <- function(data,
     }
 
     if (length(factor_predictors) > 0) {
-        exclusion_result <- exclude_other_categories(
+        exclusion_result <- apply_sparse_level_exclusions(
             model_data,
             variables = factor_predictors,
-            other_map = other_map
+            analysis_name = paste0(outcome_var %||% "no_gep", "_exploratory"),
+            id_col = pick_sparse_level_id_col(model_data),
+            level_exclusions = MODELING_LEVEL_EXCLUSIONS
         )
         model_data <- exclusion_result$data
     }
