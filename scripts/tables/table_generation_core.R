@@ -66,6 +66,7 @@ model_type_to_outcome_type <- function(model_type) {
         "logistic" = "binary",
         "linear" = "continuous",
         "cox" = "survival",
+        "ordinal" = "ordinal",
         "other_glm" = "binary", # Default for other GLMs
         "unknown" = "binary", # Default fallback
         "binary" # If already an outcome type, return as is
@@ -75,7 +76,7 @@ model_type_to_outcome_type <- function(model_type) {
 #' Detect the type of regression model
 #'
 #' @param model_fit Fitted model object
-#' @return Character string indicating model type: "linear", "logistic", "cox", "other_glm", or "unknown"
+#' @return Character string indicating model type: "linear", "logistic", "cox", "ordinal", "other_glm", or "unknown"
 detect_model_type <- function(model_fit) {
     if (is.null(model_fit)) {
         return("unknown")
@@ -102,6 +103,10 @@ detect_model_type <- function(model_fit) {
         return("linear")
     }
 
+    if ("polr" %in% class(model_fit)) {
+        return("ordinal")
+    }
+
     return("unknown")
 }
 
@@ -111,7 +116,7 @@ detect_model_type <- function(model_fit) {
 #' @param outcome_var Character string name of outcome variable
 #' @param predictor_vars Character vector of predictor variables
 #' @param confounders Character vector of confounder variables
-#' @param model_type Character string for model type ("logistic", "cox", "linear")
+#' @param model_type Character string for model type ("logistic", "cox", "linear", "ordinal")
 #' @param effect_measure Character string for effect measure ("OR", "HR", "beta")
 #' @param analysis_name Character string for analysis name
 #' @param dataset_name Character string for dataset name
@@ -135,11 +140,29 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
 
     if (is.null(model_fit)) {
         logger::log_error("Model fitting failed - returning NULL result")
+        diagnostics <- list(
+            raw_model_output = "Model fitting failed - no diagnostics available",
+            sparse_level_diagnostics = create_sparse_level_diagnostics_tab(sparse_level_diagnostics),
+            sample_size_summary = build_sample_size_summary_tab(
+                filter_stats = filter_stats,
+                dataset_name = dataset_name,
+                analysis_name = analysis_name,
+                modeled_n = nrow(data)
+            )
+        )
+        output_files <- save_skipped_model_outputs(
+            analysis_name = analysis_name,
+            dataset_name = dataset_name,
+            output_dir = output_dir,
+            prefix = prefix,
+            reason = "Model fitting failed due to insufficient usable data, no outcome variation, or numerical issues.",
+            diagnostics = diagnostics
+        )
         return(list(
             table = NULL,
-            diagnostics = NULL,
+            diagnostics = diagnostics,
             model = NULL,
-            output_files = NULL
+            output_files = output_files
         ))
     }
 

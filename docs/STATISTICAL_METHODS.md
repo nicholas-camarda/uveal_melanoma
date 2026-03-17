@@ -357,7 +357,8 @@ outcome_change ~ treatment + baseline_value + confounders
 | Outcome | Primary Analysis | Sensitivity Analysis | Location |
 |---------|------------------|---------------------|----------|
 | **Tumor Height Change** | Unadjusted | Baseline-adjusted | Objective 1e, 1f |
-| **Vision Change** | Unadjusted | Baseline-adjusted | Objective 2a |
+| **Vision Change (logMAR)** | Unadjusted | Baseline-adjusted linear regression | Objective 2a |
+| **Snellen Line Change (exact integer lines)** | Descriptive converted summary row | Adjusted linear regression | Objective 2a |
 
 ### Interpretation
 
@@ -377,6 +378,51 @@ outcome_change ~ treatment + baseline_value + confounders
 - Independent observations
 
 For practical reading of linear-regression outputs, see [Linear Regression Tables (Continuous Outcomes)](INTERPRETATION_GUIDE.md#linear-regression-tables-continuous-outcomes).
+
+---
+
+## Ordinal Outcomes
+
+### Ordinal Logistic Regression
+
+**Purpose:** Compare ordered categorical outcomes between treatment groups while preserving clinical rank order.
+
+**Implementation:** `MASS::polr()`
+
+**Model Formula:**
+
+```r
+ordered_outcome ~ treatment + confounders
+```
+
+**Outputs:**
+- Odds ratios for a shift toward earlier ordered categories
+- 95% Wald CI
+- Overall treatment/variable p-values from likelihood ratio tests
+- Diagnostics workbook with sample-size and outcome-level summaries
+
+### Applications
+
+| Outcome | Ordered Levels | Location |
+|---------|----------------|----------|
+| **Snellen Line Change Distribution** | `≥3-line improvement` to `≥3-line loss` | Objective 2a |
+
+### Interpretation
+
+**Snellen distribution OR = 1.40**
+- The comparison treatment has higher odds of falling into a better Snellen Line Change Distribution category
+- Because categories are ordered from improvement to loss, OR > 1 favors better vision outcomes and OR < 1 favors worse outcomes
+
+### Assumptions
+
+- Ordered outcome categories are clinically meaningful
+- Proportional odds assumption is acceptable
+- Independent observations
+- Adequate observations across outcome levels
+
+For Objective 2 vision, ordinal modeling is reserved for the 7-level `Snellen Line Change Distribution`. The exact integer `Snellen Line Change` outcome is modeled with adjusted linear regression, and a full exact-integer ordinal model is not used because the observed line-count support is very wide and sparse across cohorts. Reader-facing output files therefore separate `Snellen Line Change` from `Snellen Line Change Distribution`, and each Objective 2 subfolder now also includes a flat `*_effect_summary.xlsx` workbook that combines descriptive, unadjusted, and adjusted rows in one sheet.
+
+For consistency across the ordinal HTML tables and the effect-summary workbooks, ordinal (`polr`) treatment effects are reported as proportional-odds ORs with 95% Wald confidence intervals and likelihood-ratio-test p-values. Other model families retain their standard reporting conventions: linear models report mean differences with Wald CIs/p-values, logistic models report odds ratios with model-based Wald CIs and the pipeline's standard term-level p-values, and Cox models report hazard ratios with the native Cox confidence intervals and Cox-model p-values.
 
 ---
 
@@ -408,8 +454,8 @@ outcome ~ treatment * subgroup_variable + confounders
 ```
 
 **Interpretation:**
-- **p < 0.10:** Significant interaction (treatment effect varies by subgroup)
-- **p ≥ 0.10:** No significant interaction (consistent treatment effect)
+- **p < 0.05:** Significant interaction (treatment effect varies by subgroup)
+- **p ≥ 0.05:** No significant interaction (consistent treatment effect)
 
 ### Filtering Criteria
 
@@ -442,12 +488,12 @@ See [TECHNICAL.md](TECHNICAL.md#subgroup-filtering) for detailed subgroup filter
 
 ### Interpretation Guidelines
 
-**Significant Interaction (p < 0.10):**
+**Significant Interaction (p < 0.05):**
 - Treatment effect genuinely differs across subgroups
 - Clinically meaningful heterogeneity
 - Consider subgroup-specific treatment recommendations
 
-**Non-Significant Interaction (p ≥ 0.10):**
+**Non-Significant Interaction (p ≥ 0.05):**
 - No strong evidence for differential effects
 - Apply overall treatment effect across subgroups
 - Observed differences likely due to chance

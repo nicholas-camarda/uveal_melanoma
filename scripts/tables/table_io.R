@@ -1,5 +1,487 @@
 # Table IO Utilities
 
+empty_effect_summary_rows <- function() {
+    data.frame(
+        dataset = character(),
+        analysis_label = character(),
+        analysis_id = character(),
+        model_label = character(),
+        term = character(),
+        effect_measure = character(),
+        estimate = numeric(),
+        ci_lower = numeric(),
+        ci_upper = numeric(),
+        p_value = numeric(),
+        n_patients = numeric(),
+        n_events = numeric(),
+        n_outcome_non_missing = numeric(),
+        data_source = character(),
+        model_status = character(),
+        notes = character(),
+        stringsAsFactors = FALSE
+    )
+}
+
+coerce_effect_summary_rows <- function(rows) {
+    template <- empty_effect_summary_rows()
+    if (is.null(rows) || !is.data.frame(rows) || nrow(rows) == 0) {
+        return(template)
+    }
+
+    missing_cols <- setdiff(names(template), names(rows))
+    for (col_name in missing_cols) {
+        rows[[col_name]] <- template[[col_name]]
+    }
+
+    rows <- rows[, names(template), drop = FALSE]
+
+    character_cols <- c(
+        "dataset", "analysis_label", "analysis_id", "model_label", "term",
+        "effect_measure", "data_source", "model_status", "notes"
+    )
+    numeric_cols <- c(
+        "estimate", "ci_lower", "ci_upper", "p_value",
+        "n_patients", "n_events", "n_outcome_non_missing"
+    )
+
+    for (col_name in character_cols) {
+        rows[[col_name]] <- as.character(rows[[col_name]])
+    }
+    for (col_name in numeric_cols) {
+        rows[[col_name]] <- suppressWarnings(as.numeric(rows[[col_name]]))
+    }
+
+    rows
+}
+
+bind_effect_summary_rows <- function(...) {
+    row_sets <- list(...)
+    row_sets <- Filter(Negate(is.null), row_sets)
+    if (length(row_sets) == 0) {
+        return(empty_effect_summary_rows())
+    }
+
+    dplyr::bind_rows(lapply(row_sets, coerce_effect_summary_rows))
+}
+
+create_effect_summary_rows <- function(dataset_name,
+                                       analysis_label,
+                                       model_label,
+                                       term,
+                                       effect_measure = NA_character_,
+                                       estimate = NA_real_,
+                                       ci_lower = NA_real_,
+                                       ci_upper = NA_real_,
+                                       p_value = NA_real_,
+                                       n_patients = NA_real_,
+                                       n_events = NA_real_,
+                                       n_outcome_non_missing = NA_real_,
+                                       data_source = NA_character_,
+                                       model_status = "FIT",
+                                       notes = NA_character_) {
+    term <- as.character(term)
+    n_rows <- length(term)
+
+    recycle_value <- function(value, mode = c("character", "numeric")) {
+        mode <- match.arg(mode)
+        if (length(value) == 1) {
+            value <- rep(value, n_rows)
+        }
+        if (mode == "character") {
+            return(as.character(value))
+        }
+        suppressWarnings(as.numeric(value))
+    }
+
+    data.frame(
+        dataset = rep(dataset_name %||% "unspecified_dataset", n_rows),
+        analysis_label = rep(analysis_label, n_rows),
+        analysis_id = rep(make_filename_safe(analysis_label), n_rows),
+        model_label = rep(model_label, n_rows),
+        term = term,
+        effect_measure = recycle_value(effect_measure, "character"),
+        estimate = recycle_value(estimate, "numeric"),
+        ci_lower = recycle_value(ci_lower, "numeric"),
+        ci_upper = recycle_value(ci_upper, "numeric"),
+        p_value = recycle_value(p_value, "numeric"),
+        n_patients = recycle_value(n_patients, "numeric"),
+        n_events = recycle_value(n_events, "numeric"),
+        n_outcome_non_missing = recycle_value(n_outcome_non_missing, "numeric"),
+        data_source = recycle_value(data_source, "character"),
+        model_status = recycle_value(model_status, "character"),
+        notes = recycle_value(notes, "character"),
+        stringsAsFactors = FALSE
+    )
+}
+
+extract_effect_summary_pvalues <- function(model_summary, coefficient_names) {
+    p_values <- rep(NA_real_, length(coefficient_names))
+    names(p_values) <- coefficient_names
+
+    if (is.null(model_summary) || is.null(model_summary$coefficients)) {
+        return(p_values)
+    }
+
+    coeff_mat <- model_summary$coefficients
+    matched_names <- intersect(coefficient_names, rownames(coeff_mat))
+    if (length(matched_names) == 0) {
+        return(p_values)
+    }
+
+    col_names <- colnames(coeff_mat)
+    p_col <- which(col_names %in% c("Pr(>|z|)", "Pr(>|t|)", "Pr(>F)"))
+    if (length(p_col) > 0) {
+        p_values[matched_names] <- as.numeric(coeff_mat[matched_names, p_col[1]])
+        return(p_values)
+    }
+
+    stat_col <- which(col_names %in% c("t value", "z value"))
+    if (length(stat_col) > 0) {
+        test_stats <- as.numeric(coeff_mat[matched_names, stat_col[1]])
+        p_values[matched_names] <- 2 * stats::pnorm(abs(test_stats), lower.tail = FALSE)
+    }
+
+    p_values
+}
+
+extract_wald_ci <- function(model, coefficient_names, conf_level = 0.95) {
+    ci_lower <- rep(NA_real_, length(coefficient_names))
+    ci_upper <- rep(NA_real_, length(coefficient_names))
+    names(ci_lower) <- coefficient_names
+    names(ci_upper) <- coefficient_names
+
+    vcov_mat <- tryCatch(stats::vcov(model), error = function(e) NULL)
+    if (is.null(vcov_mat)) {
+        return(list(lower = ci_lower, upper = ci_upper))
+    }
+
+    matched_names <- intersect(coefficient_names, colnames(vcov_mat))
+    if (length(matched_names) == 0) {
+        return(list(lower = ci_lower, upper = ci_upper))
+    }
+
+    std_errors <- sqrt(diag(vcov_mat[matched_names, matched_names, drop = FALSE]))
+    z_value <- stats::qnorm(1 - (1 - conf_level) / 2)
+    estimates <- stats::coef(model)[matched_names]
+
+    ci_lower[matched_names] <- estimates - z_value * std_errors
+    ci_upper[matched_names] <- estimates + z_value * std_errors
+
+    list(lower = ci_lower, upper = ci_upper)
+}
+
+extract_model_confidence_intervals <- function(model, coefficient_names, model_type) {
+    if (identical(model_type, "ordinal")) {
+        return(extract_wald_ci(model, coefficient_names))
+    }
+
+    conf_int <- tryCatch(
+        suppressWarnings(stats::confint(model)),
+        error = function(e) {
+            tryCatch(
+                suppressWarnings(stats::confint.default(model)),
+                error = function(e2) NULL
+            )
+        }
+    )
+
+    ci_lower <- rep(NA_real_, length(coefficient_names))
+    ci_upper <- rep(NA_real_, length(coefficient_names))
+    names(ci_lower) <- coefficient_names
+    names(ci_upper) <- coefficient_names
+
+    if (!is.null(conf_int)) {
+        matched_ci_names <- intersect(coefficient_names, rownames(conf_int))
+        if (length(matched_ci_names) > 0) {
+            ci_lower[matched_ci_names] <- conf_int[matched_ci_names, 1]
+            ci_upper[matched_ci_names] <- conf_int[matched_ci_names, 2]
+        }
+    }
+
+    list(lower = ci_lower, upper = ci_upper)
+}
+
+extract_model_term_pvalues <- function(model,
+                                       coefficient_names,
+                                       model_type,
+                                       outcome_var = NULL,
+                                       group_var = "treatment_group") {
+    model_summary <- tryCatch(summary(model), error = function(e) NULL)
+    p_values <- extract_effect_summary_pvalues(model_summary, coefficient_names)
+
+    if (!identical(model_type, "ordinal")) {
+        return(p_values)
+    }
+
+    if (is.null(model$model) || is.null(outcome_var) || !outcome_var %in% names(model$model)) {
+        return(p_values)
+    }
+
+    term_labels <- attr(terms(model), "term.labels")
+    confounders <- setdiff(term_labels, group_var)
+    lrt_pvalue <- calculate_factor_label_pvalue(
+        model_fit = model,
+        variable_name = group_var,
+        data = model$model,
+        outcome_var = outcome_var,
+        confounders = confounders,
+        treatment_var = group_var
+    )
+
+    target_rows <- grepl(paste0("^", group_var), coefficient_names)
+    if (is.finite(lrt_pvalue) && any(target_rows)) {
+        p_values[target_rows] <- lrt_pvalue
+    }
+
+    p_values
+}
+
+summarize_effect_model <- function(model,
+                                   dataset_name,
+                                   analysis_label,
+                                   model_label,
+                                   group_var,
+                                   data_source_label,
+                                   effect_measure = NULL,
+                                   outcome_var = NULL,
+                                   notes = NA_character_) {
+    if (is.null(model)) {
+        return(NULL)
+    }
+
+    model_type <- detect_model_type(model)
+    if (is.null(effect_measure)) {
+        effect_measure <- switch(model_type,
+            cox = "HR",
+            logistic = "OR",
+            ordinal = "OR",
+            linear = "MD",
+            "Estimate"
+        )
+    }
+
+    coefficient_names <- names(stats::coef(model))
+    if (is.null(coefficient_names) || length(coefficient_names) == 0) {
+        return(NULL)
+    }
+
+    target_rows <- grepl(paste0("^", group_var), coefficient_names)
+    if (!any(target_rows)) {
+        return(NULL)
+    }
+
+    coefficient_names <- coefficient_names[target_rows]
+    coefficient_values <- stats::coef(model)[coefficient_names]
+    model_summary <- tryCatch(summary(model), error = function(e) NULL)
+    if (is.null(model_summary)) {
+        return(NULL)
+    }
+    p_values <- extract_model_term_pvalues(
+        model = model,
+        coefficient_names = coefficient_names,
+        model_type = model_type,
+        outcome_var = outcome_var,
+        group_var = group_var
+    )
+
+    n_patients <- tryCatch(as.numeric(stats::nobs(model)), error = function(e) NA_real_)
+    outcome_values <- NULL
+    if (!is.null(model$model) && !is.null(outcome_var) && outcome_var %in% names(model$model)) {
+        outcome_values <- model$model[[outcome_var]]
+    }
+    n_outcome_non_missing <- if (!is.null(outcome_values)) {
+        sum(!is.na(outcome_values))
+    } else {
+        n_patients
+    }
+
+    n_events <- NA_real_
+    if (model_type == "cox" && !is.null(model_summary$nevent)) {
+        n_events <- as.numeric(model_summary$nevent)
+    } else if (model_type == "logistic" && !is.null(outcome_values)) {
+        n_events <- sum(as.numeric(outcome_values) == 1, na.rm = TRUE)
+    }
+
+    if (model_type == "cox") {
+        ci_mat <- model_summary$conf.int
+        if (is.null(ci_mat)) {
+            return(NULL)
+        }
+        return(create_effect_summary_rows(
+            dataset_name = dataset_name,
+            analysis_label = analysis_label,
+            model_label = model_label,
+            term = coefficient_names,
+            effect_measure = effect_measure,
+            estimate = round(ci_mat[coefficient_names, "exp(coef)"], 3),
+            ci_lower = round(ci_mat[coefficient_names, "lower .95"], 3),
+            ci_upper = round(ci_mat[coefficient_names, "upper .95"], 3),
+            p_value = p_values[coefficient_names],
+            n_patients = n_patients,
+            n_events = n_events,
+            n_outcome_non_missing = n_outcome_non_missing,
+            data_source = data_source_label,
+            model_status = "FIT",
+            notes = notes
+        ))
+    }
+
+    conf_int <- extract_model_confidence_intervals(model, coefficient_names, model_type)
+    ci_lower <- conf_int$lower[coefficient_names]
+    ci_upper <- conf_int$upper[coefficient_names]
+
+    if (effect_measure %in% c("OR", "HR")) {
+        estimate <- round(exp(coefficient_values), 3)
+        ci_lower <- round(exp(ci_lower), 3)
+        ci_upper <- round(exp(ci_upper), 3)
+    } else {
+        estimate <- round(as.numeric(coefficient_values), 3)
+        ci_lower <- round(ci_lower, 3)
+        ci_upper <- round(ci_upper, 3)
+    }
+
+    create_effect_summary_rows(
+        dataset_name = dataset_name,
+        analysis_label = analysis_label,
+        model_label = model_label,
+        term = coefficient_names,
+        effect_measure = effect_measure,
+        estimate = estimate,
+        ci_lower = ci_lower,
+        ci_upper = ci_upper,
+        p_value = p_values[coefficient_names],
+        n_patients = n_patients,
+        n_events = n_events,
+        n_outcome_non_missing = n_outcome_non_missing,
+        data_source = data_source_label,
+        model_status = "FIT",
+        notes = notes
+    )
+}
+
+write_effect_summary_workbook <- function(effect_summary_rows, output_dir, prefix, analysis_name) {
+    rows_to_write <- coerce_effect_summary_rows(effect_summary_rows)
+    if (nrow(rows_to_write) == 0) {
+        return(invisible(NULL))
+    }
+
+    if (!dir.exists(output_dir)) {
+        dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+
+    filename <- paste0(prefix, make_filename_safe(analysis_name), "_effect_summary.xlsx")
+    output_path <- file.path(output_dir, filename)
+    writexl::write_xlsx(rows_to_write, output_path)
+    logger::log_info(sprintf("Effect summary saved to %s", output_path))
+
+    output_path
+}
+
+write_diagnostics_workbook <- function(diagnostics, diagnostics_path) {
+    if (is.null(diagnostics)) {
+        logger::log_warn("No diagnostics to save")
+        return(invisible(NULL))
+    }
+
+    tryCatch(
+        {
+            wb <- createWorkbook()
+            if (!is.null(diagnostics$model_summary)) {
+                addWorksheet(wb, "Model_summary")
+                writeData(wb, "Model_summary", diagnostics$model_summary)
+            }
+            if (!is.null(diagnostics$model_diagnostics)) {
+                addWorksheet(wb, "Model_diagnostics")
+                writeData(wb, "Model_diagnostics", diagnostics$model_diagnostics)
+            }
+            if (!is.null(diagnostics$data_characteristics)) {
+                addWorksheet(wb, "Data_characteristics")
+                writeData(wb, "Data_characteristics", diagnostics$data_characteristics)
+            }
+            if (!is.null(diagnostics$sparse_level_diagnostics)) {
+                addWorksheet(wb, "Sparse_level_diagnostics")
+                writeData(wb, "Sparse_level_diagnostics", diagnostics$sparse_level_diagnostics)
+            }
+            if (!is.null(diagnostics$raw_model_output)) {
+                addWorksheet(wb, "Raw_model_output")
+                if (is.data.frame(diagnostics$raw_model_output)) {
+                    raw_output_formatted <- diagnostics$raw_model_output
+                    if ("p_value" %in% names(raw_output_formatted)) {
+                        raw_output_formatted$p_value <- as.character(raw_output_formatted$p_value)
+                        raw_output_formatted$p_value[raw_output_formatted$p_value == "NA"] <- ""
+                    }
+                    writeData(wb, "Raw_model_output", raw_output_formatted)
+                } else {
+                    writeData(wb, "Raw_model_output", data.frame(
+                        message = diagnostics$raw_model_output,
+                        stringsAsFactors = FALSE
+                    ))
+                }
+            }
+            if (!is.null(diagnostics$filtering_summary)) {
+                addWorksheet(wb, "Filtering_summary")
+                writeData(wb, "Filtering_summary", diagnostics$filtering_summary)
+            }
+            if (!is.null(diagnostics$reference_levels)) {
+                addWorksheet(wb, "Reference_Levels")
+                writeData(wb, "Reference_Levels", diagnostics$reference_levels)
+            }
+            if (!is.null(diagnostics$sample_size_summary)) {
+                addWorksheet(wb, "Sample_size_summary")
+                writeData(wb, "Sample_size_summary", diagnostics$sample_size_summary)
+            }
+            if (!is.null(diagnostics$covariate_variation)) {
+                addWorksheet(wb, "Covariate_variation")
+                writeData(wb, "Covariate_variation", diagnostics$covariate_variation)
+            }
+            saveWorkbook(wb, diagnostics_path, overwrite = TRUE)
+            logger::log_info(sprintf("Comprehensive diagnostics saved to %s", diagnostics_path))
+        },
+        error = function(e) {
+            logger::log_error(sprintf("Failed to save diagnostics: %s", e$message))
+        }
+    )
+}
+
+save_skipped_model_outputs <- function(analysis_name,
+                                       dataset_name,
+                                       output_dir,
+                                       prefix,
+                                       reason,
+                                       diagnostics = NULL) {
+    if (!dir.exists(output_dir)) {
+        dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+
+    safe_analysis_name <- tryCatch(
+        {
+            make_filename_safe(analysis_name)
+        },
+        error = function(e) analysis_name
+    )
+    base_filename <- paste0(prefix, safe_analysis_name)
+    html_path <- file.path(output_dir, paste0(base_filename, "_SKIPPED.html"))
+    diagnostics_path <- file.path(output_dir, paste0(base_filename, "_diagnostics.xlsx"))
+
+    skip_html <- paste0(
+        "<html><body>",
+        "<h2>Adjusted Analysis Not Fit</h2>",
+        "<p><strong>Analysis:</strong> ", analysis_name, "</p>",
+        "<p><strong>Dataset:</strong> ", dataset_name, "</p>",
+        "<p><strong>Reason:</strong> ", reason, "</p>",
+        "</body></html>"
+    )
+    writeLines(skip_html, html_path)
+    logger::log_info(sprintf("Skipped-model HTML saved to %s", html_path))
+
+    write_diagnostics_workbook(diagnostics, diagnostics_path)
+
+    list(
+        html_path = html_path,
+        diagnostics_path = diagnostics_path
+    )
+}
+
 #' Save table outputs including consolidated raw output
 #'
 #' @param table_result gtsummary table object
@@ -176,68 +658,7 @@ save_table_outputs <- function(table_result, raw_output, model_fit, analysis_nam
     }
 
     # diagnostics_path computed above
-    if (!is.null(diagnostics)) {
-        tryCatch(
-            {
-                wb <- createWorkbook()
-                if (!is.null(diagnostics$model_summary)) {
-                    addWorksheet(wb, "Model_summary")
-                    writeData(wb, "Model_summary", diagnostics$model_summary)
-                }
-                if (!is.null(diagnostics$model_diagnostics)) {
-                    addWorksheet(wb, "Model_diagnostics")
-                    writeData(wb, "Model_diagnostics", diagnostics$model_diagnostics)
-                }
-                if (!is.null(diagnostics$data_characteristics)) {
-                    addWorksheet(wb, "Data_characteristics")
-                    writeData(wb, "Data_characteristics", diagnostics$data_characteristics)
-                }
-                if (!is.null(diagnostics$sparse_level_diagnostics)) {
-                    addWorksheet(wb, "Sparse_level_diagnostics")
-                    writeData(wb, "Sparse_level_diagnostics", diagnostics$sparse_level_diagnostics)
-                }
-                if (!is.null(diagnostics$raw_model_output)) {
-                    addWorksheet(wb, "Raw_model_output")
-                    if (is.data.frame(diagnostics$raw_model_output)) {
-                        raw_output_formatted <- diagnostics$raw_model_output
-                        if ("p_value" %in% names(raw_output_formatted)) {
-                            raw_output_formatted$p_value <- as.character(raw_output_formatted$p_value)
-                            raw_output_formatted$p_value[raw_output_formatted$p_value == "NA"] <- ""
-                        }
-                        writeData(wb, "Raw_model_output", raw_output_formatted)
-                    } else {
-                        writeData(wb, "Raw_model_output", data.frame(
-                            message = diagnostics$raw_model_output,
-                            stringsAsFactors = FALSE
-                        ))
-                    }
-                }
-                if (!is.null(diagnostics$filtering_summary)) {
-                    addWorksheet(wb, "Filtering_summary")
-                    writeData(wb, "Filtering_summary", diagnostics$filtering_summary)
-                }
-                if (!is.null(diagnostics$reference_levels)) {
-                    addWorksheet(wb, "Reference_Levels")
-                    writeData(wb, "Reference_Levels", diagnostics$reference_levels)
-                }
-                if (!is.null(diagnostics$sample_size_summary)) {
-                    addWorksheet(wb, "Sample_size_summary")
-                    writeData(wb, "Sample_size_summary", diagnostics$sample_size_summary)
-                }
-                if (!is.null(diagnostics$covariate_variation)) {
-                    addWorksheet(wb, "Covariate_variation")
-                    writeData(wb, "Covariate_variation", diagnostics$covariate_variation)
-                }
-                saveWorkbook(wb, diagnostics_path, overwrite = TRUE)
-                logger::log_info(sprintf("Comprehensive diagnostics saved to %s", diagnostics_path))
-            },
-            error = function(e) {
-                logger::log_error(sprintf("Failed to save diagnostics: %s", e$message))
-            }
-        )
-    } else {
-        logger::log_warn("No diagnostics to save")
-    }
+    write_diagnostics_workbook(diagnostics, diagnostics_path)
 
     return(list(
         html_path = html_path,

@@ -18,7 +18,7 @@ run_objective_2 <- function(data, dataset_name, output_dirs, prefix, confounders
 
     # 2a. Vision changes
     logger::log_info(formatted("Executing analyze_visual_acuity_changes: Vision changes analysis", indent = 1))
-    vision_changes <- analyze_visual_acuity_changes(data, output_dirs, prefix)
+    vision_changes <- analyze_visual_acuity_changes(data, output_dirs, prefix, confounders = confounders, dataset_name = dataset_name)
     logger::log_info(formatted("Vision changes analysis completed", indent = 1))
 
     # 2b. Radiation complications

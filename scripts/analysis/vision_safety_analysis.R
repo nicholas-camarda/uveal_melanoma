@@ -2,6 +2,126 @@
 # Author: Nicholas Camarda
 # Description: Functions for vision change and radiation sequelae analysis
 
+get_ordered_treatment_groups <- function(data, group_var = "treatment_group") {
+    if (!group_var %in% names(data)) {
+        return(character())
+    }
+
+    group_values <- data[[group_var]]
+    group_values <- group_values[!is.na(group_values)]
+    if (length(group_values) == 0) {
+        return(character())
+    }
+
+    if (is.factor(group_values)) {
+        return(levels(droplevels(group_values)))
+    }
+
+    unique(as.character(group_values))
+}
+
+format_effect_summary_pvalue <- function(p_value) {
+    if (is.null(p_value) || length(p_value) == 0 || is.na(p_value)) {
+        return("p = NA")
+    }
+    if (p_value < 0.001) {
+        return("p < 0.001")
+    }
+    sprintf("p = %.3f", p_value)
+}
+
+format_continuous_summary_string <- function(values, digits = 1) {
+    values <- values[!is.na(values)]
+    if (length(values) == 0) {
+        return(NA_character_)
+    }
+
+    sprintf(
+        paste0("%.", digits, "f (%.", digits, "f, %.", digits, "f)"),
+        stats::median(values),
+        min(values),
+        max(values)
+    )
+}
+
+build_grouped_continuous_summary <- function(data, value_var, digits = 1) {
+    group_var <- "treatment_group"
+    overall_stat <- format_continuous_summary_string(data[[value_var]], digits = digits)
+    overall_median <- suppressWarnings(round(stats::median(data[[value_var]], na.rm = TRUE), digits))
+    grouped_stats <- c(Overall = overall_stat)
+
+    for (group_name in get_ordered_treatment_groups(data, group_var = group_var)) {
+        group_values <- data %>%
+            filter(as.character(.data[[group_var]]) == group_name) %>%
+            pull(.data[[value_var]])
+        grouped_stats[[group_name]] <- format_continuous_summary_string(group_values, digits = digits)
+    }
+
+    list(
+        display_stats = grouped_stats,
+        overall_estimate = ifelse(is.finite(overall_median), overall_median, NA_real_),
+        n_outcome_non_missing = sum(!is.na(data[[value_var]]))
+    )
+}
+
+build_summary_note <- function(display_stats, p_value = NA_real_, suffix = NULL) {
+    parts <- vapply(
+        names(display_stats),
+        FUN.VALUE = character(1),
+        FUN = function(name) sprintf("%s: %s", name, display_stats[[name]])
+    )
+    parts <- c(parts, format_effect_summary_pvalue(p_value))
+    if (!is.null(suffix) && nzchar(suffix)) {
+        parts <- c(parts, suffix)
+    }
+    paste(parts, collapse = "; ")
+}
+
+build_distribution_note <- function(data, category_var, detail_file_label) {
+    non_missing_data <- data %>%
+        filter(!is.na(.data[[category_var]]))
+
+    p_value <- NA_real_
+    if (nrow(non_missing_data) > 0 && dplyr::n_distinct(non_missing_data$treatment_group) > 1) {
+        p_value <- tryCatch(
+            stats::fisher.test(table(non_missing_data$treatment_group, non_missing_data[[category_var]]), simulate.p.value = TRUE)$p.value,
+            error = function(e) NA_real_
+        )
+    }
+
+    category_count <- dplyr::n_distinct(stats::na.omit(non_missing_data[[category_var]]))
+    paste(
+        sprintf("Observed %d non-missing ordered categories.", category_count),
+        format_effect_summary_pvalue(p_value),
+        sprintf("Detailed counts are saved in %s.", detail_file_label)
+    )
+}
+
+build_binary_rate_note <- function(data, outcome_var) {
+    group_var <- "treatment_group"
+    overall_n <- sum(!is.na(data[[outcome_var]]))
+    overall_events <- sum(data[[outcome_var]] == 1, na.rm = TRUE)
+    overall_rate <- if (overall_n > 0) round(100 * overall_events / overall_n, 1) else NA_real_
+
+    parts <- sprintf("Overall: %d/%d (%.1f%%)", overall_events, overall_n, overall_rate)
+
+    for (group_name in get_ordered_treatment_groups(data, group_var = group_var)) {
+        group_data <- data %>%
+            filter(as.character(.data[[group_var]]) == group_name)
+        group_n <- sum(!is.na(group_data[[outcome_var]]))
+        group_events <- sum(group_data[[outcome_var]] == 1, na.rm = TRUE)
+        group_rate <- if (group_n > 0) round(100 * group_events / group_n, 1) else NA_real_
+        parts <- c(parts, sprintf("%s: %d/%d (%.1f%%)", group_name, group_events, group_n, group_rate))
+    }
+
+    p_value <- tryCatch(
+        stats::fisher.test(table(data$treatment_group, data[[outcome_var]]), simulate.p.value = TRUE)$p.value,
+        error = function(e) NA_real_
+    )
+
+    paste(c(parts, format_effect_summary_pvalue(p_value)), collapse = "; ")
+}
+
 #' Analyze visual acuity changes by treatment group
 #'
 #' Calculates and summarizes changes in visual acuity by treatment group.
@@ -10,6 +130,8 @@
 #' @param data A data frame containing vision-related variables.
 #' @param output_dirs A named list of output directories organized by analysis type (e.g., recurrence, mets, os, pfs, height, subgroups).
 #' @param prefix A character string used as a file prefix for output files (e.g., "full_cohort_") to identify cohort or analysis context in filenames.
+#' @param confounders Character vector of confounders to adjust for in the analysis.
+#' @param dataset_name Character string dataset identifier for diagnostics and effect summaries.
 #'
 #' @return A list with the following elements:
 #'   - changes: summary data frame of vision changes by treatment group
@@ -19,10 +141,10 @@
 #'
 #' @examples
 #' analyze_visual_acuity_changes(data, output_dirs, prefix)
-analyze_visual_acuity_changes <- function(data, output_dirs, prefix) {
+analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders = NULL, dataset_name = NULL) {
     # Calculate vision changes (row-level)
     # Vision change is already calculated in data derivation (Objective 0)
-    # Positive values = vision worsening (higher logMAR), negative = improvement
+    # Positive values = improvement (lower logMAR), negative = worsening
     
     # Ensure consistent factor contrasts for modeling
     data_with_vision_change <- enforce_unordered_factors(data)
@@ -36,14 +158,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix) {
         )
 
     line_levels <- line_change_label_levels(summary_data$vision_line_change)
-    line_values <- if (length(line_levels) > 0) {
-        seq(
-            min(summary_data$vision_line_change, na.rm = TRUE),
-            max(summary_data$vision_line_change, na.rm = TRUE)
-        )
-    } else {
-        numeric()
-    }
+    line_values <- line_change_ordered_values(summary_data$vision_line_change)
 
     if (length(line_levels) > 0) {
         summary_data <- summary_data %>%
@@ -63,7 +178,8 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix) {
             )
     }
 
-    confounders_for_model <- confounders
+    confounders_for_model <- confounders %||% character()
+    confounders_for_model <- confounders_for_model[confounders_for_model %in% names(data_with_vision_change)]
     exclusion_vars <- unique(c("treatment_group", confounders_for_model))
     exclusion_result <- apply_sparse_level_exclusions(
         data_with_vision_change,
@@ -81,6 +197,61 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix) {
     }
 
     vision_model_data <- exclusion_result$data
+    line_change_model_data <- vision_model_data %>%
+        mutate(
+            vision_line_change = compute_line_change_lines(vision_change)
+        ) %>%
+        filter(!is.na(vision_line_change))
+
+    line_change_filter_stats <- exclusion_result$filter_stats
+    if (!is.null(line_change_filter_stats)) {
+        line_change_removed_n <- nrow(vision_model_data) - nrow(line_change_model_data)
+        line_change_filter_stats$model_n <- nrow(line_change_model_data)
+        line_change_filter_stats$removed_n <- line_change_filter_stats$removed_n + line_change_removed_n
+        line_change_filter_stats$removed_pct <- if (line_change_filter_stats$initial_n > 0) {
+            round(100 * line_change_filter_stats$removed_n / line_change_filter_stats$initial_n, 1)
+        } else {
+            0
+        }
+        if (line_change_removed_n > 0) {
+            line_change_filter_stats$removal_reason <- paste(
+                exclusion_result$filter_stats$removal_reason,
+                sprintf("Excluded %d additional rows with missing Snellen line-change outcome.", line_change_removed_n)
+            )
+        }
+    }
+
+    ordinal_model_data <- vision_model_data %>%
+        mutate(
+            vision_line_change = compute_line_change_lines(vision_change),
+            vision_line_change_bucket = assign_line_change_bucket(vision_line_change)
+        ) %>%
+        filter(!is.na(vision_line_change_bucket)) %>%
+        mutate(
+            vision_line_change_bucket = factor(
+                vision_line_change_bucket,
+                levels = VISION_LINE_CHANGE_CATEGORY_LEVELS,
+                ordered = TRUE
+            )
+        )
+
+    ordinal_filter_stats <- exclusion_result$filter_stats
+    if (!is.null(ordinal_filter_stats)) {
+        ordinal_removed_n <- nrow(vision_model_data) - nrow(ordinal_model_data)
+        ordinal_filter_stats$model_n <- nrow(ordinal_model_data)
+        ordinal_filter_stats$removed_n <- ordinal_filter_stats$removed_n + ordinal_removed_n
+        ordinal_filter_stats$removed_pct <- if (ordinal_filter_stats$initial_n > 0) {
+            round(100 * ordinal_filter_stats$removed_n / ordinal_filter_stats$initial_n, 1)
+        } else {
+            0
+        }
+        if (ordinal_removed_n > 0) {
+            ordinal_filter_stats$removal_reason <- paste(
+                exclusion_result$filter_stats$removal_reason,
+                sprintf("Excluded %d additional rows with missing Snellen line-change distribution outcome.", ordinal_removed_n)
+            )
+        }
+    }
 
     # Summary statistics (grouped)
     vision_changes <- summary_data %>%
@@ -214,7 +385,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix) {
                 type = list(vision_line_change_label ~ "categorical"),
                 statistic = list(all_categorical() ~ "{n} ({p}%)"),
                 digits = list(all_categorical() ~ 1),
-                label = list(vision_line_change_label ~ "Snellen Line Change Distribution")
+                label = list(vision_line_change_label ~ "Snellen Line Change Integer Distribution")
             ) %>%
             add_p(
                 test = list(
@@ -232,7 +403,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix) {
                 stat_2 = "**GKSRS**\nN = {n}",
                 p.value = "**p-value**"
             ) %>%
-            modify_caption("Snellen Line-Change Distribution")
+            modify_caption("Snellen Line Change Integer Distribution")
     }
 
     if (!all(is.na(summary_data$vision_line_change_bucket))) {
@@ -263,18 +434,18 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix) {
                 stat_2 = "**GKSRS**\nN = {n}",
                 p.value = "**p-value**"
             ) %>%
-            modify_caption("Snellen Line-Change Summary (Bucketed)")
+            modify_caption("Snellen Line Change Distribution")
     }
 
     line_change_summary_tbl <- summary_data %>%
-        select(treatment_group, vision_line_change) %>%
+        select(treatment_group, vision_change) %>%
         tbl_summary(
             missing = "no",
             by = treatment_group,
-            type = list(vision_line_change ~ "continuous"),
-            statistic = list(vision_line_change ~ "{median} ({min}, {max})"),
-            digits = list(vision_line_change ~ 0),
-            label = list(vision_line_change ~ "Snellen Line Change")
+            type = list(vision_change ~ "continuous"),
+            statistic = list(vision_change ~ "{median} ({min}, {max})"),
+            digits = list(vision_change ~ 1),
+            label = list(vision_change ~ "Vision Change (logMAR)")
         ) %>%
         add_p(
             test = list(
@@ -287,7 +458,10 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix) {
             label = "**Characteristic**",
             stat_0 = "**Overall**\nN = {N}"
         ) %>%
-    modify_caption("Snellen Line Change Summary")
+        convert_logmar_summary_table_to_line_summary(
+            label = "Snellen Line Change",
+            caption = "Snellen Line Change Summary"
+        )
 
     # Save tables
     stacked_tbls <- Filter(
@@ -315,14 +489,14 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix) {
     if (nrow(line_change_distribution) > 0) {
         writexl::write_xlsx(
             line_change_distribution,
-            path = file.path(output_dirs$obj2_vision, paste0(prefix, "vision_line_change_distribution.xlsx"))
+            path = file.path(output_dirs$obj2_vision, paste0(prefix, "snellen_line_change_integer_distribution.xlsx"))
         )
     }
 
     if (nrow(line_change_bucket_distribution) > 0) {
         writexl::write_xlsx(
             line_change_bucket_distribution,
-            path = file.path(output_dirs$obj2_vision, paste0(prefix, "vision_line_change_bucket_summary.xlsx"))
+            path = file.path(output_dirs$obj2_vision, paste0(prefix, "snellen_line_change_distribution_summary.xlsx"))
         )
     }
 
@@ -333,11 +507,11 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix) {
 
     if (length(snellen_section_tbls) > 0) {
         snellen_combo_tbl <- tbl_stack(snellen_section_tbls) %>%
-            modify_caption("Snellen Line-Change Summary")
+            modify_caption("Snellen Line Change Descriptive Summary")
 
         save_gt_html(
             snellen_combo_tbl,
-            filename = file.path(output_dirs$obj2_vision, paste0(prefix, "vision_line_change_summary.html"))
+            filename = file.path(output_dirs$obj2_vision, paste0(prefix, "snellen_line_change_descriptive_summary.html"))
         )
     }
 
@@ -353,8 +527,8 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix) {
         confounders = confounders_for_model,
         model_type = "linear",
         effect_measure = "MD", # Mean Difference for continuous outcome
-        analysis_name = "vision_change_linear",
-        dataset_name = "vision_safety",
+        analysis_name = "logmar_vision_change_adjusted",
+        dataset_name = dataset_name %||% "vision_safety",
         output_dir = output_dirs$obj2_vision,
         prefix = prefix,
         sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
@@ -363,6 +537,250 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix) {
 
     vision_lm <- vision_result$model
     vision_lm_tbl <- vision_result$table
+
+    line_change_result <- generate_regression_table(
+        data = line_change_model_data,
+        outcome_var = "vision_line_change",
+        predictor_vars = "treatment_group",
+        confounders = confounders_for_model,
+        model_type = "linear",
+        effect_measure = "MD",
+        analysis_name = "snellen_line_change_adjusted",
+        dataset_name = dataset_name %||% "vision_safety",
+        output_dir = output_dirs$obj2_vision,
+        prefix = prefix,
+        sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
+        filter_stats = line_change_filter_stats
+    )
+
+    line_change_lm <- line_change_result$model
+    line_change_lm_tbl <- line_change_result$table
+
+    line_change_ordinal_result <- generate_regression_table(
+        data = ordinal_model_data,
+        outcome_var = "vision_line_change_bucket",
+        predictor_vars = "treatment_group",
+        confounders = confounders_for_model,
+        model_type = "ordinal",
+        effect_measure = "OR",
+        analysis_name = "snellen_line_change_distribution_adjusted",
+        dataset_name = dataset_name %||% "vision_safety",
+        output_dir = output_dirs$obj2_vision,
+        prefix = prefix,
+        sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
+        filter_stats = ordinal_filter_stats
+    )
+
+    line_change_ordinal_model <- line_change_ordinal_result$model
+    line_change_ordinal_tbl <- line_change_ordinal_result$table
+
+    logmar_summary <- build_grouped_continuous_summary(summary_data, "vision_change", digits = 1)
+    logmar_p_value <- tryCatch(
+        stats::wilcox.test(vision_change ~ treatment_group, data = summary_data)$p.value,
+        error = function(e) NA_real_
+    )
+
+    snellen_summary_strings <- convert_logmar_summary_stat_to_line_summary(unname(logmar_summary$display_stats))
+    names(snellen_summary_strings) <- names(logmar_summary$display_stats)
+    snellen_overall_estimate <- if (is.na(logmar_summary$overall_estimate)) {
+        NA_real_
+    } else {
+        compute_line_change_lines(logmar_summary$overall_estimate)
+    }
+
+    logmar_unadjusted_model <- fit_regression_model(
+        data = vision_model_data,
+        formula = build_model_formula("vision_change", "treatment_group", character(), "linear"),
+        model_type = "linear"
+    )
+    snellen_line_unadjusted_model <- fit_regression_model(
+        data = line_change_model_data,
+        formula = build_model_formula("vision_line_change", "treatment_group", character(), "linear"),
+        model_type = "linear"
+    )
+    snellen_distribution_unadjusted_model <- fit_regression_model(
+        data = ordinal_model_data,
+        formula = build_model_formula("vision_line_change_bucket", "treatment_group", character(), "ordinal"),
+        model_type = "ordinal"
+    )
+
+    vision_effect_summary <- bind_effect_summary_rows(
+        create_effect_summary_rows(
+            dataset_name = dataset_name %||% "vision_safety",
+            analysis_label = "LogMAR Vision Change",
+            model_label = "Descriptive",
+            term = "summary",
+            effect_measure = "Median (Min, Max)",
+            estimate = logmar_summary$overall_estimate,
+            n_patients = nrow(summary_data),
+            n_outcome_non_missing = logmar_summary$n_outcome_non_missing,
+            data_source = "Displayed descriptive summary",
+            model_status = "DESCRIPTIVE",
+            notes = build_summary_note(logmar_summary$display_stats, logmar_p_value)
+        ),
+        summarize_effect_model(
+            model = logmar_unadjusted_model,
+            dataset_name = dataset_name %||% "vision_safety",
+            analysis_label = "LogMAR Vision Change",
+            model_label = "Unadjusted linear",
+            group_var = "treatment_group",
+            data_source_label = "Filtered vision-change dataset without covariates",
+            effect_measure = "MD",
+            outcome_var = "vision_change"
+        ) %||% create_effect_summary_rows(
+            dataset_name = dataset_name %||% "vision_safety",
+            analysis_label = "LogMAR Vision Change",
+            model_label = "Unadjusted linear",
+            term = "treatment_group",
+            effect_measure = "MD",
+            n_patients = nrow(vision_model_data),
+            n_outcome_non_missing = sum(!is.na(vision_model_data$vision_change)),
+            data_source = "Filtered vision-change dataset without covariates",
+            model_status = "SKIPPED",
+            notes = "Unadjusted linear model could not be fit."
+        ),
+        summarize_effect_model(
+            model = vision_lm,
+            dataset_name = dataset_name %||% "vision_safety",
+            analysis_label = "LogMAR Vision Change",
+            model_label = "Adjusted linear",
+            group_var = "treatment_group",
+            data_source_label = "Filtered vision-change dataset with confounders",
+            effect_measure = "MD",
+            outcome_var = "vision_change"
+        ) %||% create_effect_summary_rows(
+            dataset_name = dataset_name %||% "vision_safety",
+            analysis_label = "LogMAR Vision Change",
+            model_label = "Adjusted linear",
+            term = "treatment_group",
+            effect_measure = "MD",
+            n_patients = nrow(vision_model_data),
+            n_outcome_non_missing = sum(!is.na(vision_model_data$vision_change)),
+            data_source = "Filtered vision-change dataset with confounders",
+            model_status = "SKIPPED",
+            notes = as.character(vision_result$diagnostics$raw_model_output %||% "Adjusted linear model could not be fit.")
+        ),
+        create_effect_summary_rows(
+            dataset_name = dataset_name %||% "vision_safety",
+            analysis_label = "Snellen Line Change",
+            model_label = "Descriptive",
+            term = "summary",
+            effect_measure = "Median (Min, Max)",
+            estimate = snellen_overall_estimate,
+            n_patients = nrow(summary_data),
+            n_outcome_non_missing = logmar_summary$n_outcome_non_missing,
+            data_source = "Displayed descriptive summary converted from logMAR",
+            model_status = "DESCRIPTIVE",
+            notes = build_summary_note(snellen_summary_strings, logmar_p_value)
+        ),
+        summarize_effect_model(
+            model = snellen_line_unadjusted_model,
+            dataset_name = dataset_name %||% "vision_safety",
+            analysis_label = "Snellen Line Change",
+            model_label = "Unadjusted linear",
+            group_var = "treatment_group",
+            data_source_label = "Filtered Snellen line-change dataset without covariates",
+            effect_measure = "MD",
+            outcome_var = "vision_line_change"
+        ) %||% create_effect_summary_rows(
+            dataset_name = dataset_name %||% "vision_safety",
+            analysis_label = "Snellen Line Change",
+            model_label = "Unadjusted linear",
+            term = "treatment_group",
+            effect_measure = "MD",
+            n_patients = nrow(line_change_model_data),
+            n_outcome_non_missing = sum(!is.na(line_change_model_data$vision_line_change)),
+            data_source = "Filtered Snellen line-change dataset without covariates",
+            model_status = "SKIPPED",
+            notes = "Unadjusted Snellen line-change model could not be fit."
+        ),
+        summarize_effect_model(
+            model = line_change_lm,
+            dataset_name = dataset_name %||% "vision_safety",
+            analysis_label = "Snellen Line Change",
+            model_label = "Adjusted linear",
+            group_var = "treatment_group",
+            data_source_label = "Filtered Snellen line-change dataset with confounders",
+            effect_measure = "MD",
+            outcome_var = "vision_line_change"
+        ) %||% create_effect_summary_rows(
+            dataset_name = dataset_name %||% "vision_safety",
+            analysis_label = "Snellen Line Change",
+            model_label = "Adjusted linear",
+            term = "treatment_group",
+            effect_measure = "MD",
+            n_patients = nrow(line_change_model_data),
+            n_outcome_non_missing = sum(!is.na(line_change_model_data$vision_line_change)),
+            data_source = "Filtered Snellen line-change dataset with confounders",
+            model_status = "SKIPPED",
+            notes = as.character(line_change_result$diagnostics$raw_model_output %||% "Adjusted Snellen line-change model could not be fit.")
+        ),
+        create_effect_summary_rows(
+            dataset_name = "vision_safety",
+            analysis_label = "Snellen Line Change Distribution",
+            model_label = "Descriptive",
+            term = "summary",
+            effect_measure = "Distribution",
+            n_patients = nrow(summary_data),
+            n_outcome_non_missing = sum(!is.na(summary_data$vision_line_change_bucket)),
+            data_source = "Displayed categorical distribution summary",
+            model_status = "DESCRIPTIVE",
+            notes = build_distribution_note(
+                summary_data,
+                category_var = "vision_line_change_bucket",
+                detail_file_label = paste0(prefix, "snellen_line_change_distribution_summary.xlsx")
+            )
+        ),
+        summarize_effect_model(
+            model = snellen_distribution_unadjusted_model,
+            dataset_name = "vision_safety",
+            analysis_label = "Snellen Line Change Distribution",
+            model_label = "Unadjusted ordinal logistic",
+            group_var = "treatment_group",
+            data_source_label = "Filtered Snellen line-change distribution dataset without covariates",
+            effect_measure = "OR",
+            outcome_var = "vision_line_change_bucket"
+        ) %||% create_effect_summary_rows(
+            dataset_name = "vision_safety",
+            analysis_label = "Snellen Line Change Distribution",
+            model_label = "Unadjusted ordinal logistic",
+            term = "treatment_group",
+            effect_measure = "OR",
+            n_patients = nrow(ordinal_model_data),
+            n_outcome_non_missing = sum(!is.na(ordinal_model_data$vision_line_change_bucket)),
+            data_source = "Filtered Snellen line-change distribution dataset without covariates",
+            model_status = "SKIPPED",
+            notes = "Unadjusted ordinal Snellen distribution model could not be fit."
+        ),
+        summarize_effect_model(
+            model = line_change_ordinal_model,
+            dataset_name = "vision_safety",
+            analysis_label = "Snellen Line Change Distribution",
+            model_label = "Adjusted ordinal logistic",
+            group_var = "treatment_group",
+            data_source_label = "Filtered Snellen line-change distribution dataset with confounders",
+            effect_measure = "OR",
+            outcome_var = "vision_line_change_bucket"
+        ) %||% create_effect_summary_rows(
+            dataset_name = "vision_safety",
+            analysis_label = "Snellen Line Change Distribution",
+            model_label = "Adjusted ordinal logistic",
+            term = "treatment_group",
+            effect_measure = "OR",
+            n_patients = nrow(ordinal_model_data),
+            n_outcome_non_missing = sum(!is.na(ordinal_model_data$vision_line_change_bucket)),
+            data_source = "Filtered Snellen line-change distribution dataset with confounders",
+            model_status = "SKIPPED",
+            notes = as.character(line_change_ordinal_result$diagnostics$raw_model_output %||% "Adjusted ordinal Snellen distribution model could not be fit.")
+        )
+    )
+
+    write_effect_summary_workbook(
+        effect_summary_rows = vision_effect_summary,
+        output_dir = output_dirs$obj2_vision,
+        prefix = prefix,
+        analysis_name = "vision"
+    )
 
     # Note: Table formatting and saving are now handled by the unified table generation system
 
@@ -375,7 +793,14 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix) {
         line_change_bucket_table = line_change_bucket_tbl,
         line_change_summary_table = line_change_summary_tbl,
         regression_model = vision_lm,
-        regression_table = vision_lm_tbl
+        regression_table = vision_lm_tbl,
+        line_change_regression_model = line_change_lm,
+        line_change_regression_table = line_change_lm_tbl,
+        line_change_regression_diagnostics = line_change_result$diagnostics,
+        line_change_bucket_regression_model = line_change_ordinal_model,
+        line_change_bucket_regression_table = line_change_ordinal_tbl,
+        line_change_bucket_regression_diagnostics = line_change_ordinal_result$diagnostics,
+        effect_summary = vision_effect_summary
     ))
 }
 
@@ -403,6 +828,11 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
             sequela_type, paste(valid_sequelae, collapse = ", ")
         ))
     }
+    sequela_label <- switch(sequela_type,
+        retinopathy = "Retinopathy",
+        nvg = "Neovascular Glaucoma",
+        srd = "Serous Retinal Detachment"
+    )
 
     collapse_binary_summary_to_cases <- function(tbl) {
         tbl %>%
@@ -606,12 +1036,13 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
         safety_diagnostics <- regression_result$diagnostics
         regression_table <- regression_result$table # Get the regression table
     } else {
-        logger::log_warn(sprintf("Insufficient events for regression modeling (%d events)", sum(data[[outcome_var]] == "Y", na.rm = TRUE)))
+        modeled_events <- sum(model_data[[outcome_var]] == 1, na.rm = TRUE)
+        logger::log_warn(sprintf("Insufficient events for regression modeling (%d events)", modeled_events))
         safety_diagnostics <- list(
             sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
             raw_model_output = sprintf(
                 "Model skipped: only %d events available after sparse-level exclusions.",
-                sum(model_data[[outcome_var]] == 1, na.rm = TRUE)
+                modeled_events
             ),
             sample_size_summary = build_sample_size_summary_tab(
                 filter_stats = exclusion_result$filter_stats,
@@ -620,14 +1051,105 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
                 modeled_n = nrow(model_data)
             )
         )
+
+        save_skipped_model_outputs(
+            analysis_name = logistic_analysis_name,
+            dataset_name = dataset_name,
+            output_dir = output_dir,
+            prefix = prefix,
+            reason = sprintf(
+                "Adjusted model skipped because only %d events remained after sparse-level exclusions.",
+                modeled_events
+            ),
+            diagnostics = safety_diagnostics
+        )
     }
 
     # Note: Diagnostics are now handled by the unified table generation system
+
+    unadjusted_model <- fit_regression_model(
+        data = model_data,
+        formula = build_model_formula(outcome_var, "treatment_group", character(), "logistic"),
+        model_type = "logistic"
+    )
+
+    effect_summary_rows <- bind_effect_summary_rows(
+        create_effect_summary_rows(
+            dataset_name = dataset_name %||% "unspecified_dataset",
+            analysis_label = sequela_label,
+            model_label = "Descriptive",
+            term = "summary",
+            effect_measure = "Rate (%)",
+            estimate = if (nrow(sequela_rates) > 0) round(100 * sum(summary_rates_data[[outcome_var]] == 1, na.rm = TRUE) / nrow(summary_rates_data), 1) else NA_real_,
+            n_patients = nrow(summary_rates_data),
+            n_events = sum(summary_rates_data[[outcome_var]] == 1, na.rm = TRUE),
+            n_outcome_non_missing = sum(!is.na(summary_rates_data[[outcome_var]])),
+            data_source = "Displayed descriptive rates summary",
+            model_status = "DESCRIPTIVE",
+            notes = build_binary_rate_note(summary_rates_data, outcome_var)
+        ),
+        summarize_effect_model(
+            model = unadjusted_model,
+            dataset_name = dataset_name %||% "unspecified_dataset",
+            analysis_label = sequela_label,
+            model_label = "Unadjusted logistic",
+            group_var = "treatment_group",
+            data_source_label = "Filtered sequela dataset without covariates",
+            effect_measure = "OR",
+            outcome_var = outcome_var
+        ) %||% create_effect_summary_rows(
+            dataset_name = dataset_name %||% "unspecified_dataset",
+            analysis_label = sequela_label,
+            model_label = "Unadjusted logistic",
+            term = "treatment_group",
+            effect_measure = "OR",
+            n_patients = nrow(model_data),
+            n_events = sum(model_data[[outcome_var]] == 1, na.rm = TRUE),
+            n_outcome_non_missing = sum(!is.na(model_data[[outcome_var]])),
+            data_source = "Filtered sequela dataset without covariates",
+            model_status = "SKIPPED",
+            notes = "Unadjusted logistic model could not be fit."
+        ),
+        summarize_effect_model(
+            model = model_result,
+            dataset_name = dataset_name %||% "unspecified_dataset",
+            analysis_label = sequela_label,
+            model_label = "Adjusted logistic",
+            group_var = "treatment_group",
+            data_source_label = "Filtered sequela dataset with confounders",
+            effect_measure = "OR",
+            outcome_var = outcome_var
+        ) %||% create_effect_summary_rows(
+            dataset_name = dataset_name %||% "unspecified_dataset",
+            analysis_label = sequela_label,
+            model_label = "Adjusted logistic",
+            term = "treatment_group",
+            effect_measure = "OR",
+            n_patients = nrow(model_data),
+            n_events = sum(model_data[[outcome_var]] == 1, na.rm = TRUE),
+            n_outcome_non_missing = sum(!is.na(model_data[[outcome_var]])),
+            data_source = "Filtered sequela dataset with confounders",
+            model_status = "SKIPPED",
+            notes = if (is.list(safety_diagnostics) && !is.null(safety_diagnostics$raw_model_output)) {
+                paste(as.character(safety_diagnostics$raw_model_output), collapse = " ")
+            } else {
+                "Adjusted logistic model could not be fit."
+            }
+        )
+    )
+
+    write_effect_summary_workbook(
+        effect_summary_rows = effect_summary_rows,
+        output_dir = output_dir,
+        prefix = prefix,
+        analysis_name = sequela_label
+    )
 
     return(list(
         rates = sequela_rates,
         table = if (!is.null(regression_table)) regression_table else tbl, # Return regression table if available, otherwise summary table
         model = model_result,
-        diagnostics = safety_diagnostics # Add diagnostics for consolidation
+        diagnostics = safety_diagnostics, # Add diagnostics for consolidation
+        effect_summary = effect_summary_rows
     ))
 }

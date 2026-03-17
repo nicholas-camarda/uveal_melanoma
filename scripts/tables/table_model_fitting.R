@@ -263,6 +263,28 @@ fit_regression_model <- function(data, formula, model_type, time_var = NULL, eve
                 lm_model <- lm(formula, data = data)
                 lm_model$removed_covariates <- removed_covariates
                 lm_model
+            } else if (model_type == "ordinal") {
+                pruning <- prune_low_variability_terms(formula, data, "Ordinal")
+                formula <- pruning$formula
+                removed_covariates <- pruning$removed
+
+                outcome_var <- all.vars(formula)[1]
+                ordinal_data <- data
+                if (outcome_var %in% names(ordinal_data)) {
+                    ordinal_data[[outcome_var]] <- droplevels(ordinal_data[[outcome_var]])
+                    if (!is.ordered(ordinal_data[[outcome_var]])) {
+                        ordinal_data[[outcome_var]] <- ordered(ordinal_data[[outcome_var]], levels = levels(ordinal_data[[outcome_var]]))
+                    }
+                }
+
+                ordinal_model <- MASS::polr(
+                    formula,
+                    data = ordinal_data,
+                    Hess = TRUE,
+                    model = TRUE
+                )
+                ordinal_model$removed_covariates <- removed_covariates
+                ordinal_model
             } else {
                 stop("Unsupported model type: ", model_type)
             }

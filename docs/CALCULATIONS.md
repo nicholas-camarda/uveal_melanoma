@@ -157,14 +157,18 @@ Vision loss is **expected** after radiation treatment due to:
 ### **Snellen-line Conversion & Reporting**
 
 - **Step 1: LogMAR delta** — compute `delta_logMAR = initial_logMAR - follow_up_logMAR` (or use the pre-salvage value for recurrence patients). Positive deltas therefore indicate improved acuity (lower logMAR at follow-up); negative deltas indicate vision loss.
-- **Step 2: Snellen lines** — convert logMAR deltas into integer line counts via `lines = round(delta_logMAR / 0.1)`. One Snellen line equals 0.1 logMAR, so `+3` reflects a three-line improvement and `-3` reflects a three-line loss.
-- **Step 3: Labels & buckets** — translate counts into ordered labels through `vision_helpers.R::categorize_line_change()` and bucket them with `assign_line_change_bucket()`. Bucket levels are centrally defined in `config_constants.R::VISION_LINE_CHANGE_CATEGORY_LEVELS` (≥3-, 2-, 1-line improvement; Stable ±1; 1-, 2-, ≥3-line loss).
+- **Step 2: Snellen lines** — convert logMAR deltas into integer line counts via nearest-line rounding with halves rounded away from zero: `lines = round_half_away_from_zero(delta_logMAR / 0.1)`. One Snellen line equals 0.1 logMAR, so `-0.2 -> -2`, `-0.3 -> -3`, and `+0.2 -> +2`.
+- **Step 3: Labels & distribution categories** — translate counts into ordered labels through `vision_helpers.R::categorize_line_change()` and aggregate them into the 7-level `Snellen Line Change Distribution` with `assign_line_change_bucket()`. Distribution levels are centrally defined in `config_constants.R::VISION_LINE_CHANGE_CATEGORY_LEVELS` (≥3-, 2-, 1-line improvement; Stable ±1; 1-, 2-, ≥3-line loss).
+- **Step 4: Manuscript-facing summary row** — the `Snellen Line Change` median/min/max row shown in Objective 2 tables is a direct conversion of the displayed logMAR summary row, not a separately summarized transformed variable. This keeps the reported logMAR and Snellen summaries numerically aligned.
 
 **Outputs (Objective 2 / `a_vision_changes/` subfolder):**
 
-1. `*_vision_changes.html` — combined HTML with (a) logMAR summary, (b) Snellen-line summary, (c) bucketed line-change table (≥3-, 2-, 1-line improvement/loss plus Stable ±1).
-2. `*_vision_line_change_summary.html` — stacked Snellen-line summary, bucketed table, and full per-line distribution (also embedded inside the merged adverse-events deliverable).
-3. `*_vision_line_change_distribution.xlsx` and `*_vision_line_change_bucket_summary.xlsx` — Excel mirrors for QA and manuscript supplements.
+1. `*_vision_changes.html` — combined HTML with the descriptive logMAR summary, converted Snellen summary row, and Snellen distribution tables.
+2. `*_logmar_vision_change_adjusted_lm.html` and `*_logmar_vision_change_adjusted_diagnostics.xlsx` — adjusted linear regression for continuous logMAR change.
+3. `*_snellen_line_change_adjusted_lm.html` and `*_snellen_line_change_adjusted_diagnostics.xlsx` — adjusted linear regression for the exact integer `Snellen Line Change` outcome.
+4. `*_snellen_line_change_distribution_adjusted_polr.html` and `*_snellen_line_change_distribution_adjusted_diagnostics.xlsx` — adjusted ordinal logistic regression for the 7-level `Snellen Line Change Distribution`.
+5. `*_snellen_line_change_descriptive_summary.html`, `*_snellen_line_change_integer_distribution.xlsx`, and `*_snellen_line_change_distribution_summary.xlsx` — descriptive Snellen outputs for manuscript QA and supplements.
+6. `*_vision_effect_summary.xlsx` — one-sheet effect summary workbook combining descriptive, unadjusted, and adjusted rows for logMAR Vision Change, Snellen Line Change, and Snellen Line Change Distribution. Workbook inference conventions follow the fitted model family: linear rows use mean differences with Wald CIs/p-values, logistic rows use ORs with model-based Wald CIs and the pipeline's standard term-level p-values, Cox rows use HRs with native Cox CIs/p-values, and ordinal rows use proportional-odds ORs with 95% Wald CIs plus likelihood-ratio-test p-values.
 
 ---
 

@@ -601,13 +601,36 @@ calculate_variable_overall_significance <- function(data, variable_name, outcome
         return(NA)
     }
 
-    # Check if variable has sufficient levels/variation
-    if (is.factor(data_clean[[variable_name]])) {
-        level_counts <- get_observed_level_counts(data_clean[[variable_name]])
-        if (nrow(level_counts) < 2) {
-            warning(sprintf("Variable '%s' has insufficient levels for significance testing", variable_name))
-            return(NA)
+    has_usable_variation <- function(x) {
+        x_non_missing <- x[!is.na(x)]
+        if (length(x_non_missing) == 0) {
+            return(FALSE)
         }
+
+        if (is.factor(x_non_missing)) {
+            return(nlevels(droplevels(x_non_missing)) >= 2)
+        }
+
+        length(unique(x_non_missing)) >= 2
+    }
+
+    # Check if primary variables have sufficient levels/variation
+    if (!has_usable_variation(data_clean[[variable_name]])) {
+        warning(sprintf("Variable '%s' has insufficient levels for significance testing", variable_name))
+        return(NA)
+    }
+
+    if (!has_usable_variation(data_clean[[treatment_var]])) {
+        warning(sprintf("Treatment variable '%s' has insufficient variation for significance testing", treatment_var))
+        return(NA)
+    }
+
+    # Drop confounders that become constant after complete-case filtering to avoid
+    # nested-model failures when rendering adjusted tables.
+    if (!is.null(confounders) && length(confounders) > 0) {
+        confounders <- confounders[vapply(confounders, function(confounder) {
+            confounder %in% names(data_clean) && has_usable_variation(data_clean[[confounder]])
+        }, logical(1))]
     }
 
     # Build confounder string

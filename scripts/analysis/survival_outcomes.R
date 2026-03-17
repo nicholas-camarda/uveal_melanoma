@@ -300,48 +300,14 @@ determine_survival_output_dir <- function(ylab, output_dirs) {
 }
 
 summarize_cox_hr <- function(model, dataset_name, analysis_label, model_label, group_var, data_source_label) {
-    if (is.null(model)) {
-        return(NULL)
-    }
-
-    model_summary <- tryCatch(summary(model), error = function(e) {
-        logger::log_warn(sprintf("Unable to summarise Cox model for %s: %s", analysis_label, e$message))
-        NULL
-    })
-    if (is.null(model_summary) || is.null(model_summary$coefficients)) {
-        return(NULL)
-    }
-
-    coef_rows <- rownames(model_summary$coefficients)
-    if (is.null(coef_rows)) {
-        return(NULL)
-    }
-
-    target_rows <- grepl(paste0("^", group_var), coef_rows)
-    if (!any(target_rows)) {
-        return(NULL)
-    }
-
-    ci_mat <- model_summary$conf.int
-    coeff_mat <- model_summary$coefficients
-    if (is.null(ci_mat)) {
-        return(NULL)
-    }
-
-    data.frame(
-        dataset = dataset_name %||% "unspecified_dataset",
+    summarize_effect_model(
+        model = model,
+        dataset_name = dataset_name,
         analysis_label = analysis_label,
-        analysis_id = make_filename_safe(analysis_label),
         model_label = model_label,
-        term = coef_rows[target_rows],
-        hazard_ratio = round(ci_mat[target_rows, "exp(coef)"], 3),
-        ci_lower = round(ci_mat[target_rows, "lower .95"], 3),
-        ci_upper = round(ci_mat[target_rows, "upper .95"], 3),
-        p_value = coeff_mat[target_rows, "Pr(>|z|)"],
-        n_patients = model_summary$n,
-        n_events = model_summary$nevent,
-        data_source = data_source_label,
-        stringsAsFactors = FALSE
+        group_var = group_var,
+        data_source_label = data_source_label,
+        effect_measure = "HR"
     )
 }
 
@@ -1285,15 +1251,15 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         )
     )
     hr_rows <- hr_rows[!vapply(hr_rows, is.null, logical(1))]
-    hazard_ratio_summary <- if (length(hr_rows) > 0) dplyr::bind_rows(hr_rows) else data.frame()
+    hazard_ratio_summary <- if (length(hr_rows) > 0) do.call(bind_effect_summary_rows, hr_rows) else empty_effect_summary_rows()
 
     if (!is.null(output_dirs) && nrow(hazard_ratio_summary) > 0) {
         hr_output_dir <- determine_survival_output_dir(ylab, output_dirs)
         hr_dir <- ensure_output_dir(resolve_obj4_output_dir(output_dirs, hr_output_dir, "cox"))
         
-        hr_filename <- paste0(prefix, make_filename_safe(ylab), "_hazard_ratio_summary.xlsx")
+        hr_filename <- paste0(prefix, make_filename_safe(ylab), "_effect_summary.xlsx")
         writexl::write_xlsx(hazard_ratio_summary, file.path(hr_dir, hr_filename))
-        logger::log_info(sprintf("Hazard ratio summary saved: %s", hr_filename))
+        logger::log_info(sprintf("Effect summary saved: %s", hr_filename))
     }
 
     logger::log_info(sprintf(

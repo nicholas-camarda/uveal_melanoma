@@ -406,8 +406,8 @@ The analysis pipeline includes robust error handling for situations where data l
 |---------------|--------|----------------|---------|----------|
 | **1a. Local Recurrence** | Binary outcome analysis with logistic regression | `analyze_binary_outcome_rates()` | Event rates (.xlsx), logistic regression models (.html) | `{cohort}/01_Efficacy/a_recurrence/` |
 | **1b. Metastatic Progression** | Binary outcome analysis with logistic regression | `analyze_binary_outcome_rates()` | Event rates (.xlsx), logistic regression models (.html) | `{cohort}/01_Efficacy/b_metastatic_progression/` |
-| **1c. Overall Survival** | Kaplan-Meier + Cox regression + RMST analysis | `analyze_time_to_event_outcomes()` | Survival tables (.xlsx), Cox models (.html), survival curves (.png), RMST plots (.png) | `{cohort}/01_Efficacy/c_overall_survival/` |
-| **1d. Progression-Free Survival** | Composite endpoint (recurrence OR death) | `analyze_time_to_event_outcomes()` | Survival tables (.xlsx), Cox models (.html), survival curves (.png), RMST plots (.png) | `{cohort}/01_Efficacy/d_progression_free_survival/` |
+| **1c. Overall Survival** | Kaplan-Meier + Cox regression + RMST analysis | `analyze_time_to_event_outcomes()` | Survival tables (.xlsx), Cox models (.html), `overall_survival_probability_effect_summary.xlsx`, survival curves (.png), RMST plots (.png) | `{cohort}/01_Efficacy/c_overall_survival/` |
+| **1d. Progression-Free Survival** | Composite endpoint (recurrence OR death) | `analyze_time_to_event_outcomes()` | Survival tables (.xlsx), Cox models (.html), `progression_free_survival_probability_effect_summary.xlsx`, survival curves (.png), RMST plots (.png) | `{cohort}/01_Efficacy/d_progression_free_survival/` |
 | **1e. Tumor Height (Primary)** | Linear regression without baseline adjustment | `analyze_tumor_height_changes()` | Change summaries (.html), regression models (.html) | `{cohort}/01_Efficacy/e_tumor_height_primary/` |
 | **1f. Tumor Height (Sensitivity)** | Linear regression with baseline adjustment | `analyze_tumor_height_changes()` | Change summaries (.html), regression models (.html) | `{cohort}/01_Efficacy/f_tumor_height_sensitivity/` |
 | **1g. Subgroup Analysis** | Interaction testing across patient subgroups | `analyze_treatment_effect_subgroups_*()` | Subgroup tables (.xlsx), forest plots (.png), diagnostics (.xlsx) | `{cohort}/01_Efficacy/g_subgroup_analysis/` |
@@ -416,10 +416,14 @@ The analysis pipeline includes robust error handling for situations where data l
 
 | Sub-objective | Method | Implementation | Outputs | Location |
 |---------------|--------|----------------|---------|----------|
-| **2a. Vision Changes** | Linear regression of visual acuity changes | `analyze_visual_acuity_changes()` | Vision change summaries (.html), regression models (.html) | `{cohort}/02_Safety/a_vision_changes/` |
-| **2b. Radiation Retinopathy** | Binary outcome analysis with logistic regression | `analyze_radiation_complications()` | Complication rates (.xlsx), logistic regression models (.html) | `{cohort}/02_Safety/b_retinopathy/` |
-| **2c. Neovascular Glaucoma** | Binary outcome analysis with logistic regression | `analyze_radiation_complications()` | Complication rates (.xlsx), logistic regression models (.html) | `{cohort}/02_Safety/c_neovascular_glaucoma/` |
-| **2d. Serous Retinal Detachment** | Binary outcome analysis (radiation-induced only) | `analyze_radiation_complications()` | Complication rates (.xlsx), logistic regression models (.html) | `{cohort}/02_Safety/d_serous_retinal_detachment/` |
+| **2a. Vision Changes** | Descriptive logMAR/Snellen reporting plus adjusted linear and ordinal regression | `analyze_visual_acuity_changes()` | `vision_changes.html`, descriptive Snellen summary/distribution workbooks, adjusted LogMAR linear model (.html + diagnostics), adjusted Snellen Line Change linear model (.html + diagnostics), adjusted Snellen Line Change Distribution ordinal model (.html + diagnostics), and `vision_effect_summary.xlsx` | `{cohort}/02_Safety/a_vision_changes/` |
+| **2b. Radiation Retinopathy** | Binary outcome analysis with logistic regression | `analyze_radiation_complications()` | Complication rates (.xlsx), adjusted logistic model (.html + diagnostics), `retinopathy_effect_summary.xlsx`, or explicit skip artifact when model not fit | `{cohort}/02_Safety/b_retinopathy/` |
+| **2c. Neovascular Glaucoma** | Binary outcome analysis with logistic regression | `analyze_radiation_complications()` | Complication rates (.xlsx), adjusted logistic model (.html + diagnostics), `neovascular_glaucoma_effect_summary.xlsx`, or explicit skip artifact when model not fit | `{cohort}/02_Safety/c_neovascular_glaucoma/` |
+| **2d. Serous Retinal Detachment** | Binary outcome analysis (radiation-induced only) | `analyze_radiation_complications()` | Complication rates (.xlsx), adjusted logistic model (.html + diagnostics), `serous_retinal_detachment_effect_summary.xlsx`, or explicit skip artifact when model not fit | `{cohort}/02_Safety/d_serous_retinal_detachment/` |
+
+Effect-summary workbooks follow model-family-specific inference conventions and should match the corresponding HTML tables: linear rows report mean differences with Wald CIs/p-values, logistic rows report ORs with model-based Wald CIs and the pipeline's standard term-level p-values, Cox rows report HRs with native Cox CIs/p-values, and ordinal rows report proportional-odds ORs with 95% Wald CIs and likelihood-ratio-test p-values.
+
+**Objective 2 output convention:** adjusted analyses now always live inside their own side-effect subfolder. When an adjusted model is skipped because of insufficient events, no usable variation, or fit failure, the pipeline writes a `_SKIPPED.html` explanation file plus the diagnostics workbook instead of leaving the folder without an adjusted-analysis artifact.
 
 ### Objective 3: Repeat Radiation Efficacy (COMPLETE)
 

@@ -224,6 +224,56 @@ Baseline tumor height   -0.42   -0.55, -0.29    <0.001
 **Clinical Interpretation:**
 GKSRS treatment results in 0.35 mm greater tumor height reduction compared to PBT (β=-0.35, 95% CI: -0.68 to -0.02, p=0.038), after adjusting for baseline tumor height and other confounders.
 
+For Objective 2 vision there are two different linear outputs:
+- `*_logmar_vision_change_adjusted_lm.html` models continuous logMAR change.
+- `*_snellen_line_change_adjusted_lm.html` models the exact integer `Snellen Line Change` outcome.
+
+The Snellen linear model is the direct adjusted analogue of the descriptive `Snellen Line Change` row, whereas the ordinal Snellen model uses the separate 7-level `Snellen Line Change Distribution`.
+
+### Ordinal Regression Tables (Ordered Outcomes)
+
+**File:** `*_ordinal_polr.html`
+
+**Example Output:**
+
+```
+Characteristic          OR      95% CI          p-value
+Treatment
+  PBT                   —       —               
+  GKSRS                 1.40    1.05, 1.88      0.022
+Age (per year)          0.98    0.96, 1.00      0.071
+```
+
+**How to Read:**
+
+**Ordinal Odds Ratio (OR):**
+- OR = 1.0: No difference in distribution across ordered outcome levels
+- OR > 1.0: Higher odds of being in an earlier ordered category
+- OR < 1.0: Higher odds of being in a later ordered category
+
+**For Snellen Line Change Distribution in Objective 2a:**
+- Categories are ordered from `≥3-line improvement` to `≥3-line loss`
+- OR > 1.0 therefore favors better vision outcomes
+- OR < 1.0 therefore favors worse vision outcomes
+
+**GKSRS OR = 1.40:**
+- GKSRS patients have 40% higher odds of falling into a better Snellen line-change category than PBT
+
+**Effect Summary Workbooks**
+
+- `*_effect_summary.xlsx` files are flat one-sheet workbooks that combine descriptive, unadjusted, and adjusted rows for the corresponding analysis folder.
+- In `a_vision_changes`, use `analysis_label` to distinguish `LogMAR Vision Change`, `Snellen Line Change`, and `Snellen Line Change Distribution`.
+- `model_status = "DESCRIPTIVE"` marks summary rows, `model_status = "FIT"` marks modeled rows, and `model_status = "SKIPPED"` documents analyses that could not be fit.
+- Workbook methods are model-family specific and match the reader-facing HTML tables: linear rows use mean differences with Wald CIs/p-values, logistic rows use ORs with model-based Wald CIs and the pipeline's standard term-level p-values, Cox rows use HRs with native Cox CIs/p-values, and ordinal rows use proportional-odds ORs with 95% Wald CIs plus likelihood-ratio-test p-values.
+- **Clinical meaning:** the outcome distribution is shifted toward more improvement or less loss
+
+**95% CI = (1.05, 1.88):**
+- Excludes 1.0 → statistically significant
+- Entire interval above 1.0 → consistent direction toward better ordered outcomes
+
+**Clinical Interpretation:**
+After adjustment, GKSRS is associated with higher odds of a better Snellen line-change category than PBT (OR=1.40, 95% CI: 1.05-1.88, p=0.022).
+
 ---
 
 ## Interpreting Survival Curves

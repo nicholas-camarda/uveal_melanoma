@@ -1245,7 +1245,7 @@ merge_adverse_events_tables <- function(full_cohort_data, restricted_cohort_data
                                 type = list(vision_line_change_category ~ "categorical"),
                                 statistic = list(all_categorical() ~ "{n} ({p}%)"),
                                 digits = list(all_categorical() ~ 1),
-                                label = list(vision_line_change_category ~ "Snellen Line Change Distribution")
+                                label = list(vision_line_change_category ~ "Snellen Line Change Integer Distribution")
                             ) %>%
                             add_overall() %>%
                             add_p(
@@ -1295,16 +1295,14 @@ merge_adverse_events_tables <- function(full_cohort_data, restricted_cohort_data
                             )
 
                         line_change_summary_tbl <- data %>%
-                            mutate(vision_line_change = line_counts) %>%
-                            filter(!is.na(vision_line_change)) %>%
-                            select(treatment_group, vision_line_change) %>%
+                            select(treatment_group, vision_change) %>%
                             tbl_summary(
                                 by = treatment_group,
                                 missing = "no",
-                                type = list(vision_line_change ~ "continuous"),
-                                statistic = list(vision_line_change ~ "{median} ({min}, {max})"),
-                                digits = list(vision_line_change ~ 0),
-                                label = list(vision_line_change ~ "Snellen Line Change")
+                                type = list(vision_change ~ "continuous"),
+                                statistic = list(vision_change ~ "{median} ({min}, {max})"),
+                                digits = list(vision_change ~ 1),
+                                label = list(vision_change ~ "Vision Change (logMAR)")
                             ) %>%
                             add_overall() %>%
                             add_p(test = list(all_continuous() ~ "wilcox.test")) %>%
@@ -1312,6 +1310,10 @@ merge_adverse_events_tables <- function(full_cohort_data, restricted_cohort_data
                             modify_header(
                                 label = "**Characteristic**",
                                 stat_0 = "**Overall**\nN = {N}"
+                            ) %>%
+                            convert_logmar_summary_table_to_line_summary(
+                            label = "Snellen Line Change",
+                                caption = "Snellen Line Change Summary"
                             )
                     }
 

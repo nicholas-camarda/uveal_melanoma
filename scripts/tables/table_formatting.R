@@ -66,6 +66,14 @@ create_gtsummary_table <- function(model_fit, effect_measure, analysis_name,
         }
     )
 
+    if (detect_model_type(model_fit) == "ordinal") {
+        table <- apply_ordinal_inference_to_table(
+            table = table,
+            model_fit = model_fit,
+            outcome_var = outcome_var
+        )
+    }
+
     # Apply extreme estimate filtering to the table
     table_data <- table$table_body
 
@@ -115,6 +123,80 @@ create_gtsummary_table <- function(model_fit, effect_measure, analysis_name,
     table <- add_sparse_level_details(table, sparse_level_diagnostics = sparse_level_diagnostics)
 
     return(table)
+}
+
+apply_ordinal_inference_to_table <- function(table, model_fit, outcome_var) {
+    coefficient_names <- names(stats::coef(model_fit))
+    if (is.null(coefficient_names) || length(coefficient_names) == 0) {
+        return(table)
+    }
+
+    wald_ci <- extract_wald_ci(model_fit, coefficient_names)
+    term_pvalues <- extract_model_term_pvalues(
+        model = model_fit,
+        coefficient_names = coefficient_names,
+        model_type = "ordinal",
+        outcome_var = outcome_var,
+        group_var = "treatment_group"
+    )
+
+    table_body <- table$table_body
+    if (!"p.value" %in% names(table_body)) {
+        table_body$p.value <- rep(NA_real_, nrow(table_body))
+    }
+    if ("p.value_fmt" %in% names(table_body)) {
+        table_body$p.value_fmt <- as.character(table_body$p.value_fmt)
+    }
+
+    treatment_coefficients <- coefficient_names[grepl("^treatment_group", coefficient_names)]
+    treatment_rows <- which(table_body$variable == "treatment_group" & table_body$row_type != "label")
+
+    if (length(treatment_coefficients) == 0 || length(treatment_rows) == 0) {
+        table$table_body <- table_body
+        return(table)
+    }
+
+    clean_label <- function(x) {
+        x <- trimws(gsub("\\u00a0", " ", x, fixed = TRUE))
+        x <- trimws(gsub("^\\s+", "", x))
+        x
+    }
+
+    treatment_labels <- clean_label(table_body$label[treatment_rows])
+
+    for (coefficient_name in treatment_coefficients) {
+        level_name <- sub("^treatment_group", "", coefficient_name)
+        row_idx <- treatment_rows[match(level_name, treatment_labels)]
+
+        if (length(row_idx) == 0 || is.na(row_idx)) {
+            next
+        }
+
+        row_pvalue <- term_pvalues[[coefficient_name]]
+        row_ci_low <- exp(wald_ci$lower[[coefficient_name]])
+        row_ci_high <- exp(wald_ci$upper[[coefficient_name]])
+
+        table_body$estimate[row_idx] <- exp(stats::coef(model_fit)[[coefficient_name]])
+        table_body$conf.low[row_idx] <- row_ci_low
+        table_body$conf.high[row_idx] <- row_ci_high
+        table_body[["p.value"]][row_idx] <- row_pvalue
+
+        if ("estimate_fmt" %in% names(table_body)) {
+            table_body$estimate_fmt[row_idx] <- style_sigfig(table_body$estimate[row_idx])
+        }
+        if ("conf.low_fmt" %in% names(table_body)) {
+            table_body$conf.low_fmt[row_idx] <- style_sigfig(row_ci_low)
+        }
+        if ("conf.high_fmt" %in% names(table_body)) {
+            table_body$conf.high_fmt[row_idx] <- style_sigfig(row_ci_high)
+        }
+        if ("p.value_fmt" %in% names(table_body)) {
+            table_body[["p.value_fmt"]][row_idx] <- gtsummary::style_pvalue(row_pvalue)
+        }
+    }
+
+    table$table_body <- table_body
+    table
 }
 
 #' Modify p-values in gt table directly after as_gt conversion
@@ -169,6 +251,9 @@ modify_gt_table_pvalues <- function(gt_table, table_result, data, outcome_var, c
 
     # Modify the gtsummary table
     modified_table <- table_result
+    if (!"p.value" %in% names(modified_table$table_body)) {
+        modified_table$table_body$p.value <- NA_real_
+    }
 
     for (var_name in all_variables) {
         pval <- factor_label_pvalues[[var_name]]
@@ -187,6 +272,14 @@ modify_gt_table_pvalues <- function(gt_table, table_result, data, outcome_var, c
                     modified_table$table_body$p.value[non_label_rows] <- NA_real_
                     if ("p.value_fmt" %in% names(modified_table$table_body)) {
                         modified_table$table_body$p.value_fmt[non_label_rows] <- ""
+                    }
+                }
+            } else if (!is.na(pval) && detect_model_type(model_fit) == "ordinal") {
+                non_label_rows <- var_rows[table_data$row_type[var_rows] != "label"]
+                if (length(non_label_rows) > 0) {
+                    modified_table$table_body$p.value[non_label_rows] <- pval
+                    if ("p.value_fmt" %in% names(modified_table$table_body)) {
+                        modified_table$table_body$p.value_fmt[non_label_rows] <- gtsummary::style_pvalue(pval)
                     }
                 }
             }
@@ -210,6 +303,14 @@ modify_gt_table_pvalues <- function(gt_table, table_result, data, outcome_var, c
             }
         }
     }
+
+    modified_table <- modified_table %>%
+        modify_table_styling(
+            columns = "p.value",
+            hide = FALSE,
+            label = "**p-value**",
+            fmt_fun = function(x) gtsummary::style_pvalue(x)
+        )
 
     return(modified_table)
 }
@@ -241,40 +342,33 @@ format_confidence_intervals_post <- function(x) {
 #' @param sparse_level_diagnostics Data frame returned by sparse-level model prep
 #' @return Modified table with source note containing "Other" category details
 add_sparse_level_details <- function(table, sparse_level_diagnostics = NULL) {
-    sparse_details <- character()
-
     if (!is.null(sparse_level_diagnostics) && is.data.frame(sparse_level_diagnostics) && nrow(sparse_level_diagnostics) > 0) {
-        for (row_index in seq_len(nrow(sparse_level_diagnostics))) {
-            row <- sparse_level_diagnostics[row_index, , drop = FALSE]
-            sparse_details <- c(sparse_details, sprintf(
-                "%s: excluded level '%s' (n=%d); reason: %s",
-                row$variable[[1]],
-                row$level[[1]],
-                as.integer(row$observed_n[[1]] %||% 0L),
-                row$reason[[1]]
-            ))
-        }
-
         total_unique_rows_removed <- length(unique(unlist(strsplit(
             paste(stats::na.omit(sparse_level_diagnostics$row_ids), collapse = ","),
             ",",
             fixed = TRUE
         ))))
-        if (total_unique_rows_removed > 0) {
-            sparse_details <- c(
-                sparse_details,
-                sprintf("Total unique rows removed prior to modeling: %d", total_unique_rows_removed)
-            )
-        }
-    }
 
-    if (length(sparse_details) > 0) {
+        n_variables <- dplyr::n_distinct(stats::na.omit(sparse_level_diagnostics$variable))
+        n_levels <- nrow(sparse_level_diagnostics)
+        row_note <- if (total_unique_rows_removed > 0) {
+            sprintf("%d rows removed", total_unique_rows_removed)
+        } else {
+            "row removal count available in diagnostics"
+        }
+
         source_note_parts <- c()
         existing_source_note <- table$source_note
         if (!is.null(existing_source_note) && existing_source_note != "") {
             source_note_parts <- c(source_note_parts, existing_source_note)
         }
-        sparse_note <- paste("Note:", paste(unique(sparse_details), collapse = "; "))
+        sparse_note <- sprintf(
+            "Note: Sparse factor levels were excluded before modeling (%d levels across %d variable%s; %s). See diagnostics workbook for details.",
+            n_levels,
+            n_variables,
+            ifelse(n_variables == 1, "", "s"),
+            row_note
+        )
         source_note_parts <- c(source_note_parts, sparse_note)
         final_source_note <- paste(source_note_parts, collapse = "\n")
         table <- table %>% modify_source_note(final_source_note)
@@ -408,14 +502,25 @@ build_professional_caption <- function(model_type, effect_measure, analysis_name
         linear = "Linear model",
         logistic = "Logistic regression",
         cox = "Cox proportional hazards model",
+        ordinal = "Ordinal logistic regression",
         other_glm = "Generalized linear model",
         "Regression model"
     )
     # Keep captions concise; effect type is shown in the Estimate column header
     effect_label <- NULL
+
+    explicit_labels <- c(
+        logmar_vision_change_adjusted = "Adjusted LogMAR Vision Change",
+        snellen_line_change_adjusted = "Adjusted Snellen Line Change",
+        snellen_line_change_distribution_adjusted = "Adjusted Snellen Line Change Distribution"
+    )
+    if (analysis_name %in% names(explicit_labels)) {
+        return(paste0(model_label, " - ", explicit_labels[[analysis_name]]))
+    }
+
     # Derive a friendly analysis label
     friendly <- analysis_name
-    friendly <- gsub("_cox$|_logistic$", "", friendly)
+    friendly <- gsub("_cox$|_logistic$|_ordinal$", "", friendly)
     # If contains underscores, try to map first token via STANDARD_TABLE_LABELS
     if (grepl("_", friendly)) {
         parts <- strsplit(friendly, "_")[[1]]

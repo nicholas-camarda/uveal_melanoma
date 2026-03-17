@@ -1,6 +1,14 @@
+#' Round numeric values away from zero at half steps
+#'
+#' @param x Numeric vector.
+#' @return Numeric vector rounded to the nearest integer, with halves rounded away from zero.
+round_half_away_from_zero <- function(x) {
+    sign(x) * floor(abs(x) + 0.5)
+}
+
 #' Compute line change counts from logMAR differences
 #'
-#' @param logmar_change Numeric vector of logMAR changes computed as 
+#' @param logmar_change Numeric vector of logMAR changes computed as
 #'   (baseline - followup), so positive = improvement.
 #' @param step Numeric size of one Snellen line in logMAR units (default 0.1).
 #' @param digits Number of decimal places to keep when converting to lines.
@@ -9,15 +17,17 @@ compute_line_change_lines <- function(logmar_change, step = VISION_LINE_CHANGE_S
     if (is.null(logmar_change)) {
         return(numeric())
     }
-    # Convert logMAR change to line change counts, rounding up for improvements and down for losses 
-    # This ensures that any partial line change is counted as a full line change in the appropriate direction
-    result <- ifelse(logmar_change >= 0,
-        ceiling(logmar_change / step),
-        floor(logmar_change / step))
-    return(result)
+
+    result <- round_half_away_from_zero(logmar_change / step)
+
+    if (!is.null(digits) && digits > 0) {
+        result <- round(result, digits = digits)
+    }
+
+    result
 }
 
-#' Categorize logMAR changes into clinically meaningful Snellen line buckets
+#' Categorize logMAR changes into exact integer Snellen line labels
 #'
 #' @param logmar_change Numeric vector of logMAR changes.
 #' @param step Numeric size of one Snellen line in logMAR units (default 0.1).
@@ -51,11 +61,11 @@ format_line_change_label <- function(line_counts) {
 #'
 #' @param line_counts Integer vector of Snellen line changes.
 #' @return Character vector of ordered labels for use in factors.
-line_change_label_levels <- function(line_counts) {
+line_change_ordered_values <- function(line_counts) {
     line_counts <- line_counts[!is.na(line_counts)]
 
     if (length(line_counts) == 0) {
-        return(character())
+        return(numeric())
     }
 
     line_range <- seq(min(line_counts), max(line_counts))
@@ -68,10 +78,23 @@ line_change_label_levels <- function(line_counts) {
         ordered_range <- line_range
     }
 
+    ordered_range
+}
+
+#' Determine ordered label levels spanning the observed line changes
+#'
+#' @param line_counts Integer vector of Snellen line changes.
+#' @return Character vector of ordered labels for use in factors.
+line_change_label_levels <- function(line_counts) {
+    ordered_range <- line_change_ordered_values(line_counts)
+    if (length(ordered_range) == 0) {
+        return(character())
+    }
+
     format_line_change_label(ordered_range)
 }
 
-#' Bucket Snellen line changes into clinically meaningful categories
+#' Aggregate Snellen line changes into the 7-level Snellen Line Change Distribution
 #'
 #' @param line_counts Integer vector of Snellen line changes (positive = improvement).
 #' @return Ordered factor with predefined category levels
@@ -92,4 +115,54 @@ assign_line_change_bucket <- function(line_counts) {
     )
 
     factor(categories, levels = VISION_LINE_CHANGE_CATEGORY_LEVELS, ordered = TRUE)
+}
+
+#' Convert a formatted logMAR summary string to Snellen line units
+#'
+#' @param stat_string Character string formatted like "{median} ({min}, {max})".
+#' @param step Numeric size of one Snellen line in logMAR units.
+#' @return Character string with the same summary expressed in Snellen lines.
+convert_logmar_summary_stat_to_line_summary <- function(stat_string, step = VISION_LINE_CHANGE_STEP) {
+    if (is.null(stat_string) || length(stat_string) == 0) {
+        return(character())
+    }
+
+    unname(vapply(
+        stat_string,
+        FUN.VALUE = character(1),
+        FUN = function(value) {
+            if (is.na(value) || !nzchar(value)) {
+                return(value)
+            }
+
+            matches <- stringr::str_extract_all(value, "-?\\d+(?:\\.\\d+)?")[[1]]
+            if (length(matches) != 3) {
+                return(value)
+            }
+
+            line_values <- compute_line_change_lines(as.numeric(matches), step = step)
+            sprintf("%d (%d, %d)", line_values[1], line_values[2], line_values[3])
+        }
+    ))
+}
+
+#' Convert a single-row logMAR gtsummary table into a Snellen summary table
+#'
+#' @param tbl gtsummary object with logMAR summary statistics.
+#' @param label Label to apply to the converted row.
+#' @param caption Caption to apply to the converted table.
+#' @return Modified gtsummary object.
+convert_logmar_summary_table_to_line_summary <- function(tbl,
+                                                         label = "Snellen Line Change",
+                                                         caption = "Snellen Line Change Summary") {
+    tbl %>%
+        modify_table_body(function(body) {
+            stat_cols <- grep("^stat_", names(body), value = TRUE)
+            for (col_name in stat_cols) {
+                body[[col_name]] <- convert_logmar_summary_stat_to_line_summary(body[[col_name]])
+            }
+            body$label <- label
+            body
+        }) %>%
+        modify_caption(caption)
 }
