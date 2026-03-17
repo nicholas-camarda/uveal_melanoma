@@ -12,6 +12,11 @@ round_half_away_from_zero <- function(x) {
 #'   (baseline - followup), so positive = improvement.
 #' @param step Numeric size of one Snellen line in logMAR units (default 0.1).
 #' @param digits Number of decimal places to keep when converting to lines.
+#' @details Uses nearest-line rounding with halves rounded away from zero.
+#'   This replaced the historical implementation from before commit
+#'   `6df27eb` (March 16, 2026), which used `ceiling()` for positive changes
+#'   and `floor()` for negative changes and therefore treated any non-zero
+#'   partial line as a full extra line away from zero.
 #' @return Numeric vector of line changes.
 compute_line_change_lines <- function(logmar_change, step = VISION_LINE_CHANGE_STEP, digits = 0) {
     if (is.null(logmar_change)) {
