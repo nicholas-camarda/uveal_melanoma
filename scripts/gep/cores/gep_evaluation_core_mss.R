@@ -106,16 +106,36 @@ perform_competing_risk_mss_validation <- function(data, timepoint, time_var = "t
             event_type = .data[[paste0("event_type_mss_", timepoint, "yr")]]
         )
 
-    # Calculate cumulative incidence functions
-    cumulative_incidence <- calculate_cumulative_incidence(
+    analysis_feasibility <- assess_competing_risk_feasibility(
+        data = analysis_data,
+        time_var = "time_to_event",
+        event_var = "event_type",
+        group_var = group_var,
+        eligibility_filter = "mss_analysis_eligible"
+    )
+    cif_feasibility <- assess_competing_risk_feasibility(
         data = cif_analysis_data,
         time_var = "time_to_event",
         event_var = "event_type",
-        group_var = group_var
+        group_var = group_var,
+        eligibility_filter = "mss_analysis_eligible"
     )
+    unexpected_failures <- character()
+
+    # Calculate cumulative incidence functions
+    cumulative_incidence <- if (nrow(cif_feasibility$data) > 0) {
+        calculate_cumulative_incidence(
+            data = cif_feasibility$data,
+            time_var = "time_to_event",
+            event_var = "event_type",
+            group_var = group_var
+        )
+    } else {
+        NULL
+    }
 
     # Add CIF with 95% CI at the evaluation time (bootstrap)
-                cif_ci <- tryCatch({
+    cif_ci <- tryCatch({
         calculate_cif_by_class_with_ci(
             data = cif_analysis_data,
             time_var = "time_to_event",
@@ -123,29 +143,47 @@ perform_competing_risk_mss_validation <- function(data, timepoint, time_var = "t
             eval_time = timepoint_months,
             n_boot = GEP_BOOTSTRAP_ITERATIONS,
             group_var = group_var,
-            eligibility_filter = "mss_analysis_eligible"
+            eligibility_filter = "mss_analysis_eligible",
+            feasibility = cif_feasibility
         )
     }, error = function(e) {
-        logger::log_warn("Unable to compute CIF CIs; continuing without CIs")
+        unexpected_failures <<- c(unexpected_failures, sprintf("cif_with_ci:%s", e$message))
+        logger::log_error(sprintf("Unable to compute CIF CIs: %s", e$message))
         NULL
     })
 
     # Cause-specific Cox regression (proxy for CSC)
-    csc_model <- calculate_cause_specific_cox_model(
-        data = analysis_data,
-        time_var = "time_to_event",
-        event_var = "event_type",
-        group_var = group_var,
-        eligibility_filter = "mss_analysis_eligible"
+    csc_model <- tryCatch(
+        calculate_cause_specific_cox_model(
+            data = analysis_data,
+            time_var = "time_to_event",
+            event_var = "event_type",
+            group_var = group_var,
+            eligibility_filter = "mss_analysis_eligible",
+            feasibility = analysis_feasibility
+        ),
+        error = function(e) {
+            unexpected_failures <<- c(unexpected_failures, sprintf("cause_specific_cox:%s", e$message))
+            logger::log_error(sprintf("Cause-specific Cox fitting failed unexpectedly: %s", e$message))
+            NULL
+        }
     )
 
     # Fine-Gray subdistribution regression (FGR)
-    fgr_model <- calculate_fine_gray_model(
-        data = analysis_data,
-        time_var = "time_to_event",
-        event_var = "event_type",
-        group_var = group_var,
-        eligibility_filter = "mss_analysis_eligible"
+    fgr_model <- tryCatch(
+        calculate_fine_gray_model(
+            data = analysis_data,
+            time_var = "time_to_event",
+            event_var = "event_type",
+            group_var = group_var,
+            eligibility_filter = "mss_analysis_eligible",
+            feasibility = analysis_feasibility
+        ),
+        error = function(e) {
+            unexpected_failures <<- c(unexpected_failures, sprintf("fine_gray:%s", e$message))
+            logger::log_error(sprintf("Fine-Gray fitting failed unexpectedly: %s", e$message))
+            NULL
+        }
     )
 
     return(list(
@@ -153,7 +191,10 @@ perform_competing_risk_mss_validation <- function(data, timepoint, time_var = "t
         cause_specific_cox = csc_model,
         fine_gray = fgr_model,
         cif_with_ci = cif_ci,
+        feasibility = analysis_feasibility,
         timepoint = timepoint
+        ,
+        unexpected_failures = unexpected_failures
     ))
 }
 

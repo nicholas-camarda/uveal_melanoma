@@ -516,6 +516,26 @@ In Objective 4, the starting predictions are externally supplied patient-level G
 
 The analyzable Objective 4 subset is narrower than “any row with a GEP-related field.” MFS and MSS validation require a definitive raw DecisionDx label, valid endpoint-specific imported GEP probabilities, and the required observed outcome fields. Definitive raw labels are `Class_1A_PRAME_negative`, `Class_1A_PRAME_positive`, `Class_1B_PRAME_negative`, `Class_1B_PRAME_positive`, `Class_2_PRAME_negative`, and `Class_2_PRAME_positive`. Nondefinitive labels such as `*_not_reported`, `Class_2_PRAME_Unknown`, `Class_1A_PRAME_discordant`, `Failed`, `Unknown`, `Other`, and `No` are excluded from `mfs_analysis_eligible` and `mss_analysis_eligible`. Objective 4 entry points refresh these flags before analysis so the definitive-label rule is applied consistently.
 
+#### Training/testing split generation and rationale
+
+Objective 0 creates the `gep_validation_set` variable once during preprocessing on the full cohort. Patients are eligible for this split only when they have analyzable imported GEP data for the validation workflow: non-missing `biopsy1_gep_mfs`, non-missing `biopsy1_gep_mss`, and a definitive simplified GEP class in `GEP_DEFINITIVE_SIMPLE_LEVELS` (`Class 1` or `Class 2`). Everyone else is labeled `No GEP Data`.
+
+The current implementation does not perform independent Bernoulli sampling row by row. Instead, it identifies the full set of eligible rows, calculates `n_training = round(n_eligible * 0.7)`, assigns the remaining eligible rows to `Testing`, builds a vector with those exact counts, shuffles that vector, and writes the shuffled labels back to the eligible rows. The result is therefore an approximately 70/30 partition with deterministic counts for a given eligible sample size, rather than a purely probabilistic split with wider run-to-run variation in the realized proportion.
+
+This split exists to support Objective 4 internal validation summaries and quality-control checks. The imported GEP predictions are already fixed before the analytic pipeline begins, so the split is not used to train a new molecular model. Instead, it provides a stable internal partition for reader-facing training/testing comparisons and for validation outputs that should not silently pool all analyzable GEP rows into a single undifferentiated set.
+
+#### Why Objective 0 treats split failure as fatal
+
+Objective 0 is the only stage that creates and validates `gep_validation_set`, so this is the correct place to fail fast if the full-cohort partition is malformed. A broken split at this stage means the processed analytic datasets no longer satisfy a core preprocessing contract for Objective 4. If the full cohort has analyzable GEP rows but no `Training` rows, no `Testing` rows, an implausible training proportion, or inconsistent counts between `Training`, `Testing`, and `No GEP Data`, downstream Objective 4 summaries become misleading rather than merely incomplete. For that reason, Objective 0 now treats full-cohort split-shape failures as fatal and stops the run before downstream objectives execute.
+
+In practice, the full-cohort split is expected to satisfy broad sanity conditions rather than an exact 70.0/30.0 ratio. The validation checks require count consistency and an approximately 70/30 partition in the full cohort, with a wide tolerance intended to catch corruption or derivation failure rather than ordinary rounding.
+
+#### Permissible subset exceptions, including GKSRS
+
+The `uveal_melanoma_restricted_cohort` and `uveal_melanoma_gksrs_only_cohort` are not assigned new training/testing labels. They inherit the labels created once in the full cohort and then apply additional inclusion filters. Because these are deterministic subsets of the original partition, their apparent training/testing ratio can change substantially after subsetting, and some subsets may even lose one split entirely if the subset is small or clinically selective enough.
+
+This behavior is permissible because the preprocessing contract is defined at the full-cohort level, where the split is generated. Subset cohorts only need to remain internally count-consistent with the inherited labels; they are not required to recreate an approximately 70/30 split. The GKSRS cohort is the clearest example: it is a treatment-defined subset of the full cohort, so enforcing the original split proportion after subsetting would be statistically inappropriate and would generate false validation failures. Objective 0 therefore enforces split-shape rules only on the full cohort while still checking that subset-cohort labels remain structurally consistent.
+
 **Analyses:**
 1. **Observed vs Expected / Calibration:** Agreement between lab-reported and realized event rates
 2. **Discrimination:** Ability to separate patients with vs without events

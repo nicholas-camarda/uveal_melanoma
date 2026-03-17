@@ -1163,6 +1163,136 @@ calculate_cumulative_incidence <- function(data, time_var, event_var, group_var)
     return(results)
 }
 
+#' Build a standardized competing-risk feasibility status
+#'
+#' Create a small status object used to communicate whether a competing-risk
+#' analysis was fitted or skipped and why.
+#'
+#' @param status Character scalar describing the model state.
+#' @param reason Optional character scalar describing the skip reason.
+#' @param details Optional list or vector with supplementary diagnostics.
+#' @return Named list with `status`, `reason`, and `details`.
+build_competing_risk_model_status <- function(status, reason = NA_character_, details = NULL) {
+    list(
+        status = status,
+        reason = reason,
+        details = details
+    )
+}
+
+#' Assess competing-risk model feasibility by group
+#'
+#' Filter MSS-eligible complete cases, summarize group sizes and event counts,
+#' and determine whether the CIF-with-CI, cause-specific Cox, and Fine-Gray
+#' analyses are eligible to fit.
+#'
+#' @param data Data frame containing time, event, and grouping columns.
+#' @param time_var Character name of the time-to-event column.
+#' @param event_var Character name of the event-type column coded as `0`, `1`,
+#'   or `2`.
+#' @param group_var Character name of the grouping column.
+#' @param eligibility_filter Character name of the logical eligibility column.
+#' @param min_group_size Integer minimum per-group size required for regression
+#'   model fitting.
+#' @return Named list with filtered analysis data, per-group summaries, the
+#'   minimum group size, and model-specific feasibility statuses.
+assess_competing_risk_feasibility <- function(data, time_var, event_var, group_var,
+                                              eligibility_filter = "mss_analysis_eligible",
+                                              min_group_size = 10) {
+    filtered_data <- data %>%
+        dplyr::filter(.data[[eligibility_filter]]) %>%
+        dplyr::filter(
+            !is.na(.data[[time_var]]),
+            !is.na(.data[[event_var]]),
+            !is.na(.data[[group_var]])
+        ) %>%
+        as.data.frame()
+
+    if (nrow(filtered_data) == 0) {
+        empty_group_summary <- data.frame(
+            GEP_Class = character(),
+            n = integer(),
+            melanoma_deaths = integer(),
+            competing_deaths = integer(),
+            censored = integer(),
+            zero_melanoma_deaths = logical(),
+            zero_competing_deaths = logical(),
+            below_minimum_size = logical(),
+            stringsAsFactors = FALSE
+        )
+        skipped_status <- build_competing_risk_model_status("skipped", "no_complete_cases")
+        return(list(
+            data = filtered_data,
+            by_group = empty_group_summary,
+            minimum_group_size = min_group_size,
+            models = list(
+                cif_with_ci = skipped_status,
+                cause_specific_cox = skipped_status,
+                fine_gray = skipped_status
+            )
+        ))
+    }
+
+    filtered_data[[group_var]] <- droplevels(factor(filtered_data[[group_var]]))
+    by_group <- filtered_data %>%
+        dplyr::group_by(.data[[group_var]]) %>%
+        dplyr::summarise(
+            n = dplyr::n(),
+            melanoma_deaths = sum(.data[[event_var]] == 1, na.rm = TRUE),
+            competing_deaths = sum(.data[[event_var]] == 2, na.rm = TRUE),
+            censored = sum(.data[[event_var]] == 0, na.rm = TRUE),
+            .groups = "drop"
+        ) %>%
+        dplyr::rename(GEP_Class = !!rlang::sym(group_var)) %>%
+        dplyr::mutate(
+            zero_melanoma_deaths = melanoma_deaths == 0,
+            zero_competing_deaths = competing_deaths == 0,
+            below_minimum_size = n < min_group_size
+        )
+
+    n_groups <- nrow(by_group)
+    small_groups <- by_group$GEP_Class[by_group$below_minimum_size]
+    zero_melanoma_groups <- by_group$GEP_Class[by_group$zero_melanoma_deaths]
+    zero_competing_groups <- by_group$GEP_Class[by_group$zero_competing_deaths]
+
+    cif_status <- if (n_groups >= 1) {
+        build_competing_risk_model_status("eligible")
+    } else {
+        build_competing_risk_model_status("skipped", "no_groups_available")
+    }
+    csc_status <- if (n_groups < 2) {
+        build_competing_risk_model_status("skipped", "fewer_than_two_groups")
+    } else if (length(small_groups) > 0) {
+        build_competing_risk_model_status("skipped", paste0("groups_below_minimum_size:", paste(small_groups, collapse = ",")))
+    } else if (length(zero_melanoma_groups) > 0) {
+        build_competing_risk_model_status("skipped", paste0("groups_with_zero_melanoma_deaths:", paste(zero_melanoma_groups, collapse = ",")))
+    } else {
+        build_competing_risk_model_status("eligible")
+    }
+    fine_gray_status <- if (n_groups < 2) {
+        build_competing_risk_model_status("skipped", "fewer_than_two_groups")
+    } else if (length(small_groups) > 0) {
+        build_competing_risk_model_status("skipped", paste0("groups_below_minimum_size:", paste(small_groups, collapse = ",")))
+    } else if (length(zero_melanoma_groups) > 0) {
+        build_competing_risk_model_status("skipped", paste0("groups_with_zero_melanoma_deaths:", paste(zero_melanoma_groups, collapse = ",")))
+    } else if (length(zero_competing_groups) > 0) {
+        build_competing_risk_model_status("skipped", paste0("groups_with_zero_competing_deaths:", paste(zero_competing_groups, collapse = ",")))
+    } else {
+        build_competing_risk_model_status("eligible")
+    }
+
+    list(
+        data = filtered_data,
+        by_group = by_group,
+        minimum_group_size = min_group_size,
+        models = list(
+            cif_with_ci = cif_status,
+            cause_specific_cox = csc_status,
+            fine_gray = fine_gray_status
+        )
+    )
+}
+
 #' Calculate cause-specific hazards (simplified)
 #'
 #' Produce a class-level cause-specific hazard summary using observed event counts
@@ -1238,19 +1368,12 @@ calculate_net_reclassification_index <- function(data, base_pred, enhanced_pred,
 #' @param n_boot Integer number of bootstrap resamples (default 1000)
 #' @param group_var Character name of grouping variable (default 'biopsy1_gep')
 #' @param eligibility_filter Character name of eligibility filter column (e.g., 'mss_analysis_eligible')
-#' @return Data frame with columns: Group, n, cif, ci_lower, ci_upper
-calculate_cif_by_class_with_ci <- function(data, time_var, event_type_var, eval_time, n_boot = 1000, group_var = "biopsy1_gep", eligibility_filter = "mss_analysis_eligible") {
-    # CRITICAL: Apply eligibility filters to prevent segmentation fault
+#' @return Data frame with columns: Group, n, cif, ci_lower, ci_upper, status, skip_reason
+calculate_cif_by_class_with_ci <- function(data, time_var, event_type_var, eval_time, n_boot = 1000,
+                                           group_var = "biopsy1_gep", eligibility_filter = "mss_analysis_eligible",
+                                           feasibility = NULL) {
     logger::log_info("=== CIF ANALYSIS START ===")
-    logger::log_info(sprintf("Input data dimensions: %d rows, %d cols", nrow(data), ncol(data)))
-    
-    # Apply eligibility filter (guaranteed to exist from data processing pipeline)
-    data <- data %>% filter(.data[[eligibility_filter]])
-    logger::log_info(sprintf("After %s filter: %d rows", eligibility_filter, nrow(data)))
-    
-    logger::log_info(sprintf("Variables: time_var='%s', event_type_var='%s', group_var='%s'", time_var, event_type_var, group_var))
-    logger::log_info(sprintf("Available columns: %s", paste(names(data), collapse = ", ")))
-    
+
     if (!group_var %in% names(data)) {
         stop(sprintf("calculate_cif_by_class_with_ci requires '%s' column", group_var))
     }
@@ -1260,139 +1383,222 @@ calculate_cif_by_class_with_ci <- function(data, time_var, event_type_var, eval_
     if (!event_type_var %in% names(data)) {
         stop(sprintf("calculate_cif_by_class_with_ci requires '%s' column", event_type_var))
     }
-    
-    # Debug data quality
-    logger::log_info(sprintf("Time variable '%s' summary:", time_var))
-    logger::log_info(sprintf("  Class: %s", class(data[[time_var]])))
-    logger::log_info(sprintf("  Range: %s to %s", min(data[[time_var]], na.rm = TRUE), max(data[[time_var]], na.rm = TRUE)))
-    logger::log_info(sprintf("  NA count: %d", sum(is.na(data[[time_var]]))))
-    logger::log_info(sprintf("  Infinite count: %d", sum(is.infinite(data[[time_var]]), na.rm = TRUE)))
-    
-    logger::log_info(sprintf("Event variable '%s' summary:", event_type_var))
-    logger::log_info(sprintf("  Class: %s", class(data[[event_type_var]])))
-    logger::log_info(sprintf("  Unique values: %s", paste(unique(data[[event_type_var]]), collapse = ", ")))
-    logger::log_info(sprintf("  NA count: %d", sum(is.na(data[[event_type_var]]))))
-    
-    logger::log_info(sprintf("Group variable '%s' summary:", group_var))
-    logger::log_info(sprintf("  Class: %s", class(data[[group_var]])))
-    logger::log_info(sprintf("  Unique values: %s", paste(unique(data[[group_var]]), collapse = ", ")))
-    logger::log_info(sprintf("  NA count: %d", sum(is.na(data[[group_var]]))))
-    
-    # Assume cmprsk is available; rely on tryCatch to handle errors gracefully
-    tryCatch({
-        # Helper to get CIF at eval_time for one class
-        get_cif_for_class <- function(df_class) {
 
-            # CRITICAL: Filter out NA values before calling cmprsk::cuminc
-            df_class <- df_class[!is.na(df_class[[time_var]]) & !is.na(df_class[[event_type_var]]), , drop = FALSE]
-            # print(df_class)
-            # print(df_class[[time_var]])
-            # print(df_class[[event_type_var]])
+    feasibility <- feasibility %||% assess_competing_risk_feasibility(
+        data = data,
+        time_var = time_var,
+        event_var = event_type_var,
+        group_var = group_var,
+        eligibility_filter = eligibility_filter
+    )
+    data <- feasibility$data
 
-            logger::log_info(sprintf("get_cif_for_class called with %d rows", nrow(df_class)))
-            logger::log_info(sprintf("  Time values: %s", paste(head(df_class[[time_var]], 10), collapse = ", ")))
-            logger::log_info(sprintf("  Event values: %s", paste(head(df_class[[event_type_var]], 10), collapse = ", ")))
-            logger::log_info(sprintf("  Event table: %s", paste(names(table(df_class[[event_type_var]])), "=", table(df_class[[event_type_var]]), collapse = ", ")))
-            
-            # CRITICAL: Check for empty data frame after NA filtering - this prevents segfault
-            if (nrow(df_class) == 0) {
-                logger::log_warn("Empty data frame after NA filtering - returning 0 to prevent segfault")
-                return(0)
-            }
-            
-            # Check for any invalid values that might cause segfault
-            time_vals <- df_class[[time_var]]
-            event_vals <- df_class[[event_type_var]]
-            
-            if (any(is.infinite(time_vals), na.rm = TRUE)) {
-                logger::log_error("INFINITE TIME VALUES DETECTED - THIS WILL CAUSE SEGFAULT")
-                stop("Infinite time values detected")
-            }
-            
-            if (any(time_vals < 0, na.rm = TRUE)) {
-                logger::log_error("NEGATIVE TIME VALUES DETECTED - THIS WILL CAUSE SEGFAULT")
-                stop("Negative time values detected")
-            }
-            
-            if (any(!event_vals %in% c(0, 1, 2, NA), na.rm = TRUE)) {
-                logger::log_error(sprintf("INVALID EVENT VALUES DETECTED: %s - THIS WILL CAUSE SEGFAULT", paste(unique(event_vals[!event_vals %in% c(0, 1, 2, NA)]), collapse = ", ")))
-                stop("Invalid event values detected")
-            }
-            
-            logger::log_info("About to call cmprsk::cuminc - this is where segfault occurs if data is invalid")
-
-            ci_obj <- tryCatch({
-                cmprsk::cuminc(ftime = df_class[[time_var]], fstatus = df_class[[event_type_var]])
-            }, error = function(e) {
-                logger::log_error(sprintf("cmprsk::cuminc ERROR: %s", e$message))
-                stop(sprintf("cmprsk::cuminc failed: %s", e$message))
-            })
-            
-            if (is.null(ci_obj) || is.null(ci_obj$`1`)) {
-                logger::log_warn("cmprsk::cuminc returned NULL or missing cause 1")
-                return(NA_real_)
-            }
-            
-            # CIF curve for cause 1
-            times <- ci_obj$`1`$time
-            est <- ci_obj$`1`$est
-            # step function: last value <= eval_time
-            idx <- max(which(times <= eval_time), na.rm = TRUE)
-            if (!is.finite(idx) || idx == -Inf) return(0)
-            return(est[idx])
-        }
-
-        classes <- unique(data[[group_var]])
-        # Filter out invalid groups (NA or empty groups)
-        valid_classes <- classes[!is.na(classes) & classes != "" & classes != "NA"]
-        logger::log_info(sprintf("Valid classes for CIF calculation: %s", paste(valid_classes, collapse = ", ")))
-        
-        base_rows <- lapply(valid_classes, function(cls) {
-            dfc <- data[data[[group_var]] == cls, , drop = FALSE]
-            # huge problems here
-            cif_hat <- get_cif_for_class(dfc)
-            data.frame(Group = cls, n = nrow(dfc), cif = as.numeric(cif_hat), stringsAsFactors = FALSE)
-        })
-        results <- do.call(rbind, base_rows)
-
-        # Bootstrap CIs (percentile)
-        if (n_boot > 0 && nrow(data) > 0) {
-            boot_mat <- matrix(NA_real_, nrow = n_boot, ncol = nrow(results))
-            colnames(boot_mat) <- results$Group
-            for (b in seq_len(n_boot)) {
-                df_boot <- do.call(rbind, lapply(classes, function(cls) {
-                    dfc <- data[data[[group_var]] == cls, , drop = FALSE]
-                    if (nrow(dfc) == 0) return(dfc)
-                    dfc[sample.int(nrow(dfc), size = nrow(dfc), replace = TRUE), , drop = FALSE]
-                }))
-                for (j in seq_along(classes)) {
-                    cls <- classes[j]
-                    dfc <- df_boot[df_boot[[group_var]] == cls, , drop = FALSE]
-                    boot_mat[b, j] <- suppressWarnings(get_cif_for_class(dfc))
-                }
-            }
-            for (j in seq_along(classes)) {
-                qs <- stats::quantile(boot_mat[, j], probs = c(0.025, 0.975), na.rm = TRUE, names = FALSE)
-                results$ci_lower[j] <- qs[1]
-                results$ci_upper[j] <- qs[2]
-            }
-        } else {
-            results$ci_lower <- NA_real_
-            results$ci_upper <- NA_real_
-        }
-
-        return(results)
-    }, error = function(e) {
-        logger::log_warn("Error calculating CIF CIs: {e$message}")
+    if (nrow(feasibility$by_group) == 0) {
         return(data.frame(
-            Group = unique(data[[group_var]]),
-            n = 0,
-            cif = NA_real_,
-            ci_lower = NA_real_,
-            ci_upper = NA_real_,
+            Group = character(),
+            n = integer(),
+            cif = numeric(),
+            ci_lower = numeric(),
+            ci_upper = numeric(),
+            status = character(),
+            skip_reason = character(),
             stringsAsFactors = FALSE
         ))
+    }
+
+    sanitize_cif_class_data <- function(df_class) {
+        df_class <- df_class[!is.na(df_class[[time_var]]) & !is.na(df_class[[event_type_var]]), , drop = FALSE]
+        if (nrow(df_class) == 0) {
+            return(df_class)
+        }
+
+        time_vals <- suppressWarnings(as.numeric(df_class[[time_var]]))
+        event_vals <- suppressWarnings(as.integer(df_class[[event_type_var]]))
+
+        if (any(is.infinite(time_vals), na.rm = TRUE)) {
+            stop("Infinite time values detected")
+        }
+        if (any(time_vals < 0, na.rm = TRUE)) {
+            stop("Negative time values detected")
+        }
+
+        valid_rows <- is.finite(time_vals) & !is.na(event_vals) & event_vals %in% c(0L, 1L, 2L)
+        df_class <- df_class[valid_rows, , drop = FALSE]
+        if (nrow(df_class) == 0) {
+            return(df_class)
+        }
+
+        df_class[[time_var]] <- time_vals[valid_rows]
+        df_class[[event_type_var]] <- event_vals[valid_rows]
+        df_class
+    }
+
+    get_cif_for_class <- function(df_class, allow_skip = TRUE) {
+        df_class <- sanitize_cif_class_data(df_class)
+        if (nrow(df_class) == 0) {
+            if (allow_skip) {
+                return(list(
+                    cif = NA_real_,
+                    status = "skipped_ci",
+                    skip_reason = "no_complete_cases"
+                ))
+            }
+            return(NA_real_)
+        }
+
+        event_vals <- df_class[[event_type_var]]
+        if (sum(event_vals == 1L, na.rm = TRUE) == 0) {
+            if (allow_skip) {
+                return(list(
+                    cif = 0,
+                    status = "no_event_of_interest",
+                    skip_reason = "no_melanoma_deaths"
+                ))
+            }
+            return(0)
+        }
+
+        ci_obj <- tryCatch(
+            cmprsk::cuminc(
+                ftime = df_class[[time_var]],
+                fstatus = df_class[[event_type_var]],
+                cencode = 0
+            ),
+            error = function(e) {
+                if (allow_skip) {
+                    stop(e)
+                }
+                NA
+            }
+        )
+
+        if (is.atomic(ci_obj) && length(ci_obj) == 1 && is.na(ci_obj)) {
+            return(NA_real_)
+        }
+        if (is.null(ci_obj) || is.null(ci_obj$`1`)) {
+            if (allow_skip) {
+                return(list(
+                    cif = NA_real_,
+                    status = "skipped_ci",
+                    skip_reason = "cuminc_unavailable"
+                ))
+            }
+            return(NA_real_)
+        }
+
+        times <- ci_obj$`1`$time
+        est <- ci_obj$`1`$est
+        idx <- which(times <= eval_time)
+        cif_value <- if (length(idx) == 0) {
+            0
+        } else {
+            est[max(idx)]
+        }
+
+        if (allow_skip) {
+            return(list(
+                cif = as.numeric(cif_value),
+                status = "completed",
+                skip_reason = NA_character_
+            ))
+        }
+        as.numeric(cif_value)
+    }
+
+    estimate_boot_ci <- function(df_class) {
+        if (n_boot <= 0 || nrow(df_class) == 0) {
+            return(c(NA_real_, NA_real_))
+        }
+
+        df_class <- sanitize_cif_class_data(df_class)
+        if (nrow(df_class) == 0 || sum(df_class[[event_type_var]] == 1L, na.rm = TRUE) == 0) {
+            return(c(NA_real_, NA_real_))
+        }
+
+        boot_vals <- rep(NA_real_, n_boot)
+        for (b in seq_len(n_boot)) {
+            boot_idx <- sample.int(nrow(df_class), size = nrow(df_class), replace = TRUE)
+            boot_vals[b] <- suppressWarnings(get_cif_for_class(df_class[boot_idx, , drop = FALSE], allow_skip = FALSE))
+        }
+        if (all(is.na(boot_vals))) {
+            return(c(NA_real_, NA_real_))
+        }
+        stats::quantile(boot_vals, probs = c(0.025, 0.975), na.rm = TRUE, names = FALSE)
+    }
+
+    result_rows <- lapply(seq_len(nrow(feasibility$by_group)), function(i) {
+        group_row <- feasibility$by_group[i, , drop = FALSE]
+        cls <- as.character(group_row$GEP_Class[[1]])
+        df_class <- data[data[[group_var]] == cls, , drop = FALSE]
+
+        if (nrow(df_class) == 0) {
+            return(data.frame(
+                Group = cls,
+                n = 0,
+                cif = NA_real_,
+                ci_lower = NA_real_,
+                ci_upper = NA_real_,
+                status = "skipped_ci",
+                skip_reason = "no_complete_cases",
+                stringsAsFactors = FALSE
+            ))
+        }
+
+        class_cif <- get_cif_for_class(df_class, allow_skip = TRUE)
+
+        if (isTRUE(group_row$melanoma_deaths[[1]] == 0)) {
+            return(data.frame(
+                Group = cls,
+                n = nrow(df_class),
+                cif = 0,
+                ci_lower = NA_real_,
+                ci_upper = NA_real_,
+                status = "no_event_of_interest",
+                skip_reason = "no_melanoma_deaths",
+                stringsAsFactors = FALSE
+            ))
+        }
+
+        if (isTRUE(group_row$below_minimum_size[[1]])) {
+            return(data.frame(
+                Group = cls,
+                n = nrow(df_class),
+                cif = as.numeric(class_cif$cif),
+                ci_lower = NA_real_,
+                ci_upper = NA_real_,
+                status = "skipped_ci",
+                skip_reason = sprintf("below_minimum_group_size:%d", feasibility$minimum_group_size),
+                stringsAsFactors = FALSE
+            ))
+        }
+
+        if (!identical(class_cif$status, "completed")) {
+            return(data.frame(
+                Group = cls,
+                n = nrow(df_class),
+                cif = as.numeric(class_cif$cif),
+                ci_lower = NA_real_,
+                ci_upper = NA_real_,
+                status = class_cif$status,
+                skip_reason = class_cif$skip_reason,
+                stringsAsFactors = FALSE
+            ))
+        }
+
+        ci_bounds <- estimate_boot_ci(df_class)
+        data.frame(
+            Group = cls,
+            n = nrow(df_class),
+            cif = as.numeric(class_cif$cif),
+            ci_lower = as.numeric(ci_bounds[1]),
+            ci_upper = as.numeric(ci_bounds[2]),
+            status = "completed",
+            skip_reason = NA_character_,
+            stringsAsFactors = FALSE
+        )
     })
+
+    do.call(rbind, result_rows)
 }
 
 #' Fit cause-specific Cox model by class (melanoma death as cause)
@@ -1407,105 +1613,60 @@ calculate_cif_by_class_with_ci <- function(data, time_var, event_type_var, eval_
 #' @param group_var Character name of the grouping variable (e.g., 'biopsy1_gep')
 #' @param eligibility_filter Character name of eligibility filter column (e.g., 'mss_analysis_eligible')
 #' @return Data frame with columns: GEP_Class, HR, CI_Lower, CI_Upper, p_value, reference
-calculate_cause_specific_cox_model <- function(data, time_var, event_var, group_var, eligibility_filter = "mss_analysis_eligible") {
+calculate_cause_specific_cox_model <- function(data, time_var, event_var, group_var,
+                                               eligibility_filter = "mss_analysis_eligible",
+                                               feasibility = NULL) {
     logger::log_debug("Fitting cause-specific Cox model (melanoma death)")
-    out <- tryCatch({
-        # Apply eligibility filter (guaranteed to exist from data processing pipeline)
-        data <- data %>% filter(.data[[eligibility_filter]])
-        
-        df <- data[!is.na(data[[time_var]]) & !is.na(data[[event_var]]) & !is.na(data[[group_var]]), , drop = FALSE]
-        if (nrow(df) == 0) {
-            logger::log_warn("No complete cases available for cause-specific Cox model")
-            return(NULL)
+    feasibility <- feasibility %||% assess_competing_risk_feasibility(
+        data = data,
+        time_var = time_var,
+        event_var = event_var,
+        group_var = group_var,
+        eligibility_filter = eligibility_filter
+    )
+
+    if (!identical(feasibility$models$cause_specific_cox$status, "eligible")) {
+        logger::log_info(sprintf(
+            "Skipping cause-specific Cox model: %s",
+            feasibility$models$cause_specific_cox$reason %||% "not eligible"
+        ))
+        return(NULL)
+    }
+
+    df <- feasibility$data
+    status_cs <- as.integer(df[[event_var]] == 1)
+    surv_obj <- survival::Surv(df[[time_var]], status_cs)
+    fml <- stats::as.formula(paste0("surv_obj ~ ", group_var))
+
+    logger::log_info("Fitting cause-specific Cox model with survival::coxph")
+    fit <- tryCatch(
+        survival::coxph(fml, data = df, model = TRUE),
+        error = function(e) {
+            logger::log_error(sprintf("Cause-specific Cox model failed unexpectedly: %s", e$message))
+            stop(e)
         }
-        
-        # Convert to factor and check levels
-        df[[group_var]] <- factor(df[[group_var]])
-        group_levels <- levels(df[[group_var]])
-        
-        if (length(group_levels) < 2) {
-            logger::log_warn("Cause-specific Cox model requires at least 2 groups")
-            return(NULL)
-        }
-        
-        # COMPREHENSIVE DATA QUALITY CHECKS
-        logger::log_info("Performing data quality checks for cause-specific Cox model")
-        
-        # Check sample sizes per group
-        group_counts <- table(df[[group_var]])
-        logger::log_info(sprintf("Group sample sizes: %s", paste(names(group_counts), group_counts, sep="=", collapse=", ")))
-        
-        # Check for groups with insufficient sample size (minimum 10 patients per group)
-        min_group_size <- 10
-        small_groups <- names(group_counts[group_counts < min_group_size])
-        if (length(small_groups) > 0) {
-            logger::log_warn(sprintf("Groups with insufficient sample size (<%d): %s", 
-                                   min_group_size, paste(small_groups, collapse=", ")))
-        }
-        
-        # Event of interest: 1; treat 2 as censored
-        status_cs <- as.integer(df[[event_var]] == 1)
-        
-        # Check event distribution per group
-        event_counts <- table(df[[group_var]], status_cs)
-        logger::log_info("Event distribution by group (1=melanoma death, 0=censored):")
-        logger::log_info(paste(capture.output(print(event_counts)), collapse="\n"))
-        
-        # Check for groups with no events of interest
-        no_events_groups <- names(which(event_counts[, "1"] == 0))
-        if (length(no_events_groups) > 0) {
-            logger::log_warn(sprintf("Groups with no melanoma deaths: %s", 
-                                   paste(no_events_groups, collapse=", ")))
-        }
-        
-        # CRITICAL: Prevent model fitting if data quality is insufficient
-        if (length(small_groups) > 0 || length(no_events_groups) > 0) {
-            logger::log_error("Cause-specific Cox model cannot be fitted due to insufficient data quality")
-            logger::log_error("Issues: Small groups or groups with no events")
-            return(NULL)
-        }
-        
-        # Create survival object and fit model
-        surv_obj <- survival::Surv(df[[time_var]], status_cs)
-        fml <- stats::as.formula(paste0("surv_obj ~ ", group_var))
-        
-        logger::log_info("Fitting cause-specific Cox model with survival::coxph")
-        fit <- survival::coxph(fml, data = df, model = TRUE)
-        
-        # Extract results
-        summ <- summary(fit)
-        coefs <- as.data.frame(summ$coef)
-        if (nrow(coefs) == 0) return(NULL)
-        
-        # Map coefficient rows to class levels (excluding baseline)
-        lvl <- levels(df[[group_var]])
-        ref <- lvl[1]
-        rn <- rownames(coefs)
-        term_levels <- sub(paste0("^", group_var), "", rn)
-        term_levels <- sub("^", "", term_levels)
-        
-        # Build tidy output
-        res <- data.frame(
-            GEP_Class = gsub(paste0(group_var), "", rn, fixed = TRUE),
-            HR = exp(coefs$`coef`),
-            CI_Lower = exp(coefs$`coef` - 1.96 * coefs$`se(coef)`),
-            CI_Upper = exp(coefs$`coef` + 1.96 * coefs$`se(coef)`),
-            p_value = coefs$`Pr(>|z|)`,
-            reference = ref,
-            stringsAsFactors = FALSE
-        )
-        
-        # Clean class names
-        res$GEP_Class <- trimws(gsub("=", "", res$GEP_Class))
-        
-        logger::log_info("Cause-specific Cox model completed successfully")
-        res
-        
-    }, error = function(e) {
-        logger::log_warn(sprintf("Cause-specific Cox model failed: %s", e$message))
-        NULL
-    })
-    return(out)
+    )
+
+    summ <- summary(fit)
+    coefs <- as.data.frame(summ$coef)
+    if (nrow(coefs) == 0) {
+        return(NULL)
+    }
+
+    ref <- levels(df[[group_var]])[1]
+    rn <- rownames(coefs)
+    res <- data.frame(
+        GEP_Class = trimws(gsub("=", "", gsub(paste0(group_var), "", rn, fixed = TRUE))),
+        HR = exp(coefs$`coef`),
+        CI_Lower = exp(coefs$`coef` - 1.96 * coefs$`se(coef)`),
+        CI_Upper = exp(coefs$`coef` + 1.96 * coefs$`se(coef)`),
+        p_value = coefs$`Pr(>|z|)`,
+        reference = ref,
+        stringsAsFactors = FALSE
+    )
+
+    logger::log_info("Cause-specific Cox model completed successfully")
+    res
 }
 
 #' Fit Fine-Gray subdistribution model by class (melanoma death as cause)
@@ -1521,164 +1682,105 @@ calculate_cause_specific_cox_model <- function(data, time_var, event_var, group_
 #' @param group_var Character name of grouping variable (factor)
 #' @param eligibility_filter Character name of eligibility filter column (e.g., 'mss_analysis_eligible')
 #' @return Data frame with columns: GEP_Class, SHR, CI_Lower, CI_Upper, p_value, reference
-calculate_fine_gray_model <- function(data, time_var, event_var, group_var, eligibility_filter = "mss_analysis_eligible") {
+calculate_fine_gray_model <- function(data, time_var, event_var, group_var,
+                                      eligibility_filter = "mss_analysis_eligible",
+                                      feasibility = NULL) {
     logger::log_debug("Fitting Fine-Gray subdistribution model (melanoma death)")
-    
-    # CRITICAL: Apply eligibility filters to prevent segmentation fault
-    tryCatch({
-        # Apply eligibility filter (guaranteed to exist from data processing pipeline)
-        data <- data %>% filter(.data[[eligibility_filter]])
-        
-        df <- data[!is.na(data[[time_var]]) & !is.na(data[[event_var]]) & !is.na(data[[group_var]]), , drop = FALSE]
-        if (nrow(df) == 0) {
-            logger::log_warn("No complete cases available for Fine-Gray model")
-            return(NULL)
+
+    feasibility <- feasibility %||% assess_competing_risk_feasibility(
+        data = data,
+        time_var = time_var,
+        event_var = event_var,
+        group_var = group_var,
+        eligibility_filter = eligibility_filter
+    )
+
+    if (!identical(feasibility$models$fine_gray$status, "eligible")) {
+        logger::log_info(sprintf(
+            "Skipping Fine-Gray model: %s",
+            feasibility$models$fine_gray$reason %||% "not eligible"
+        ))
+        return(NULL)
+    }
+
+    df <- feasibility$data
+    X <- stats::model.matrix(stats::as.formula(paste0("~ ", group_var)), data = df)
+    if (colnames(X)[1] == "(Intercept)") {
+        X <- X[, -1, drop = FALSE]
+    }
+    if (ncol(X) == 0) {
+        return(NULL)
+    }
+
+    logger::log_info("Fitting Fine-Gray model with cmprsk::crr")
+    fit <- tryCatch(
+        cmprsk::crr(ftime = df[[time_var]], fstatus = df[[event_var]], cov1 = X, failcode = 1, cencode = 0),
+        error = function(e) {
+            logger::log_error(sprintf("Fine-Gray model failed unexpectedly: %s", e$message))
+            stop(e)
         }
-        
-        # Convert to factor and check levels
-        df[[group_var]] <- factor(df[[group_var]])
-        group_levels <- levels(df[[group_var]])
-        
-        if (length(group_levels) < 2) {
-            logger::log_warn("Fine-Gray model requires at least 2 groups")
-            return(NULL)
-        }
-        
-        # COMPREHENSIVE DATA QUALITY CHECKS
-        logger::log_info("Performing data quality checks for Fine-Gray model")
-        
-        # Check sample sizes per group
-        group_counts <- table(df[[group_var]])
-        logger::log_info(sprintf("Group sample sizes: %s", paste(names(group_counts), group_counts, sep="=", collapse=", ")))
-        
-        # Check for groups with insufficient sample size (minimum 10 patients per group)
-        min_group_size <- 10
-        small_groups <- names(group_counts[group_counts < min_group_size])
-        if (length(small_groups) > 0) {
-            logger::log_warn(sprintf("Groups with insufficient sample size (<%d): %s", 
-                                   min_group_size, paste(small_groups, collapse=", ")))
-        }
-        
-        # Check event distribution per group
-        event_counts <- table(df[[group_var]], df[[event_var]])
-        logger::log_info("Event distribution by group:")
-        logger::log_info(paste(capture.output(print(event_counts)), collapse="\n"))
-        
-        # Check for groups with no events of interest (event type 1)
-        no_events_groups <- names(which(event_counts[, "1"] == 0))
-        if (length(no_events_groups) > 0) {
-            logger::log_warn(sprintf("Groups with no melanoma deaths (event type 1): %s", 
-                                   paste(no_events_groups, collapse=", ")))
-        }
-        
-        # Check for groups with no competing events (event type 2)
-        no_competing_groups <- names(which(event_counts[, "2"] == 0))
-        if (length(no_competing_groups) > 0) {
-            logger::log_warn(sprintf("Groups with no competing deaths (event type 2): %s", 
-                                   paste(no_competing_groups, collapse=", ")))
-        }
-        
-        # CRITICAL: Prevent model fitting if data quality is insufficient
-        if (length(small_groups) > 0 || length(no_events_groups) > 0) {
-            logger::log_error("Fine-Gray model cannot be fitted due to insufficient data quality")
-            logger::log_error("Issues: Small groups or groups with no events")
-            return(NULL)
-        }
-        
-        # Design matrix without intercept to compare each class to reference
-        X <- stats::model.matrix(stats::as.formula(paste0("~ ", group_var)), data = df)
-        # Remove intercept if present
-        if (colnames(X)[1] == "(Intercept)") X <- X[, -1, drop = FALSE]
-        if (ncol(X) == 0) return(NULL)
-        
-        # Fit Fine-Gray model
-        logger::log_info("Fitting Fine-Gray model with cmprsk::crr")
-        fit <- cmprsk::crr(ftime = df[[time_var]], fstatus = df[[event_var]], cov1 = X, failcode = 1, cencode = 0)
-        
-        # Extract coefficients and standard errors
-        beta <- as.numeric(fit$coef)
-        se <- sqrt(diag(fit$var))
-        if (length(beta) == 0) return(NULL)
-        
-        # Calculate SHRs and confidence intervals
-        shr <- exp(beta)
-        ci_low <- exp(beta - 1.96 * se)
-        ci_up <- exp(beta + 1.96 * se)
-        pvals <- 2 * stats::pnorm(-abs(beta / se))
-        
-        # Clean class names
-        classes <- gsub(paste0(group_var), "", colnames(X), fixed = TRUE)
-        classes <- trimws(gsub("=", "", classes))
-        
-        # Create results dataframe
-        res <- data.frame(
-            GEP_Class = classes,
-            SHR = shr,
-            CI_Lower = ci_low,
-            CI_Upper = ci_up,
-            p_value = pvals,
-            reference = levels(df[[group_var]])[1],
+    )
+
+    beta <- as.numeric(fit$coef)
+    se <- sqrt(diag(fit$var))
+    if (length(beta) == 0) {
+        return(NULL)
+    }
+
+    res <- data.frame(
+        GEP_Class = trimws(gsub("=", "", gsub(paste0(group_var), "", colnames(X), fixed = TRUE))),
+        SHR = exp(beta),
+        CI_Lower = exp(beta - 1.96 * se),
+        CI_Upper = exp(beta + 1.96 * se),
+        p_value = 2 * stats::pnorm(-abs(beta / se)),
+        reference = levels(df[[group_var]])[1],
+        stringsAsFactors = FALSE
+    )
+
+    mock_table <- list(
+        table_body = data.frame(
+            term = res$GEP_Class,
+            estimate = res$SHR,
+            conf.low = res$CI_Lower,
+            conf.high = res$CI_Upper,
+            p.value = res$p_value,
+            row_type = "level",
+            variable = group_var,
             stringsAsFactors = FALSE
         )
-        
-        # Apply extreme estimate filtering using project's filtering system
-        # Create a mock gtsummary table structure for filtering
-        mock_table <- list(
-            table_body = data.frame(
-                term = res$GEP_Class,
-                estimate = res$SHR,
-                conf.low = res$CI_Lower,
-                conf.high = res$CI_Upper,
-                p.value = res$p_value,
-                row_type = "level",
-                variable = group_var,
-                stringsAsFactors = FALSE
-            )
-        )
-        
-        # Apply extreme estimate filtering
-        filtered_result <- process_extreme_estimates(
-            tbl = mock_table,
-            model_fit = fit,
-            effect_measure = "HR",  # SHR is similar to HR for filtering purposes
-            variables_to_check = group_var,
-            analysis_name = "Fine-Gray competing risks"
-        )
-        
-        # Extract filtered results
-        if (filtered_result$diagnostics$rows_removed > 0) {
-            logger::log_info(sprintf("Fine-Gray model: %d extreme estimates filtered out", 
-                                    filtered_result$diagnostics$rows_removed))
-            
-            # Get the filtered table body
-            filtered_body <- filtered_result$tbl_filtered$table_body
-            
-            # Map back to our result format
-            if (nrow(filtered_body) > 0) {
-                res_filtered <- data.frame(
-                    GEP_Class = filtered_body$term,
-                    SHR = filtered_body$estimate,
-                    CI_Lower = filtered_body$conf.low,
-                    CI_Upper = filtered_body$conf.high,
-                    p_value = filtered_body$p.value,
-                    reference = res$reference[1],
-                    stringsAsFactors = FALSE
-                )
-                res <- res_filtered
-            } else {
-                # All results were filtered out
-                logger::log_warn("All Fine-Gray model results were filtered out due to extreme estimates")
-                return(NULL)
-            }
+    )
+
+    filtered_result <- process_extreme_estimates(
+        tbl = mock_table,
+        model_fit = fit,
+        effect_measure = "HR",
+        variables_to_check = group_var,
+        analysis_name = "Fine-Gray competing risks"
+    )
+
+    if (filtered_result$diagnostics$rows_removed > 0) {
+        logger::log_info(sprintf(
+            "Fine-Gray model: %d extreme estimates filtered out",
+            filtered_result$diagnostics$rows_removed
+        ))
+        filtered_body <- filtered_result$tbl_filtered$table_body
+        if (nrow(filtered_body) == 0) {
+            logger::log_warn("All Fine-Gray model results were filtered out due to extreme estimates")
+            return(NULL)
         }
-        
-        logger::log_info("Fine-Gray model completed successfully")
-        res
-        
-    }, error = function(e) {
-        logger::log_warn(sprintf("Fine-Gray model failed: %s", e$message))
-        NULL
-    })
+        res <- data.frame(
+            GEP_Class = filtered_body$term,
+            SHR = filtered_body$estimate,
+            CI_Lower = filtered_body$conf.low,
+            CI_Upper = filtered_body$conf.high,
+            p_value = filtered_body$p.value,
+            reference = res$reference[1],
+            stringsAsFactors = FALSE
+        )
+    }
+
+    logger::log_info("Fine-Gray model completed successfully")
+    res
 }
 
 #' Calculate Brier Score for survival data with method tracking

@@ -337,9 +337,9 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
 
     # ===== GEP VALIDATION SET =====
     gep_validation_set = list(
-        description = "Training/testing split for GEP validation analysis",
-        calculation = "sample(c('Training', 'Testing'), n(), replace = TRUE, prob = c(0.7, 0.3))",
-        purpose = "Random split for GEP validation (Objective 4)",
+        description = "Objective 4 training/testing partition for patients with analyzable imported GEP data",
+        calculation = "Label rows with non-missing biopsy1_gep_mfs, non-missing biopsy1_gep_mss, and a definitive simplified GEP class as eligible; assign round(n_eligible * 0.7) eligible rows to Training, the remainder to Testing, shuffle those labels, and mark all other rows as 'No GEP Data'",
+        purpose = "Creates a full-cohort internal partition for Objective 4 quality-control and reader-facing validation summaries; subset cohorts inherit these labels rather than generating a new split",
         data_type = "character",
         units = "categorical"
     )

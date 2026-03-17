@@ -377,6 +377,61 @@ write_effect_summary_workbook <- function(effect_summary_rows, output_dir, prefi
     output_path
 }
 
+#' Escape plain text for inclusion in lightweight HTML output
+#'
+#' @param text Character vector to escape for HTML rendering.
+#'
+#' @return Character vector with HTML-sensitive characters escaped.
+escape_html_text <- function(text) {
+    text <- as.character(text %||% "")
+    text <- gsub("&", "&amp;", text, fixed = TRUE)
+    text <- gsub("<", "&lt;", text, fixed = TRUE)
+    text <- gsub(">", "&gt;", text, fixed = TRUE)
+    text
+}
+
+#' Render a data frame as a compact HTML table
+#'
+#' @param data Data frame to render.
+#' @param max_rows Optional integer cap on the number of rows shown.
+#'
+#' @return A single HTML string containing a table or an empty string.
+render_simple_html_table <- function(data, max_rows = NULL) {
+    if (is.null(data) || !is.data.frame(data) || nrow(data) == 0) {
+        return("")
+    }
+
+    if (!is.null(max_rows) && nrow(data) > max_rows) {
+        data <- utils::head(data, max_rows)
+    }
+
+    header_cells <- paste0(
+        "<tr>",
+        paste0("<th>", escape_html_text(names(data)), "</th>", collapse = ""),
+        "</tr>"
+    )
+    body_rows <- apply(data, 1, function(row_values) {
+        paste0(
+            "<tr>",
+            paste0("<td>", escape_html_text(row_values), "</td>", collapse = ""),
+            "</tr>"
+        )
+    })
+
+    paste0(
+        "<table border='1' cellspacing='0' cellpadding='4'>",
+        header_cells,
+        paste(body_rows, collapse = ""),
+        "</table>"
+    )
+}
+
+#' Write the model diagnostics workbook
+#'
+#' @param diagnostics Named list of diagnostics tables or text summaries.
+#' @param diagnostics_path Character scalar path to the workbook output.
+#'
+#' @return Invisibly returns `NULL` after writing the workbook.
 write_diagnostics_workbook <- function(diagnostics, diagnostics_path) {
     if (is.null(diagnostics)) {
         logger::log_warn("No diagnostics to save")
@@ -434,6 +489,18 @@ write_diagnostics_workbook <- function(diagnostics, diagnostics_path) {
                 addWorksheet(wb, "Covariate_variation")
                 writeData(wb, "Covariate_variation", diagnostics$covariate_variation)
             }
+            if (!is.null(diagnostics$skip_summary)) {
+                addWorksheet(wb, "Skip_summary")
+                writeData(wb, "Skip_summary", diagnostics$skip_summary)
+            }
+            if (!is.null(diagnostics$event_support)) {
+                addWorksheet(wb, "Event_support")
+                writeData(wb, "Event_support", diagnostics$event_support)
+            }
+            if (!is.null(diagnostics$narrative_summary)) {
+                addWorksheet(wb, "Narrative_summary")
+                writeData(wb, "Narrative_summary", diagnostics$narrative_summary)
+            }
             saveWorkbook(wb, diagnostics_path, overwrite = TRUE)
             logger::log_info(sprintf("Comprehensive diagnostics saved to %s", diagnostics_path))
         },
@@ -443,6 +510,16 @@ write_diagnostics_workbook <- function(diagnostics, diagnostics_path) {
     )
 }
 
+#' Save HTML and workbook outputs for a skipped model
+#'
+#' @param analysis_name Character scalar analysis identifier.
+#' @param dataset_name Character scalar dataset identifier.
+#' @param output_dir Character scalar output directory.
+#' @param prefix Character scalar filename prefix.
+#' @param reason Character scalar explaining why the model was skipped.
+#' @param diagnostics Optional named list of diagnostics tables and summaries.
+#'
+#' @return A list with `html_path` and `diagnostics_path`.
 save_skipped_model_outputs <- function(analysis_name,
                                        dataset_name,
                                        output_dir,
@@ -463,12 +540,41 @@ save_skipped_model_outputs <- function(analysis_name,
     html_path <- file.path(output_dir, paste0(base_filename, "_SKIPPED.html"))
     diagnostics_path <- file.path(output_dir, paste0(base_filename, "_diagnostics.xlsx"))
 
+    narrative_block <- ""
+    if (!is.null(diagnostics$narrative_summary) && nrow(diagnostics$narrative_summary) > 0) {
+        narrative_items <- paste0(
+            "<li>",
+            escape_html_text(diagnostics$narrative_summary$detail),
+            "</li>",
+            collapse = ""
+        )
+        narrative_block <- paste0("<h3>Why The Model Was Not Fit</h3><ul>", narrative_items, "</ul>")
+    }
+
+    summary_block <- if (!is.null(diagnostics$skip_summary)) {
+        paste0("<h3>Skip Summary</h3>", render_simple_html_table(diagnostics$skip_summary))
+    } else {
+        ""
+    }
+
+    event_support_block <- if (!is.null(diagnostics$event_support)) {
+        paste0(
+            "<h3>Modeled Outcome Counts By Covariate Level</h3>",
+            render_simple_html_table(diagnostics$event_support)
+        )
+    } else {
+        ""
+    }
+
     skip_html <- paste0(
         "<html><body>",
         "<h2>Adjusted Analysis Not Fit</h2>",
-        "<p><strong>Analysis:</strong> ", analysis_name, "</p>",
-        "<p><strong>Dataset:</strong> ", dataset_name, "</p>",
-        "<p><strong>Reason:</strong> ", reason, "</p>",
+        "<p><strong>Analysis:</strong> ", escape_html_text(analysis_name), "</p>",
+        "<p><strong>Dataset:</strong> ", escape_html_text(dataset_name), "</p>",
+        "<p><strong>Reason:</strong> ", escape_html_text(reason), "</p>",
+        narrative_block,
+        summary_block,
+        event_support_block,
         "</body></html>"
     )
     writeLines(skip_html, html_path)

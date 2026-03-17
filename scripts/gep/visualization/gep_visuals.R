@@ -1424,6 +1424,21 @@ create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, 
         sprintf("Melanoma-Specific Death by %s (%d-Year Analysis)", grouping_spec$label, timepoint)
     }
 
+    describe_competing_risk_model_status <- function(model_key, model_label) {
+        feasibility <- competing_results$feasibility %||% NULL
+        if (is.null(feasibility) || is.null(feasibility$models[[model_key]])) {
+            return(sprintf("%s not fitted", model_label))
+        }
+
+        model_status <- feasibility$models[[model_key]]
+        if (identical(model_status$status, "eligible")) {
+            return(sprintf("%s eligible", model_label))
+        }
+
+        reason <- model_status$reason %||% "feasibility criteria not met"
+        sprintf("%s skipped: %s", model_label, reason)
+    }
+
     # Add competing risks statistics to title if available
     if (!is.null(competing_results) && !simplified_display) {
         # Extract Fine-Gray model results if available
@@ -1474,7 +1489,16 @@ create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, 
         if (fine_gray_stats != "" || csc_stats != "") {
             plot_title <- paste0(base_title, fine_gray_stats, csc_stats)
         } else {
-            plot_title <- paste0(base_title, "\n(Competing risks models not fitted due to insufficient data quality)")
+            plot_title <- paste0(
+                base_title,
+                "\n(",
+                paste(
+                    describe_competing_risk_model_status("fine_gray", "Fine-Gray"),
+                    describe_competing_risk_model_status("cause_specific_cox", "Cause-specific Cox"),
+                    sep = " | "
+                ),
+                ")"
+            )
         }
     } else {
         plot_title <- if (simplified_display) {
@@ -1567,7 +1591,7 @@ create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, 
                 )
             }
         } else {
-            caption_lines <- c(caption_lines, "Fine-Gray model: not fitted (insufficient data quality)")
+            caption_lines <- c(caption_lines, describe_competing_risk_model_status("fine_gray", "Fine-Gray"))
         }
 
         # Add cause-specific Cox results
@@ -1593,14 +1617,27 @@ create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, 
                 )
             }
         } else {
-            caption_lines <- c(caption_lines, "Cause-specific Cox model: not fitted (insufficient data quality)")
+            caption_lines <- c(caption_lines, describe_competing_risk_model_status("cause_specific_cox", "Cause-specific Cox"))
         }
 
         if ((is.null(competing_results$fine_gray) || nrow(competing_results$fine_gray) == 0) &&
             (is.null(competing_results$cause_specific_cox) || nrow(competing_results$cause_specific_cox) == 0)) {
             caption_lines <- c(
                 caption_lines,
-                "Note: Competing risks models require >=10 patients per group with observed events."
+                "Note: See technical workbook feasibility sheet for group-level event and size checks."
+            )
+        }
+        if (!is.null(competing_results$cif_with_ci) &&
+            "status" %in% names(competing_results$cif_with_ci) &&
+            any(competing_results$cif_with_ci$status != "completed", na.rm = TRUE)) {
+            skipped_cif_groups <- competing_results$cif_with_ci %>%
+                dplyr::filter(status != "completed") %>%
+                dplyr::mutate(reason_label = dplyr::coalesce(skip_reason, status)) %>%
+                dplyr::transmute(label = sprintf("%s (%s)", Group, reason_label)) %>%
+                dplyr::pull(label)
+            caption_lines <- c(
+                caption_lines,
+                paste0("CIF CI summary skipped for: ", paste(skipped_cif_groups, collapse = ", "))
             )
         }
     } else {

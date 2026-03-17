@@ -373,6 +373,80 @@ validate_factor_level_consistency <- function(cohort_list, phase = "data_process
 
 #' Comprehensive Data Processing Validation
 #'
+#' Return the canonical set of analytic cohort object names expected from
+#' Objective 0 processing.
+#'
+#' @return Character vector of expected analytic cohort names.
+get_expected_analytic_cohort_names <- function() {
+    c(
+        "uveal_melanoma_full_cohort",
+        "uveal_melanoma_restricted_cohort",
+        "uveal_melanoma_gksrs_only_cohort"
+    )
+}
+
+#' Collect structured validation results for the processed-data pipeline
+#'
+#' @param data Data frame or list of data frames (cohorts) to validate
+#' @param stop_on_failure Logical. If TRUE, throw an error when validation fails.
+#' @return List with `success`, `validated_cohorts`, and `validation_errors`
+validate_processing_pipeline <- function(data, stop_on_failure = TRUE) {
+    logger::log_info("=== COMPREHENSIVE DATA PROCESSING VALIDATION ===")
+
+    validation_errors <- character()
+    validated_cohorts <- character()
+
+    if (is.list(data) && !is.data.frame(data)) {
+        logger::log_info("Phase 1: Individual Cohort Validation")
+        for (cohort_name in names(data)) {
+            logger::log_info(formatted(sprintf("Validating cohort: %s", cohort_name), indent = 1))
+            cohort_validation <- validate_single_cohort_comprehensive(data[[cohort_name]], cohort_name)
+            if (cohort_validation) {
+                validated_cohorts <- c(validated_cohorts, cohort_name)
+            } else {
+                validation_errors <- c(validation_errors, sprintf("cohort_validation:%s", cohort_name))
+            }
+        }
+
+        logger::log_info("Phase 2: Cross-Cohort Validation")
+        cross_cohort_validation <- validate_cross_cohort_consistency(data)
+        if (!cross_cohort_validation) {
+            validation_errors <- c(validation_errors, "cross_cohort_consistency")
+        }
+
+        logger::log_info("Phase 3: File System Validation")
+        file_validation <- validate_processed_files_exist(data)
+        if (!file_validation) {
+            validation_errors <- c(validation_errors, "processed_files_missing")
+        }
+    } else {
+        validation_result <- validate_single_cohort_comprehensive(data, "single_dataset")
+        if (validation_result) {
+            validated_cohorts <- "single_dataset"
+        } else {
+            validation_errors <- c(validation_errors, "cohort_validation:single_dataset")
+        }
+    }
+
+    validation_errors <- unique(validation_errors)
+    validation_result <- list(
+        success = length(validation_errors) == 0,
+        validated_cohorts = validated_cohorts,
+        validation_errors = validation_errors
+    )
+
+    if (validation_result$success) {
+        logger::log_info("=== ALL DATA PROCESSING VALIDATIONS PASSED ===")
+    } else {
+        logger::log_error("=== DATA PROCESSING VALIDATION FAILED - SEE ERRORS ABOVE ===")
+        if (isTRUE(stop_on_failure)) {
+            stop("Data processing validation failed. Please fix the errors above before proceeding.")
+        }
+    }
+
+    validation_result
+}
+
 #' Performs systematic validation of the entire data processing pipeline
 #' to ensure all steps completed successfully and data integrity is maintained.
 #' Based on the data processing pipeline: load → derive → factor → cohort → collapse → save.
@@ -380,52 +454,8 @@ validate_factor_level_consistency <- function(cohort_list, phase = "data_process
 #' @param data Data frame or list of data frames (cohorts) to validate
 #' @return Logical indicating if all validations passed
 generate_validation_report <- function(data) {
-    logger::log_info("=== COMPREHENSIVE DATA PROCESSING VALIDATION ===")
-
-    # If data is a list (multiple cohorts), validate all cohorts systematically
-    if (is.list(data) && !is.data.frame(data)) {
-        validation_passed <- TRUE
-
-        # Phase 1: Individual cohort validation
-        logger::log_info("Phase 1: Individual Cohort Validation")
-        for (cohort_name in names(data)) {
-            logger::log_info(formatted(sprintf("Validating cohort: %s", cohort_name), indent = 1))
-            cohort_validation <- validate_single_cohort_comprehensive(data[[cohort_name]], cohort_name)
-            if (!cohort_validation) {
-                validation_passed <- FALSE
-            }
-        }
-
-        # Phase 2: Cross-cohort validation
-        logger::log_info("Phase 2: Cross-Cohort Validation")
-        cross_cohort_validation <- validate_cross_cohort_consistency(data)
-        if (!cross_cohort_validation) {
-            validation_passed <- FALSE
-        }
-
-        # Phase 3: File system validation
-        logger::log_info("Phase 3: File System Validation")
-        file_validation <- validate_processed_files_exist(data)
-        if (!file_validation) {
-            validation_passed <- FALSE
-        }
-
-        # Final validation summary
-        if (validation_passed) {
-            logger::log_info("=== ALL DATA PROCESSING VALIDATIONS PASSED ===")
-            return(TRUE)
-        } else {
-            logger::log_error("=== DATA PROCESSING VALIDATION FAILED - SEE ERRORS ABOVE ===")
-            stop("Data processing validation failed. Please fix the errors above before proceeding.")
-        }
-    } else {
-        # Single dataset validation
-        validation_result <- validate_single_cohort_comprehensive(data, "single_dataset")
-        if (!validation_result) {
-            stop("Single dataset validation failed. Please fix the errors above before proceeding.")
-        }
-        return(TRUE)
-    }
+    validation_result <- validate_processing_pipeline(data, stop_on_failure = TRUE)
+    validation_result$success
 }
 
 #' Comprehensive Single Cohort Validation
@@ -568,33 +598,41 @@ validate_single_cohort_comprehensive <- function(data, cohort_name) {
             training_count <- ifelse("Training" %in% names(validation_set_counts), validation_set_counts["Training"], 0)
             testing_count <- ifelse("Testing" %in% names(validation_set_counts), validation_set_counts["Testing"], 0)
             no_gep_count <- ifelse("No GEP Data" %in% names(validation_set_counts), validation_set_counts["No GEP Data"], 0)
+            enforce_global_split_shape <- identical(cohort_name, "uveal_melanoma_full_cohort") ||
+                identical(cohort_name, "single_dataset")
             
             # Calculate expected counts for patients with valid GEP data
             patients_with_valid_gep <- sum(!is.na(data$biopsy1_gep_mfs) & !is.na(data$biopsy1_gep_mss) & 
                                           data$gep_class_simple %in% c("Class 1", "Class 2"), na.rm = TRUE)
             
             # Validation checks for gep_validation_set
-            # Check 1: Ensure we have both Training and Testing sets
-            if (training_count == 0 && patients_with_valid_gep > 0) {
-                logger::log_error(formatted("VALIDATION FAILED: No patients assigned to Training set despite having valid GEP data", indent = 3))
-                validation_passed <- FALSE
-            }
-            
-            if (testing_count == 0 && patients_with_valid_gep > 0) {
-                logger::log_error(formatted("VALIDATION FAILED: No patients assigned to Testing set despite having valid GEP data", indent = 3))
-                validation_passed <- FALSE
-            }
-            
-            # Check 2: Ensure reasonable split proportions (allow some tolerance)
-            if (training_count > 0 && testing_count > 0) {
-                actual_training_rate <- training_count / (training_count + testing_count)
-                if (actual_training_rate < 0.5 || actual_training_rate > 0.9) {
-                    logger::log_error(formatted(sprintf(
-                        "VALIDATION FAILED: Training/testing split is unreasonable: %.1f%% training (expected ~70%%)", 
-                        actual_training_rate * 100
-                    ), indent = 3))
+            # Split-shape checks are only meaningful on the global/full GEP population.
+            if (enforce_global_split_shape) {
+                if (training_count == 0 && patients_with_valid_gep > 0) {
+                    logger::log_error(formatted("VALIDATION FAILED: No patients assigned to Training set despite having valid GEP data", indent = 3))
                     validation_passed <- FALSE
                 }
+                
+                if (testing_count == 0 && patients_with_valid_gep > 0) {
+                    logger::log_error(formatted("VALIDATION FAILED: No patients assigned to Testing set despite having valid GEP data", indent = 3))
+                    validation_passed <- FALSE
+                }
+                
+                if (training_count > 0 && testing_count > 0) {
+                    actual_training_rate <- training_count / (training_count + testing_count)
+                    if (actual_training_rate < 0.5 || actual_training_rate > 0.9) {
+                        logger::log_error(formatted(sprintf(
+                            "VALIDATION FAILED: Training/testing split is unreasonable: %.1f%% training (expected ~70%%)", 
+                            actual_training_rate * 100
+                        ), indent = 3))
+                        validation_passed <- FALSE
+                    }
+                }
+            } else if (patients_with_valid_gep > 0) {
+                logger::log_info(formatted(sprintf(
+                    "Subset cohort split summary: %d Training, %d Testing, %d No GEP Data",
+                    training_count, testing_count, no_gep_count
+                ), indent = 3))
             }
             
             # Check 3: Ensure total Training + Testing equals patients with valid GEP data

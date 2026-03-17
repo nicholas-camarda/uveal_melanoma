@@ -3,8 +3,10 @@
 #' Orchestrates the full data processing pipeline: loads, cleans, applies criteria, creates derived variables, summary tables, and saves outputs.
 #'
 #' @param output_dirs Optional list of output directories for each cohort.
-#' @return A list with analytic_data, summary_tables, and removal_log
-create_analytic_dataset <- function(output_dirs = NULL) {
+#' @param validate_after_saving Logical. If TRUE, validate saved cohort outputs.
+#' @param stop_on_validation_failure Logical. If TRUE, stop when validation fails.
+#' @return A list with analytic_data, summary_tables, removal_log, and validation
+create_analytic_dataset <- function(output_dirs = NULL, validate_after_saving = TRUE, stop_on_validation_failure = TRUE) {
     logger::log_info("Starting data processing pipeline")
 
     logger::log_info("Loading and cleaning raw data")
@@ -116,13 +118,24 @@ create_analytic_dataset <- function(output_dirs = NULL) {
         output_dirs = output_dirs
     )
 
-    logger::log_info("Validating cohorts after saving")
-    # Validate after files are saved and that they meet all the criteria for analytic dataset
-    generate_validation_report(factored_filtered_data)
+    validation_result <- list(
+        success = TRUE,
+        validated_cohorts = names(factored_filtered_data),
+        validation_errors = character()
+    )
+    if (isTRUE(validate_after_saving)) {
+        logger::log_info("Validating cohorts after saving")
+        # Validate after files are saved and that they meet all the criteria for analytic dataset
+        validation_result <- validate_processing_pipeline(
+            factored_filtered_data,
+            stop_on_failure = stop_on_validation_failure
+        )
+    }
 
     return(list(
         analytic_data = factored_filtered_data,
         summary_tables = summary_tables,
-        removal_log = removal_log
+        removal_log = removal_log,
+        validation = validation_result
     ))
 }

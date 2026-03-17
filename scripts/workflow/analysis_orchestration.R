@@ -2,6 +2,135 @@
 ############### MAIN EXECUTION FUNCTIONS ###############
 ########################################################
 
+#' Append a distinct issue code to an issue collection
+#'
+#' @param existing Character vector of previously recorded issue codes.
+#' @param new_issue Character scalar describing the new issue.
+#' @return Character vector with the new issue added once.
+append_issue <- function(existing, new_issue) {
+    unique(c(existing, new_issue))
+}
+
+#' Determine the overall workflow run state
+#'
+#' @param fatal_issues Character vector of fatal issue codes.
+#' @param warning_issues Character vector of warning-only issue codes.
+#' @return Character scalar equal to `success`, `completed_with_warnings`, or
+#'   `failed`.
+determine_run_state <- function(fatal_issues = character(), warning_issues = character()) {
+    if (length(fatal_issues) > 0) {
+        return("failed")
+    }
+    if (length(warning_issues) > 0) {
+        return("completed_with_warnings")
+    }
+    "success"
+}
+
+#' Collect expected warning signals from nested workflow results
+#'
+#' @param x Arbitrary workflow result object.
+#' @param path Character scalar describing the current traversal path.
+#' @return Character vector of warning issue codes.
+collect_expected_warning_signals <- function(x, path = "root") {
+    warning_issues <- character()
+
+    if (is.null(x)) {
+        return(warning_issues)
+    }
+
+    if (is.data.frame(x)) {
+        if ("Analysis_Status" %in% names(x) && any(x$Analysis_Status == "skipped", na.rm = TRUE)) {
+            warning_issues <- append_issue(warning_issues, paste0(path, ":rmst_skipped"))
+        }
+        if ("status" %in% names(x) && any(grepl("skipped|insufficient|no_event_of_interest", x$status), na.rm = TRUE)) {
+            warning_issues <- append_issue(warning_issues, paste0(path, ":status_skip"))
+        }
+        if (all(c("variable", "reason", "retained_values", "non_missing_n") %in% names(x)) && nrow(x) > 0) {
+            warning_issues <- append_issue(warning_issues, paste0(path, ":covariates_dropped"))
+        }
+        return(warning_issues)
+    }
+
+    if (is.list(x)) {
+        if (!is.null(x$feasibility)) {
+            model_statuses <- x$feasibility$models %||% list()
+            skipped_models <- vapply(model_statuses, function(model_status) {
+                identical(model_status$status %||% NA_character_, "skipped")
+            }, logical(1))
+            if (any(skipped_models)) {
+                warning_issues <- append_issue(warning_issues, paste0(path, ":competing_risk_feasibility"))
+            }
+        }
+        if (!is.null(x$warning_issues) && length(x$warning_issues) > 0) {
+            warning_issues <- c(warning_issues, unlist(x$warning_issues, use.names = FALSE))
+        }
+
+        child_names <- names(x)
+        if (is.null(child_names)) {
+            child_names <- seq_along(x)
+        }
+
+        for (i in seq_along(x)) {
+            warning_issues <- c(
+                warning_issues,
+                collect_expected_warning_signals(x[[i]], path = paste0(path, "$", child_names[[i]]))
+            )
+        }
+    }
+
+    unique(warning_issues)
+}
+
+#' Collect unexpected failure signals from nested workflow results
+#'
+#' @param x Arbitrary workflow result object.
+#' @param path Character scalar describing the current traversal path.
+#' @return Character vector of fatal issue codes.
+collect_unexpected_failure_signals <- function(x, path = "root") {
+    fatal_issues <- character()
+
+    if (is.null(x)) {
+        return(fatal_issues)
+    }
+
+    if (is.data.frame(x)) {
+        if ("Analysis_Status" %in% names(x) && any(x$Analysis_Status == "failed", na.rm = TRUE)) {
+            fatal_issues <- append_issue(fatal_issues, paste0(path, ":analysis_failed"))
+        }
+        if ("status" %in% names(x) && any(x$status == "failed", na.rm = TRUE)) {
+            fatal_issues <- append_issue(fatal_issues, paste0(path, ":status_failed"))
+        }
+        return(fatal_issues)
+    }
+
+    if (is.list(x)) {
+        if (!is.null(x$unexpected_failures) && length(x$unexpected_failures) > 0) {
+            fatal_issues <- c(
+                fatal_issues,
+                paste0(path, ":unexpected:", unlist(x$unexpected_failures, use.names = FALSE))
+            )
+        }
+        if (!is.null(x$status) && identical(x$status, "failed")) {
+            fatal_issues <- append_issue(fatal_issues, paste0(path, ":status_failed"))
+        }
+
+        child_names <- names(x)
+        if (is.null(child_names)) {
+            child_names <- seq_along(x)
+        }
+
+        for (i in seq_along(x)) {
+            fatal_issues <- c(
+                fatal_issues,
+                collect_unexpected_failure_signals(x[[i]], path = paste0(path, "$", child_names[[i]]))
+            )
+        }
+    }
+
+    unique(fatal_issues)
+}
+
 #' Run analysis for a single dataset and selected objectives
 #'
 #' This function orchestrates the statistical analysis for a given dataset.
@@ -16,30 +145,64 @@
 #' @export
 run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) {
     analysis_start_time <- Sys.time()
+    objectives_to_run <- as.integer(objectives_to_run)
+    results <- list()
+    fatal_issues <- character()
+    warning_issues <- character()
 
     # Clean dataset name for display
     display_name <- tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name)))
     log_phase(paste("STATISTICAL ANALYSIS", display_name, sep = " - "))
 
+    # Objective 0 is a global preflight gate and does not depend on dataset loading
+    if (0 %in% objectives_to_run) {
+        with_log_context(cohort = dataset_name, objective = "objective_0_data_processing", subobjective = NULL, expr = {
+            logger::log_info("Running Objective 0: Data Processing (global preflight)")
+            results$objective_0 <<- run_objective_0()
+        })
+
+        if (!isTRUE(results$objective_0$success)) {
+            fatal_issues <- append_issue(
+                fatal_issues,
+                sprintf(
+                    "objective_0_preflight_failed:%s",
+                    paste(results$objective_0$validation_errors %||% "unknown", collapse = ",")
+                )
+            )
+        }
+    }
+
+    analysis_objectives <- intersect(objectives_to_run, c(1, 2, 3, 4))
+    if (length(analysis_objectives) == 0) {
+        results$run_state <- determine_run_state(fatal_issues, warning_issues)
+        results$had_errors <- identical(results$run_state, "failed")
+        results$had_warnings <- identical(results$run_state, "completed_with_warnings")
+        results$fatal_issues <- fatal_issues
+        results$warning_issues <- unique(warning_issues)
+        return(results)
+    }
+
+    if (length(fatal_issues) > 0) {
+        results$run_state <- determine_run_state(fatal_issues, warning_issues)
+        results$had_errors <- TRUE
+        results$had_warnings <- FALSE
+        results$fatal_issues <- fatal_issues
+        results$warning_issues <- unique(warning_issues)
+        return(results)
+    }
+
     # Check dependencies before running analysis objectives
-    if (any(objectives_to_run %in% c(1, 2, 3, 4))) {
+    if (length(analysis_objectives) > 0) {
         # Check if required files exist for analysis objectives
         required_files <- c(file.path(PROCESSED_DATA_DIR, paste0(dataset_name, ".rds")))
 
         missing_files <- required_files[!file.exists(required_files)]
 
-        if (length(missing_files) > 0 && !(0 %in% objectives_to_run)) {
+        if (length(missing_files) > 0) {
             stop(sprintf(
-                "DEPENDENCY ERROR: Required files missing for dataset '%s': %s\nRun Objective 0 first or include it in objectives_to_run.",
+                "DEPENDENCY ERROR: Required files missing for dataset '%s': %s\nRun Objective 0 first to create these files.",
                 dataset_name, paste(basename(missing_files), collapse = ", ")
             ))
-        }
-
-        if (length(missing_files) > 0 && (0 %in% objectives_to_run)) {
-            logger::log_warn(formatted(sprintf(
-                "WARNING: Required files missing for dataset '%s': %s\nObjective 0 will create these files.",
-                dataset_name, paste(basename(missing_files), collapse = ", ")
-            )))
         }
     }
 
@@ -65,71 +228,60 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
     # Set initial log context
     set_log_context(cohort = dataset_name, objective = NULL, subobjective = NULL)
 
-    # Track errors for this dataset
-    errors_this_dataset <- FALSE
-
-    # If Objective 0 is included, run it first so that dependent artifacts exist
-    results <- list()
-    if (0 %in% objectives_to_run) {
-        with_log_context(cohort = dataset_name, objective = "objective_0_data_processing", subobjective = NULL, expr = {
-            logger::log_info("Running Objective 0: Data Processing")
-            results$objective_0 <- tryCatch(run_objective_0(), error = function(e) {
-                errors_this_dataset <<- TRUE
-                logger::log_error(formatted(sprintf("ERROR in Objective 0: %s", e$message)))
-                NULL
-            })
-        })
-        # Reload analytic dataset after processing
-        data <- readRDS(file.path(PROCESSED_DATA_DIR, paste0(dataset_name, ".rds")))
-        logger::log_info(formatted(sprintf("Successfully reloaded %d patients after Objective 0", nrow(data)), indent = 1))
-    }
-
     # Use configured confounders directly (do not load/save validated_confounders_by_cohort)
     cohort_confounders <- confounders
 
     # Run selected objectives (excluding 0 which may have been run above) with error tracking
-    if (1 %in% objectives_to_run) {
+    if (1 %in% analysis_objectives) {
         with_log_context(cohort = dataset_name, objective = "objective_1_primary_outcomes", subobjective = NULL, expr = {
             logger::log_info("Running Objective 1: Primary Outcomes")
             results$objective_1 <- tryCatch(run_objective_1(data, dataset_name, output_dirs, prefix, confounders = cohort_confounders), error = function(e) {
-                errors_this_dataset <<- TRUE
+                fatal_issues <<- append_issue(fatal_issues, sprintf("objective_1:%s", e$message))
                 logger::log_error(formatted(sprintf("ERROR in Objective 1: %s", e$message)))
                 NULL
             })
         })
+        warning_issues <- c(warning_issues, collect_expected_warning_signals(results$objective_1, "objective_1"))
+        fatal_issues <- c(fatal_issues, collect_unexpected_failure_signals(results$objective_1, "objective_1"))
     }
 
-    if (2 %in% objectives_to_run) {
+    if (2 %in% analysis_objectives) {
         with_log_context(cohort = dataset_name, objective = "objective_2_safety_toxicity", subobjective = NULL, expr = {
             logger::log_info("Running Objective 2: Safety/Toxicity")
             results$objective_2 <- tryCatch(run_objective_2(data, dataset_name, output_dirs, prefix, confounders = cohort_confounders), error = function(e) {
-                errors_this_dataset <<- TRUE
+                fatal_issues <<- append_issue(fatal_issues, sprintf("objective_2:%s", e$message))
                 logger::log_error(formatted(sprintf("ERROR in Objective 2: %s", e$message)))
                 NULL
             })
         })
+        warning_issues <- c(warning_issues, collect_expected_warning_signals(results$objective_2, "objective_2"))
+        fatal_issues <- c(fatal_issues, collect_unexpected_failure_signals(results$objective_2, "objective_2"))
     }
 
-    if (3 %in% objectives_to_run) {
+    if (3 %in% analysis_objectives) {
         with_log_context(cohort = dataset_name, objective = "objective_3_repeat_radiation", subobjective = NULL, expr = {
             logger::log_info("Running Objective 3: Repeat Radiation Efficacy")
             results$objective_3 <- tryCatch(run_objective_3(data, dataset_name, output_dirs, prefix, confounders = cohort_confounders), error = function(e) {
-                errors_this_dataset <<- TRUE
+                fatal_issues <<- append_issue(fatal_issues, sprintf("objective_3:%s", e$message))
                 logger::log_error(formatted(sprintf("ERROR in Objective 3: %s", e$message)))
                 NULL
             })
         })
+        warning_issues <- c(warning_issues, collect_expected_warning_signals(results$objective_3, "objective_3"))
+        fatal_issues <- c(fatal_issues, collect_unexpected_failure_signals(results$objective_3, "objective_3"))
     }
 
-    if (4 %in% objectives_to_run) {
+    if (4 %in% analysis_objectives) {
         with_log_context(cohort = dataset_name, objective = "objective_4_gep_analysis", subobjective = NULL, expr = {
             logger::log_info("Running Objective 4: GEP Validation")
             results$objective_4 <- tryCatch(run_objective_4(data, dataset_name, output_dirs, prefix, confounders = cohort_confounders), error = function(e) {
-                errors_this_dataset <<- TRUE
+                fatal_issues <<- append_issue(fatal_issues, sprintf("objective_4:%s", e$message))
                 logger::log_error(formatted(sprintf("ERROR in Objective 4: %s", e$message)))
                 NULL
             })
         })
+        warning_issues <- c(warning_issues, collect_expected_warning_signals(results$objective_4, "objective_4"))
+        fatal_issues <- c(fatal_issues, collect_unexpected_failure_signals(results$objective_4, "objective_4"))
     }
 
     logger::log_info(sprintf(">>> COMPLETED %s (Duration: %.1f seconds)",
@@ -137,7 +289,11 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
         as.numeric(difftime(Sys.time(), analysis_start_time, units = "secs"))
     ))
 
-    results$had_errors <- errors_this_dataset
+    results$warning_issues <- unique(warning_issues)
+    results$fatal_issues <- unique(fatal_issues)
+    results$run_state <- determine_run_state(results$fatal_issues, results$warning_issues)
+    results$had_errors <- identical(results$run_state, "failed")
+    results$had_warnings <- identical(results$run_state, "completed_with_warnings")
     return(results)
 }
 
@@ -153,6 +309,10 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
 #' @export
 run_specific_objective <- function(dataset_name, objective_number) {
     logger::log_info(formatted(sprintf("Running only Objective %d for dataset: %s", objective_number, dataset_name)))
+
+    if (identical(as.integer(objective_number), 0L)) {
+        return(run_objective_0())
+    }
 
     # Check dependencies for analysis objectives (1-4)
     if (objective_number %in% c(1, 2, 3, 4)) {
@@ -323,10 +483,50 @@ main_execution <- function() {
     # Keep only true cohort datasets (already filtered by list_available_datasets, but double-guard here)
     datasets_to_analyze <- grep("^uveal_melanoma_.*_cohort$", datasets_to_analyze_temp, value = TRUE)
 
-    had_errors <- FALSE
+    fatal_issues <- character()
+    warning_issues <- character()
     
     # Store data for merging at the end
     cohort_data <- list()
+
+    preflight_result <- tryCatch(
+        run_objective_0(),
+        error = function(e) {
+            list(
+                success = FALSE,
+                validated_cohorts = character(),
+                validation_errors = sprintf("objective_0_exception:%s", e$message),
+                created_datasets = character()
+            )
+        }
+    )
+
+    if (!isTRUE(preflight_result$success)) {
+        fatal_issues <- append_issue(
+            fatal_issues,
+            sprintf(
+                "objective_0_preflight_failed:%s",
+                paste(preflight_result$validation_errors %||% "unknown", collapse = ",")
+            )
+        )
+    }
+
+    if (length(fatal_issues) > 0) {
+        logger::log_error(">>> ANALYSES COMPLETED WITH ERRORS. Objective 0 preflight failed.")
+        logger::log_info(formatted(sprintf(">>> Total execution time: %.1f minutes", as.numeric(difftime(Sys.time(), main_start_time, units = "mins")))))
+        logger::log_info(formatted(sprintf(">>> Datasets analyzed: %d", 0)))
+        logger::log_info("Check the logs above for detailed validation failures.")
+        logger::log_info(sprintf(">>> COMPLETED %s (Duration: %.1f seconds)",
+            "MAIN EXECUTION PHASE",
+            as.numeric(difftime(Sys.time(), main_start_time, units = "secs"))
+        ))
+        return(invisible(list(
+            run_state = "failed",
+            fatal_issues = fatal_issues,
+            warning_issues = warning_issues,
+            objective_0 = preflight_result
+        )))
+    }
 
     # Run analysis for each dataset with progress tracking
     progressr::with_progress({
@@ -337,8 +537,9 @@ main_execution <- function() {
 
             tryCatch(
                 {
-                    results <- run_my_analysis(dataset_name)
-                    if (results$had_errors) had_errors <- TRUE
+                    results <- run_my_analysis(dataset_name, objectives_to_run = c(1, 2, 3, 4))
+                    fatal_issues <- c(fatal_issues, results$fatal_issues %||% character())
+                    warning_issues <- c(warning_issues, results$warning_issues %||% character())
                     
                     # Load the data directly for merging
                     tryCatch({
@@ -347,16 +548,18 @@ main_execution <- function() {
                             cohort_data[[dataset_name]] <- readRDS(data_path)
                             logger::log_info(sprintf("Loaded data for merging: %s (%d patients)", dataset_name, nrow(cohort_data[[dataset_name]])))
                         } else {
-                            logger::log_warn(sprintf("Data file not found for merging: %s", data_path))
+                            fatal_issues <<- append_issue(fatal_issues, sprintf("merge_input_missing:%s", data_path))
+                            logger::log_error(sprintf("Data file not found for merging: %s", data_path))
                         }
                     }, error = function(e) {
-                        logger::log_warn(sprintf("Error loading data for merging (%s): %s", dataset_name, e$message))
+                        fatal_issues <<- append_issue(fatal_issues, sprintf("merge_input_load:%s:%s", dataset_name, e$message))
+                        logger::log_error(sprintf("Error loading data for merging (%s): %s", dataset_name, e$message))
                     })
                     
                     logger::log_info(formatted(sprintf(">>> Dataset %d/%d completed: %s", i, length(datasets_to_analyze), dataset_name)))
                 },
                 error = function(e) {
-                    had_errors <<- TRUE
+                    fatal_issues <<- append_issue(fatal_issues, sprintf("dataset:%s:%s", dataset_name, e$message))
                     logger::log_error(formatted(sprintf("ERROR in dataset %s: %s", dataset_name, e$message)))
                 }
             )
@@ -376,19 +579,24 @@ main_execution <- function() {
             if (!is.null(full_data) && !is.null(restricted_data)) {
                 merge_baseline_tables_with_data(full_data, restricted_data, gksrs_only_data)
             } else {
-                logger::log_warn("Cannot merge tables: required cohort data not available")
+                fatal_issues <<- append_issue(fatal_issues, "merge_required_cohort_missing")
+                logger::log_error("Cannot merge tables: required cohort data not available")
             }
         } else {
-            logger::log_warn("Cannot merge tables: insufficient cohort data available")
+            fatal_issues <<- append_issue(fatal_issues, "merge_insufficient_cohort_data")
+            logger::log_error("Cannot merge tables: insufficient cohort data available")
         }
     }, error = function(e) {
-        had_errors <<- TRUE
+        fatal_issues <<- append_issue(fatal_issues, sprintf("merge_failure:%s", e$message))
         logger::log_error(formatted(sprintf("Error merging baseline tables: %s", e$message)))
     })
 
     # Summary banner
-    if (had_errors) {
+    run_state <- determine_run_state(unique(fatal_issues), unique(warning_issues))
+    if (identical(run_state, "failed")) {
         logger::log_error(">>> ANALYSES COMPLETED WITH ERRORS. Review logs for details.")
+    } else if (identical(run_state, "completed_with_warnings")) {
+        logger::log_warn(">>> ANALYSES COMPLETED WITH WARNINGS. Review feasibility notes and diagnostics.")
     } else {
         logger::log_info(">>> ALL ANALYSES COMPLETED SUCCESSFULLY!")
     }
@@ -400,5 +608,12 @@ main_execution <- function() {
     logger::log_info(sprintf(">>> COMPLETED %s (Duration: %.1f seconds)",
         "MAIN EXECUTION PHASE",
         as.numeric(difftime(Sys.time(), main_start_time, units = "secs"))
+    ))
+
+    invisible(list(
+        run_state = run_state,
+        fatal_issues = unique(fatal_issues),
+        warning_issues = unique(warning_issues),
+        objective_0 = preflight_result
     ))
 }

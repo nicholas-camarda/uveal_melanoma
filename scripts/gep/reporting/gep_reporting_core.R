@@ -221,6 +221,7 @@ create_mss_validation_excel_files <- function(standard_results, competing_result
         # Stack competing risks tables with a Timepoint column
         ci_df <- data.frame()
         csh_df <- data.frame()
+        feasibility_df <- data.frame()
         for (tp_name in names(competing_results)) {
             tp_results <- competing_results[[tp_name]]
             if (!is.null(tp_results$cumulative_incidence)) {
@@ -248,13 +249,48 @@ create_mss_validation_excel_files <- function(standard_results, competing_result
             if (!is.null(tp_results$cif_with_ci)) {
                 tmp <- tp_results$cif_with_ci
                 tmp$Timepoint <- tp_name
-                names(tmp) <- c("GEP_Class", "N", "CIF", "CI_Lower", "CI_Upper", "Timepoint")
                 cif_ci_df <- rbind(cif_ci_df, tmp)
+            }
+            if (!is.null(tp_results$feasibility)) {
+                if (!is.null(tp_results$feasibility$by_group) && nrow(tp_results$feasibility$by_group) > 0) {
+                    group_tmp <- tp_results$feasibility$by_group
+                    group_tmp$Timepoint <- tp_name
+                    group_tmp$CSC_Status <- tp_results$feasibility$models$cause_specific_cox$status %||% NA_character_
+                    group_tmp$CSC_Reason <- tp_results$feasibility$models$cause_specific_cox$reason %||% NA_character_
+                    group_tmp$FineGray_Status <- tp_results$feasibility$models$fine_gray$status %||% NA_character_
+                    group_tmp$FineGray_Reason <- tp_results$feasibility$models$fine_gray$reason %||% NA_character_
+                    group_tmp$CIF_CI_Status <- tp_results$feasibility$models$cif_with_ci$status %||% NA_character_
+                    group_tmp$CIF_CI_Reason <- tp_results$feasibility$models$cif_with_ci$reason %||% NA_character_
+                    feasibility_df <- rbind(feasibility_df, group_tmp)
+                } else {
+                    feasibility_df <- rbind(
+                        feasibility_df,
+                        data.frame(
+                            GEP_Class = NA_character_,
+                            n = NA_integer_,
+                            melanoma_deaths = NA_integer_,
+                            competing_deaths = NA_integer_,
+                            censored = NA_integer_,
+                            zero_melanoma_deaths = NA,
+                            zero_competing_deaths = NA,
+                            below_minimum_size = NA,
+                            Timepoint = tp_name,
+                            CSC_Status = tp_results$feasibility$models$cause_specific_cox$status %||% NA_character_,
+                            CSC_Reason = tp_results$feasibility$models$cause_specific_cox$reason %||% NA_character_,
+                            FineGray_Status = tp_results$feasibility$models$fine_gray$status %||% NA_character_,
+                            FineGray_Reason = tp_results$feasibility$models$fine_gray$reason %||% NA_character_,
+                            CIF_CI_Status = tp_results$feasibility$models$cif_with_ci$status %||% NA_character_,
+                            CIF_CI_Reason = tp_results$feasibility$models$cif_with_ci$reason %||% NA_character_,
+                            stringsAsFactors = FALSE
+                        )
+                    )
+                }
             }
         }
         if (nrow(ci_df) > 0) excel_sheets[["CompRisk_CIF"]] <- ci_df
         if (nrow(csh_df) > 0) excel_sheets[["CompRisk_CSC"]] <- csh_df
         if (nrow(cif_ci_df) > 0) excel_sheets[["CompRisk_CIF_with_CI"]] <- cif_ci_df
+        if (nrow(feasibility_df) > 0) excel_sheets[["CompRisk_Feasibility"]] <- feasibility_df
     }
     excel_path <- file.path(output_dir, paste0(prefix, "mss_validation_technical_details.xlsx"))
     write_gep_workbook(excel_sheets, excel_path)

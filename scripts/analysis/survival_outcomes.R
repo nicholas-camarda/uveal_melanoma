@@ -197,9 +197,37 @@ build_rmst_timepoint_table <- function(
         }, character(1))
     }
 
+    format_rmst_cell <- function(status, skip_reason, value, digits, skipped_label = "Skipped") {
+        if (identical(status, "skipped")) {
+            return(skipped_label)
+        }
+        if (identical(status, "failed")) {
+            return("Unexpected failure")
+        }
+        format_fixed(value, digits)
+    }
+
+    format_rmst_p_value_cell <- function(status, skip_reason, value, digits) {
+        if (identical(status, "skipped")) {
+            return(paste0("Skipped: ", skip_reason %||% "not feasible"))
+        }
+        if (identical(status, "failed")) {
+            return("Unexpected failure")
+        }
+        format_p_value(value, digits)
+    }
+
+    if (!"Analysis_Status" %in% names(rmst_results)) {
+        rmst_results$Analysis_Status <- "completed"
+    }
+    if (!"Skip_Reason" %in% names(rmst_results)) {
+        rmst_results$Skip_Reason <- NA_character_
+    }
+
     table_data <- rmst_results %>%
         dplyr::arrange(Time_Point_Years) %>%
         dplyr::mutate(
+            Analysis_Status = dplyr::coalesce(.data$Analysis_Status, "completed"),
             Time_Label = paste0(Time_Point_Years, "-year"),
             Group1_Value = dplyr::case_when(
                 display_unit == "months" ~ RMST_Group1_Months,
@@ -222,22 +250,58 @@ build_rmst_timepoint_table <- function(
         tibble::tibble(
             Row_Label = sprintf("%s (%s)", group1_label, unit_label),
             Time_Label = table_data$Time_Label,
-            Value = format_fixed(table_data$Group1_Value, digits_rmst)
+            Value = vapply(
+                seq_len(nrow(table_data)),
+                function(i) format_rmst_cell(
+                    status = table_data$Analysis_Status[[i]],
+                    skip_reason = table_data$Skip_Reason[[i]],
+                    value = table_data$Group1_Value[[i]],
+                    digits = digits_rmst
+                ),
+                character(1)
+            )
         ),
         tibble::tibble(
             Row_Label = sprintf("%s (%s)", group2_label, unit_label),
             Time_Label = table_data$Time_Label,
-            Value = format_fixed(table_data$Group2_Value, digits_rmst)
+            Value = vapply(
+                seq_len(nrow(table_data)),
+                function(i) format_rmst_cell(
+                    status = table_data$Analysis_Status[[i]],
+                    skip_reason = table_data$Skip_Reason[[i]],
+                    value = table_data$Group2_Value[[i]],
+                    digits = digits_rmst
+                ),
+                character(1)
+            )
         ),
         tibble::tibble(
             Row_Label = sprintf("RMST Difference (%s)", unit_label),
             Time_Label = table_data$Time_Label,
-            Value = format_fixed(table_data$Diff_Value, digits_diff)
+            Value = vapply(
+                seq_len(nrow(table_data)),
+                function(i) format_rmst_cell(
+                    status = table_data$Analysis_Status[[i]],
+                    skip_reason = table_data$Skip_Reason[[i]],
+                    value = table_data$Diff_Value[[i]],
+                    digits = digits_diff
+                ),
+                character(1)
+            )
         ),
         tibble::tibble(
             Row_Label = "RMST P-Value",
             Time_Label = table_data$Time_Label,
-            Value = format_p_value(table_data$RMST_P_Value, digits_p)
+            Value = vapply(
+                seq_len(nrow(table_data)),
+                function(i) format_rmst_p_value_cell(
+                    status = table_data$Analysis_Status[[i]],
+                    skip_reason = table_data$Skip_Reason[[i]],
+                    value = table_data$RMST_P_Value[[i]],
+                    digits = digits_p
+                ),
+                character(1)
+            )
         )
     ) %>%
         dplyr::mutate(Time_Label = factor(Time_Label, levels = time_levels))
@@ -268,6 +332,215 @@ extract_rmst_ci <- function(result_matrix, bound = c("lower", "upper")) {
     }
 
     suppressWarnings(as.numeric(result_matrix[1, matched_cols[1]]))
+}
+
+#' Initialize an empty RMST result table
+#'
+#' @return Data frame with the canonical RMST output schema, including analysis
+#'   status and skip metadata columns.
+initialize_rmst_results <- function() {
+    data.frame(
+        Time_Point_Years = numeric(),
+        Time_Point_Months = numeric(),
+        Analysis_Status = character(),
+        Skip_Reason = character(),
+        Group1_Name = character(),
+        RMST_Group1 = numeric(),
+        RMST_Group1_Months = numeric(),
+        RMST_Group1_Years = numeric(),
+        Group2_Name = character(),
+        RMST_Group2 = numeric(),
+        RMST_Group2_Months = numeric(),
+        RMST_Group2_Years = numeric(),
+        RMST_Difference = numeric(),
+        RMST_Difference_Months = numeric(),
+        RMST_Difference_Years = numeric(),
+        RMST_Difference_Lower_Months = numeric(),
+        RMST_Difference_Upper_Months = numeric(),
+        RMST_Difference_Lower_Years = numeric(),
+        RMST_Difference_Upper_Years = numeric(),
+        RMST_P_Value = numeric(),
+        Analysis_Type = character(),
+        stringsAsFactors = FALSE
+    )
+}
+
+#' Build one RMST result row with explicit feasibility metadata
+#'
+#' @param time_years Numeric RMST horizon in years.
+#' @param time_point Numeric RMST horizon in months.
+#' @param analysis_status Character scalar such as `completed`, `skipped`, or
+#'   `failed`.
+#' @param skip_reason Optional character scalar describing why a timepoint was
+#'   skipped.
+#' @param group1_name Character label for group 1.
+#' @param group2_name Character label for group 2.
+#' @param rmst_group1_months Numeric RMST estimate for group 1 in months.
+#' @param rmst_group2_months Numeric RMST estimate for group 2 in months.
+#' @param rmst_diff_months Numeric between-group RMST difference in months.
+#' @param ci_lower_months Numeric lower confidence bound in months.
+#' @param ci_upper_months Numeric upper confidence bound in months.
+#' @param rmst_p_value Numeric RMST p-value.
+#' @param analysis_type Character descriptor of the RMST analysis.
+#' @return One-row data frame matching the canonical RMST output schema.
+build_rmst_result_row <- function(time_years, time_point, analysis_status, skip_reason = NA_character_,
+                                  group1_name = NA_character_, group2_name = NA_character_,
+                                  rmst_group1_months = NA_real_, rmst_group2_months = NA_real_,
+                                  rmst_diff_months = NA_real_, ci_lower_months = NA_real_,
+                                  ci_upper_months = NA_real_, rmst_p_value = NA_real_,
+                                  analysis_type = NA_character_) {
+    data.frame(
+        Time_Point_Years = time_years,
+        Time_Point_Months = time_point,
+        Analysis_Status = analysis_status,
+        Skip_Reason = skip_reason,
+        Group1_Name = group1_name,
+        RMST_Group1 = rmst_group1_months,
+        RMST_Group1_Months = rmst_group1_months,
+        RMST_Group1_Years = ifelse(is.na(rmst_group1_months), NA_real_, round(rmst_group1_months / 12, 2)),
+        Group2_Name = group2_name,
+        RMST_Group2 = rmst_group2_months,
+        RMST_Group2_Months = rmst_group2_months,
+        RMST_Group2_Years = ifelse(is.na(rmst_group2_months), NA_real_, round(rmst_group2_months / 12, 2)),
+        RMST_Difference = rmst_diff_months,
+        RMST_Difference_Months = rmst_diff_months,
+        RMST_Difference_Years = ifelse(is.na(rmst_diff_months), NA_real_, round(rmst_diff_months / 12, 3)),
+        RMST_Difference_Lower_Months = ci_lower_months,
+        RMST_Difference_Upper_Months = ci_upper_months,
+        RMST_Difference_Lower_Years = ifelse(is.na(ci_lower_months), NA_real_, round(ci_lower_months / 12, 3)),
+        RMST_Difference_Upper_Years = ifelse(is.na(ci_upper_months), NA_real_, round(ci_upper_months / 12, 3)),
+        RMST_P_Value = rmst_p_value,
+        Analysis_Type = analysis_type,
+        stringsAsFactors = FALSE
+    )
+}
+
+#' Assess whether RMST can be fit at a requested horizon
+#'
+#' @param data Data frame containing time, event, and grouping columns.
+#' @param time_var Character name of the follow-up time column in months.
+#' @param event_var Character name of the event indicator column.
+#' @param group_var Character name of the grouping column.
+#' @param time_point Numeric requested RMST horizon in months.
+#' @return Named list containing `status`, `skip_reason`, filtered `data`, and
+#'   grouping metadata for downstream RMST fitting.
+assess_rmst_feasibility <- function(data, time_var, event_var, group_var, time_point) {
+    complete_data <- data %>%
+        dplyr::filter(
+            !is.na(.data[[time_var]]),
+            !is.na(.data[[event_var]]),
+            !is.na(.data[[group_var]])
+        ) %>%
+        as.data.frame()
+
+    if (nrow(complete_data) == 0) {
+        return(list(
+            status = "skipped",
+            skip_reason = "no_complete_case_data",
+            data = complete_data
+        ))
+    }
+
+    if (group_var == "treatment_group") {
+        complete_data[[group_var]] <- factor(
+            as.character(complete_data[[group_var]]),
+            levels = TREATMENT_FACTOR_LEVELS
+        )
+    } else {
+        complete_data[[group_var]] <- factor(complete_data[[group_var]])
+    }
+    complete_data[[group_var]] <- droplevels(complete_data[[group_var]])
+    factor_levels <- levels(complete_data[[group_var]])
+
+    if (length(factor_levels) < 2) {
+        return(list(
+            status = "skipped",
+            skip_reason = "insufficient_groups_after_filtering",
+            data = complete_data,
+            factor_levels = factor_levels
+        ))
+    }
+    if (length(factor_levels) != 2) {
+        return(list(
+            status = "skipped",
+            skip_reason = "non_binary_grouping",
+            data = complete_data,
+            factor_levels = factor_levels
+        ))
+    }
+
+    max_followup_by_group <- tapply(
+        complete_data[[time_var]],
+        complete_data[[group_var]],
+        max,
+        na.rm = TRUE
+    )
+    max_followup_by_group <- max_followup_by_group[!is.na(max_followup_by_group)]
+    if (length(max_followup_by_group) != 2) {
+        return(list(
+            status = "skipped",
+            skip_reason = "missing_group_followup",
+            data = complete_data,
+            factor_levels = factor_levels
+        ))
+    }
+
+    feasible_tau <- min(max_followup_by_group)
+    if (time_point > feasible_tau) {
+        return(list(
+            status = "skipped",
+            skip_reason = sprintf("tau_exceeds_followup_minimum(%.1f>%.1f)", time_point, feasible_tau),
+            data = complete_data,
+            factor_levels = factor_levels,
+            feasible_tau = feasible_tau
+        ))
+    }
+
+    list(
+        status = "completed",
+        skip_reason = NA_character_,
+        data = complete_data,
+        factor_levels = factor_levels,
+        group_binary = ifelse(complete_data[[group_var]] == factor_levels[2], 1, 0)
+    )
+}
+
+#' Write a text artifact explaining why RMST summary outputs were skipped
+#'
+#' @param rmst_dir Directory where the skip note should be written.
+#' @param prefix Filename prefix for the output artifact.
+#' @param ylab Character outcome label used in filenames and explanatory text.
+#' @param rmst_results RMST result table containing status metadata.
+#' @return `NULL`, invoked for its side effect of writing a text file.
+write_rmst_skip_artifact <- function(rmst_dir, prefix, ylab, rmst_results) {
+    completed_rows <- rmst_results %>%
+        dplyr::filter(Analysis_Status == "completed")
+    skipped_rows <- rmst_results %>%
+        dplyr::filter(Analysis_Status == "skipped")
+
+    note_lines <- c(
+        "RMST Summary Not Generated",
+        "",
+        paste0("Outcome: ", ylab),
+        paste0("Completed timepoints: ", nrow(completed_rows)),
+        paste0("Skipped timepoints: ", nrow(skipped_rows)),
+        "",
+        "RMST plots and combined summary tables were not created because no timepoint passed the feasibility screen.",
+        "See the companion RMST analysis workbook for timepoint-level skip reasons."
+    )
+
+    if (nrow(skipped_rows) > 0) {
+        skip_lines <- sprintf(
+            "  - %s-year: %s",
+            skipped_rows$Time_Point_Years,
+            skipped_rows$Skip_Reason
+        )
+        note_lines <- c(note_lines, "", "Skip reasons:", skip_lines)
+    }
+
+    note_path <- file.path(rmst_dir, paste0(prefix, make_filename_safe(ylab), "_rmst_summary_skipped.txt"))
+    writeLines(note_lines, note_path)
+    logger::log_info(sprintf("RMST skip note saved: %s", basename(note_path)))
 }
 
 determine_survival_output_dir <- function(ylab, output_dirs) {
@@ -802,6 +1075,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         # Return NULL to prevent further errors
         NULL
     })
+    rmst_unexpected_failures <- character()
     
     if (is.null(surv_summary)) {
         logger::log_warn("Survival summary failed - skipping summary statistics and RMST analysis")
@@ -813,25 +1087,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             upper_pct = numeric(),
             stringsAsFactors = FALSE
         )
-        rmst_results <- data.frame(
-            Time_Point_Years = numeric(),
-            Time_Point_Months = numeric(),
-            Group1_Name = character(),
-            RMST_Group1_Months = numeric(),
-            RMST_Group1_Years = numeric(),
-            Group2_Name = character(),
-            RMST_Group2_Months = numeric(),
-            RMST_Group2_Years = numeric(),
-            RMST_Difference_Months = numeric(),
-            RMST_Difference_Years = numeric(),
-            RMST_Difference_Lower_Months = numeric(),
-            RMST_Difference_Upper_Months = numeric(),
-            RMST_Difference_Lower_Years = numeric(),
-            RMST_Difference_Upper_Years = numeric(),
-            RMST_P_Value = numeric(),
-            Analysis_Type = character(),
-            stringsAsFactors = FALSE
-        )
+        rmst_results <- initialize_rmst_results()
 
         rmst_survival_summary <- data.frame()
     } else {
@@ -847,196 +1103,133 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
 
         # Initialize RMST results table
         rmst_data <- km_data
-        rmst_results <- data.frame(
-            Time_Point_Years = numeric(),
-            Time_Point_Months = numeric(),
-            Group1_Name = character(),
-            RMST_Group1_Months = numeric(),
-            RMST_Group1_Years = numeric(),
-            Group2_Name = character(),
-            RMST_Group2_Months = numeric(),
-            RMST_Group2_Years = numeric(),
-            RMST_Difference_Months = numeric(),
-            RMST_Difference_Years = numeric(),
-            RMST_Difference_Lower_Months = numeric(),
-            RMST_Difference_Upper_Months = numeric(),
-            RMST_Difference_Lower_Years = numeric(),
-            RMST_Difference_Upper_Years = numeric(),
-            RMST_P_Value = numeric(),
-            Analysis_Type = character(),
-            stringsAsFactors = FALSE
-        )
-
+        rmst_results <- initialize_rmst_results()
         # Calculate RMST for each time point
         logger::log_info(sprintf("DEBUG: Starting RMST analysis for %d time points", length(valid_time_points)))
         for (time_point in valid_time_points) {
             time_years <- round(time_point / 12, 1)
             logger::log_info(sprintf("DEBUG: Processing RMST for %s years (%.1f months)", time_years, time_point))
+            rmst_feasibility <- assess_rmst_feasibility(
+                data = rmst_data,
+                time_var = time_var,
+                event_var = event_var,
+                group_var = plot_group_var,
+                time_point = time_point
+            )
+
+            if (!identical(rmst_feasibility$status, "completed")) {
+                logger::log_info(sprintf(
+                    "Skipping RMST at %.1f years for %s: %s",
+                    time_years,
+                    ylab,
+                    rmst_feasibility$skip_reason
+                ))
+                rmst_results <- rbind(
+                    rmst_results,
+                    build_rmst_result_row(
+                        time_years = time_years,
+                        time_point = time_point,
+                        analysis_status = "skipped",
+                        skip_reason = rmst_feasibility$skip_reason,
+                        analysis_type = paste0("Skipped RMST at ", time_years, " years")
+                    )
+                )
+                next
+            }
+
+            rmst_complete_data <- rmst_feasibility$data
+            factor_levels <- rmst_feasibility$factor_levels
+            group1_name <- as.character(factor_levels[1])
+            group2_name <- as.character(factor_levels[2])
+
             rmst_result <- tryCatch(
                 {
-                    # Handle RMST for any number of groups (binary or multi-group)
-                    unique_groups <- unique(rmst_data[[plot_group_var]])
-                    logger::log_info(sprintf("DEBUG: Unique groups for RMST: %s", paste(unique_groups, collapse = ", ")))
-                    
-                    if (length(unique_groups) == 2) {
-                        # Binary comparison: use 0/1 coding based on **treatment** factor levels
-                        # We know for this pipeline that treatment_group should always be
-                        # coded with PBT as reference and GKSRS as comparison. Any deviation
-                        # should be coerced back to that convention rather than inferred.
-
-                        if (plot_group_var == "treatment_group") {
-                            rmst_data[[plot_group_var]] <- factor(
-                                as.character(rmst_data[[plot_group_var]]),
-                                levels = TREATMENT_FACTOR_LEVELS
-                            )
-                            factor_levels <- TREATMENT_FACTOR_LEVELS
-                        } else {
-                            # For non-treatment groupings (e.g., GEP strata), fall back to
-                            # simple factor coercion but keep the natural ordering.
-                            rmst_data[[plot_group_var]] <- factor(rmst_data[[plot_group_var]])
-                            factor_levels <- levels(rmst_data[[plot_group_var]])
-                        }
-
-                        # Require at least two levels before proceeding
-                        if (length(factor_levels) < 2) {
-                            logger::log_warn(sprintf(
-                                "RMST: group_var '%s' has <2 levels after coercion; skipping RMST at time_point=%.1f months",
-                                plot_group_var, time_point
-                            ))
-                            return(NULL)
-                        }
-
-                        group_binary <- ifelse(rmst_data[[plot_group_var]] == factor_levels[2], 1, 0)
-                        logger::log_info(sprintf("DEBUG: Running RMST for binary comparison: %s (arm=0) vs %s (arm=1)", factor_levels[1], factor_levels[2]))
-                        
-                        rmst2(
-                            time = rmst_data[[time_var]],
-                            status = rmst_data[[event_var]],
-                            arm = group_binary,
-                            tau = time_point
-                        )
-                    } else {
-                        # Non-binary groups: skip RMST analysis entirely and log informative message
-                        logger::log_info(sprintf("DEBUG: Skipping RMST analysis - non-binary grouping detected (%d groups: %s). RMST analysis requires exactly 2 groups.", 
-                                               length(unique_groups), paste(unique_groups, collapse = ", ")))
-                        NULL
-                    }
+                    logger::log_info(sprintf(
+                        "DEBUG: Running RMST for binary comparison: %s (arm=0) vs %s (arm=1)",
+                        group1_name,
+                        group2_name
+                    ))
+                    rmst2(
+                        time = rmst_complete_data[[time_var]],
+                        status = rmst_complete_data[[event_var]],
+                        arm = rmst_feasibility$group_binary,
+                        tau = time_point
+                    )
                 },
                 error = function(e) {
+                    rmst_unexpected_failures <<- c(
+                        rmst_unexpected_failures,
+                        sprintf("%.1f-year:%s", time_years, e$message)
+                    )
                     logger::log_error(sprintf("ERROR in RMST calculation for %.1f years: %s", time_years, e$message))
                     NULL
                 }
             )
-            if (!is.null(rmst_result)) {
-                # Get group names for clear labeling
-                if (plot_group_var == "treatment_group") {
-                    # We know the correct order from config: PBT (arm 0), GKSRS (arm 1)
-                    factor_levels <- TREATMENT_FACTOR_LEVELS
-                } else {
-                    factor_levels <- levels(rmst_data[[plot_group_var]])
-                    if (is.null(factor_levels) || length(factor_levels) == 0) {
-                        rmst_data[[plot_group_var]] <- factor(rmst_data[[plot_group_var]])
-                        factor_levels <- levels(rmst_data[[plot_group_var]])
-                    }
-                }
 
-                if (length(factor_levels) < 2) {
-                    logger::log_warn(sprintf(
-                        "RMST row build: group_var '%s' has <2 levels; skipping RMST row for time_point=%.1f months",
-                        plot_group_var, time_point
-                    ))
-                    next
-                }
-
-                group1_name <- as.character(factor_levels[1])  # arm=0 (reference, e.g., PBT)
-                group2_name <- as.character(factor_levels[2])  # arm=1 (comparison, e.g., GKSRS)
-                
-                # Calculate RMST values
-                rmst_group1_months <- round(rmst_result$RMST.arm0$rmst[1], 2)
-                rmst_group2_months <- round(rmst_result$RMST.arm1$rmst[1], 2)
-                rmst_diff_months <- round(rmst_result$unadjusted.result[1, 1], 2)
-                rmst_diff_months <- ifelse(abs(rmst_diff_months) < 1e-10, 0, rmst_diff_months)
-                rmst_diff_years <- round(rmst_diff_months / 12, 3)
-                rmst_diff_years <- ifelse(abs(rmst_diff_years) < 1e-10, 0, rmst_diff_years)
-
-                ci_lower_months <- extract_rmst_ci(rmst_result$unadjusted.result, bound = "lower")
-                ci_upper_months <- extract_rmst_ci(rmst_result$unadjusted.result, bound = "upper")
-                if (is.na(ci_lower_months)) {
-                    ci_lower_months <- rmst_diff_months
-                }
-                if (is.na(ci_upper_months)) {
-                    ci_upper_months <- rmst_diff_months
-                }
-                ci_lower_months <- round(ci_lower_months, 2)
-                ci_upper_months <- round(ci_upper_months, 2)
-                ci_lower_years <- round(ci_lower_months / 12, 3)
-                ci_upper_years <- round(ci_upper_months / 12, 3)
-
+            if (is.null(rmst_result)) {
                 rmst_results <- rbind(
                     rmst_results,
-                    data.frame(
-                        Time_Point_Years = time_years,
-                        Time_Point_Months = time_point,
-                        Group1_Name = group1_name,
-                        RMST_Group1_Months = rmst_group1_months,
-                        RMST_Group1_Years = round(rmst_group1_months / 12, 2),
-                        Group2_Name = group2_name,
-                        RMST_Group2_Months = rmst_group2_months,
-                        RMST_Group2_Years = round(rmst_group2_months / 12, 2),
-                        RMST_Difference_Months = rmst_diff_months,
-                        RMST_Difference_Years = rmst_diff_years,
-                        RMST_Difference_Lower_Months = ci_lower_months,
-                        RMST_Difference_Upper_Months = ci_upper_months,
-                        RMST_Difference_Lower_Years = ci_lower_years,
-                        RMST_Difference_Upper_Years = ci_upper_years,
-                        RMST_P_Value = round(rmst_result$unadjusted.result[1, 4], 4),
-                        Analysis_Type = paste0("Mean survival up to ", time_years, " years"),
-                        stringsAsFactors = FALSE
+                    build_rmst_result_row(
+                        time_years = time_years,
+                        time_point = time_point,
+                        analysis_status = "failed",
+                        skip_reason = "unexpected_rmst_error",
+                        group1_name = group1_name,
+                        group2_name = group2_name,
+                        analysis_type = paste0("Failed RMST at ", time_years, " years")
                     )
                 )
-            } else {
-                # Check if we skipped RMST due to non-binary grouping
-                unique_groups <- unique(rmst_data[[plot_group_var]])
-                analysis_type_msg <- if (length(unique_groups) < 2) {
-                    "Not applicable (insufficient groups)"
-                } else if (length(unique_groups) > 2) {
-                    "Not applicable (non-binary grouping)"
-                } else {
-                    "Analysis failed"
-                }
-                rmst_results <- rbind(
-                    rmst_results,
-                    data.frame(
-                        Time_Point_Years = time_years,
-                        Time_Point_Months = time_point,
-                        Group1_Name = NA_character_,
-                        RMST_Group1_Months = NA,
-                        RMST_Group1_Years = NA,
-                        Group2_Name = NA_character_,
-                        RMST_Group2_Months = NA,
-                        RMST_Group2_Years = NA,
-                        RMST_Difference_Months = NA,
-                        RMST_Difference_Years = NA,
-                        RMST_Difference_Lower_Months = NA,
-                        RMST_Difference_Upper_Months = NA,
-                        RMST_Difference_Lower_Years = NA,
-                        RMST_Difference_Upper_Years = NA,
-                        RMST_P_Value = NA,
-                        Analysis_Type = analysis_type_msg,
-                        stringsAsFactors = FALSE
-                    )
-                )
+                next
             }
+
+            rmst_group1_months <- round(rmst_result$RMST.arm0$rmst[1], 2)
+            rmst_group2_months <- round(rmst_result$RMST.arm1$rmst[1], 2)
+            rmst_diff_months <- round(rmst_result$unadjusted.result[1, 1], 2)
+            rmst_diff_months <- ifelse(abs(rmst_diff_months) < 1e-10, 0, rmst_diff_months)
+
+            ci_lower_months <- extract_rmst_ci(rmst_result$unadjusted.result, bound = "lower")
+            ci_upper_months <- extract_rmst_ci(rmst_result$unadjusted.result, bound = "upper")
+            if (is.na(ci_lower_months)) {
+                ci_lower_months <- rmst_diff_months
+            }
+            if (is.na(ci_upper_months)) {
+                ci_upper_months <- rmst_diff_months
+            }
+            ci_lower_months <- round(ci_lower_months, 2)
+            ci_upper_months <- round(ci_upper_months, 2)
+
+            rmst_results <- rbind(
+                rmst_results,
+                build_rmst_result_row(
+                    time_years = time_years,
+                    time_point = time_point,
+                    analysis_status = "completed",
+                    group1_name = group1_name,
+                    group2_name = group2_name,
+                    rmst_group1_months = rmst_group1_months,
+                    rmst_group2_months = rmst_group2_months,
+                    rmst_diff_months = rmst_diff_months,
+                    ci_lower_months = ci_lower_months,
+                    ci_upper_months = ci_upper_months,
+                    rmst_p_value = round(rmst_result$unadjusted.result[1, 4], 4),
+                    analysis_type = paste0("Mean survival up to ", time_years, " years")
+                )
+            )
         }
     }
-    rmst_survival_summary <- if (exists("rmst_results", inherits = FALSE)) {
-        build_rmst_survival_summary(rmst_results, surv_rates, group_var = plot_group_var)
+    completed_rmst_results <- if (exists("rmst_results", inherits = FALSE)) {
+        rmst_results %>% dplyr::filter(Analysis_Status == "completed")
+    } else {
+        initialize_rmst_results()
+    }
+    rmst_survival_summary <- if (nrow(completed_rmst_results) > 0) {
+        build_rmst_survival_summary(completed_rmst_results, surv_rates, group_var = plot_group_var)
     } else {
         data.frame()
     }
 
     rmst_timepoint_table <- tibble::tibble()
-    if (nrow(rmst_results) > 0) {
+    if (nrow(completed_rmst_results) > 0) {
         first_label <- function(values, fallback) {
             valid_idx <- which(!is.na(values) & values != "")
             if (length(valid_idx) == 0) {
@@ -1044,12 +1237,12 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             }
             as.character(values[valid_idx[1]])
         }
-        group1_label <- first_label(rmst_results$Group1_Name, "Group 1")
-        group2_label <- first_label(rmst_results$Group2_Name, "Group 2")
+        group1_label <- first_label(completed_rmst_results$Group1_Name, "Group 1")
+        group2_label <- first_label(completed_rmst_results$Group2_Name, "Group 2")
 
         rmst_timepoint_table <- tryCatch(
             build_rmst_timepoint_table(
-                rmst_results = rmst_results,
+                rmst_results = completed_rmst_results,
                 group1_label = group1_label,
                 group2_label = group2_label,
                 display_unit = "months",
@@ -1078,8 +1271,12 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         time_label <- paste0(rmst_results$Time_Point_Years[i], "-year")
         p_val <- rmst_results$RMST_P_Value[i]
         if (time_label %in% names(surv_rates_wide)) {
-            rmst_pvalue_row[[time_label]] <- if (is.na(p_val)) {
-                "Analysis failed"
+            rmst_pvalue_row[[time_label]] <- if (identical(rmst_results$Analysis_Status[i], "skipped")) {
+                paste0("Skipped: ", rmst_results$Skip_Reason[i])
+            } else if (identical(rmst_results$Analysis_Status[i], "failed")) {
+                "Unexpected failure"
+            } else if (is.na(p_val)) {
+                "NA"
             } else if (p_val < 0.0001) {
                 "<0.0001"
             } else {
@@ -1099,7 +1296,15 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             NA_real_
         }
         if (time_label %in% names(surv_rates_wide)) {
-            rmst_diff_row[[time_label]] <- if (is.na(rmst_diff)) "NA" else sprintf("%.2f", rmst_diff)
+            rmst_diff_row[[time_label]] <- if (identical(rmst_results$Analysis_Status[i], "skipped")) {
+                "Skipped"
+            } else if (identical(rmst_results$Analysis_Status[i], "failed")) {
+                "Failed"
+            } else if (is.na(rmst_diff)) {
+                "NA"
+            } else {
+                sprintf("%.2f", rmst_diff)
+            }
         }
     }
     surv_rates_wide_with_rmst <- dplyr::bind_rows(
@@ -1120,37 +1325,34 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             surv_rates_wide_with_rmst,
             path = file.path(summary_dir, paste0(prefix, make_filename_safe(ylab), "_survival_rates_wide.xlsx"))
         )
-        # Only save RMST file if there's actual RMST data (not just "Not applicable" rows)
-        rmst_has_data <- nrow(rmst_results) > 0 && any(
-            (!is.na(rmst_results$RMST_P_Value) & !grepl("Not applicable", rmst_results$Analysis_Type)) |
-                (!is.na(rmst_results$RMST_Group1_Months) & !is.na(rmst_results$RMST_Group2_Months))
-        )
-        if (rmst_has_data) {
-            rmst_dir <- ensure_output_dir(resolve_obj4_output_dir(output_dirs, output_dir, "rmst"))
+        rmst_dir <- ensure_output_dir(resolve_obj4_output_dir(output_dirs, output_dir, "rmst"))
+        rmst_has_completed_results <- nrow(completed_rmst_results) > 0
+        if (nrow(rmst_results) > 0) {
             writexl::write_xlsx(
                 rmst_results,
                 path = file.path(rmst_dir, paste0(prefix, make_filename_safe(ylab), "_rmst_analysis.xlsx"))
             )
             logger::log_info(sprintf("RMST analysis file saved: %s", paste0(prefix, make_filename_safe(ylab), "_rmst_analysis.xlsx")))
         } else {
-            logger::log_info(sprintf("Skipping RMST file creation - no valid RMST data available for %s", ylab))
+            logger::log_info(sprintf("Skipping RMST file creation - no RMST rows generated for %s", ylab))
         }
-        if (rmst_has_data && nrow(rmst_survival_summary) > 0) {
-            rmst_dir <- ensure_output_dir(resolve_obj4_output_dir(output_dirs, output_dir, "rmst"))
+        if (rmst_has_completed_results && nrow(rmst_survival_summary) > 0) {
             combined_path <- file.path(rmst_dir, paste0(prefix, make_filename_safe(ylab), "_survival_rmst_summary.xlsx"))
             writexl::write_xlsx(rmst_survival_summary, path = combined_path)
             logger::log_info(sprintf("Survival + RMST summary saved: %s", basename(combined_path)))
-        } else if (!rmst_has_data) {
+        } else if (nrow(rmst_results) > 0) {
             logger::log_info(sprintf(
-                "Skipping survival + RMST summary for %s - no valid RMST data (likely non-binary grouping)",
+                "Skipping survival + RMST summary for %s - no feasible RMST timepoints completed",
                 ylab
             ))
+            write_rmst_skip_artifact(rmst_dir, prefix, ylab, rmst_results)
         }
-        if (rmst_has_data && nrow(rmst_timepoint_table) > 0) {
-            rmst_dir <- ensure_output_dir(resolve_obj4_output_dir(output_dirs, output_dir, "rmst"))
+        if (rmst_has_completed_results && nrow(rmst_timepoint_table) > 0) {
             rmst_table_path <- file.path(rmst_dir, paste0(prefix, make_filename_safe(ylab), "_rmst_timepoint_table.xlsx"))
             writexl::write_xlsx(rmst_timepoint_table, path = rmst_table_path)
             logger::log_info(sprintf("RMST timepoint table saved: %s", basename(rmst_table_path)))
+        } else if (nrow(rmst_results) > 0 && !rmst_has_completed_results) {
+            logger::log_info(sprintf("RMST timepoint table skipped for %s - all timepoints were infeasible", ylab))
         }
     }
 
@@ -1267,10 +1469,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         ylab,
         nrow(rmst_results),
         if (nrow(rmst_results) > 0) {
-            any(
-                (!is.na(rmst_results$RMST_P_Value) & !grepl("Not applicable", rmst_results$Analysis_Type)) |
-                    (!is.na(rmst_results$RMST_Group1_Months) & !is.na(rmst_results$RMST_Group2_Months))
-            )
+            any(rmst_results$Analysis_Status == "completed", na.rm = TRUE)
         } else {
             FALSE
         }
@@ -1287,7 +1486,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         rmst_timepoint_table = rmst_timepoint_table,
         rmst_plot = tryCatch({
             # Only generate RMST plot if we have any RMST rows; downstream handles missing pieces
-            rmst_has_rows <- nrow(rmst_results) > 0
+            rmst_has_rows <- nrow(completed_rmst_results) > 0
             if (!rmst_has_rows) {
                 logger::log_info(sprintf("Skipping RMST plot generation - no RMST rows available for %s", ylab))
                 return(NULL)
@@ -1304,7 +1503,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             group1_name <- as.character(factor_levels[1])
             group2_name <- as.character(factor_levels[2])
             
-            plot_rmst_pvalue_progression(rmst_results, ylab, output_dirs, prefix, group1_name, group2_name, plot_group_var)
+            plot_rmst_pvalue_progression(completed_rmst_results, ylab, output_dirs, prefix, group1_name, group2_name, plot_group_var)
         }, error = function(e) {
             logger::log_warn(sprintf("RMST plot generation failed: %s", e$message))
             NULL
@@ -1313,7 +1512,8 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         cox_table = cox_result$table,
         ph_diagnostics = NULL,
         diagnostics = cox_result$diagnostics,
-        hazard_ratio_summary = hazard_ratio_summary
+        hazard_ratio_summary = hazard_ratio_summary,
+        unexpected_failures = rmst_unexpected_failures %||% character()
     )
 }
 
