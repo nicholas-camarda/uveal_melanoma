@@ -122,6 +122,7 @@ source(here("scripts", "utils", "model_utilities.R"))
 source(here("scripts", "utils", "color_palettes.R"))
 source(here("scripts", "utils", "cohort_summary_export.R"))
 source(here("scripts", "utils", "vision_helpers.R"))
+source(here("scripts", "utils", "plot_utilities.R"))
  
  # Source the extreme estimate handling utilities
 source(here("scripts", "utils", "extreme_estimate_handling.R"))

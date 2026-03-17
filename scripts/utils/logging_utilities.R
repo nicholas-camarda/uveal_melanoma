@@ -247,12 +247,43 @@ format_log_context <- function(compact = TRUE, max_width = 40) {
 
 #' Set or update global log context
 #'
-#' @param cohort objective subobjective character values or NULL to leave unchanged
-set_log_context <- function(cohort = NULL, objective = NULL, subobjective = NULL) {
-    ctx <- getOption(".um_log_context", default = list())
-    if (!is.null(cohort)) ctx$cohort <- cohort
-    if (!is.null(objective)) ctx$objective <- objective
-    if (!is.null(subobjective)) ctx$subobjective <- subobjective
+#' @param cohort Character value for the cohort context. With `replace = FALSE`,
+#'   `NULL` leaves the current field unchanged. With `replace = TRUE`, `NULL`
+#'   removes the field from the context.
+#' @param objective Character value for the objective context. With
+#'   `replace = FALSE`, `NULL` leaves the current field unchanged. With
+#'   `replace = TRUE`, `NULL` removes the field from the context.
+#' @param subobjective Character value for the subobjective context. With
+#'   `replace = FALSE`, `NULL` leaves the current field unchanged. With
+#'   `replace = TRUE`, `NULL` removes the field from the context.
+#' @param replace Logical; if `TRUE`, rebuild the context from the supplied
+#'   arguments instead of updating the current context in place.
+#' @return Invisibly returns the updated context list.
+set_log_context <- function(cohort = NULL, objective = NULL, subobjective = NULL, replace = FALSE) {
+    ctx <- if (isTRUE(replace)) {
+        list()
+    } else {
+        getOption(".um_log_context", default = list())
+    }
+
+    if (!is.null(cohort)) {
+        ctx$cohort <- cohort
+    } else if (isTRUE(replace)) {
+        ctx$cohort <- NULL
+    }
+
+    if (!is.null(objective)) {
+        ctx$objective <- objective
+    } else if (isTRUE(replace)) {
+        ctx$objective <- NULL
+    }
+
+    if (!is.null(subobjective)) {
+        ctx$subobjective <- subobjective
+    } else if (isTRUE(replace)) {
+        ctx$subobjective <- NULL
+    }
+
     options(.um_log_context = ctx)
     invisible(ctx)
 }
@@ -260,10 +291,23 @@ set_log_context <- function(cohort = NULL, objective = NULL, subobjective = NULL
 #' Evaluate an expression with a temporary log context
 #'
 #' Restores the previous context on exit.
-with_log_context <- function(cohort = NULL, objective = NULL, subobjective = NULL, expr) {
+#'
+#' @param cohort Character value for the cohort context.
+#' @param objective Character value for the objective context.
+#' @param subobjective Character value for the subobjective context.
+#' @param replace Logical; if `TRUE`, replace the existing context for the
+#'   duration of the expression instead of updating it in place.
+#' @param expr Expression to evaluate with the temporary context.
+#' @return Invisibly returns the evaluated expression result.
+with_log_context <- function(cohort = NULL, objective = NULL, subobjective = NULL, replace = FALSE, expr) {
     old <- getOption(".um_log_context", default = list())
     on.exit(options(.um_log_context = old), add = TRUE)
-    set_log_context(cohort = cohort, objective = objective, subobjective = subobjective)
+    set_log_context(
+        cohort = cohort,
+        objective = objective,
+        subobjective = subobjective,
+        replace = replace
+    )
     result <- force(expr)
     invisible(result)
 }

@@ -319,6 +319,65 @@ restore_gep_display_variables <- function(data, dataset_name = NULL, variables =
     restore_precollapse_variables(data, dataset_name = dataset_name, variables = variables)
 }
 
+#' Harmonize gtsummary headers across tables before stacking
+#'
+#' Uses the first table as the reference header map so intentionally stacked
+#' sections share the same column labels and can be stacked quietly.
+#'
+#' @param tbls List of gtsummary tables.
+#' @return List of gtsummary tables with aligned headers when possible.
+harmonize_tbl_stack_headers <- function(tbls) {
+    if (length(tbls) <= 1) {
+        return(tbls)
+    }
+
+    reference_header <- tbls[[1]]$table_styling$header %||% NULL
+    if (is.null(reference_header) || nrow(reference_header) == 0) {
+        return(tbls)
+    }
+
+    lapply(seq_along(tbls), function(tbl_idx) {
+        tbl <- tbls[[tbl_idx]]
+        if (tbl_idx == 1) {
+            return(tbl)
+        }
+
+        table_header <- tbl$table_styling$header %||% NULL
+        if (is.null(table_header) || nrow(table_header) == 0) {
+            return(tbl)
+        }
+
+        common_columns <- intersect(reference_header$column, table_header$column)
+        if (length(common_columns) == 0) {
+            return(tbl)
+        }
+
+        desired_labels <- reference_header$label[match(common_columns, reference_header$column)]
+        current_labels <- table_header$label[match(common_columns, table_header$column)]
+        changed_columns <- common_columns[!is.na(desired_labels) & desired_labels != current_labels]
+
+        if (length(changed_columns) == 0) {
+            return(tbl)
+        }
+
+        header_updates <- stats::setNames(
+            as.list(desired_labels[match(changed_columns, common_columns)]),
+            changed_columns
+        )
+
+        do.call(gtsummary::modify_header, c(list(x = tbl), header_updates))
+    })
+}
+
+#' Stack gtsummary tables quietly after aligning shared headers
+#'
+#' @param tbls List of gtsummary tables to stack.
+#' @return A single stacked gtsummary table.
+quiet_tbl_stack <- function(tbls) {
+    harmonized_tbls <- harmonize_tbl_stack_headers(tbls)
+    gtsummary::tbl_stack(tbls = harmonized_tbls, quiet = TRUE)
+}
+
 build_merged_baseline_cohort_table <- function(data, dataset_name = NULL) {
     vars_to_summarize <- BASELINE_VARIABLES_TO_SUMMARIZE
     variable_labels <- get_variable_labels()
@@ -1322,7 +1381,7 @@ merge_adverse_events_tables <- function(full_cohort_data, restricted_cohort_data
                         c(list(vision_change_tbl, line_change_summary_tbl, line_change_bucket_tbl), list(base_tbl))
                     )
 
-                    return(tbl_stack(stacked_tables))
+                    return(quiet_tbl_stack(stacked_tables))
                 }
 
                 base_tbl

@@ -1018,6 +1018,9 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         size = 1.2 * plot_scale           # survival line thickness (scaled larger)
     )
 
+    surv_plot$plot <- remove_plot_scales(surv_plot$plot, aesthetics = c("colour", "color", "y"))
+    surv_plot$table <- remove_plot_scales(surv_plot$table, aesthetics = c("y"))
+
     legend_override <- NULL
     if (length(deemphasised_levels) > 0) {
         if (!is.null(surv_plot$plot$data)) {

@@ -469,7 +469,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
         list(tbl_summary_obj, line_change_summary_tbl, line_change_bucket_tbl)
     )
 
-    combined_tbl <- tbl_stack(tbls = stacked_tbls) %>%
+    combined_tbl <- quiet_tbl_stack(tbls = stacked_tbls) %>%
         modify_caption("Vision changes overview") %>%
         modify_table_styling(
             columns = "p.value",
@@ -506,7 +506,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
     )
 
     if (length(snellen_section_tbls) > 0) {
-        snellen_combo_tbl <- tbl_stack(snellen_section_tbls) %>%
+        snellen_combo_tbl <- quiet_tbl_stack(snellen_section_tbls) %>%
             modify_caption("Snellen Line Change Descriptive Summary")
 
         save_gt_html(

@@ -131,6 +131,26 @@ collect_unexpected_failure_signals <- function(x, path = "root") {
     unique(fatal_issues)
 }
 
+#' Run Objective 0 with a global log context
+#'
+#' Objective 0 is a workflow-wide preflight gate, so its logs should carry the
+#' objective tag but never inherit a cohort-specific tag from prior or surrounding
+#' analyses.
+#'
+#' @return The list returned by `run_objective_0()`.
+run_objective_0_with_global_context <- function() {
+    with_log_context(
+        cohort = NULL,
+        objective = "objective_0_data_processing",
+        subobjective = NULL,
+        replace = TRUE,
+        expr = {
+            logger::log_info("Running Objective 0: Data Processing (global preflight)")
+            run_objective_0()
+        }
+    )
+}
+
 #' Run analysis for a single dataset and selected objectives
 #'
 #' This function orchestrates the statistical analysis for a given dataset.
@@ -156,10 +176,7 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
 
     # Objective 0 is a global preflight gate and does not depend on dataset loading
     if (0 %in% objectives_to_run) {
-        with_log_context(cohort = dataset_name, objective = "objective_0_data_processing", subobjective = NULL, expr = {
-            logger::log_info("Running Objective 0: Data Processing (global preflight)")
-            results$objective_0 <<- run_objective_0()
-        })
+        results$objective_0 <- run_objective_0_with_global_context()
 
         if (!isTRUE(results$objective_0$success)) {
             fatal_issues <- append_issue(
@@ -311,7 +328,7 @@ run_specific_objective <- function(dataset_name, objective_number) {
     logger::log_info(formatted(sprintf("Running only Objective %d for dataset: %s", objective_number, dataset_name)))
 
     if (identical(as.integer(objective_number), 0L)) {
-        return(run_objective_0())
+        return(run_objective_0_with_global_context())
     }
 
     # Check dependencies for analysis objectives (1-4)
@@ -475,6 +492,7 @@ merge_baseline_tables <- function() {
 #' @export
 main_execution <- function() {
     main_start_time <- Sys.time()
+    set_log_context(replace = TRUE)
     log_phase("MAIN EXECUTION PHASE")
 
     # Define datasets to analyze
@@ -489,8 +507,11 @@ main_execution <- function() {
     # Store data for merging at the end
     cohort_data <- list()
 
+    logger::log_info(sprintf("Found %d datasets to analyze", length(datasets_to_analyze)))
+    logger::log_info("Starting global Objective 0 preflight")
+
     preflight_result <- tryCatch(
-        run_objective_0(),
+        run_objective_0_with_global_context(),
         error = function(e) {
             list(
                 success = FALSE,
@@ -511,6 +532,10 @@ main_execution <- function() {
         )
     }
 
+    if (isTRUE(preflight_result$success)) {
+        logger::log_info("Objective 0 preflight completed successfully")
+    }
+
     if (length(fatal_issues) > 0) {
         logger::log_error(">>> ANALYSES COMPLETED WITH ERRORS. Objective 0 preflight failed.")
         logger::log_info(formatted(sprintf(">>> Total execution time: %.1f minutes", as.numeric(difftime(Sys.time(), main_start_time, units = "mins")))))
@@ -528,47 +553,43 @@ main_execution <- function() {
         )))
     }
 
-    # Run analysis for each dataset with progress tracking
-    progressr::with_progress({
-        p <- progressr::progressor(steps = length(datasets_to_analyze))
-        for (i in seq_along(datasets_to_analyze)) {
-            dataset_name <- datasets_to_analyze[i]
-            logger::log_info(formatted(sprintf(">>> Dataset %d/%d: %s", i, length(datasets_to_analyze), dataset_name)))
+    # Run analysis for each dataset with explicit logger milestones
+    for (i in seq_along(datasets_to_analyze)) {
+        dataset_name <- datasets_to_analyze[i]
+        logger::log_info(formatted(sprintf(">>> Dataset %d/%d: %s", i, length(datasets_to_analyze), dataset_name)))
 
-            tryCatch(
-                {
-                    results <- run_my_analysis(dataset_name, objectives_to_run = c(1, 2, 3, 4))
-                    fatal_issues <- c(fatal_issues, results$fatal_issues %||% character())
-                    warning_issues <- c(warning_issues, results$warning_issues %||% character())
-                    
-                    # Load the data directly for merging
-                    tryCatch({
-                        data_path <- file.path(PROCESSED_DATA_DIR, paste0(dataset_name, ".rds"))
-                        if (file.exists(data_path)) {
-                            cohort_data[[dataset_name]] <- readRDS(data_path)
-                            logger::log_info(sprintf("Loaded data for merging: %s (%d patients)", dataset_name, nrow(cohort_data[[dataset_name]])))
-                        } else {
-                            fatal_issues <<- append_issue(fatal_issues, sprintf("merge_input_missing:%s", data_path))
-                            logger::log_error(sprintf("Data file not found for merging: %s", data_path))
-                        }
-                    }, error = function(e) {
-                        fatal_issues <<- append_issue(fatal_issues, sprintf("merge_input_load:%s:%s", dataset_name, e$message))
-                        logger::log_error(sprintf("Error loading data for merging (%s): %s", dataset_name, e$message))
-                    })
-                    
-                    logger::log_info(formatted(sprintf(">>> Dataset %d/%d completed: %s", i, length(datasets_to_analyze), dataset_name)))
-                },
-                error = function(e) {
-                    fatal_issues <<- append_issue(fatal_issues, sprintf("dataset:%s:%s", dataset_name, e$message))
-                    logger::log_error(formatted(sprintf("ERROR in dataset %s: %s", dataset_name, e$message)))
-                }
-            )
+        tryCatch(
+            {
+                results <- run_my_analysis(dataset_name, objectives_to_run = c(1, 2, 3, 4))
+                fatal_issues <- c(fatal_issues, results$fatal_issues %||% character())
+                warning_issues <- c(warning_issues, results$warning_issues %||% character())
 
-            p(message = sprintf("Completed %s", dataset_name))
-        }
-    })
+                # Load the data directly for merging
+                tryCatch({
+                    data_path <- file.path(PROCESSED_DATA_DIR, paste0(dataset_name, ".rds"))
+                    if (file.exists(data_path)) {
+                        cohort_data[[dataset_name]] <- readRDS(data_path)
+                        logger::log_info(sprintf("Loaded data for merging: %s (%d patients)", dataset_name, nrow(cohort_data[[dataset_name]])))
+                    } else {
+                        fatal_issues <<- append_issue(fatal_issues, sprintf("merge_input_missing:%s", data_path))
+                        logger::log_error(sprintf("Data file not found for merging: %s", data_path))
+                    }
+                }, error = function(e) {
+                    fatal_issues <<- append_issue(fatal_issues, sprintf("merge_input_load:%s:%s", dataset_name, e$message))
+                    logger::log_error(sprintf("Error loading data for merging (%s): %s", dataset_name, e$message))
+                })
+
+                logger::log_info(formatted(sprintf(">>> Dataset %d/%d completed: %s", i, length(datasets_to_analyze), dataset_name)))
+            },
+            error = function(e) {
+                fatal_issues <<- append_issue(fatal_issues, sprintf("dataset:%s:%s", dataset_name, e$message))
+                logger::log_error(formatted(sprintf("ERROR in dataset %s: %s", dataset_name, e$message)))
+            }
+        )
+    }
 
     # Merge baseline tables from all cohorts using stored data
+    set_log_context(replace = TRUE)
     tryCatch({
         if (length(cohort_data) >= 2) {
             # Get the two main cohorts for merging
@@ -592,6 +613,7 @@ main_execution <- function() {
     })
 
     # Summary banner
+    set_log_context(replace = TRUE)
     run_state <- determine_run_state(unique(fatal_issues), unique(warning_issues))
     if (identical(run_state, "failed")) {
         logger::log_error(">>> ANALYSES COMPLETED WITH ERRORS. Review logs for details.")

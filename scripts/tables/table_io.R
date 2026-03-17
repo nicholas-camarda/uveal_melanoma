@@ -249,10 +249,10 @@ extract_model_confidence_intervals <- function(model, coefficient_names, model_t
     }
 
     conf_int <- tryCatch(
-        suppressWarnings(stats::confint(model)),
+        suppressMessages(suppressWarnings(stats::confint(model))),
         error = function(e) {
             tryCatch(
-                suppressWarnings(stats::confint.default(model)),
+                suppressMessages(suppressWarnings(stats::confint.default(model))),
                 error = function(e2) NULL
             )
         }

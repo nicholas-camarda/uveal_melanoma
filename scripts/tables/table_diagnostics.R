@@ -25,7 +25,7 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
 
     # Unified confidence interval extraction - no gtsummary fallback complexity
     conf_int <- tryCatch(
-        suppressWarnings(confint(model_fit)),
+        suppressMessages(suppressWarnings(confint(model_fit))),
         error = function(e) {
             logger::log_warn(sprintf("Warning: Could not compute confidence intervals: %s", e$message))
             matrix(NA,

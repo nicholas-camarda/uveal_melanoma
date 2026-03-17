@@ -1173,6 +1173,9 @@ create_mfs_simplified_survival_curves <- function(data, output_dir, prefix, data
         size = 1.2 * plot_scale
     )
 
+    surv_plot$plot <- remove_plot_scales(surv_plot$plot, aesthetics = c("y"))
+    surv_plot$table <- remove_plot_scales(surv_plot$table, aesthetics = c("y"))
+
     surv_plot$plot <- surv_plot$plot +
         ggplot2::guides(color = ggplot2::guide_legend(ncol = 1, byrow = TRUE)) +
         ggplot2::theme(
@@ -1519,7 +1522,9 @@ create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, 
     )
     
     # Then use ggcuminc to plot it
-    p <- ggcuminc(ci_obj, outcome = "Melanoma Death") + # Focus on melanoma death
+    p <- ggcuminc(ci_obj, outcome = "Melanoma Death")
+    p <- remove_plot_scales(p, aesthetics = c("colour", "color", "x", "y"))
+    p <- p + # Focus on melanoma death
         ggplot2::labs(
             title = plot_title,
             subtitle = sprintf(
@@ -1553,7 +1558,10 @@ create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, 
         ) +
         ggplot2::scale_color_manual(values = get_palette_by_variable(group_var_char, unique(surv_data[[group_var_char]]))) +
         ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = c(0, 0.02))) +
-        ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0.04))) +
+        ggplot2::scale_y_continuous(
+            expand = ggplot2::expansion(mult = c(0, 0.04)),
+            labels = scales::label_percent(accuracy = 1)
+        ) +
         ggplot2::coord_cartesian(xlim = c(0, timepoint), expand = FALSE) # Limit to timepoint in years with tighter margins
 
     caption_lines <- character()
@@ -1655,7 +1663,6 @@ create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, 
     p <- p +
         ggplot2::guides(color = ggplot2::guide_legend(ncol = legend_cols, byrow = TRUE)) +
         ggplot2::theme(legend.box = "vertical", legend.justification = "center") +
-        ggplot2::scale_y_continuous(labels = scales::label_percent(accuracy = 1)) +
         ggplot2::theme(
             plot.margin = ggplot2::unit(c(0.45, 0.45, 0.7, 0.45), "cm"),
             plot.caption = ggplot2::element_text(hjust = 0, size = 10.5, color = "grey40", lineheight = 1.1)
