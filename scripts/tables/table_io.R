@@ -6,6 +6,8 @@ empty_effect_summary_rows <- function() {
         analysis_label = character(),
         analysis_id = character(),
         model_label = character(),
+        model_formula = character(),
+        covariates_used = character(),
         term = character(),
         effect_measure = character(),
         estimate = numeric(),
@@ -36,7 +38,8 @@ coerce_effect_summary_rows <- function(rows) {
     rows <- rows[, names(template), drop = FALSE]
 
     character_cols <- c(
-        "dataset", "analysis_label", "analysis_id", "model_label", "term",
+        "dataset", "analysis_label", "analysis_id", "model_label", "model_formula",
+        "covariates_used", "term",
         "effect_measure", "data_source", "model_status", "notes"
     )
     numeric_cols <- c(
@@ -64,10 +67,78 @@ bind_effect_summary_rows <- function(...) {
     dplyr::bind_rows(lapply(row_sets, coerce_effect_summary_rows))
 }
 
+#' Format covariates for effect summary exports
+#'
+#' @param covariates Character vector of adjustment covariates.
+#'
+#' @return Single character string listing covariates, or `"None"` when absent.
+format_effect_summary_covariates <- function(covariates = NULL) {
+    covariates <- unique(stats::na.omit(as.character(covariates)))
+    covariates <- covariates[nzchar(covariates)]
+
+    if (length(covariates) == 0) {
+        return("None")
+    }
+
+    paste(covariates, collapse = ", ")
+}
+
+#' Build a concise model formula string for effect summary exports
+#'
+#' @param outcome_var Character outcome variable name.
+#' @param predictor_vars Character vector of primary predictor variables.
+#' @param confounders Optional character vector of adjustment covariates.
+#'
+#' @return Character formula string in workbook-friendly form.
+build_effect_summary_model_formula <- function(outcome_var,
+                                               predictor_vars,
+                                               confounders = NULL) {
+    rhs_terms <- unique(c(as.character(predictor_vars), as.character(confounders)))
+    rhs_terms <- rhs_terms[!is.na(rhs_terms) & nzchar(rhs_terms)]
+
+    if (is.null(outcome_var) || !nzchar(outcome_var)) {
+        return(NA_character_)
+    }
+
+    if (length(rhs_terms) == 0) {
+        return(sprintf("%s ~ 1", outcome_var))
+    }
+
+    sprintf("%s ~ %s", outcome_var, paste(rhs_terms, collapse = " + "))
+}
+
+#' Extract model specification details for effect summary exports
+#'
+#' @param model Fitted model object.
+#' @param group_var Character name of the primary exposure variable.
+#'
+#' @return Named list with `model_formula` and `covariates_used`.
+extract_effect_summary_model_metadata <- function(model, group_var = "treatment_group") {
+    formula_obj <- tryCatch(stats::formula(model), error = function(e) NULL)
+    if (is.null(formula_obj)) {
+        return(list(
+            model_formula = NA_character_,
+            covariates_used = NA_character_
+        ))
+    }
+
+    term_labels <- attr(stats::terms(formula_obj), "term.labels")
+    covariates <- setdiff(term_labels, group_var)
+    formula_text <- paste(deparse(formula_obj, width.cutoff = 500L), collapse = " ")
+    formula_text <- gsub("\\s+", " ", formula_text)
+
+    list(
+        model_formula = formula_text,
+        covariates_used = format_effect_summary_covariates(covariates)
+    )
+}
+
 create_effect_summary_rows <- function(dataset_name,
                                        analysis_label,
                                        model_label,
                                        term,
+                                       model_formula = NA_character_,
+                                       covariates_used = NA_character_,
                                        effect_measure = NA_character_,
                                        estimate = NA_real_,
                                        ci_lower = NA_real_,
@@ -98,6 +169,8 @@ create_effect_summary_rows <- function(dataset_name,
         analysis_label = rep(analysis_label, n_rows),
         analysis_id = rep(make_filename_safe(analysis_label), n_rows),
         model_label = rep(model_label, n_rows),
+        model_formula = recycle_value(model_formula, "character"),
+        covariates_used = recycle_value(covariates_used, "character"),
         term = term,
         effect_measure = recycle_value(effect_measure, "character"),
         estimate = recycle_value(estimate, "numeric"),
@@ -249,6 +322,11 @@ summarize_effect_model <- function(model,
         return(NULL)
     }
 
+    model_metadata <- extract_effect_summary_model_metadata(
+        model = model,
+        group_var = group_var
+    )
+
     model_type <- detect_model_type(model)
     if (is.null(effect_measure)) {
         effect_measure <- switch(model_type,
@@ -312,6 +390,8 @@ summarize_effect_model <- function(model,
             analysis_label = analysis_label,
             model_label = model_label,
             term = coefficient_names,
+            model_formula = model_metadata$model_formula,
+            covariates_used = model_metadata$covariates_used,
             effect_measure = effect_measure,
             estimate = round(ci_mat[coefficient_names, "exp(coef)"], 3),
             ci_lower = round(ci_mat[coefficient_names, "lower .95"], 3),
@@ -345,6 +425,8 @@ summarize_effect_model <- function(model,
         analysis_label = analysis_label,
         model_label = model_label,
         term = coefficient_names,
+        model_formula = model_metadata$model_formula,
+        covariates_used = model_metadata$covariates_used,
         effect_measure = effect_measure,
         estimate = estimate,
         ci_lower = ci_lower,
