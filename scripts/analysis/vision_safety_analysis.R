@@ -716,7 +716,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             notes = as.character(line_change_result$diagnostics$raw_model_output %||% "Adjusted Snellen line-change model could not be fit.")
         ),
         create_effect_summary_rows(
-            dataset_name = "vision_safety",
+            dataset_name = dataset_name %||% "vision_safety",
             analysis_label = "Snellen Line Change Distribution",
             model_label = "Descriptive",
             term = "summary",
@@ -733,7 +733,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
         ),
         summarize_effect_model(
             model = snellen_distribution_unadjusted_model,
-            dataset_name = "vision_safety",
+            dataset_name = dataset_name %||% "vision_safety",
             analysis_label = "Snellen Line Change Distribution",
             model_label = "Unadjusted ordinal logistic",
             group_var = "treatment_group",
@@ -741,7 +741,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             effect_measure = "OR",
             outcome_var = "vision_line_change_bucket"
         ) %||% create_effect_summary_rows(
-            dataset_name = "vision_safety",
+            dataset_name = dataset_name %||% "vision_safety",
             analysis_label = "Snellen Line Change Distribution",
             model_label = "Unadjusted ordinal logistic",
             term = "treatment_group",
@@ -754,7 +754,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
         ),
         summarize_effect_model(
             model = line_change_ordinal_model,
-            dataset_name = "vision_safety",
+            dataset_name = dataset_name %||% "vision_safety",
             analysis_label = "Snellen Line Change Distribution",
             model_label = "Adjusted ordinal logistic",
             group_var = "treatment_group",
@@ -762,7 +762,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             effect_measure = "OR",
             outcome_var = "vision_line_change_bucket"
         ) %||% create_effect_summary_rows(
-            dataset_name = "vision_safety",
+            dataset_name = dataset_name %||% "vision_safety",
             analysis_label = "Snellen Line Change Distribution",
             model_label = "Adjusted ordinal logistic",
             term = "treatment_group",
