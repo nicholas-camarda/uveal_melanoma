@@ -508,6 +508,309 @@ render_simple_html_table <- function(data, max_rows = NULL) {
     )
 }
 
+#' Return a display title for structured skip reports
+#'
+#' @param status Character scalar describing the skip state.
+#'
+#' @return Character scalar used as the HTML heading.
+get_skip_report_title <- function(status = "skipped") {
+    switch(
+        status %||% "skipped",
+        skipped = "Adjusted Analysis Not Fit",
+        unavailable = "Analysis Not Available",
+        no_content = "Report Content Not Available",
+        "Adjusted Analysis Not Fit"
+    )
+}
+
+#' Build a two-column summary tab from named values
+#'
+#' @param values Named list or vector of summary values.
+#'
+#' @return Tibble with `metric` and `value` columns.
+build_skip_summary_tab <- function(values) {
+    if (is.null(values) || length(values) == 0) {
+        return(NULL)
+    }
+
+    metric_names <- names(values)
+    if (is.null(metric_names)) {
+        metric_names <- paste0("metric_", seq_along(values))
+    }
+
+    tibble::tibble(
+        metric = as.character(metric_names),
+        value = vapply(values, function(value) {
+            pasted <- paste(as.character(value), collapse = "; ")
+            ifelse(is.na(pasted), "", pasted)
+        }, FUN.VALUE = character(1))
+    )
+}
+
+#' Build a model-context tab from named values
+#'
+#' @param values Named list or vector describing model context.
+#'
+#' @return Tibble with `field` and `value` columns.
+build_model_context_tab <- function(values) {
+    summary_tab <- build_skip_summary_tab(values)
+    if (is.null(summary_tab)) {
+        return(NULL)
+    }
+
+    dplyr::rename(summary_tab, field = metric)
+}
+
+#' Coerce common binary encodings to numeric event indicators
+#'
+#' @param values Vector containing binary outcome values.
+#'
+#' @return Numeric vector with `1`, `0`, or `NA`.
+coerce_binary_outcome_vector <- function(values) {
+    if (is.logical(values)) {
+        return(ifelse(is.na(values), NA_real_, ifelse(values, 1, 0)))
+    }
+
+    if (is.numeric(values)) {
+        return(dplyr::case_when(
+            is.na(values) ~ NA_real_,
+            values == 1 ~ 1,
+            values == 0 ~ 0,
+            TRUE ~ NA_real_
+        ))
+    }
+
+    value_text <- trimws(tolower(as.character(values)))
+    dplyr::case_when(
+        is.na(value_text) ~ NA_real_,
+        value_text %in% c("1", "y", "yes", "true", "event", "death", "progressed") ~ 1,
+        value_text %in% c("0", "n", "no", "false", "censored", "alive", "none") ~ 0,
+        TRUE ~ NA_real_
+    )
+}
+
+#' Build support counts by covariate level for skipped models
+#'
+#' @param data Data frame used for the skipped analysis.
+#' @param variables Character vector of modeled variables to summarize.
+#' @param outcome_var Optional character scalar naming a binary outcome/event column.
+#'
+#' @return Tibble summarizing counts by variable level.
+build_level_support_tab <- function(data,
+                                    variables,
+                                    outcome_var = NULL) {
+    if (is.null(data) || !is.data.frame(data) || nrow(data) == 0) {
+        return(NULL)
+    }
+
+    summarized_variables <- unique(as.character(variables))
+    summarized_variables <- summarized_variables[summarized_variables %in% names(data)]
+    if (length(summarized_variables) == 0) {
+        return(NULL)
+    }
+
+    outcome_values <- if (!is.null(outcome_var) && outcome_var %in% names(data)) {
+        coerce_binary_outcome_vector(data[[outcome_var]])
+    } else {
+        NULL
+    }
+
+    purrr::map_dfr(summarized_variables, function(variable_name) {
+        level_values <- data[[variable_name]]
+        support_df <- tibble::tibble(
+            variable = variable_name,
+            level = dplyr::case_when(
+                is.na(level_values) ~ "Missing",
+                TRUE ~ as.character(level_values)
+            )
+        ) %>%
+            dplyr::group_by(variable, level) %>%
+            dplyr::summarise(
+                n_total = dplyr::n(),
+                .groups = "drop"
+            )
+
+        if (is.null(outcome_values)) {
+            return(dplyr::mutate(support_df, support_flag = "count_only"))
+        }
+
+        outcome_df <- tibble::tibble(
+            variable = variable_name,
+            level = dplyr::case_when(
+                is.na(level_values) ~ "Missing",
+                TRUE ~ as.character(level_values)
+            ),
+            outcome_value = outcome_values
+        ) %>%
+            dplyr::group_by(variable, level) %>%
+            dplyr::summarise(
+                n_events = sum(outcome_value == 1, na.rm = TRUE),
+                n_non_events = sum(outcome_value == 0, na.rm = TRUE),
+                .groups = "drop"
+            )
+
+        support_df %>%
+            dplyr::left_join(outcome_df, by = c("variable", "level")) %>%
+            dplyr::mutate(
+                n_events = dplyr::coalesce(n_events, 0L),
+                n_non_events = dplyr::coalesce(n_non_events, 0L),
+                event_rate_percent = round(100 * n_events / n_total, 1),
+                support_flag = dplyr::case_when(
+                    n_events == 0 ~ "zero_events",
+                    n_non_events == 0 ~ "all_events",
+                    TRUE ~ "usable"
+                )
+            )
+    })
+}
+
+#' Build a shared diagnostics payload for skipped or unavailable analyses
+#'
+#' @param status Character scalar such as `"skipped"`, `"unavailable"`, or `"no_content"`.
+#' @param analysis_name Character scalar analysis identifier.
+#' @param dataset_name Character scalar dataset identifier.
+#' @param reason Character scalar one-line explanation.
+#' @param narrative_lines Optional character vector of explanatory bullets.
+#' @param sample_size_summary Optional data frame with sample-size audit details.
+#' @param skip_summary Optional two-column data frame summarizing skip metrics.
+#' @param sparse_level_diagnostics Optional data frame of excluded sparse levels.
+#' @param event_support Optional data frame with outcome counts by level.
+#' @param level_support Optional data frame with plain support counts by level.
+#' @param model_context Optional data frame with contextual model metadata.
+#' @param compatibility_text Optional character vector for legacy text artifacts.
+#' @param raw_model_output Optional character vector summarizing the failure.
+#'
+#' @return Named list compatible with `write_diagnostics_workbook()` and skip HTML rendering.
+build_skip_report_diagnostics <- function(status = "skipped",
+                                          analysis_name,
+                                          dataset_name,
+                                          reason,
+                                          narrative_lines = NULL,
+                                          sample_size_summary = NULL,
+                                          skip_summary = NULL,
+                                          sparse_level_diagnostics = NULL,
+                                          event_support = NULL,
+                                          level_support = NULL,
+                                          model_context = NULL,
+                                          compatibility_text = NULL,
+                                          raw_model_output = NULL) {
+    if (is.null(raw_model_output)) {
+        raw_model_output <- reason
+    }
+
+    list(
+        status = status,
+        analysis_name = analysis_name,
+        dataset_name = dataset_name,
+        reason = reason,
+        raw_model_output = raw_model_output,
+        narrative_summary = if (!is.null(narrative_lines) && length(narrative_lines) > 0) {
+            tibble::tibble(detail = as.character(narrative_lines))
+        } else {
+            NULL
+        },
+        sample_size_summary = sample_size_summary,
+        skip_summary = skip_summary,
+        sparse_level_diagnostics = sparse_level_diagnostics,
+        event_support = event_support,
+        level_support = level_support,
+        model_context = model_context,
+        compatibility_text = compatibility_text
+    )
+}
+
+#' Render a shared skip-report HTML document
+#'
+#' @param analysis_name Character scalar analysis identifier.
+#' @param dataset_name Character scalar dataset identifier.
+#' @param reason Character scalar one-line explanation.
+#' @param diagnostics Named list built from `build_skip_report_diagnostics()`.
+#'
+#' @return Character scalar containing the full HTML document.
+render_skip_report_html <- function(analysis_name,
+                                    dataset_name,
+                                    reason,
+                                    diagnostics = NULL) {
+    report_title <- get_skip_report_title(diagnostics$status %||% "skipped")
+
+    narrative_block <- ""
+    if (!is.null(diagnostics$narrative_summary) && nrow(diagnostics$narrative_summary) > 0) {
+        narrative_items <- paste0(
+            "<li>",
+            escape_html_text(diagnostics$narrative_summary$detail),
+            "</li>",
+            collapse = ""
+        )
+        narrative_heading <- if (identical(diagnostics$status %||% "skipped", "no_content")) {
+            "Why The Report Was Not Available"
+        } else {
+            "Why The Model Was Not Fit"
+        }
+        narrative_block <- paste0("<h3>", narrative_heading, "</h3><ul>", narrative_items, "</ul>")
+    }
+
+    sample_size_block <- if (!is.null(diagnostics$sample_size_summary)) {
+        paste0("<h3>Sample Size Audit</h3>", render_simple_html_table(diagnostics$sample_size_summary))
+    } else {
+        ""
+    }
+
+    summary_block <- if (!is.null(diagnostics$skip_summary)) {
+        paste0("<h3>Skip Summary</h3>", render_simple_html_table(diagnostics$skip_summary))
+    } else {
+        ""
+    }
+
+    event_support_block <- if (!is.null(diagnostics$event_support)) {
+        paste0(
+            "<h3>Modeled Outcome Counts By Covariate Level</h3>",
+            render_simple_html_table(diagnostics$event_support)
+        )
+    } else {
+        ""
+    }
+
+    level_support_block <- if (!is.null(diagnostics$level_support)) {
+        paste0(
+            "<h3>Modeled Level Counts</h3>",
+            render_simple_html_table(diagnostics$level_support)
+        )
+    } else {
+        ""
+    }
+
+    sparse_level_block <- if (!is.null(diagnostics$sparse_level_diagnostics) && nrow(diagnostics$sparse_level_diagnostics) > 0) {
+        paste0(
+            "<h3>Sparse Levels Excluded Before Modeling</h3>",
+            render_simple_html_table(diagnostics$sparse_level_diagnostics)
+        )
+    } else {
+        ""
+    }
+
+    model_context_block <- if (!is.null(diagnostics$model_context)) {
+        paste0("<h3>Model Context</h3>", render_simple_html_table(diagnostics$model_context))
+    } else {
+        ""
+    }
+
+    paste0(
+        "<html><body>",
+        "<h2>", escape_html_text(report_title), "</h2>",
+        "<p><strong>Analysis:</strong> ", escape_html_text(analysis_name), "</p>",
+        "<p><strong>Dataset:</strong> ", escape_html_text(dataset_name), "</p>",
+        "<p><strong>Reason:</strong> ", escape_html_text(reason), "</p>",
+        narrative_block,
+        sample_size_block,
+        summary_block,
+        event_support_block,
+        level_support_block,
+        sparse_level_block,
+        model_context_block,
+        "</body></html>"
+    )
+}
+
 #' Write the model diagnostics workbook
 #'
 #' @param diagnostics Named list of diagnostics tables or text summaries.
@@ -579,9 +882,17 @@ write_diagnostics_workbook <- function(diagnostics, diagnostics_path) {
                 addWorksheet(wb, "Event_support")
                 writeData(wb, "Event_support", diagnostics$event_support)
             }
+            if (!is.null(diagnostics$level_support)) {
+                addWorksheet(wb, "Level_support")
+                writeData(wb, "Level_support", diagnostics$level_support)
+            }
             if (!is.null(diagnostics$narrative_summary)) {
                 addWorksheet(wb, "Narrative_summary")
                 writeData(wb, "Narrative_summary", diagnostics$narrative_summary)
+            }
+            if (!is.null(diagnostics$model_context)) {
+                addWorksheet(wb, "Model_context")
+                writeData(wb, "Model_context", diagnostics$model_context)
             }
             saveWorkbook(wb, diagnostics_path, overwrite = TRUE)
             logger::log_info(sprintf("Comprehensive diagnostics saved to %s", diagnostics_path))
@@ -622,42 +933,11 @@ save_skipped_model_outputs <- function(analysis_name,
     html_path <- file.path(output_dir, paste0(base_filename, "_SKIPPED.html"))
     diagnostics_path <- file.path(output_dir, paste0(base_filename, "_diagnostics.xlsx"))
 
-    narrative_block <- ""
-    if (!is.null(diagnostics$narrative_summary) && nrow(diagnostics$narrative_summary) > 0) {
-        narrative_items <- paste0(
-            "<li>",
-            escape_html_text(diagnostics$narrative_summary$detail),
-            "</li>",
-            collapse = ""
-        )
-        narrative_block <- paste0("<h3>Why The Model Was Not Fit</h3><ul>", narrative_items, "</ul>")
-    }
-
-    summary_block <- if (!is.null(diagnostics$skip_summary)) {
-        paste0("<h3>Skip Summary</h3>", render_simple_html_table(diagnostics$skip_summary))
-    } else {
-        ""
-    }
-
-    event_support_block <- if (!is.null(diagnostics$event_support)) {
-        paste0(
-            "<h3>Modeled Outcome Counts By Covariate Level</h3>",
-            render_simple_html_table(diagnostics$event_support)
-        )
-    } else {
-        ""
-    }
-
-    skip_html <- paste0(
-        "<html><body>",
-        "<h2>Adjusted Analysis Not Fit</h2>",
-        "<p><strong>Analysis:</strong> ", escape_html_text(analysis_name), "</p>",
-        "<p><strong>Dataset:</strong> ", escape_html_text(dataset_name), "</p>",
-        "<p><strong>Reason:</strong> ", escape_html_text(reason), "</p>",
-        narrative_block,
-        summary_block,
-        event_support_block,
-        "</body></html>"
+    skip_html <- render_skip_report_html(
+        analysis_name = analysis_name,
+        dataset_name = dataset_name,
+        reason = reason,
+        diagnostics = diagnostics
     )
     writeLines(skip_html, html_path)
     logger::log_info(sprintf("Skipped-model HTML saved to %s", html_path))
@@ -743,14 +1023,31 @@ save_table_outputs <- function(table_result, raw_output, model_fit, analysis_nam
         if (!table_has_content) {
             logger::log_warn("Skipping HTML table generation - no meaningful content due to extreme estimates or model issues")
             diagnostic_html_path <- file.path(output_dir, paste0(base_filename, "_NO_CONTENT_DIAGNOSTIC.html"))
-            diagnostic_content <- paste0(
-                "<html><body>",
-                "<h2>Table Generation Skipped</h2>",
-                "<p><strong>Analysis:</strong> ", analysis_name, "</p>",
-                "<p><strong>Dataset:</strong> ", dataset_name, "</p>",
-                "<p><strong>Reason:</strong> No meaningful content available due to extreme estimates or model convergence issues</p>",
-                "<p><strong>Recommendation:</strong> Check the diagnostics Excel file for detailed information about why coefficients were filtered out.</p>",
-                "</body></html>"
+            no_content_diagnostics <- build_skip_report_diagnostics(
+                status = "no_content",
+                analysis_name = analysis_name,
+                dataset_name = dataset_name,
+                reason = "No meaningful content available due to extreme estimates or model convergence issues.",
+                narrative_lines = c(
+                    "The model fit completed, but all reportable coefficient content was filtered out or became uninterpretable.",
+                    "Check the diagnostics workbook for filtered terms, extreme estimates, or convergence warnings."
+                ),
+                sample_size_summary = diagnostics$sample_size_summary %||% NULL,
+                skip_summary = build_skip_summary_tab(list(
+                    status = "no_content",
+                    recommendation = "Review diagnostics workbook"
+                )),
+                sparse_level_diagnostics = diagnostics$sparse_level_diagnostics %||% NULL,
+                event_support = diagnostics$event_support %||% NULL,
+                level_support = diagnostics$level_support %||% NULL,
+                model_context = diagnostics$model_context %||% NULL,
+                raw_model_output = "No meaningful content available due to extreme estimates or model convergence issues."
+            )
+            diagnostic_content <- render_skip_report_html(
+                analysis_name = analysis_name,
+                dataset_name = dataset_name,
+                reason = "No meaningful content available due to extreme estimates or model convergence issues.",
+                diagnostics = no_content_diagnostics
             )
             writeLines(diagnostic_content, diagnostic_html_path)
             logger::log_info(sprintf("Diagnostic HTML file saved to %s", diagnostic_html_path))

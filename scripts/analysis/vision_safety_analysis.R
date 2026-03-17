@@ -835,42 +835,21 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
 #' @param variables Character vector of modeled variables to summarize.
 #' @param minimum_events Integer minimum number of events required to attempt fitting.
 #' @param sparse_level_diagnostics Optional data frame of rows removed before modeling.
+#' @param analysis_name Character scalar analysis identifier.
+#' @param dataset_name Character scalar dataset identifier.
 #'
-#' @return A list with `skip_summary`, `event_support`, `narrative_summary`, and `reason`.
+#' @return Named list compatible with the shared skip-report renderer.
 build_binary_skip_diagnostics <- function(data,
                                           outcome_var,
                                           variables,
                                           minimum_events = 10L,
-                                          sparse_level_diagnostics = NULL) {
+                                          sparse_level_diagnostics = NULL,
+                                          analysis_name = "analysis",
+                                          dataset_name = "unspecified_dataset") {
     modeled_n <- nrow(data)
     modeled_events <- sum(data[[outcome_var]] == 1, na.rm = TRUE)
     modeled_nonevents <- sum(data[[outcome_var]] == 0, na.rm = TRUE)
-
-    modeled_variables <- unique(variables[variables %in% names(data)])
-    event_support <- purrr::map_dfr(modeled_variables, function(variable_name) {
-        values <- data[[variable_name]]
-        tibble::tibble(
-            variable = variable_name,
-            level = dplyr::case_when(
-                is.na(values) ~ "Missing",
-                TRUE ~ as.character(values)
-            ),
-            outcome_value = data[[outcome_var]]
-        ) %>%
-            dplyr::group_by(variable, level) %>%
-            dplyr::summarise(
-                n_total = dplyr::n(),
-                n_events = sum(outcome_value == 1, na.rm = TRUE),
-                n_non_events = sum(outcome_value == 0, na.rm = TRUE),
-                event_rate_percent = round(100 * n_events / n_total, 1),
-                support_flag = dplyr::case_when(
-                    n_events == 0 ~ "zero_events",
-                    n_non_events == 0 ~ "all_events",
-                    TRUE ~ "usable"
-                ),
-                .groups = "drop"
-            )
-    })
+    event_support <- build_level_support_tab(data, variables, outcome_var = outcome_var)
 
     sparse_exclusion_summary <- if (is.null(sparse_level_diagnostics) || nrow(sparse_level_diagnostics) == 0) {
         "None"
@@ -881,10 +860,14 @@ build_binary_skip_diagnostics <- function(data,
             paste(collapse = "; ")
     }
 
-    flagged_levels <- event_support %>%
-        dplyr::filter(support_flag != "usable") %>%
-        dplyr::mutate(level_label = paste0(variable, "=", level, " [", support_flag, "]")) %>%
-        dplyr::pull(level_label)
+    flagged_levels <- if (is.null(event_support) || nrow(event_support) == 0) {
+        character()
+    } else {
+        event_support %>%
+            dplyr::filter(support_flag != "usable") %>%
+            dplyr::mutate(level_label = paste0(variable, "=", level, " [", support_flag, "]")) %>%
+            dplyr::pull(level_label)
+    }
 
     narrative_lines <- c(
         sprintf(
@@ -914,32 +897,31 @@ build_binary_skip_diagnostics <- function(data,
         )
     }
 
-    skip_summary <- tibble::tibble(
-        metric = c(
-            "modeled_n",
-            "modeled_events",
-            "modeled_non_events",
-            "minimum_events_required",
-            "events_shortfall",
-            "sparse_exclusions",
-            "separation_risk_levels"
-        ),
-        value = c(
-            as.character(modeled_n),
-            as.character(modeled_events),
-            as.character(modeled_nonevents),
-            as.character(minimum_events),
-            as.character(max(minimum_events - modeled_events, 0)),
-            sparse_exclusion_summary,
-            if (length(flagged_levels) > 0) paste(flagged_levels, collapse = "; ") else "None detected"
-        )
-    )
-
-    list(
-        skip_summary = skip_summary,
+    build_skip_report_diagnostics(
+        status = "skipped",
+        analysis_name = analysis_name,
+        dataset_name = dataset_name,
+        reason = paste(narrative_lines, collapse = " "),
+        narrative_lines = narrative_lines,
+        skip_summary = build_skip_summary_tab(list(
+            modeled_n = modeled_n,
+            modeled_events = modeled_events,
+            modeled_non_events = modeled_nonevents,
+            minimum_events_required = minimum_events,
+            events_shortfall = max(minimum_events - modeled_events, 0),
+            sparse_exclusions = sparse_exclusion_summary,
+            separation_risk_levels = if (length(flagged_levels) > 0) {
+                paste(flagged_levels, collapse = "; ")
+            } else {
+                "None detected"
+            }
+        )),
+        sparse_level_diagnostics = sparse_level_diagnostics,
         event_support = event_support,
-        narrative_summary = tibble::tibble(detail = narrative_lines),
-        reason = paste(narrative_lines, collapse = " ")
+        raw_model_output = sprintf(
+            "Model skipped: only %d events available after sparse-level exclusions.",
+            modeled_events
+        )
     )
 }
 
@@ -1181,24 +1163,17 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
             outcome_var = outcome_var,
             variables = unique(c("treatment_group", confounders_for_model)),
             minimum_events = 10L,
-            sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics
+            sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
+            analysis_name = logistic_analysis_name,
+            dataset_name = dataset_name
         )
         logger::log_warn(sprintf("Insufficient events for regression modeling (%d events)", modeled_events))
-        safety_diagnostics <- list(
-            sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
-            raw_model_output = sprintf(
-                "Model skipped: only %d events available after sparse-level exclusions.",
-                modeled_events
-            ),
-            skip_summary = skip_diagnostics$skip_summary,
-            event_support = skip_diagnostics$event_support,
-            narrative_summary = skip_diagnostics$narrative_summary,
-            sample_size_summary = build_sample_size_summary_tab(
-                filter_stats = exclusion_result$filter_stats,
-                dataset_name = dataset_name,
-                analysis_name = logistic_analysis_name,
-                modeled_n = nrow(model_data)
-            )
+        safety_diagnostics <- skip_diagnostics
+        safety_diagnostics$sample_size_summary <- build_sample_size_summary_tab(
+            filter_stats = exclusion_result$filter_stats,
+            dataset_name = dataset_name,
+            analysis_name = logistic_analysis_name,
+            modeled_n = nrow(model_data)
         )
 
         save_skipped_model_outputs(

@@ -29,7 +29,51 @@ analyze_binary_outcome_rates <- function(
     # Check that there are at least two groups to compare
     if (length(unique(data[[group_var]])) < 2) {
         warning(sprintf("Only one level of %s present; skipping logistic model.", group_var))
-        return(list(rates = NULL, table = NULL, model = NULL, diagnostics = NULL))
+        early_output_dir <- if (!is.null(output_dirs)) {
+            if (outcome_var == "recurrence1") {
+                output_dirs$obj1_recurrence
+            } else if (outcome_var == "mets_progression") {
+                output_dirs$obj1_mets
+            } else {
+                "test_output"
+            }
+        } else {
+            "test_output"
+        }
+        early_skip_diagnostics <- build_skip_report_diagnostics(
+            status = "skipped",
+            analysis_name = paste0(outcome_var, "_", analysis_type, "_logistic"),
+            dataset_name = dataset_name %||% "unspecified_dataset",
+            reason = sprintf(
+                "Logistic regression was skipped because only one `%s` level was present in the analysis dataset.",
+                group_var
+            ),
+            narrative_lines = c(
+                sprintf(
+                    "The incoming analysis dataset contains only one observed `%s` level.",
+                    group_var
+                ),
+                "A logistic regression comparison requires at least two groups."
+            ),
+            skip_summary = build_skip_summary_tab(list(
+                modeled_n = nrow(data),
+                distinct_groups_remaining = length(unique(stats::na.omit(data[[group_var]])))
+            )),
+            event_support = build_level_support_tab(data, group_var, outcome_var = event_var),
+            raw_model_output = sprintf(
+                "Model skipped: only one level of %s present.",
+                group_var
+            )
+        )
+        save_skipped_model_outputs(
+            analysis_name = paste0(outcome_var, "_", analysis_type, "_logistic"),
+            dataset_name = dataset_name %||% "unspecified_dataset",
+            output_dir = early_output_dir %||% "test_output",
+            prefix = prefix %||% "",
+            reason = early_skip_diagnostics$reason,
+            diagnostics = early_skip_diagnostics
+        )
+        return(list(rates = NULL, table = NULL, model = NULL, diagnostics = early_skip_diagnostics))
     }
 
     # Subset data based on analysis type
@@ -62,6 +106,8 @@ analyze_binary_outcome_rates <- function(
             rate = events / n * 100,
             .groups = "drop"
         )
+
+    output_dir <- NULL
 
     # Write rates summary to Excel if output directory is provided
     if (!is.null(output_dirs)) {
@@ -105,15 +151,45 @@ analyze_binary_outcome_rates <- function(
             "Insufficient data available after sparse-level exclusions; skipping logistic regression.",
             indent = 1
         ))
-        diagnostics_stub <- list(
-            sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
-            raw_model_output = "Model skipped: insufficient data after sparse-level exclusions."
-        )
-        diagnostics_stub$sample_size_summary <- build_sample_size_summary_tab(
+        sample_size_summary <- build_sample_size_summary_tab(
             filter_stats = exclusion_result$filter_stats,
             dataset_name = dataset_name,
             analysis_name = analysis_label,
             modeled_n = nrow(model_data)
+        )
+        support_variables <- unique(c(group_var, confounders_to_use))
+        diagnostics_stub <- build_skip_report_diagnostics(
+            status = "skipped",
+            analysis_name = analysis_label,
+            dataset_name = dataset_name %||% "unspecified_dataset",
+            reason = "Logistic regression was skipped because the post-exclusion dataset did not retain enough usable rows or group variation.",
+            narrative_lines = c(
+                sprintf(
+                    "After sparse-level exclusions, %d patients remained in the modeled dataset.",
+                    nrow(model_data)
+                ),
+                sprintf(
+                    "Adjusted logistic regression requires at least two non-missing `%s` groups after exclusions.",
+                    group_var
+                )
+            ),
+            sample_size_summary = sample_size_summary,
+            skip_summary = build_skip_summary_tab(list(
+                modeled_n = nrow(model_data),
+                distinct_groups_remaining = length(unique(stats::na.omit(model_data[[group_var]]))),
+                sparse_exclusion_reason = exclusion_result$filter_stats$removal_reason %||% "Sparse-level exclusions"
+            )),
+            sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
+            event_support = build_level_support_tab(model_data, support_variables, outcome_var = event_var),
+            raw_model_output = "Model skipped: insufficient data after sparse-level exclusions."
+        )
+        save_skipped_model_outputs(
+            analysis_name = analysis_label,
+            dataset_name = dataset_name %||% "unspecified_dataset",
+            output_dir = output_dir %||% "test_output",
+            prefix = prefix %||% "",
+            reason = diagnostics_stub$reason,
+            diagnostics = diagnostics_stub
         )
         return(list(rates = rates, table = NULL, model = NULL, diagnostics = diagnostics_stub))
     }

@@ -572,6 +572,73 @@ determine_survival_output_dir <- function(ylab, output_dirs) {
     default_dir
 }
 
+#' Build standardized skip diagnostics for survival and Cox outputs
+#'
+#' @param data Data frame representing the modeled survival dataset.
+#' @param event_var Character scalar naming the event indicator column.
+#' @param variables Character vector of modeled variables to summarize.
+#' @param analysis_name Character scalar analysis identifier.
+#' @param dataset_name Character scalar dataset identifier.
+#' @param reason Character scalar one-line explanation.
+#' @param narrative_lines Character vector of explanatory bullets.
+#' @param filter_stats Optional list summarizing pre-model exclusions.
+#' @param sparse_level_diagnostics Optional data frame of sparse-level exclusions.
+#' @param modeled_n Integer modeled sample size.
+#' @param status Character scalar such as `"skipped"` or `"unavailable"`.
+#' @param time_var Optional character scalar naming the follow-up time column.
+#'
+#' @return Named list compatible with the shared skip-report renderer.
+build_survival_skip_diagnostics <- function(data,
+                                            event_var,
+                                            variables,
+                                            analysis_name,
+                                            dataset_name,
+                                            reason,
+                                            narrative_lines,
+                                            filter_stats = NULL,
+                                            sparse_level_diagnostics = NULL,
+                                            modeled_n = nrow(data),
+                                            status = "skipped",
+                                            time_var = NULL) {
+    sample_size_summary <- build_sample_size_summary_tab(
+        filter_stats = filter_stats,
+        dataset_name = dataset_name,
+        analysis_name = analysis_name,
+        modeled_n = modeled_n
+    )
+    total_events <- if (!is.null(data) && is.data.frame(data) && event_var %in% names(data)) {
+        sum(coerce_binary_outcome_vector(data[[event_var]]) == 1, na.rm = TRUE)
+    } else {
+        NA_integer_
+    }
+    follow_up_range <- if (!is.null(time_var) && !is.null(data) && is.data.frame(data) && time_var %in% names(data) && any(!is.na(data[[time_var]]))) {
+        sprintf("%.2f to %.2f", min(data[[time_var]], na.rm = TRUE), max(data[[time_var]], na.rm = TRUE))
+    } else {
+        ""
+    }
+
+    build_skip_report_diagnostics(
+        status = status,
+        analysis_name = analysis_name,
+        dataset_name = dataset_name,
+        reason = reason,
+        narrative_lines = narrative_lines,
+        sample_size_summary = sample_size_summary,
+        skip_summary = build_skip_summary_tab(list(
+            modeled_n = modeled_n,
+            total_events = total_events
+        )),
+        sparse_level_diagnostics = sparse_level_diagnostics,
+        event_support = build_level_support_tab(data, variables, outcome_var = event_var),
+        model_context = build_model_context_tab(list(
+            event_var = event_var,
+            time_var = time_var %||% "",
+            follow_up_range = follow_up_range
+        )),
+        raw_model_output = paste(narrative_lines, collapse = " ")
+    )
+}
+
 summarize_cox_hr <- function(model, dataset_name, analysis_label, model_label, group_var, data_source_label) {
     summarize_effect_model(
         model = model,
@@ -604,12 +671,47 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     # Check that there are at least two groups for analysis; otherwise, skip Cox model
     if (length(unique(data[[plot_group_var]])) < 2) {
         warning(sprintf("Only one level of %s present; skipping cox model.", plot_group_var))
+        skip_output_dir <- if (!is.null(output_dirs)) {
+            ensure_output_dir(resolve_obj4_output_dir(output_dirs, determine_survival_output_dir(ylab, output_dirs), "cox"))
+        } else {
+            "test_output"
+        }
+        early_skip_diagnostics <- build_survival_skip_diagnostics(
+            data = data,
+            event_var = event_var,
+            variables = plot_group_var,
+            analysis_name = paste0(ylab, "_cox"),
+            dataset_name = dataset_name %||% "unspecified_dataset",
+            reason = sprintf(
+                "Cox regression was skipped because only one `%s` group was present in the analysis dataset.",
+                plot_group_var
+            ),
+            narrative_lines = c(
+                sprintf(
+                    "The incoming analysis dataset contains only one observed `%s` level.",
+                    plot_group_var
+                ),
+                "A Cox model requires at least two comparison groups."
+            ),
+            modeled_n = nrow(data),
+            status = "skipped",
+            time_var = time_var
+        )
+        save_skipped_model_outputs(
+            analysis_name = paste0(ylab, "_cox"),
+            dataset_name = dataset_name %||% "unspecified_dataset",
+            output_dir = skip_output_dir,
+            prefix = prefix %||% "",
+            reason = early_skip_diagnostics$reason,
+            diagnostics = early_skip_diagnostics
+        )
         return(list(
             fit = NULL,
             plot = NULL,
             median_times = NULL,
             cox_model = NULL,
-            cox_table = NULL
+            cox_table = NULL,
+            diagnostics = early_skip_diagnostics
         ))
     }
 
@@ -646,6 +748,40 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             "Insufficient data available for Kaplan-Meier fit; skipping survival analysis.",
             indent = 1
         ))
+        skip_output_dir <- if (!is.null(output_dirs)) {
+            ensure_output_dir(resolve_obj4_output_dir(output_dirs, determine_survival_output_dir(ylab, output_dirs), "cox"))
+        } else {
+            "test_output"
+        }
+        skip_diagnostics <- build_survival_skip_diagnostics(
+            data = km_data,
+            event_var = event_var,
+            variables = plot_group_var,
+            analysis_name = paste0(ylab, "_cox"),
+            dataset_name = dataset_name %||% "unspecified_dataset",
+            reason = "Survival analysis was skipped because the Kaplan-Meier dataset did not retain enough rows or grouping variation.",
+            narrative_lines = c(
+                sprintf(
+                    "The Kaplan-Meier dataset retained %d rows after filtering.",
+                    nrow(km_data)
+                ),
+                sprintf(
+                    "A survival analysis requires at least two non-missing `%s` groups with analyzable follow-up.",
+                    plot_group_var
+                )
+            ),
+            modeled_n = nrow(km_data),
+            status = "skipped",
+            time_var = time_var
+        )
+        save_skipped_model_outputs(
+            analysis_name = paste0(ylab, "_cox"),
+            dataset_name = dataset_name %||% "unspecified_dataset",
+            output_dir = skip_output_dir,
+            prefix = prefix %||% "",
+            reason = skip_diagnostics$reason,
+            diagnostics = skip_diagnostics
+        )
         empty_df <- data.frame()
         return(list(
             fit = NULL,
@@ -657,10 +793,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             cox_model = NULL,
             cox_table = NULL,
             ph_diagnostics = NULL,
-            diagnostics = list(
-                sparse_level_diagnostics = data.frame(),
-                raw_model_output = "Model skipped: insufficient data for KM fit."
-            )
+            diagnostics = skip_diagnostics
         ))
     }
 
@@ -1391,15 +1524,41 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             return(NULL)
         })
     } else {
-        diagnostics_stub <- list(
-            sparse_level_diagnostics = cox_exclusion_result$sparse_level_diagnostics,
-            raw_model_output = "Cox model skipped: insufficient data after sparse-level exclusions."
-        )
-        diagnostics_stub$sample_size_summary <- build_sample_size_summary_tab(
-            filter_stats = cox_exclusion_result$filter_stats,
-            dataset_name = dataset_name,
+        cox_dir <- if (!is.null(output_dirs)) {
+            ensure_output_dir(resolve_obj4_output_dir(output_dirs, determine_survival_output_dir(ylab, output_dirs), "cox"))
+        } else {
+            "test_output"
+        }
+        diagnostics_stub <- build_survival_skip_diagnostics(
+            data = cox_data,
+            event_var = event_var,
+            variables = survival_variables,
             analysis_name = cox_analysis_name,
-            modeled_n = nrow(cox_data)
+            dataset_name = dataset_name %||% "unspecified_dataset",
+            reason = "Cox regression was skipped because the post-exclusion survival dataset did not retain enough usable rows or group variation.",
+            narrative_lines = c(
+                sprintf(
+                    "After sparse-level exclusions, %d rows remained in the Cox dataset.",
+                    nrow(cox_data)
+                ),
+                sprintf(
+                    "A Cox model requires at least two non-missing `%s` groups after exclusions.",
+                    model_group_var
+                )
+            ),
+            filter_stats = cox_exclusion_result$filter_stats,
+            sparse_level_diagnostics = cox_exclusion_result$sparse_level_diagnostics,
+            modeled_n = nrow(cox_data),
+            status = "skipped",
+            time_var = time_var
+        )
+        save_skipped_model_outputs(
+            analysis_name = cox_analysis_name,
+            dataset_name = dataset_name %||% "unspecified_dataset",
+            output_dir = cox_dir,
+            prefix = prefix %||% "",
+            reason = diagnostics_stub$reason,
+            diagnostics = diagnostics_stub
         )
         cox_result <- list(
             model = NULL,
@@ -1409,15 +1568,38 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     }
 
     if (is.null(cox_result)) {
-        diagnostics_stub <- list(
-            sparse_level_diagnostics = cox_exclusion_result$sparse_level_diagnostics,
-            raw_model_output = "Cox model failed to fit; see logs for details."
-        )
-        diagnostics_stub$sample_size_summary <- build_sample_size_summary_tab(
-            filter_stats = cox_exclusion_result$filter_stats,
-            dataset_name = dataset_name,
+        cox_dir <- if (!is.null(output_dirs)) {
+            ensure_output_dir(resolve_obj4_output_dir(output_dirs, determine_survival_output_dir(ylab, output_dirs), "cox"))
+        } else {
+            "test_output"
+        }
+        diagnostics_stub <- build_survival_skip_diagnostics(
+            data = cox_data,
+            event_var = event_var,
+            variables = survival_variables,
             analysis_name = cox_analysis_name,
-            modeled_n = nrow(cox_data)
+            dataset_name = dataset_name %||% "unspecified_dataset",
+            reason = "Cox model fitting failed before a usable output could be generated.",
+            narrative_lines = c(
+                sprintf(
+                    "Cox fitting was attempted for `%s`, but the shared regression layer returned no result.",
+                    cox_analysis_name
+                ),
+                "Check the logs for the underlying fitting error or numerical failure."
+            ),
+            filter_stats = cox_exclusion_result$filter_stats,
+            sparse_level_diagnostics = cox_exclusion_result$sparse_level_diagnostics,
+            modeled_n = nrow(cox_data),
+            status = "unavailable",
+            time_var = time_var
+        )
+        save_skipped_model_outputs(
+            analysis_name = cox_analysis_name,
+            dataset_name = dataset_name %||% "unspecified_dataset",
+            output_dir = cox_dir,
+            prefix = prefix %||% "",
+            reason = diagnostics_stub$reason,
+            diagnostics = diagnostics_stub
         )
         cox_result <- list(
             model = NULL,
@@ -1833,6 +2015,35 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_d
             total_events
         )
 
+        pfs2_skip_diagnostics <- build_survival_skip_diagnostics(
+            data = pfs2_data,
+            event_var = "pfs2_event",
+            variables = unique(c("recurrence1_treatment_clean", confounders)),
+            analysis_name = "pfs2_analysis",
+            dataset_name = dataset_name %||% "unspecified_dataset",
+            reason = sprintf(
+                "PFS-2 survival analysis was skipped because only %d events were observed; at least 5 are required.",
+                total_events
+            ),
+            narrative_lines = c(
+                sprintf(
+                    "%s cohort contained %d total patients, with %d PFS-2-eligible patients.",
+                    tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name))),
+                    nrow(data),
+                    nrow(pfs2_data)
+                ),
+                sprintf(
+                    "Only %d second-recurrence events were observed; the minimum requirement is 5 events for a meaningful survival analysis.",
+                    total_events
+                ),
+                "This is expected for cohorts with limited recurrence data and does not indicate a pipeline error."
+            ),
+            modeled_n = nrow(pfs2_data),
+            status = "skipped",
+            time_var = "tt_pfs2_months"
+        )
+        pfs2_skip_diagnostics$compatibility_text <- explanation_text
+
         # Save explanation to both a_pfs2 and b_proportional_hazards_diagnostics directories
         if (!is.null(output_dirs)) {
             # Save to a_pfs2 directory
@@ -1841,6 +2052,14 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_d
                 explanation_file <- file.path(pfs2_dir, paste0(prefix, "pfs2_analysis_skipped_explanation.txt"))
                 writeLines(explanation_text, explanation_file)
                 logger::log_info(sprintf("Explanation saved to: %s", explanation_file))
+                save_skipped_model_outputs(
+                    analysis_name = "pfs2_analysis",
+                    dataset_name = dataset_name %||% "unspecified_dataset",
+                    output_dir = pfs2_dir,
+                    prefix = prefix,
+                    reason = pfs2_skip_diagnostics$reason,
+                    diagnostics = pfs2_skip_diagnostics
+                )
             }
             
             # Save to b_proportional_hazards_diagnostics directory
@@ -1849,6 +2068,14 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_d
                 explanation_file <- file.path(ph_dir, paste0(prefix, "pfs2_analysis_skipped_explanation.txt"))
                 writeLines(explanation_text, explanation_file)
                 logger::log_info(sprintf("Explanation saved to: %s", explanation_file))
+                save_skipped_model_outputs(
+                    analysis_name = "pfs2_analysis",
+                    dataset_name = dataset_name %||% "unspecified_dataset",
+                    output_dir = ph_dir,
+                    prefix = prefix,
+                    reason = pfs2_skip_diagnostics$reason,
+                    diagnostics = pfs2_skip_diagnostics
+                )
             }
         }
 
@@ -2082,6 +2309,65 @@ test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Surv
 
         writeLines(note_lines, note_path)
         logger::log_warn(formatted(sprintf("PH diagnostics unavailable note saved: %s", note_path), indent = 1))
+
+        event_support <- NULL
+        if (!is.null(model_frame) && !is.null(status) && length(model_terms) > 0) {
+            model_frame$.ph_event_status <- status
+            event_support <- build_level_support_tab(
+                data = model_frame,
+                variables = model_terms,
+                outcome_var = ".ph_event_status"
+            )
+        }
+
+        follow_up_text <- if (!is.null(time_values) && length(time_values) > 0 && any(!is.na(time_values))) {
+            sprintf("%.2f to %.2f", min(time_values, na.rm = TRUE), max(time_values, na.rm = TRUE))
+        } else {
+            ""
+        }
+        ph_reason <- sprintf(
+            "Proportional hazards diagnostics were unavailable because Schoenfeld residual testing failed: %s",
+            error_obj$message
+        )
+        ph_diagnostics <- build_skip_report_diagnostics(
+            status = "unavailable",
+            analysis_name = "proportional_hazards_unavailable",
+            dataset_name = dataset_label,
+            reason = ph_reason,
+            narrative_lines = c(
+                sprintf("Schoenfeld residual diagnostics failed for `%s`.", outcome_name),
+                "The fitted Cox model produced a singular or otherwise unusable variance structure for PH testing.",
+                if (length(reason_lines) > 0) {
+                    paste("Key instability signals:", paste(trimws(reason_lines), collapse = " "))
+                } else {
+                    "No specific predictor-level instability signal was isolated beyond the failed diagnostic calculation."
+                }
+            ),
+            skip_summary = build_skip_summary_tab(list(
+                status = "unavailable",
+                patients_in_model = total_patients,
+                events_observed = total_events,
+                error = error_obj$message
+            )),
+            event_support = event_support,
+            model_context = build_model_context_tab(list(
+                outcome = outcome_name,
+                dataset = dataset_label,
+                model_formula = model_formula,
+                variables_in_model = if (length(model_terms) > 0) paste(model_terms, collapse = ", ") else "",
+                follow_up_range_months = follow_up_text
+            )),
+            compatibility_text = note_lines,
+            raw_model_output = ph_reason
+        )
+        save_skipped_model_outputs(
+            analysis_name = "proportional_hazards_unavailable",
+            dataset_name = dataset_label,
+            output_dir = output_dir,
+            prefix = file_prefix,
+            reason = ph_diagnostics$reason,
+            diagnostics = ph_diagnostics
+        )
     }
 
     ph_error <- NULL

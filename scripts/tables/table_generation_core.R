@@ -134,28 +134,62 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
 
     # Build model formula
     formula <- build_model_formula(outcome_var, predictor_vars, confounders, model_type)
+    formula_text <- paste(deparse(formula, width.cutoff = 500L), collapse = " ")
+    support_variables <- unique(c(predictor_vars, confounders))
 
     # Fit regression model
     model_fit <- fit_regression_model(data, formula, model_type, time_var, event_var)
 
     if (is.null(model_fit)) {
         logger::log_error("Model fitting failed - returning NULL result")
-        diagnostics <- list(
-            raw_model_output = "Model fitting failed - no diagnostics available",
-            sparse_level_diagnostics = create_sparse_level_diagnostics_tab(sparse_level_diagnostics),
-            sample_size_summary = build_sample_size_summary_tab(
-                filter_stats = filter_stats,
-                dataset_name = dataset_name,
-                analysis_name = analysis_name,
+        sample_size_summary <- build_sample_size_summary_tab(
+            filter_stats = filter_stats,
+            dataset_name = dataset_name,
+            analysis_name = analysis_name,
+            modeled_n = nrow(data)
+        )
+        diagnostics <- build_skip_report_diagnostics(
+            status = "skipped",
+            analysis_name = analysis_name,
+            dataset_name = dataset_name,
+            reason = "Model fitting failed due to insufficient usable data, no outcome variation, or numerical issues.",
+            narrative_lines = c(
+                sprintf("Model fitting was attempted using `%s`, but the model object could not be created.", formula_text),
+                "This usually indicates insufficient usable data, no outcome variation, or a numerical fitting failure."
+            ),
+            sample_size_summary = sample_size_summary,
+            skip_summary = build_skip_summary_tab(list(
+                status = "skipped",
+                model_type = model_type,
                 modeled_n = nrow(data)
-            )
+            )),
+            sparse_level_diagnostics = create_sparse_level_diagnostics_tab(sparse_level_diagnostics),
+            event_support = if (identical(model_type, "logistic") || identical(model_type, "cox")) {
+                build_level_support_tab(data, support_variables, outcome_var = outcome_var)
+            } else {
+                NULL
+            },
+            level_support = if (identical(model_type, "linear") || identical(model_type, "ordinal")) {
+                build_level_support_tab(data, support_variables)
+            } else {
+                NULL
+            },
+            model_context = build_model_context_tab(list(
+                model_type = model_type,
+                formula = formula_text,
+                predictors = paste(as.character(predictor_vars), collapse = ", "),
+                confounders = format_effect_summary_covariates(confounders),
+                time_var = time_var %||% "",
+                event_var = event_var %||% ""
+            )),
+            raw_model_output = "Model fitting failed - no diagnostics available"
         )
         output_files <- save_skipped_model_outputs(
             analysis_name = analysis_name,
             dataset_name = dataset_name,
             output_dir = output_dir,
             prefix = prefix,
-            reason = "Model fitting failed due to insufficient usable data, no outcome variation, or numerical issues.",
+            reason = diagnostics$reason,
             diagnostics = diagnostics
         )
         return(list(
@@ -251,56 +285,55 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
         # Handle case where model fitting failed - still create diagnostics file
         filtered_table_result <- NULL
 
-        # Create minimal diagnostics documenting the failure
-        diagnostics <- list(
-            raw_model_output = "Model fitting failed - no diagnostics available",
-            extreme_estimates = data.frame(
-                variable = "Model Failure",
-                estimate = NA,
-                conf.low = NA,
-                conf.high = NA,
-                p.value = NA,
-                status = "Model fitting failed",
-                stringsAsFactors = FALSE
-            ),
-            perfect_separation = data.frame(
-                variable = "Model Failure",
-                status = "Model fitting failed",
-                details = "Unable to fit model due to data or parameter issues",
-                stringsAsFactors = FALSE
-            ),
-            other_details = data.frame(
-                issue = "Model Fitting Failure",
-                details = "The regression model could not be fitted. Check data quality and model parameters.",
-                timestamp = Sys.time(),
-                stringsAsFactors = FALSE
-            )
-        )
-
-        if (!is.null(sparse_level_diagnostics)) {
-            diagnostics$sparse_level_diagnostics <- sparse_level_diagnostics
-        }
-
-        diagnostics$sample_size_summary <- build_sample_size_summary_tab(
+        sample_size_summary <- build_sample_size_summary_tab(
             filter_stats = filter_stats,
             dataset_name = dataset_name,
             analysis_name = analysis_name,
             modeled_n = nrow(data)
         )
-
-        # Still save diagnostics file even when model fails
-        output_files <- tryCatch(
-            {
-                save_table_outputs(NULL, diagnostics$raw_model_output, NULL,
-                    analysis_name, dataset_name, output_dir, prefix,
-                    diagnostics, data, outcome_var, confounders,
-                    treatment_var = treatment_var
-                )
-            },
-            error = function(e) {
-                logger::log_error(sprintf("Failed to save diagnostics file: %s", e$message))
+        diagnostics <- build_skip_report_diagnostics(
+            status = "unavailable",
+            analysis_name = analysis_name,
+            dataset_name = dataset_name,
+            reason = "The model fit completed, but no interpretable regression table could be generated.",
+            narrative_lines = c(
+                sprintf("Model fitting completed for `%s`, but the table-generation step returned no reportable output.", formula_text),
+                "This usually means the fitted model could not be converted into a stable summary table."
+            ),
+            sample_size_summary = sample_size_summary,
+            skip_summary = build_skip_summary_tab(list(
+                status = "unavailable",
+                model_type = model_type,
+                modeled_n = nrow(data)
+            )),
+            sparse_level_diagnostics = sparse_level_diagnostics,
+            event_support = if (identical(model_type, "logistic") || identical(model_type, "cox")) {
+                build_level_support_tab(data, support_variables, outcome_var = outcome_var)
+            } else {
                 NULL
-            }
+            },
+            level_support = if (identical(model_type, "linear") || identical(model_type, "ordinal")) {
+                build_level_support_tab(data, support_variables)
+            } else {
+                NULL
+            },
+            model_context = build_model_context_tab(list(
+                model_type = model_type,
+                formula = formula_text,
+                predictors = paste(as.character(predictor_vars), collapse = ", "),
+                confounders = format_effect_summary_covariates(confounders),
+                time_var = time_var %||% "",
+                event_var = event_var %||% ""
+            )),
+            raw_model_output = "Model fit completed, but no interpretable regression table could be generated."
+        )
+        output_files <- save_skipped_model_outputs(
+            analysis_name = analysis_name,
+            dataset_name = dataset_name,
+            output_dir = output_dir,
+            prefix = prefix,
+            reason = diagnostics$reason,
+            diagnostics = diagnostics
         )
     }
 

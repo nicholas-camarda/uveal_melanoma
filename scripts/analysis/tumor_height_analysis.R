@@ -124,20 +124,45 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders)
             filter_stats = exclusion_result$filter_stats
         )
     } else {
+        primary_sample_size_summary <- build_sample_size_summary_tab(
+            filter_stats = exclusion_result$filter_stats,
+            dataset_name = "tumor_height",
+            analysis_name = "height_change_primary",
+            modeled_n = nrow(data_model_ready)
+        )
         diagnostics_stub <- list(
             table = NULL,
             model = NULL,
             diagnostics = NULL
         )
-        diagnostics_stub$diagnostics <- list(
+        diagnostics_stub$diagnostics <- build_skip_report_diagnostics(
+            status = "skipped",
+            analysis_name = "height_change_primary",
+            dataset_name = "tumor_height",
+            reason = "Primary tumor-height regression was skipped because the post-exclusion dataset did not retain enough usable rows or treatment-group variation.",
+            narrative_lines = c(
+                sprintf(
+                    "After sparse-level exclusions, %d rows remained for the primary tumor-height model.",
+                    nrow(data_model_ready)
+                ),
+                "A regression model is only attempted when the filtered dataset retains at least two treatment groups."
+            ),
+            sample_size_summary = primary_sample_size_summary,
+            skip_summary = build_skip_summary_tab(list(
+                modeled_n = nrow(data_model_ready),
+                distinct_treatment_groups = length(unique(stats::na.omit(data_model_ready$treatment_group)))
+            )),
             sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
-            raw_model_output = "Model skipped: insufficient data after sparse-level exclusions.",
-            sample_size_summary = build_sample_size_summary_tab(
-                filter_stats = exclusion_result$filter_stats,
-                dataset_name = "tumor_height",
-                analysis_name = "height_change_primary",
-                modeled_n = nrow(data_model_ready)
-            )
+            level_support = build_level_support_tab(data_model_ready, unique(c("treatment_group", confounders))),
+            raw_model_output = "Model skipped: insufficient data after sparse-level exclusions."
+        )
+        save_skipped_model_outputs(
+            analysis_name = "height_change_primary",
+            dataset_name = "tumor_height",
+            output_dir = output_dirs$obj1_height_primary,
+            prefix = prefix,
+            reason = diagnostics_stub$diagnostics$reason,
+            diagnostics = diagnostics_stub$diagnostics
         )
         diagnostics_stub
     }
@@ -165,20 +190,45 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders)
             filter_stats = exclusion_result$filter_stats
         )
     } else {
+        sensitivity_sample_size_summary <- build_sample_size_summary_tab(
+            filter_stats = exclusion_result$filter_stats,
+            dataset_name = "tumor_height",
+            analysis_name = "height_change_sensitivity",
+            modeled_n = nrow(data_model_ready)
+        )
         diagnostics_stub <- list(
             table = NULL,
             model = NULL,
             diagnostics = NULL
         )
-        diagnostics_stub$diagnostics <- list(
+        diagnostics_stub$diagnostics <- build_skip_report_diagnostics(
+            status = "skipped",
+            analysis_name = "height_change_sensitivity",
+            dataset_name = "tumor_height",
+            reason = "Sensitivity tumor-height regression was skipped because the post-exclusion dataset did not retain enough usable rows or treatment-group variation.",
+            narrative_lines = c(
+                sprintf(
+                    "After sparse-level exclusions, %d rows remained for the sensitivity tumor-height model.",
+                    nrow(data_model_ready)
+                ),
+                "The sensitivity model adds baseline tumor height, so it is only attempted when the filtered dataset retains enough rows and at least two treatment groups."
+            ),
+            sample_size_summary = sensitivity_sample_size_summary,
+            skip_summary = build_skip_summary_tab(list(
+                modeled_n = nrow(data_model_ready),
+                distinct_treatment_groups = length(unique(stats::na.omit(data_model_ready$treatment_group)))
+            )),
             sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
-            raw_model_output = "Model skipped: insufficient data after sparse-level exclusions.",
-            sample_size_summary = build_sample_size_summary_tab(
-                filter_stats = exclusion_result$filter_stats,
-                dataset_name = "tumor_height",
-                analysis_name = "height_change_sensitivity",
-                modeled_n = nrow(data_model_ready)
-            )
+            level_support = build_level_support_tab(data_model_ready, unique(c("treatment_group", confounders, "initial_tumor_height"))),
+            raw_model_output = "Model skipped: insufficient data after sparse-level exclusions."
+        )
+        save_skipped_model_outputs(
+            analysis_name = "height_change_sensitivity",
+            dataset_name = "tumor_height",
+            output_dir = output_dirs$obj1_height_sensitivity,
+            prefix = prefix,
+            reason = diagnostics_stub$diagnostics$reason,
+            diagnostics = diagnostics_stub$diagnostics
         )
         diagnostics_stub
     }
