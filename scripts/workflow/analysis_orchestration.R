@@ -196,7 +196,7 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
         results$had_warnings <- identical(results$run_state, "completed_with_warnings")
         results$fatal_issues <- fatal_issues
         results$warning_issues <- unique(warning_issues)
-        return(results)
+        return(invisible(results))
     }
 
     if (length(fatal_issues) > 0) {
@@ -205,7 +205,7 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
         results$had_warnings <- FALSE
         results$fatal_issues <- fatal_issues
         results$warning_issues <- unique(warning_issues)
-        return(results)
+        return(invisible(results))
     }
 
     # Check dependencies before running analysis objectives
@@ -311,7 +311,7 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
     results$run_state <- determine_run_state(results$fatal_issues, results$warning_issues)
     results$had_errors <- identical(results$run_state, "failed")
     results$had_warnings <- identical(results$run_state, "completed_with_warnings")
-    return(results)
+    return(invisible(results))
 }
 
 #' Run a Specific Objective for a Given Dataset
@@ -328,7 +328,7 @@ run_specific_objective <- function(dataset_name, objective_number) {
     logger::log_info(formatted(sprintf("Running only Objective %d for dataset: %s", objective_number, dataset_name)))
 
     if (identical(as.integer(objective_number), 0L)) {
-        return(run_objective_0_with_global_context())
+        return(invisible(run_objective_0_with_global_context()))
     }
 
     # Check dependencies for analysis objectives (1-4)
@@ -346,7 +346,7 @@ run_specific_objective <- function(dataset_name, objective_number) {
     }
 
     results <- run_my_analysis(dataset_name, objectives_to_run = objective_number)
-    return(results)
+    return(invisible(results))
 }
 
 #' Merge baseline tables from all cohorts using provided data

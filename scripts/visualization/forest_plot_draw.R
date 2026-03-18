@@ -196,6 +196,26 @@ create_single_cohort_forest_plot <- function(subgroup_results,
     # Optional footnote disabled by default to avoid clutter
     footnote_text <- NULL
 
+    # forestploter::forest() calls grid::convertHeight() internally. In
+    # non-interactive runs (Rscript), that can open the default file device and
+    # create Rplots.pdf if no graphics device is active yet.
+    opened_temp_device <- FALSE
+    temp_plot_path <- NULL
+    if (grDevices::dev.cur() == 1L) {
+        temp_plot_path <- tempfile(pattern = "forest_plot_device_", fileext = ".png")
+        grDevices::png(filename = temp_plot_path, width = 72, height = 72, units = "px", res = 72)
+        opened_temp_device <- TRUE
+    }
+
+    on.exit({
+        if (opened_temp_device && grDevices::dev.cur() > 1L) {
+            grDevices::dev.off()
+        }
+        if (!is.null(temp_plot_path) && file.exists(temp_plot_path)) {
+            unlink(temp_plot_path)
+        }
+    }, add = TRUE)
+
     # Create the forest plot using correct forestploter syntax following documentation
     # CI column is position 4 (blank column after Subgroup, GKSRS_n, Plaque_n)
     fp <- forest(
