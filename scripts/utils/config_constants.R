@@ -62,13 +62,21 @@ INPUT_FILENAME <- "Ocular Melanoma Master Spreadsheet REVISED FOR STATS (5-10-25
 SPECIFIC_PATIENTS_TO_EXCLUDE <- c(271) # Patient 271: all supporting documentation was lost
 
 # Data quality thresholds
-THRESHOLD_RARITY <- 5 # Minimum observations to keep a category
+THRESHOLD_RARITY <- 5L # Minimum observations to keep a category
 EXTREME_ESTIMATE_THRESHOLD <- 100 # Maximum allowed odds/hazard ratios
 CI_WIDTH_THRESHOLD <- 1000 # Maximum confidence interval width (raw difference) - DEPRECATED
 EXPONENTIATED_CI_THRESHOLD <- 100 # Maximum CI width for exponentiated values (ORs, HRs)
 LOG_SCALE_CI_THRESHOLD <- 10 # Maximum CI width for log scale values (log-odds, log-hazards)
 NEAR_PERFECT_SEPARATION_THRESHOLD <- 0.001 # Threshold for near-perfect separation detection (exponentiated scale)
 LOG_SCALE_NEAR_PERFECT_SEPARATION_THRESHOLD <- 0.1 # Threshold for near-perfect separation detection (log scale)
+
+# Model feasibility thresholds
+# CRITICAL: These thresholds control whether model families are fit or only summarized.
+# Keep them model-specific so analysis policy stays explicit and documents stay aligned.
+MINIMUM_ADJUSTED_LOGISTIC_EVENTS <- 10L # Minimum outcome events for adjusted binary logistic regression
+MINIMUM_SURVIVAL_EVENTS <- 5L # Minimum outcome events for survival analysis
+MINIMUM_PFS2_PATIENTS <- 10L # Minimum analyzable patients before attempting PFS-2 modeling
+MINIMUM_PH_TEST_EVENTS <- 10L # Minimum events for proportional-hazards diagnostics/reporting
 
 # Tumor size thresholds for cohort eligibility
 TUMOR_HEIGHT_THRESHOLD <- 10 # mm

@@ -210,6 +210,8 @@ Treatment PH Test: p = 0.03 (VIOLATION)
 
 **Interpretation:** The treatment hazard ratio changes over time. For example, GKSRS may be more protective early but less protective late in follow-up. Use RMST for primary analysis and report Cox HR as secondary.
 
+Model feasibility thresholds are kept separate by analysis family: adjusted adverse-event logistic regression uses a 10-event minimum, PFS-2 survival modeling uses a 10-patient precheck and a 5-event minimum, and PH diagnostics follow a 10-event reporting floor.
+
 ### Automation
 
 The pipeline automatically:

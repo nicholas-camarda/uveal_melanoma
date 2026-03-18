@@ -361,6 +361,7 @@ The analysis pipeline includes robust error handling for situations where data l
 - Only 3 total second recurrence events (minimum required: 5)
 - Events concentrated in only 2 treatment groups (GKSRS: 1, TTT: 2)
 - Summary tables generated, but survival curves and Cox models skipped
+- PFS-2 modeling also requires at least 10 analyzable patients before fitting begins
 
 #### Restricted Cohort (n=167)
 
@@ -376,6 +377,9 @@ The analysis pipeline includes robust error handling for situations where data l
 ### Automatic Error Handling
 
 **Minimum Event Requirements:**
+- Adjusted adverse-event logistic models require 10+ events
+- PFS-2 survival analyses require 10+ analyzable patients and 5+ total events
+- Proportional-hazards diagnostics use a 10-event reporting floor
 - Survival analyses require 5+ total events
 - Cox regression requires 2+ groups with events
 - Logistic regression requires adequate observations per category

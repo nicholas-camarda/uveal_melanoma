@@ -1884,6 +1884,8 @@ analyze_pfs_by_metastatic_progression <- function(data, dataset_name, output_dir
 #' @param dataset_name Name of the dataset
 #' @param output_dirs List of output directories organized by analysis type
 #' @param prefix Character string used as a file prefix for output files
+#' @details PFS-2 uses separate feasibility checks for analyzable patient count
+#'   and second-recurrence event count before attempting survival modeling.
 #' @return List with elements: pfs2_data (data frame), survival_analysis (list), summary_table (gtsummary object)
 analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_dirs = NULL, prefix = NULL) {
     logger::log_info("Starting PFS-2 analysis for recurrent patients")
@@ -1980,8 +1982,11 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_d
     logger::log_info(sprintf("PFS-2 events (2nd recurrence): %d", sum(pfs2_data$pfs2_event)))
 
     # Check if we have enough patients and events for analysis
-    if (nrow(pfs2_data) < 10) {
-        logger::log_info("Insufficient patients for PFS-2 analysis")
+    if (nrow(pfs2_data) < MINIMUM_PFS2_PATIENTS) {
+        logger::log_info(sprintf(
+            "Insufficient patients for PFS-2 analysis (minimum %d required)",
+            MINIMUM_PFS2_PATIENTS
+        ))
         return(list(
             pfs2_data = pfs2_data,
             survival_analysis = NULL,
@@ -1992,9 +1997,13 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_d
     # Check if we have enough events for survival analysis
     total_events <- sum(pfs2_data$pfs2_event)
 
-    if (total_events < 5) {
+    if (total_events < MINIMUM_SURVIVAL_EVENTS) {
         logger::log_error("ERROR: Insufficient events for PFS-2 survival analysis")
-        logger::log_info(sprintf("Total events: %d (minimum 5 required)", total_events))
+        logger::log_info(sprintf(
+            "Total events: %d (minimum %d required)",
+            total_events,
+            MINIMUM_SURVIVAL_EVENTS
+        ))
         logger::log_info("Skipping survival analysis due to insufficient data")
 
         # Create explanation text file for skipped analysis
@@ -2005,17 +2014,19 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_d
             %s cohort: %d patients total
             PFS-2 eligible patients: %d patients (those with first recurrence)
             PFS-2 events: %d patients (second recurrence)
-            Minimum required: 5 events for survival analysis
+            Minimum required: %d events for survival analysis
 
             Analysis was skipped because there are insufficient events (%d) to perform a meaningful survival analysis. 
-            The minimum requirement of 5 events ensures statistical validity and reliable results.
+            The minimum requirement of %d events ensures statistical validity and reliable results.
 
             This is expected behavior for cohorts with limited recurrence data and does not indicate an error.",
             tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name))),
             nrow(data),
             nrow(pfs2_data),
             total_events,
-            total_events
+            MINIMUM_SURVIVAL_EVENTS,
+            total_events,
+            MINIMUM_SURVIVAL_EVENTS
         )
 
         pfs2_skip_diagnostics <- build_survival_skip_diagnostics(
@@ -2025,8 +2036,9 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_d
             analysis_name = "pfs2_analysis",
             dataset_name = dataset_name %||% "unspecified_dataset",
             reason = sprintf(
-                "PFS-2 survival analysis was skipped because only %d events were observed; at least 5 are required.",
-                total_events
+                "PFS-2 survival analysis was skipped because only %d events were observed; at least %d are required.",
+                total_events,
+                MINIMUM_SURVIVAL_EVENTS
             ),
             narrative_lines = c(
                 sprintf(
@@ -2036,8 +2048,9 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_d
                     nrow(pfs2_data)
                 ),
                 sprintf(
-                    "Only %d second-recurrence events were observed; the minimum requirement is 5 events for a meaningful survival analysis.",
-                    total_events
+                    "Only %d second-recurrence events were observed; the minimum requirement is %d events for a meaningful survival analysis.",
+                    total_events,
+                    MINIMUM_SURVIVAL_EVENTS
                 ),
                 "This is expected for cohorts with limited recurrence data and does not indicate a pipeline error."
             ),
@@ -2145,6 +2158,8 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_d
 #' @param output_dir Directory path where diagnostic files should be saved
 #' @param file_prefix Prefix for output files
 #' @param dataset_name Name of the dataset for labeling
+#' @details PH diagnostics are only attempted when the fitted Cox model has at
+#'   least `MINIMUM_PH_TEST_EVENTS` observed events.
 #' @return List containing schoenfeld_test, individual_tests, plots, summary
 test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Survival", output_dir = NULL, file_prefix = "", dataset_name = NULL) {
     logger::log_info(sprintf("Testing proportional hazards assumption for %s", outcome_name))
@@ -2164,6 +2179,19 @@ test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Surv
     # Ensure output directory exists
     if (!dir.exists(output_dir)) {
         dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+
+    total_events <- tryCatch(cox_model$nevent, error = function(...) NA_integer_)
+    if (!is.na(total_events) && total_events < MINIMUM_PH_TEST_EVENTS) {
+        logger::log_warn(formatted(
+            sprintf(
+                "Skipping PH diagnostics: only %d events available (<%d minimum).",
+                total_events,
+                MINIMUM_PH_TEST_EVENTS
+            ),
+            indent = 1
+        ))
+        return(NULL)
     }
 
     build_ph_failure_note <- function(error_obj) {

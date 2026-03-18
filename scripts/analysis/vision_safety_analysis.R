@@ -833,7 +833,8 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
 #' @param data Data frame used for the adjusted model after exclusions.
 #' @param outcome_var Character scalar naming the binary outcome column encoded as 0/1.
 #' @param variables Character vector of modeled variables to summarize.
-#' @param minimum_events Integer minimum number of events required to attempt fitting.
+#' @param minimum_events Integer minimum number of events required to attempt fitting
+#'   (defaults to `MINIMUM_ADJUSTED_LOGISTIC_EVENTS`).
 #' @param sparse_level_diagnostics Optional data frame of rows removed before modeling.
 #' @param analysis_name Character scalar analysis identifier.
 #' @param dataset_name Character scalar dataset identifier.
@@ -842,7 +843,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
 build_binary_skip_diagnostics <- function(data,
                                           outcome_var,
                                           variables,
-                                          minimum_events = 10L,
+                                          minimum_events = MINIMUM_ADJUSTED_LOGISTIC_EVENTS,
                                           sparse_level_diagnostics = NULL,
                                           analysis_name = "analysis",
                                           dataset_name = "unspecified_dataset") {
@@ -1131,7 +1132,7 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
     safety_diagnostics <- NULL
     regression_table <- NULL
     logistic_analysis_name <- paste0(sequela_type, "_logistic")
-    if (sum(model_data[[outcome_var]] == 1, na.rm = TRUE) >= 10) { # Require at least 10 events
+    if (sum(model_data[[outcome_var]] == 1, na.rm = TRUE) >= MINIMUM_ADJUSTED_LOGISTIC_EVENTS) {
 
         # Use the unified table generation system for logistic regression
         # Use standardized confounders from centralized configuration
@@ -1162,7 +1163,7 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
             data = model_data,
             outcome_var = outcome_var,
             variables = unique(c("treatment_group", confounders_for_model)),
-            minimum_events = 10L,
+            minimum_events = MINIMUM_ADJUSTED_LOGISTIC_EVENTS,
             sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
             analysis_name = logistic_analysis_name,
             dataset_name = dataset_name
