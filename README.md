@@ -48,6 +48,17 @@ run_specific_objective("uveal_melanoma_full_cohort", 1)  # Efficacy only
 
 ---
 
+
+## Testing
+
+```r
+# Portable default regression suite
+Rscript -e "testthat::test_dir('tests/testthat')"
+
+# Local integration suite (requires local cohort data)
+Rscript -e "Sys.setenv(OCULAR_RUN_INTEGRATION_TESTS='true'); testthat::test_dir('tests/integration')" 
+```
+
 ## Study Design
 
 ### Patient Cohorts
