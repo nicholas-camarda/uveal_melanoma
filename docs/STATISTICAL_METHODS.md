@@ -2,6 +2,8 @@
 
 This document explains the statistical approaches used throughout the analysis pipeline.
 
+For workbook/table interpretation and plain-language reading guidance, see [INTERPRETATION_GUIDE.md](INTERPRETATION_GUIDE.md).
+
 ---
 
 ## Table of Contents
@@ -422,6 +424,8 @@ ordered_outcome ~ treatment + confounders
 - Independent observations
 - Adequate observations across outcome levels
 
+For practical reading of ordered-outcome model tables, see [Ordinal Regression Tables (Ordered Outcomes)](INTERPRETATION_GUIDE.md#ordinal-regression-tables-ordered-outcomes).
+
 For Objective 2 vision, ordinal modeling is reserved for the 7-level `Snellen Line Change Distribution`. The exact integer `Snellen Line Change` outcome is modeled with adjusted linear regression, and a full exact-integer ordinal model is not used because the observed line-count support is very wide and sparse across cohorts. Reader-facing output files therefore separate `Snellen Line Change` from `Snellen Line Change Distribution`, and each Objective 2 subfolder now also includes a flat `*_effect_summary.xlsx` workbook that combines descriptive, unadjusted, and adjusted rows in one sheet.
 
 For consistency across the ordinal HTML tables and the effect-summary workbooks, ordinal (`polr`) treatment effects are reported as proportional-odds ORs with 95% Wald confidence intervals and likelihood-ratio-test p-values. Other model families retain their standard reporting conventions: linear models report mean differences with Wald CIs/p-values, logistic models report odds ratios with model-based Wald CIs and the pipeline's standard term-level p-values, and Cox models report hazard ratios with the native Cox confidence intervals and Cox-model p-values.
@@ -509,6 +513,8 @@ For practical reading of subgroup outputs, see [Reading Forest Plots](INTERPRETA
 ## GEP Validation Metrics
 
 Gene Expression Profiling (GEP) provides lab-reported probabilities of metastasis-free survival (MFS) and melanoma-specific survival (MSS). Objective 4 validates these predictions against observed outcomes.
+
+For workbook-first reading order and plain-language interpretation, start with [Understanding GEP Analysis](INTERPRETATION_GUIDE.md#understanding-gep-analysis).
 
 ### Validation Framework
 

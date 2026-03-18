@@ -96,11 +96,9 @@ Rscript -e "Sys.setenv(OCULAR_RUN_INTEGRATION_TESTS='true'); testthat::test_dir(
 
 ## Vision Change Outputs
 
-Objective 2 tracks logMAR deltas (positive = improved vision) alongside Snellen-line changes for every cohort. For full derivations, signs, and bucket definitions, see [docs/CALCULATIONS.md → Vision Change](docs/CALCULATIONS.md#vision-change).
+Objective 2 reports visual acuity change using both continuous logMAR deltas and Snellen-line summaries. Derivation logic (including sign conventions and line-conversion rules) is documented in [CALCULATIONS.md](docs/CALCULATIONS.md#vision-change), while output-reading guidance lives in [INTERPRETATION_GUIDE.md](docs/INTERPRETATION_GUIDE.md#understanding-regression-outputs).
 
-- `*_vision_changes.html` now bundles the logMAR summary, Snellen-line summary, and the bucketed line-change table (≥3/±1-line categories) in one review-ready file.
-- `*_vision_line_change_summary.html` stacks the Snellen line-change summary, the bucketed table, and the full line-by-line distribution for downstream review and merged-table ingestion.
-- Excel exports (`*_vision_line_change_distribution.xlsx`, `*_vision_line_change_bucket_summary.xlsx`) mirror the HTML tables for downstream audit trails.
+In short: use [CALCULATIONS.md](docs/CALCULATIONS.md#vision-change) to understand how values are computed, and [INTERPRETATION_GUIDE.md](docs/INTERPRETATION_GUIDE.md#understanding-regression-outputs) to interpret the resulting HTML tables and workbooks.
 
 ---
 
@@ -154,26 +152,14 @@ All analysis outputs are written inside each cohort folder under `final_data/Ana
     - `final_data/Analysis/gksrs/00_General/baseline_characteristics/`
 - Objective 4 outputs live in `04_GEP_Validation/` inside each cohort.
 
-For Objective 4, the current artifact hierarchy is:
+Objective 4 validates externally supplied lab-reported GEP survival predictions for MFS and MSS and writes cohort-specific workbooks under each `04_GEP_Validation/` folder. The primary review artifacts are the outcome-specific consolidated workbooks, with technical detail workbooks and narrative summaries as companions.
 
-1. outcome-specific consolidated workbooks: `*_MFS_consolidated_summary.xlsx`, `*_MSS_consolidated_summary.xlsx`
-2. outcome-specific technical workbooks and narrative summaries: `*mfs_validation_technical_details.xlsx`, `*mss_validation_technical_details.xlsx`, `*mfs_validation_narrative_summary.txt`, `*mss_validation_narrative_summary.txt`
-3. cross-outcome workbook at the root of `04_GEP_Validation/`: `*unified_gep_validation_summary.xlsx`
-4. simple QC workbook in `04_GEP_Validation/unified_summary/`: `*simple_gep_validation.xlsx`
+Readers can follow this path:
+1. Objective 4 implementation and artifact contracts: [TECHNICAL.md](docs/TECHNICAL.md#objective-4-gep-predictive-accuracy)
+2. Formal metrics and assumptions: [STATISTICAL_METHODS.md](docs/STATISTICAL_METHODS.md#gep-validation-metrics)
+3. Workbook interpretation and sheet-by-sheet reading: [INTERPRETATION_GUIDE.md](docs/INTERPRETATION_GUIDE.md#understanding-gep-analysis)
 
-Objective 4 also contains an exploratory standalone no-GEP report under `04_GEP_Validation/d_exploratory_no_gep/`. This is intentionally separate from the production Objective 4 validation outputs. It generates:
-
-1. `full_cohort_exploratory_no_gep_report.xlsx` with guide text, model summaries, predictor contributions, and patient-level no-GEP predictions
-2. `full_cohort_exploratory_no_gep_summary.txt` with a concise interpretation of what the exploratory models do and do not support
-3. `plots/` with corrected no-GEP KM/CIF displays, prediction-density plots, and observed-event-rate-by-bin checks
-
-The exploratory no-GEP report uses baseline clinicopathologic variables to estimate direct 5-year MFS/MSS risk for `GEP Failed/Indeterminate` and `GEP Not Tested` patients, plus a secondary surrogate `Class 2-like` probability. It is meant to support clinical risk stratification when no usable GEP exists; it does not recover the true molecular assay result.
-
-Objective 4 validates externally supplied lab-reported GEP survival probabilities for MFS and MSS. The pipeline copies the lab-reported 5-year survival values (`biopsy1_gep_mfs` and `biopsy1_gep_mss`) into the 5-year `expected_*` columns, then derives the 7-year and 10-year values from those same 5-year probabilities during preprocessing using an exponential-decay extrapolation: `expected_7yr = (5-year survival)^(7/5)` and `expected_10yr = (5-year survival)^(10/5)`. It then converts survival to event risk for observed-vs-expected, calibration, discrimination, and decision-curve analyses. Objective 4 does not fit a new prognostic model to generate the base GEP predictions. MSS uses melanoma-specific death as the primary event definition, with competing non-melanoma death handled in the companion competing-risk analyses.
-
-Objective 4 grouping choices are now centralized in `scripts/utils/config_constants.R` through `GEP_GROUPING_SPECS` and `GEP_OBJECTIVE4_GROUPING`, so switching reader-facing or technical GEP grouping variables should no longer require broad search-and-replace edits across orchestration, reporting, and visualization code.
-
-The consolidated outcome workbooks are the primary review-facing artifacts. They now include an `Observed_Expected_Summary` sheet, while `PRAME_Summary` is always written even when the cohort only supports an explanatory placeholder row. The `Discrimination_Summary` sheet carries `Harrell_C`, `Integrated_AUC`, `Cumulative_Discrimination`, `Time_averaged_Discrimination`, and `IPA`, with the important implementation detail that MFS `Harrell_C` is horizon-specific while MSS `Harrell_C` uses full observed follow-up in the horizon-specific analysis subset. The technical `*_validation_summary.xlsx` workbooks are detail-only companions and no longer duplicate high-level calibration/discrimination summary tables. Narrative summaries now report cohort-specific labels plus the overall O/E ratio, exact Poisson confidence interval, and Pearson goodness-of-fit p-value for the grouped observed-vs-expected comparison. The root `*unified_gep_validation_summary.xlsx` workbook is comparison-only and uses comparison sheet names rather than a second set of outcome-summary sheet names.
+Grouping/display settings for Objective 4 are centralized in `scripts/utils/config_constants.R` (`GEP_GROUPING_SPECS` and `GEP_OBJECTIVE4_GROUPING`).
 
 📖 **[Detailed workflow documentation →](docs/TECHNICAL.md#workflow-orchestration-system)**
 

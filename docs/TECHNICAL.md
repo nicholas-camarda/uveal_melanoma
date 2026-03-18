@@ -374,6 +374,12 @@ The analysis pipeline includes robust error handling for situations where data l
 - Generally sufficient sample size for most analyses
 - Occasional rare category handling in subgroup analyses
 
+#### Objective 4 (GEP Validation) Denominator Constraints
+
+- Main MFS/MSS validation subsets include only definitive raw DecisionDx Class 1 / Class 2 labels with valid endpoint-specific imported GEP probabilities.
+- Nondefinitive labels (`Failed`, `Unknown`, `Other`, discordant, and not-reported patterns) are intentionally excluded from primary Objective 4 denominators.
+- Sparse definitive-label distributions can limit some horizon-specific summary metrics or PRAME comparisons in smaller cohorts; the pipeline writes explanatory outputs rather than silently dropping sections.
+
 ### Automatic Error Handling
 
 **Minimum Event Requirements:**
@@ -453,24 +459,20 @@ Effect-summary workbooks follow model-family-specific inference conventions and 
 
 **Implementation:** `scripts/workflow/objective_4_gep_analysis.R`
 
-**Current methods:**
-- Validate lab-reported GEP survival probabilities at 5, 7, and 10 years. The 5-year values are carried into the analytic dataset directly from `biopsy1_gep_mfs` and `biopsy1_gep_mss`; the 7- and 10-year survival values are then derived during preprocessing from those same 5-year probabilities using an exponential-decay extrapolation (`expected_7yr = (5-year survival)^(7/5)`, `expected_10yr = (5-year survival)^(10/5)`). Downstream analyses convert survival to event risk as needed; Objective 4 does not fit a new prognostic model to generate the base GEP predictions.
-- Restrict the analyzable MFS and MSS subsets to definitive raw DecisionDx labels only. Eligible raw labels are `Class_1A_PRAME_negative`, `Class_1A_PRAME_positive`, `Class_1B_PRAME_negative`, `Class_1B_PRAME_positive`, `Class_2_PRAME_negative`, and `Class_2_PRAME_positive`. Nondefinitive labels such as `*_not_reported`, `Class_2_PRAME_Unknown`, `Class_1A_PRAME_discordant`, `Failed`, `Unknown`, `Other`, and `No` are excluded from `mfs_analysis_eligible`, `mss_analysis_eligible`, and the simple QC summaries.
-- Use metastasis events for MFS and melanoma-specific death for MSS.
-- Run companion competing-risk MSS analyses so non-melanoma death is handled explicitly rather than folded into the primary MSS endpoint.
-- Summarize observed-vs-expected performance by GEP class and as an overall O/E ratio with exact Poisson confidence intervals and a Pearson goodness-of-fit p-value across classes.
-- Summarize calibration with Greenwood Nam-D'Agostino, an IPCW-weighted logistic calibration slope, and an ICI that may use grouped-KM fallback when the usable horizon-specific risk support is too discrete; numerically unstable slope fits are withheld instead of reported as extreme coefficients.
-- Summarize discrimination with `Harrell_C`, `Integrated_AUC`, `Cumulative_Discrimination`, `Time_averaged_Discrimination`, and `IPA`. The primary `Harrell_C` implementation differs by outcome: MFS uses horizon-truncated concordance, whereas MSS uses full observed follow-up in the horizon-specific analysis subset.
-- Summarize clinical utility with decision-curve outputs plus optional PRAME incremental discrimination comparisons when the PRAME-complete subset is adequate.
+**Implementation contract:**
+- Objective 4 validates imported lab-reported predictions; it does not fit a new base prognostic model.
+- The 5-year predictions come from `biopsy1_gep_mfs` / `biopsy1_gep_mss`, and preprocessing derives 7-year and 10-year expected survival from the same 5-year values.
+- Primary validation denominators are restricted to definitive raw DecisionDx labels with valid endpoint-specific prediction fields.
+- Main endpoints are metastasis events (MFS) and melanoma-specific death (MSS); companion MSS competing-risk analyses handle non-melanoma death explicitly.
 
-**Current Outputs:**
+**Artifact hierarchy:**
 - Outcome-specific consolidated workbooks:
    - `a_metastasis_free_survival/*_MFS_consolidated_summary.xlsx`
    - `b_melanoma_specific_survival/*_MSS_consolidated_summary.xlsx`
-- Outcome-specific technical workbooks in the outcome folders:
+- Outcome-specific technical detail workbooks:
    - `a_metastasis_free_survival/*mfs_validation_technical_details.xlsx`
    - `b_melanoma_specific_survival/*mss_validation_technical_details.xlsx`
-- Comprehensive text summaries describing interpretation and data-quality flags
+- Outcome-specific narrative summaries:
    - `a_metastasis_free_survival/*mfs_validation_narrative_summary.txt`
    - `b_melanoma_specific_survival/*mss_validation_narrative_summary.txt`
 - Cross-outcome workbook at the root of `04_GEP_Validation/`:
@@ -480,17 +482,17 @@ Effect-summary workbooks follow model-family-specific inference conventions and 
    - `*simple_gep_validation.xlsx`
 - Limited visuals: KM curves for MFS, CIF curves for MSS, and optional outcome-specific PRAME delta-C PNGs (`*mfs_prame_delta_c.png`, `*mss_prame_delta_c.png`)
 
-**Current workbook rule:** the consolidated outcome workbook is the primary review-facing artifact. Technical workbooks preserve lower-level detail only and do not repeat summary calibration/discrimination tables already present in the consolidated workbook. Narrative summaries carry the cohort label used at runtime and report the overall O/E ratio with its exact Poisson interval and Pearson goodness-of-fit p-value. The root unified workbook is comparison-only and uses `*_Comparison` sheet names to distinguish it from the outcome-specific summaries. `PRAME_Summary` remains the consolidated-workbook sheet name, while the unified workbook uses `PRAME_Comparison`. For the full cohort only, the root unified workbook may also append compact `No_GEP_*` summary tabs, while the detailed appendix workbook remains under `d_exploratory_no_gep/`. PRAME PNGs, when present, stay inside the owning outcome folder and are supporting visuals rather than primary review artifacts.
+**Workbook contract:** the consolidated outcome workbook is the primary review artifact. Technical workbooks retain lower-level detail, and the root unified workbook is comparison-only (`*_Comparison` sheet naming). For full cohort runs, the unified workbook may append compact `No_GEP_*` summary tabs.
 
-**Current display contract:** Objective 4 reader-facing GEP outputs restore canonical labels from `*_derived_precollapse.rds` for `biopsy1_gep`, `gep_class_simple`, `prame_status`, and `gep12_prame_status` when that artifact exists. This keeps KM curves, CIF curves, distribution tables, and simple QC summaries aligned with the intended GEP recode logic. Objective 4 entry points also refresh the eligibility flags from the stored raw GEP labels before analysis so stale saved cohort artifacts cannot leak `Other`, not-reported, unknown, discordant, failed, or untested rows into definitive `Class 1` / `Class 2` analytic denominators.
+**Display contract:** reader-facing outputs restore canonical labels from matching `*_derived_precollapse.rds` artifacts (for `biopsy1_gep`, `gep_class_simple`, `prame_status`, and `gep12_prame_status`) when available. Objective 4 entry points refresh eligibility flags from stored raw labels before analysis, preventing stale cohort artifacts from leaking nondefinitive rows into definitive Class 1 / Class 2 denominators.
 
 For readability, the reader-facing MSS CIF PNG now uses `gep_class_simple` and shows only definitive `Class 1` versus `Class 2` strata. This does not change the technical MSS competing-risk tables or model fits, which still use the more granular `biopsy1_gep` grouping in the companion outputs.
 
-The grouping choices for Objective 4 are now centralized in `scripts/utils/config_constants.R` via `GEP_GROUPING_SPECS` and `GEP_OBJECTIVE4_GROUPING`. Changing reader-facing or technical GEP grouping variables should be done there first, then propagated automatically through MSS orchestration, reporting, and visualization.
+The grouping choices for Objective 4 are centralized in `scripts/utils/config_constants.R` via `GEP_GROUPING_SPECS` and `GEP_OBJECTIVE4_GROUPING`. Change grouping there first so updates propagate through orchestration, reporting, and visualization.
 
 **Important layout note:** cross-cutting cohort outputs such as baseline characteristics and treatment-duration summaries belong in `00_General/` inside each cohort folder, not in a shared top-level `Analysis/General/` directory.
 
-See [STATISTICAL_METHODS.md](STATISTICAL_METHODS.md#gep-validation-metrics) for the metric definitions and code-level methodology, and [INTERPRETATION_GUIDE.md](INTERPRETATION_GUIDE.md#understanding-gep-analysis) for workbook-reading guidance.
+See [STATISTICAL_METHODS.md](STATISTICAL_METHODS.md#gep-validation-metrics) for formal metric definitions and assumptions, and [INTERPRETATION_GUIDE.md](INTERPRETATION_GUIDE.md#understanding-gep-analysis) for workbook-reading guidance.
 
 ---
 

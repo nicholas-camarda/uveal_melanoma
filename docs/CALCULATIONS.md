@@ -171,6 +171,8 @@ Vision loss is **expected** after radiation treatment due to:
 5. `*_snellen_line_change_descriptive_summary.html`, `*_snellen_line_change_integer_distribution.xlsx`, and `*_snellen_line_change_distribution_summary.xlsx` — descriptive Snellen outputs for manuscript QA and supplements.
 6. `*_vision_effect_summary.xlsx` — one-sheet effect summary workbook combining descriptive, unadjusted, and adjusted rows for logMAR Vision Change, Snellen Line Change, and Snellen Line Change Distribution. Workbook inference conventions follow the fitted model family: linear rows use mean differences with Wald CIs/p-values, logistic rows use ORs with model-based Wald CIs and the pipeline's standard term-level p-values, Cox rows use HRs with native Cox CIs/p-values, and ordinal rows use proportional-odds ORs with 95% Wald CIs plus likelihood-ratio-test p-values.
 
+For reader-facing interpretation of these outputs, see [INTERPRETATION_GUIDE.md](INTERPRETATION_GUIDE.md#understanding-regression-outputs).
+
 ---
 
 ## Time-to-Event Variables
@@ -467,6 +469,8 @@ The 450-day (15-month) cutoff was empirically determined to best represent patie
 - **Alive patients:** Under active surveillance with recent documentation
 - **Lost to follow-up patients:** Censored in survival analyses but considered non-compliant with follow-up protocol
 - These patients contribute follow-up time up to their last known contact date
+
+For repository-level implementation details and workflow context, see [TECHNICAL.md](TECHNICAL.md#vital-status-and-follow-up-classification).
 
 **Implementation:**
 
