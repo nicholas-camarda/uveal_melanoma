@@ -13,7 +13,13 @@ scripts/old/*
 
 # Ignore history and .* files
 .Rhistory
-.*
+.history/
+.github/
+.cursor/
+.agent-os/
+.vscode/
+.lintr
+.gitignore
 
 # Ignore original files
 final_data/*
@@ -22,14 +28,15 @@ final_data/*
 logs/*
 old_results/*
 
-
-# Ignore test-generated data and directories
-test_output/*
-tests/*
+# Ignore generated test outputs
+test_output/
+tests/**/test_output/
+tests/**/test_output/*
+tests/**/Rplots.pdf
+tests/.DS_Store
 
 # Ignore agentic helper files
 AGENTS.md
-scripts/main.R
 docs/METHODS_SECTION_PAPER.md
 docs/GEP_OBJECTIVE4_GOAL_IMPLEMENTATION_MAP.md
 docs/GEP_OBJECTIVE4_MINIMAL_CLEANUP_PLAN.md
