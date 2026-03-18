@@ -186,11 +186,24 @@ apply_sparse_level_exclusions <- function(data,
                 character(0)
             }
 
+            n_plaque <- if ("treatment_group" %in% names(data)) {
+                sum(data$treatment_group[level_mask] == "PBT", na.rm = TRUE)
+            } else {
+                NA_integer_
+            }
+            n_gksrs <- if ("treatment_group" %in% names(data)) {
+                sum(data$treatment_group[level_mask] == "GKSRS", na.rm = TRUE)
+            } else {
+                NA_integer_
+            }
+
             diagnostics_rows[[length(diagnostics_rows) + 1L]] <- tibble::tibble(
                 analysis_name = analysis_name,
                 variable = var,
                 level = excluded_level,
                 observed_n = as.integer(level_count %||% 0L),
+                n_plaque = as.integer(n_plaque),
+                n_gksrs = as.integer(n_gksrs),
                 action = "excluded_rows",
                 reason = ifelse(
                     excluded_level %in% sparse_summary$explicit_exclusions,

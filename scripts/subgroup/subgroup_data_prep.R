@@ -139,6 +139,7 @@ fit_subgroup_model <- function(data, outcome_config, subgroup_var_to_use, confou
     valid_levels <- c()
     level_statistics <- list()
     subgroup_levels <- levels(data[[subgroup_var_to_use]])
+    interaction_diagnostics$original_level_order <- as.character(subgroup_levels)
     for (level in subgroup_levels) {
         level_data <- data[data[[subgroup_var_to_use]] == level, ]
         n_plaque <- sum(level_data$treatment_group == "PBT", na.rm = TRUE)

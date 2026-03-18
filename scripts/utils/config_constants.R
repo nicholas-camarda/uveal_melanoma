@@ -340,6 +340,16 @@ STANDARD_LEVEL_LABELS <- list(
     ),
     unstaged = c(
         "Yes_Inappropriate_Scan" = "Yes Inappropriate Scan"
+    ),
+    gep_class_simple = c(
+        "Class 1" = "Class 1",
+        "Class 2" = "Class 2",
+        "GEP Failed/Indeterminate" = "Failed or Indeterminate",
+        "GEP Not Tested" = "Not Tested"
+    ),
+    gep12_prame_status = c(
+        "Positive" = "Positive",
+        "Negative" = "Negative"
     )
     # Add more mappings as needed, e.g.:
     # , eye = c("Left" = "OS", "Right" = "OD")
@@ -443,9 +453,24 @@ FORESTPLOT_NAME_MAPPING <- list(
     "initial_tumor_height" = "Initial Tumor Height",
     "initial_tumor_diameter" = "Initial Tumor Diameter",
     "biopsy1_gep" = "GEP Class",
-    "gep_class_simple" = "GEP Class (Simple)",
-    "gep12_prame_status" = "PRAME Status (Class 1/2)",
+    "gep_class_simple" = "GEP Class",
+    "gep12_prame_status" = "PRAME Status",
     "optic_nerve" = "Optic Nerve Abutment"
+)
+
+# Canonical subgroup levels that should remain visible in forest plots even when
+# a level is not estimable in the fitted model.
+FOREST_PLOT_REQUIRED_LEVELS <- list(
+    gep_class_simple = c(
+        "Class 1",
+        "Class 2",
+        "GEP Failed/Indeterminate",
+        "GEP Not Tested"
+    ),
+    gep12_prame_status = c(
+        "Negative",
+        "Positive"
+    )
 )
 
 # Plot dimensions and settings for all output figures
