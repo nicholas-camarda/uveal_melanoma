@@ -18,6 +18,7 @@ scripts/old/*
 .cursor/
 .agent-os/
 .vscode/
+.*
 .lintr
 .gitignore
 
