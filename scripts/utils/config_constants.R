@@ -348,8 +348,8 @@ STANDARD_LEVEL_LABELS <- list(
         "GEP Not Tested" = "Not Tested"
     ),
     gep12_prame_status = c(
-        "Positive" = "Positive",
-        "Negative" = "Negative"
+        "Negative" = "Negative",
+        "Positive" = "Positive"
     )
     # Add more mappings as needed, e.g.:
     # , eye = c("Left" = "OS", "Right" = "OD")
