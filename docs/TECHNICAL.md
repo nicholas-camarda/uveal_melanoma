@@ -318,6 +318,22 @@ scripts/
    - Generate outputs
 
 ### Data Flow Summary
+### Tool Refresh Outputs
+
+Documentation-oriented utilities under [scripts/tools](../scripts/tools) write their canonical artifacts to `final_data/Analytic Dataset/tools_output/`, which is the path behind `TOOLS_OUTPUT_DIR` in [scripts/utils/config_constants.R](../scripts/utils/config_constants.R).
+
+The current refresh entry point is [scripts/tools/run_tool_refreshes.R](../scripts/tools/run_tool_refreshes.R). It orchestrates the documentation-focused tools, writes per-tool run summaries, and leaves behind a suite-level manifest so periodic refreshes can be audited without opening the workbooks themselves.
+
+Current canonical outputs from the refreshed tool suite include:
+
+- `derived_variables_documentation.xlsx`
+- `derived_variables_documentation_validation.csv`
+- `comprehensive_variable_census.xlsx`
+- `comprehensive_variable_census.rds`
+- `comprehensive_variable_census.html`
+- timestamped `*_run_*_summary.csv` and `*_run_*_summary.txt` files for each tool execution
+
+These files are treated as documentation and audit artifacts, not analysis outputs. They should stay synchronized with the active workflow and be regenerated when the derived-variable catalog, variable census, or tool logic changes.
 
 See [README.md](../README.md) for the top-level execution entry points and output map. The step list above is the canonical technical sequence for how data move through the pipeline.
 

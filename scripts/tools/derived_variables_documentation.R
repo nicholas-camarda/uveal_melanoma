@@ -3,7 +3,9 @@
 # Description: Comprehensive documentation of all derived variables created during data processing
 # This script generates documentation for all derived variables and exports to Excel
 
-source(here("scripts", "load_all.R"))
+if (!exists("TOOLS_OUTPUT_DIR", inherits = TRUE)) {
+    source(here::here("scripts", "load_all.R"))
+}
 
 # =============================================================================
 # DERIVED VARIABLE DOCUMENTATION
@@ -558,33 +560,78 @@ export_derived_variables_to_excel <- function(output_file = NULL, include_timest
 #' Main function to generate comprehensive documentation and export to Excel
 #' in the final_data/Analytic Dataset folder.
 #'
-#' @param include_timestamp Whether to include timestamp in filename (default: TRUE)
+#' @param dataset_name Analytic dataset to validate against.
+#' @param output_dir Directory where documentation artifacts will be written.
+#' @param include_timestamp Whether to include timestamp in filename (default: FALSE)
 #' @return Path to created Excel file
 #' @examples
 #' generate_derived_variables_documentation() # Creates file in tools_output folder
-generate_derived_variables_documentation <- function(include_timestamp = FALSE) {
-    # Create output directory if it doesn't exist
-    output_dir <- file.path(PROCESSED_DATA_DIR, "tools_output")
-    if (!dir.exists(output_dir)) {
-        dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
-    }
+generate_derived_variables_documentation <- function(
+    dataset_name = "uveal_melanoma_full_cohort",
+    output_dir = TOOLS_OUTPUT_DIR,
+    include_timestamp = FALSE
+) {
+    output_dir <- ensure_tool_output_dir(output_dir)
+    output_file <- tool_output_path(
+        tool_name = "derived_variables_documentation",
+        extension = "xlsx",
+        output_dir = output_dir,
+        include_timestamp = include_timestamp
+    )
 
-    # Generate filename
-    if (include_timestamp) {
-        timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
-        filename <- sprintf("derived_variables_documentation_%s.xlsx", timestamp)
-    } else {
-        filename <- "derived_variables_documentation.xlsx"
-    }
+    validation_file <- tool_output_path(
+        tool_name = "derived_variables_documentation_validation",
+        extension = "csv",
+        output_dir = output_dir,
+        include_timestamp = include_timestamp
+    )
 
-    output_file <- file.path(output_dir, filename)
+    data <- load_tool_dataset(dataset_name)
 
     # Export to Excel
     result_file <- export_derived_variables_to_excel(output_file, include_timestamp = FALSE)
 
+    validation_results <- validate_derived_variables_documentation(list(analytic_dataset = data))
+    validation_summary <- data.frame(
+        dataset_name = dataset_name,
+        documented_variables = validation_results$documented_variables,
+        actual_variables = validation_results$actual_variables,
+        missing_in_data_count = length(validation_results$missing_in_data),
+        undocumented_data_count = length(validation_results$undocumented_data),
+        documentation_complete = validation_results$documentation_complete,
+        missing_in_data = if (length(validation_results$missing_in_data) > 0) {
+            paste(validation_results$missing_in_data, collapse = "; ")
+        } else {
+            ""
+        },
+        undocumented_data = if (length(validation_results$undocumented_data) > 0) {
+            paste(validation_results$undocumented_data, collapse = "; ")
+        } else {
+            ""
+        },
+        stringsAsFactors = FALSE
+    )
+    write.csv(validation_summary, validation_file, row.names = FALSE)
+
+    run_summary <- write_tool_run_summary(
+        tool_name = "derived_variables_documentation",
+        outputs = list(
+            documentation = result_file,
+            validation = validation_file
+        ),
+        dataset_name = dataset_name,
+        notes = sprintf("documented_variables=%d", length(DERIVED_VARIABLE_DOCUMENTATION)),
+        output_dir = output_dir
+    )
+
     logger::log_info(sprintf("Derived variables documentation generated: %s", result_file))
 
-    return(result_file)
+    return(list(
+        output_file = result_file,
+        validation_file = validation_file,
+        validation_results = validation_results,
+        run_summary = run_summary
+    ))
 }
 
 # =============================================================================
@@ -638,22 +685,20 @@ validate_derived_variables_documentation <- function(processed_data) {
 # MAIN EXECUTION
 # =============================================================================
 
-cat("=== DERIVED VARIABLES DOCUMENTATION GENERATION ===\n\n")
+if (sys.nframe() == 0L) {
+    cat("=== DERIVED VARIABLES DOCUMENTATION GENERATION ===\n\n")
 
-# Generate and export documentation
-cat("Generating derived variables documentation...\n")
-output_file <- generate_derived_variables_documentation(include_timestamp = FALSE)
-cat(sprintf("Documentation exported to: %s\n\n", output_file))
+    # Generate and export documentation
+    cat("Generating derived variables documentation...\n")
+    result <- generate_derived_variables_documentation(include_timestamp = FALSE)
+    cat(sprintf("Documentation exported to: %s\n", result$output_file))
+    cat(sprintf("Validation summary written to: %s\n\n", result$validation_file))
 
-# Load data for validation if available
-cat("Validating documentation against actual data...\n")
-data <- readRDS("final_data/Analytic Dataset/uveal_melanoma_full_cohort.rds")
-validation_results <- validate_derived_variables_documentation(list(full_cohort = data))
+    if (result$validation_results$documentation_complete) {
+        cat("✓ Documentation validation passed - all documented variables exist in the analytic dataset\n")
+    } else {
+        cat("⚠ Documentation validation found documented variables missing in the dataset\n")
+    }
 
-if (validation_results$documentation_complete) {
-    cat("✓ Documentation validation passed - all documented variables exist in the analytic dataset\n")
-} else {
-    cat("⚠ Documentation validation found documented variables missing in the dataset\n")
+    cat("\n=== DOCUMENTATION GENERATION COMPLETE ===\n")
 }
-
-cat("\n=== DOCUMENTATION GENERATION COMPLETE ===\n")

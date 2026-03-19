@@ -2,7 +2,9 @@
 # This script identifies variables that differ across treatment groups and updates the confounders list
 # CRITICAL: Uses the processed analytic dataset with original factor levels
 
-source(here("scripts", "load_all.R"))
+if (!exists("TOOLS_OUTPUT_DIR", inherits = TRUE)) {
+    source(here::here("scripts", "load_all.R"))
+}
 
 # Source configuration
 # No need to source load_all.R - it will be sourced by the calling script
@@ -84,7 +86,8 @@ cat("=== CONFOUNDER ANALYSIS AND UPDATE ===\n")
 cat("USING PROCESSED ANALYTIC DATASET WITH ORIGINAL FACTOR LEVELS\n\n")
 
 # Load the processed cohort data
-data <- readRDS("final_data/Analytic Dataset/uveal_melanoma_full_cohort.rds")
+dataset_name <- "uveal_melanoma_full_cohort"
+data <- load_tool_dataset(dataset_name)
 
 cat(sprintf("\nLoaded processed cohort with %d patients\n\n", nrow(data)))
 
@@ -363,7 +366,11 @@ if (length(significant_vars) > 0) {
     cat(")\n\n")
 
     # Save detailed results to Excel file
-    output_file <- file.path(PROCESSED_DATA_DIR, "tools_output", "confounder_analysis_results.xlsx")
+    output_file <- tool_output_path(
+        tool_name = "confounder_analysis_results",
+        extension = "xlsx",
+        output_dir = TOOLS_OUTPUT_DIR
+    )
 
     # Create workbook
     wb <- openxlsx::createWorkbook()
@@ -485,7 +492,16 @@ if (length(significant_vars) > 0) {
     # Save workbook
     openxlsx::saveWorkbook(wb, output_file, overwrite = TRUE)
 
+    run_summary <- write_tool_run_summary(
+        tool_name = "confounder_analysis",
+        outputs = list(results = output_file),
+        dataset_name = dataset_name,
+        notes = sprintf("variables_tested=%d; significant=%d", nrow(results_summary), length(significant_vars)),
+        output_dir = TOOLS_OUTPUT_DIR
+    )
+
     cat(sprintf("Detailed results saved to: %s\n", output_file))
+    cat(sprintf("Run summary saved to: %s\n", run_summary$csv_path))
     cat("Excel file includes:\n")
     cat("- Complete analysis results with effect sizes\n")
     cat("- Human-readable effect size interpretations\n")

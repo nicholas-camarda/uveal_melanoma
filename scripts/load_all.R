@@ -136,6 +136,7 @@ source(here("scripts", "tables", "table_model_fitting.R"))
 source(here("scripts", "tables", "table_formatting.R"))
 source(here("scripts", "tables", "table_diagnostics.R"))
 source(here("scripts", "tables", "table_io.R"))
+source(here("scripts", "tools", "tool_runtime_helpers.R"))
 source(here("scripts", "tools", "effect_summary_audit.R"))
 
 # Source the data processing modules (modularized)

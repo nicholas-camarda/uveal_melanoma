@@ -1,5 +1,7 @@
 # Browse Diagnostics Files Utility
-source(here::here("scripts", "load_all.R"))
+if (!exists("TOOLS_OUTPUT_DIR", inherits = TRUE)) {
+    source(here::here("scripts", "load_all.R"))
+}
 
 # Usage examples:
 # Rscript scripts/tools/browse_diagnostics.R
@@ -13,11 +15,6 @@ suppressWarnings(suppressMessages({
         stop("Package 'here' is required. Please install it.")
     }
 }))
-
-# Source project loader to ensure config/constants and packages are available
-try({
-    source(here::here("scripts", "load_all.R"))
-}, silent = TRUE)
 
 suppressWarnings(suppressMessages({
     if (!requireNamespace("readxl", quietly = TRUE)) {
@@ -146,15 +143,6 @@ main <- function() {
     invisible(NULL)
 }
 
-if (identical(environment(), globalenv()) && !interactive()) {
+if (sys.nframe() == 0L) {
     main()
 }
-
-
-
-# Rscript scripts/tools/browse_diagnostics.R --pattern recurrence --max-rows 8
-# Rscript scripts/tools/browse_diagnostics.R --list-only
-# Rscript scripts/tools/browse_diagnostics.R --dir final_data/Analysis/uveal_full/01_Efficacy
-
-readxl::read_excel("final_data/Analysis/uveal_full/01_Efficacy/a_recurrence/full_cohort_recurrence1_post_treatment_only_logistic_diagnostics.xlsx", sheet = 6) %>%
-    print(n = Inf)

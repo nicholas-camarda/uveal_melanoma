@@ -7,11 +7,9 @@
 #' @author AI Assistant
 #' @date 2025-01-31
 
-# Load required libraries
-library(readxl)
-library(dplyr)
-library(tidyr)
-library(openxlsx)
+if (!exists("TOOLS_OUTPUT_DIR", inherits = TRUE)) {
+    source(here::here("scripts", "load_all.R"))
+}
 
 #' Create comprehensive variable census
 #'
@@ -20,9 +18,10 @@ library(openxlsx)
 #' @return List containing the comprehensive census
 create_comprehensive_variable_census <- function(
     data_dict_path = DATA_DICTIONARY_PATH,
+    dataset_name = "uveal_melanoma_full_cohort",
     output_dir = TOOLS_OUTPUT_DIR) {
     # Create output directory
-    dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+    output_dir <- ensure_tool_output_dir(output_dir)
 
     # Load original data dictionary
     cat("Loading original data dictionary...\n")
@@ -36,8 +35,7 @@ create_comprehensive_variable_census <- function(
 
     # Load current dataset to get actual variable information
     cat("Loading current dataset...\n")
-    source("scripts/utils/load_all.R")
-    current_data <- readRDS("final_data/Analytic Dataset/uveal_melanoma_full_cohort.rds")
+    current_data <- load_tool_dataset(dataset_name)
 
     # Create current dataset variable information
     current_vars <- data.frame(
@@ -100,9 +98,10 @@ create_comprehensive_variable_census <- function(
     )
 
     # Save comprehensive census
-    saveRDS(comprehensive_census, file.path(output_dir, "comprehensive_variable_census.rds"))
-
-    # HTML report removed - only Excel output as requested
+    rds_file <- file.path(output_dir, "comprehensive_variable_census.rds")
+    xlsx_file <- file.path(output_dir, "comprehensive_variable_census.xlsx")
+    html_file <- file.path(output_dir, "comprehensive_variable_census.html")
+    saveRDS(comprehensive_census, rds_file)
 
     # Create XLSX export with multiple sheets
     wb <- createWorkbook()
@@ -135,15 +134,33 @@ create_comprehensive_variable_census <- function(
     writeData(wb, "Category_Breakdown", category_df)
 
     # Save XLSX file
-    saveWorkbook(wb, file.path(output_dir, "comprehensive_variable_census.xlsx"), overwrite = TRUE)
+    saveWorkbook(wb, xlsx_file, overwrite = TRUE)
+
+    html_file <- create_census_html_report(comprehensive_census, summary_stats, output_dir)
 
     cat("Comprehensive variable census created successfully!\n")
     cat("Files saved to:", output_dir, "\n")
 
+    run_summary <- write_tool_run_summary(
+        tool_name = "comprehensive_variable_census",
+        outputs = list(
+            rds = rds_file,
+            xlsx = xlsx_file,
+            html = html_file
+        ),
+        dataset_name = dataset_name,
+        notes = sprintf("total_variables=%d; missing_from_current=%d", summary_stats$total_variables, summary_stats$missing_from_current),
+        output_dir = output_dir
+    )
+
     return(list(
         census = comprehensive_census,
         summary = summary_stats,
-        output_dir = output_dir
+        output_dir = output_dir,
+        rds_file = rds_file,
+        xlsx_file = xlsx_file,
+        html_file = html_file,
+        run_summary = run_summary
     ))
 }
 
@@ -214,6 +231,8 @@ get_derived_variables_info <- function() {
 #' @param summary Summary statistics
 #' @param output_dir Output directory
 create_census_html_report <- function(census, summary, output_dir) {
+    html_file <- file.path(output_dir, "comprehensive_variable_census.html")
+
     # Create HTML content
     html_content <- paste0(
         "<!DOCTYPE html>",
@@ -289,7 +308,9 @@ create_census_html_report <- function(census, summary, output_dir) {
     html_content <- paste0(html_content, "</body></html>")
 
     # Save HTML file
-    writeLines(html_content, file.path(output_dir, "comprehensive_variable_census.html"))
+    writeLines(html_content, html_file)
+
+    invisible(html_file)
 }
 
 #' Main execution function
@@ -299,9 +320,8 @@ main <- function() {
     cat("It combines the original data dictionary with current dataset structure.\n\n")
 
     # Check if data dictionary exists
-    data_dict_path <- "data/Ocular Melanoma Master Spreadsheet FINAL FOR STATS (4-30-25).xlsx"
-    if (!file.exists(data_dict_path)) {
-        stop("Data dictionary file not found: ", data_dict_path)
+    if (!file.exists(DATA_DICTIONARY_PATH)) {
+        stop("Data dictionary file not found: ", DATA_DICTIONARY_PATH)
     }
 
     cat("Creating comprehensive variable census...\n")
@@ -332,7 +352,6 @@ main <- function() {
     cat("\nComprehensive variable census completed successfully!\n")
 }
 
-# Run if called directly
-if (!interactive()) {
+if (sys.nframe() == 0L) {
     main()
 }
