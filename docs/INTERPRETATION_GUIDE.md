@@ -1,6 +1,12 @@
 # Interpretation Guide
 
-This guide helps researchers and clinicians interpret the analysis outputs, understand key visualizations, and translate statistical results into clinical insights.
+This guide is for reading the generated outputs after the pipeline has run. It explains how to navigate the folders, read the workbooks, and interpret the tables and figures in plain language.
+
+It is not the canonical source for variable derivations or statistical assumptions:
+
+- Use [CALCULATIONS.md](CALCULATIONS.md) for how values and endpoints are constructed.
+- Use [STATISTICAL_METHODS.md](STATISTICAL_METHODS.md) for formal model definitions, thresholds, and validation metrics.
+- Use [TECHNICAL.md](TECHNICAL.md) for workflow internals and artifact contracts.
 
 ---
 
@@ -22,6 +28,14 @@ This guide helps researchers and clinicians interpret the analysis outputs, unde
 ---
 
 ## Quick Start
+
+If you only need the shortest route:
+
+1. Find the cohort folder under `final_data/Analysis/`.
+2. Open the objective folder that matches your question.
+3. Start with the consolidated `.xlsx` workbook or summary `.html` artifact in that folder.
+4. Use this guide to interpret what you are seeing.
+5. If you need to know how a value was calculated, move to [CALCULATIONS.md](CALCULATIONS.md). If you need the formal method, move to [STATISTICAL_METHODS.md](STATISTICAL_METHODS.md).
 
 ### Finding Your Analysis
 
@@ -443,8 +457,8 @@ Sex
 
 **5. P-for-Interaction**
 - Tests whether treatment effect differs across subgroup levels
-- p < 0.10: Significant heterogeneity (effect modification)
-- p ≥ 0.10: Consistent effect across subgroups
+- p < 0.05: Significant heterogeneity (effect modification)
+- p ≥ 0.05: Consistent effect across subgroups
 
 **6. Overall Effect (Diamond ♦)**
 - Pooled estimate across all patients
@@ -1020,13 +1034,13 @@ HR = 0.65 (95% CI: 0.45 to 0.95)
 
 **Multiple Comparisons Problem:**
 - Test 20 subgroups → expect 1 false positive by chance (p < 0.05)
-- Require p < 0.10 for interaction, not individual subgroup p-values
+- Require p < 0.05 for interaction, not individual subgroup p-values
 - Exploratory findings need confirmation
 
 **Example:**
 - GKSRS HR = 0.50 in males (p=0.04), HR = 0.80 in females (p=0.35)
 - P-for-interaction = 0.25
-- **Conclusion:** No strong evidence for sex differences (interaction p > 0.10)
+- **Conclusion:** No strong evidence for sex differences (interaction p > 0.05)
 
 ### 4. Ignoring PH Violations
 

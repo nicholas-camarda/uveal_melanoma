@@ -2,7 +2,7 @@
 # This script identifies variables that differ across treatment groups and updates the confounders list
 # CRITICAL: Uses the processed analytic dataset with original factor levels
 
-source("scripts/utils/load_all.R")
+source(here("scripts", "load_all.R"))
 
 # Source configuration
 # No need to source load_all.R - it will be sourced by the calling script

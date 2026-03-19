@@ -1,11 +1,18 @@
 # Technical Documentation
 
-This document provides detailed technical information about the implementation, workflow system, and quality assurance procedures.
+This document is the implementation reference for the repository. It covers workflow orchestration, directory structure, configuration, artifact contracts, and quality-assurance behavior.
+
+For other documentation roles:
+
+- Use [CALCULATIONS.md](CALCULATIONS.md) for derived-variable definitions and endpoint construction.
+- Use [STATISTICAL_METHODS.md](STATISTICAL_METHODS.md) for the canonical statistical methodology.
+- Use [INTERPRETATION_GUIDE.md](INTERPRETATION_GUIDE.md) for workbook, table, and figure interpretation.
 
 ---
 
 ## Table of Contents
 
+- [Documentation Boundaries](#documentation-boundaries)
 - [Workflow Orchestration System](#workflow-orchestration-system)
 - [Cohort Definitions](#cohort-definitions)
    - [Dataset Identities and Construction](#dataset-identities-and-construction)
@@ -16,6 +23,22 @@ This document provides detailed technical information about the implementation, 
 - [Data Limitations](#data-limitations)
 - [Research Objectives](#research-objectives)
 - [Subgroup Filtering](#subgroup-filtering)
+
+---
+
+## Documentation Boundaries
+
+The core documentation set is intentionally split by role so updates have one primary home.
+
+| Topic | Primary home | What stays here |
+|-------|--------------|-----------------|
+| Running the project and finding outputs | `README.md` | Short overview, entry commands, output map, and links outward |
+| Derived variables and endpoint definitions | `CALCULATIONS.md` | Cross-links only when implementation context is needed |
+| Statistical methods, assumptions, and thresholds | `STATISTICAL_METHODS.md` | References to scripts or artifact contracts only when needed for implementation clarity |
+| Output-reading guidance | `INTERPRETATION_GUIDE.md` | References to where artifacts are generated, not how to interpret them |
+| Workflow internals and artifact contracts | `TECHNICAL.md` | This document |
+
+When content overlaps, this document should keep the implementation and storage contract and defer formula definitions, inferential rationale, and reader guidance to the documents above.
 
 ---
 
@@ -294,9 +317,9 @@ scripts/
    - Execute objective-specific workflows
    - Generate outputs
 
-### Data Flow Diagram
+### Data Flow Summary
 
-See README.md for the Mermaid diagram illustrating the complete data flow.
+See [README.md](../README.md) for the top-level execution entry points and output map. The step list above is the canonical technical sequence for how data move through the pipeline.
 
 ---
 

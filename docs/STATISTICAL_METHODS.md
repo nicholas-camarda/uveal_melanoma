@@ -1,8 +1,8 @@
 # Statistical Methods
 
-This document explains the statistical approaches used throughout the analysis pipeline.
+This document is the canonical statistical-methods reference for the repository. It defines the model families, assumptions, thresholds, and validation metrics used throughout the analysis pipeline.
 
-For workbook/table interpretation and plain-language reading guidance, see [INTERPRETATION_GUIDE.md](INTERPRETATION_GUIDE.md).
+For output-reading guidance, use [INTERPRETATION_GUIDE.md](INTERPRETATION_GUIDE.md). For derived-variable definitions and endpoint construction, use [CALCULATIONS.md](CALCULATIONS.md).
 
 ---
 
@@ -460,8 +460,8 @@ outcome ~ treatment * subgroup_variable + confounders
 ```
 
 **Interpretation:**
-- **p < 0.05:** Significant interaction (treatment effect varies by subgroup)
-- **p ≥ 0.05:** No significant interaction (consistent treatment effect)
+- **p < 0.05:** Evidence of interaction (treatment effect may vary by subgroup)
+- **p ≥ 0.05:** No strong evidence of interaction (overall treatment effect is the safer summary)
 
 ### Filtering Criteria
 
@@ -494,12 +494,12 @@ See [TECHNICAL.md](TECHNICAL.md#subgroup-filtering) for detailed subgroup filter
 
 ### Interpretation Guidelines
 
-**Significant Interaction (p < 0.05):**
+**Possible Interaction (p < 0.05):**
 - Treatment effect genuinely differs across subgroups
 - Clinically meaningful heterogeneity
 - Consider subgroup-specific treatment recommendations
 
-**Non-Significant Interaction (p ≥ 0.05):**
+**No Strong Interaction Signal (p ≥ 0.05):**
 - No strong evidence for differential effects
 - Apply overall treatment effect across subgroups
 - Observed differences likely due to chance

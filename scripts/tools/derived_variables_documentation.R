@@ -3,7 +3,7 @@
 # Description: Comprehensive documentation of all derived variables created during data processing
 # This script generates documentation for all derived variables and exports to Excel
 
-source("scripts/load_all.R")
+source(here("scripts", "load_all.R"))
 
 # =============================================================================
 # DERIVED VARIABLE DOCUMENTATION

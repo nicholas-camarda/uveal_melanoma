@@ -1,112 +1,109 @@
-# Uveal Melanoma Treatment Outcomes: GKSRS vs PBT Analysis
+# Uveal Melanoma Treatment Outcomes Analysis
 
-## Overview
+This repository contains the analysis pipeline for comparing clinical outcomes after Gamma Knife stereotactic radiosurgery (GKSRS) and proton beam therapy (PBT) in uveal melanoma. It produces cohort-specific tables, figures, workbooks, and validation outputs for efficacy, safety, repeat-radiation, and biomarker-validation workflows.
 
-Analysis pipeline for comparing clinical outcomes in uveal melanoma patients treated with Gamma Knife Stereotactic Radiosurgery (GKSRS) or Proton Beam Therapy (PBT) brachytherapy. Generates tables, figures, and statistical analyses for efficacy, safety, and biomarker validation endpoints across three patient cohorts.
+## Documentation Map
 
-## Citation
+Use the documentation set by purpose rather than reading every file linearly.
 
-Marquis TJ*, Camarda ND*, Archambault SD, Mignano JE, Melhus CS, Rodday AM, Duker JS, Desai SJ. *A Retrospective Analysis of Plaque Brachytherapy vs. Gamma-Knife Stereotactic Radiosurgery in the First-Line Localized Treatment of Uveal Melanoma.* In preparation.
-
----
+| Document | Primary use |
+|----------|-------------|
+| `README.md` | First-stop overview, setup, execution, output map, and links outward |
+| `docs/TECHNICAL.md` | Workflow orchestration, directory structure, configuration, artifact contracts, and QA |
+| `docs/CALCULATIONS.md` | Derived-variable definitions, endpoint construction, and sign conventions |
+| `docs/STATISTICAL_METHODS.md` | Canonical statistical methodology, assumptions, thresholds, and validation metrics |
+| `docs/INTERPRETATION_GUIDE.md` | How to read tables, plots, workbooks, and Objective 4 deliverables |
+| `docs/METHODS_SECTION_PAPER.md` | Manuscript-facing methods draft derived from the canonical docs |
 
 ## Quick Start
 
 ### Prerequisites
 
-- **R >= 4.4.0**
-- Raw Excel data file
-- ~5 minutes for full analysis
+- R 4.4 or newer
+- Access to the project input spreadsheet referenced in `scripts/utils/config_constants.R`
 
-### Installation
+### Run the pipeline
 
 ```r
-# 1. Clone repository and navigate to project root
-# 2. Dependencies install automatically when running:
 source("scripts/load_all.R")
-```
 
-### Basic Usage
-
-```r
-# Run complete analysis (all cohorts, all objectives)
+# All cohorts, all objectives
 main_execution()
 
-# Run specific cohort
+# One cohort, all objectives
 run_my_analysis("uveal_melanoma_full_cohort")
 
-# Run specific objective
-run_specific_objective("uveal_melanoma_full_cohort", 1)  # Efficacy only
+# One cohort, one objective
+run_specific_objective("uveal_melanoma_full_cohort", 4)
 ```
 
-### Output
-
-- Excel tables (.xlsx)
-- Figures (.png, 300 DPI)
-- Analysis logs
-- Organized by cohort/objective/analysis
-
----
-
-
-## Testing
+### Run tests
 
 ```r
-# Portable default regression suite
+# Portable regression suite
 Rscript -e "testthat::test_dir('tests/testthat')"
 
 # Local integration suite (requires local cohort data)
-Rscript -e "Sys.setenv(OCULAR_RUN_INTEGRATION_TESTS='true'); testthat::test_dir('tests/integration')" 
+Rscript -e "Sys.setenv(OCULAR_RUN_INTEGRATION_TESTS='true'); testthat::test_dir('tests/integration')"
 ```
 
-## Study Design
+## Study Scope
 
-### Patient Cohorts
+The pipeline works with three intentionally overlapping analytic cohorts created from the same cleaned master dataset.
 
+| Cohort | Runtime dataset id | Primary role |
+|--------|--------------------|--------------|
+| Full | `uveal_melanoma_full_cohort` | All-comers treatment cohort for real-world comparison |
+| Restricted | `uveal_melanoma_restricted_cohort` | Dual-eligibility cohort for a more balanced treatment comparison |
+| GKSRS-only | `uveal_melanoma_gksrs_only_cohort` | Patients ineligible for PBT, used to characterize GKSRS in challenging cases |
 
-| Cohort         | N   | Definition                   | Purpose                                      |
-| ---------------- | ----- | ------------------------------ | ---------------------------------------------- |
-| **Full**       | 260 | All GKSRS or PBT patients    | Real-world effectiveness                     |
-| **Restricted** | 167 | Eligible for both treatments | Balanced comparison (minimal selection bias) |
-| **GKSRS-Only** | 92  | Ineligible for PBT           | GKSRS effectiveness in challenging cases     |
+The current cohort counts and summary totals are written to `final_data/Analytic Dataset/cohort_summary_statistics.json` whenever the pipeline is rerun.
 
-**Eligibility criteria for restricted cohort:** Tumor diameter ≤20mm, height ≤10mm, no optic nerve involvement
+The analysis is organized into four main research objectives:
 
-**Current cohort counts:** Automatically updated counts are tracked in `final_data/Analytic Dataset/cohort_summary_statistics.json`, regenerated with each analysis run.
+| Objective | Focus | Primary outputs |
+|-----------|-------|-----------------|
+| 1 | Efficacy | Event summaries, survival outputs, tumor-height analyses, subgroup forest plots |
+| 2 | Safety | Vision summaries, adverse-event models, diagnostics, effect-summary workbooks |
+| 3 | Repeat radiation | PFS-2 summaries, survival outputs, skip artifacts when data are sparse |
+| 4 | GEP validation | Consolidated workbooks, technical workbooks, narrative summaries, KM/CIF displays |
 
-**Vital status classification:** Patients are categorized as dead (event occurred), alive (recent follow-up within 15 months), or lost to follow-up (no contact >15 months from data cutoff). See [detailed methodology →](docs/CALCULATIONS.md#lost-to-follow-up-classification)
+## Output Map
 
-📖 **[Full cohort definitions and rationale →](docs/TECHNICAL.md#cohort-definitions)**
+Pipeline outputs are written under `final_data/`.
 
----
+```text
+final_data/
+|- Analytic Dataset/
+|  |- cohort_summary_statistics.json
+|  |- *.rds
+|  |- *_derived_precollapse.rds
+|  `- other_map.rds
+`- Analysis/
+   |- uveal_full/
+   |- uveal_restricted/
+   |- gksrs/
+   `- merged_tables/
+```
 
-## Research Objectives
+Within each cohort folder, outputs follow a consistent layout:
 
+- `00_General/`: baseline characteristics, cohort summaries, treatment-duration summaries, exclusion summaries
+- `01_Efficacy/`: recurrence, metastasis, survival, tumor-height, subgroup outputs
+- `02_Safety/`: vision and radiation-related adverse-event outputs
+- `03_Repeat_Radiation/`: PFS-2 summaries and survival artifacts
+- `04_GEP_Validation/`: Objective 4 workbooks, plots, and unified summaries
 
-| Objective               | Status         | Key Analyses                                                             | Outputs                               |
-| ------------------------- | ---------------- | -------------------------------------------------------------------------- | --------------------------------------- |
-| **1. Efficacy**         | ✅ Complete    | Local recurrence, metastasis, survival (OS/PFS), tumor height, subgroups | Tables, survival curves, forest plots |
-| **2. Safety**           | ✅ Complete    | Vision changes, retinopathy, glaucoma, retinal detachment                | Tables, regression models             |
-| **3. Repeat Radiation** | ✅ Complete    | PFS-2 analysis for salvage treatment                                     | Survival curves, Cox models           |
-| **4. GEP Validation**   | 🚧 In Progress | Calibration, discrimination, clinical utility, PRAME augmentation        | Cohort-specific workbooks, text summaries, KM/CIF plots |
+Objective 4 has a deliberate reading path:
 
-📖 **[Detailed objectives and sub-analyses →](docs/TECHNICAL.md#research-objectives)**
+1. Start here for the high-level purpose and output location.
+2. Use [docs/STATISTICAL_METHODS.md](docs/STATISTICAL_METHODS.md#gep-validation-metrics) for the formal validation framework.
+3. Use [docs/INTERPRETATION_GUIDE.md](docs/INTERPRETATION_GUIDE.md#understanding-gep-analysis) for workbook-first reading guidance.
+4. Use [docs/TECHNICAL.md](docs/TECHNICAL.md#objective-4-gep-predictive-accuracy) for implementation and artifact contracts.
 
----
+## Configuration
 
-## Vision Change Outputs
-
-Objective 2 reports visual acuity change using both continuous logMAR deltas and Snellen-line summaries. Derivation logic (including sign conventions and line-conversion rules) is documented in [CALCULATIONS.md](docs/CALCULATIONS.md#vision-change), while output-reading guidance lives in [INTERPRETATION_GUIDE.md](docs/INTERPRETATION_GUIDE.md#understanding-regression-outputs).
-
-In short: use [CALCULATIONS.md](docs/CALCULATIONS.md#vision-change) to understand how values are computed, and [INTERPRETATION_GUIDE.md](docs/INTERPRETATION_GUIDE.md#understanding-regression-outputs) to interpret the resulting HTML tables and workbooks.
-
----
-
-## Usage
-
-### Configuration
-
-Edit `scripts/utils/config_constants.R`:
+Most run-time configuration lives in `scripts/utils/config_constants.R`. Typical settings to review before a fresh run:
 
 ```r
 INPUT_FILENAME <- "your_data_file.xlsx"
@@ -114,205 +111,12 @@ RECREATE_ANALYTIC_DATASETS <- TRUE
 USE_LOGS <- TRUE
 ```
 
-### Execution Options
+Objective 4 grouping and display settings are also centralized there through `GEP_GROUPING_SPECS` and `GEP_OBJECTIVE4_GROUPING`.
 
-```r
-# Option 1: Full analysis (recommended for first run)
-main_execution()
+## Where To Go Next
 
-# Option 2: Single cohort, all objectives
-run_my_analysis("uveal_melanoma_full_cohort")
-run_my_analysis("uveal_melanoma_restricted_cohort")
-run_my_analysis("uveal_melanoma_gksrs_only_cohort")
-
-# Option 3: Specific cohort + objective
-run_specific_objective("uveal_melanoma_full_cohort", 1)  # Efficacy
-run_specific_objective("uveal_melanoma_full_cohort", 2)  # Safety
-run_specific_objective("uveal_melanoma_full_cohort", 3)  # Repeat radiation
-run_specific_objective("uveal_melanoma_full_cohort", 4)  # GEP validation
-```
-
-### Workflow Execution
-
-The pipeline runs through structured objectives:
-
-1. **Objective 0:** Data processing and cohort creation
-2. **Objective 1:** Efficacy analysis (recurrence, survival, tumor height, subgroups)
-3. **Objective 2:** Safety analysis (vision, complications)
-4. **Objective 3:** PFS-2 analysis for salvage treatment
-5. **Objective 4:** GEP biomarker validation (in progress)
-
-### Cohort-first output layout
-
-All analysis outputs are written inside each cohort folder under `final_data/Analysis/`.
-
-- General cohort summaries live in `00_General/` inside each cohort, for example:
-    - `final_data/Analysis/uveal_full/00_General/baseline_characteristics/`
-    - `final_data/Analysis/uveal_restricted/00_General/treatment_duration/`
-    - `final_data/Analysis/gksrs/00_General/baseline_characteristics/`
-- Objective 4 outputs live in `04_GEP_Validation/` inside each cohort.
-
-Objective 4 validates externally supplied lab-reported GEP survival predictions for MFS and MSS and writes cohort-specific workbooks under each `04_GEP_Validation/` folder. The primary review artifacts are the outcome-specific consolidated workbooks, with technical detail workbooks and narrative summaries as companions.
-
-Readers can follow this path:
-1. Objective 4 implementation and artifact contracts: [TECHNICAL.md](docs/TECHNICAL.md#objective-4-gep-predictive-accuracy)
-2. Formal metrics and assumptions: [STATISTICAL_METHODS.md](docs/STATISTICAL_METHODS.md#gep-validation-metrics)
-3. Workbook interpretation and sheet-by-sheet reading: [INTERPRETATION_GUIDE.md](docs/INTERPRETATION_GUIDE.md#understanding-gep-analysis)
-
-Grouping/display settings for Objective 4 are centralized in `scripts/utils/config_constants.R` (`GEP_GROUPING_SPECS` and `GEP_OBJECTIVE4_GROUPING`).
-
-📖 **[Detailed workflow documentation →](docs/TECHNICAL.md#workflow-orchestration-system)**
-
----
-
-## Output Organization
-
-```
-final_data/
-├── Analytic Dataset/           # Processed cohort data
-│   ├── cohort_summary_statistics.json  # ← Auto-updated cohort counts & outcomes
-│   ├── uveal_melanoma_full_cohort.rds
-│   ├── uveal_melanoma_restricted_cohort.rds
-│   └── uveal_melanoma_gksrs_only_cohort.rds
-├── Analysis/
-│   ├── uveal_full/              # Full cohort (n=260)
-│   │   ├── 00_General/          # Baseline characteristics
-│   │   ├── 01_Efficacy/         # Primary outcomes
-│   │   │   ├── a_recurrence/
-│   │   │   ├── c_overall_survival/
-│   │   │   ├── d_progression_free_survival/
-│   │   │   ├── e_tumor_height_primary/
-│   │   │   └── g_subgroup_analysis/forest_plots/
-│   │   ├── 02_Safety/           # Vision & complications
-│   │   ├── 03_Repeat_Radiation/ # PFS-2 analysis
-│   │   └── 04_GEP_Validation/   # 🚧 Under construction
-│   ├── uveal_restricted/        # Restricted cohort (n=167)
-│   └── gksrs/                   # GKSRS-only cohort (n=92)
-```
-
-📖 **[Complete directory structure →](docs/TECHNICAL.md#directory-structure)**
-
----
-
-## Requirements
-
-### R Environment
-
-- **R >= 4.4.0**
-
-### Core Packages
-
-```r
-tidyverse, readxl, writexl, survival, survminer, survRM2
-gtsummary, gt, forestploter, ggplot2
-```
-
-### Advanced Packages (for GEP validation)
-
-```r
-rms, pec, riskRegression, cmprsk, pROC, rmda, glmnet
-```
-
-📦 **Automatic installation via `scripts/load_all.R`**
-
----
-
-## Documentation
-
-### 📖 Comprehensive Guides
-
-
-| Document                                                    | Description                                                                                                                             |
-| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| **[TECHNICAL.md](docs/TECHNICAL.md)**                       | Implementation details, workflow system, cohort definitions, quality assurance                                                          |
-| **[CALCULATIONS.md](docs/CALCULATIONS.md)**                 | **How derived variables are calculated** (tumor height change, vision change, time-to-event variables, handling of recurrence patients) |
-| **[STATISTICAL_METHODS.md](docs/STATISTICAL_METHODS.md)**   | RMST analysis, proportional hazards testing, competing risks, GEP validation methodology                                                |
-| **[INTERPRETATION_GUIDE.md](docs/INTERPRETATION_GUIDE.md)** | How to read outputs, clinical interpretation, forest plots, survival curves                                                             |
-
-### 🎯 Quick Links by Topic
-
-**Understanding Calculations:**
-
-- [Why tumor height change can be negative](docs/CALCULATIONS.md#tumor-height-change)
-- [Vision change and logMAR scale](docs/CALCULATIONS.md#vision-change)
-- [Why recurrence patients use different measurements](docs/CALCULATIONS.md#why-different-measurements-for-recurrence-patients)
-- [Time-to-event variable construction](docs/CALCULATIONS.md#time-to-event-variables)
-
-**Statistical Methods:**
-
-- [What is RMST and why we use it](docs/STATISTICAL_METHODS.md#restricted-mean-survival-time-rmst)
-- [Proportional hazards assumption testing](docs/STATISTICAL_METHODS.md#proportional-hazards-assumption-testing)
-- [Competing risks analysis for MSS](docs/STATISTICAL_METHODS.md#competing-risks-analysis)
-- [GEP validation metrics explained](docs/STATISTICAL_METHODS.md#gep-validation-metrics)
-
-**Interpreting Outputs:**
-
-- [GEP workbook logistics + sheet dictionary](docs/INTERPRETATION_GUIDE.md#understanding-gep-analysis)
-
-**Technical Implementation:**
-
-- [Complete workflow system](docs/TECHNICAL.md#workflow-orchestration-system)
-- [Data quality checkpoints](docs/TECHNICAL.md#quality-assurance)
-- [Error handling and limitations](docs/TECHNICAL.md#data-limitations)
-- [Subgroup analysis filtering](docs/TECHNICAL.md#subgroup-filtering)
-
----
-
-## Data Processing Pipeline
-
-The analysis follows this workflow:
-
-1. **Load & Clean** - Excel data → validated data frame
-2. **Process & Derive** - Calculate derived variables (see [CALCULATIONS.md](docs/CALCULATIONS.md))
-3. **Create Cohorts** - Apply eligibility criteria
-4. **Save RDS** - Store processed datasets
-5. **Run Analyses** - Execute objectives
-6. **Generate Outputs** - Create tables and figures
-
-Quality checks, logging, and error handling at each step.
-
-### Pipeline Diagram
-
-```mermaid
-flowchart TD
-    A["Raw Excel Data<br/>INPUT_FILENAME"] --> B["Data Loading & Cleaning<br/>load_and_clean_data()"]
-    B --> C["Data Processing<br/>create_analytic_dataset()"]
-    C --> D["Cohort Creation<br/>apply_criteria()"]
-  
-    D --> I["Full Cohort<br/>(n=260 patients)"]
-    D --> J["Restricted Cohort<br/>(n=167 patients)"]
-    D --> K["GKSRS-Only Cohort<br/>(n=92 patients)"]
-  
-    I --> L["Save to RDS<br/>final_data/Analytic Dataset/"]
-    J --> L
-    K --> L
-  
-    L --> M["Workflow Orchestration<br/>run_my_analysis() or run_specific_objective()"]
-    M --> N["Load RDS data"]
-    N --> O["Create output directories<br/>by cohort and objective"]
-    O --> P["Objective-Specific Analysis Functions"]
-  
-    P --> Q["Objective 1: Efficacy<br/>Primary outcomes & subgroup analysis"]
-    P --> R["Objective 2: Safety<br/>Vision changes & complications"]
-    P --> S["Objective 3: Repeat Radiation<br/>PFS-2 analysis"]
-    P --> T["Objective 4: GEP Validation<br/>Predictive accuracy testing"]
-  
-    Q --> U["Publication Outputs<br/>Tables, Figures, Models"]
-    R --> U
-    S --> U
-    T --> U
-```
-
-📖 **[Full pipeline details and quality assurance →](docs/TECHNICAL.md#data-processing-workflow)**
-
----
-
----
-
-## License
-
-*Research use only - no license currently specified.*
-
----
-
-**For detailed implementation status, statistical methods, and technical documentation, see the [Documentation](#documentation) section above.**
+- Derivations and sign conventions: [docs/CALCULATIONS.md](docs/CALCULATIONS.md)
+- Statistical methods and thresholds: [docs/STATISTICAL_METHODS.md](docs/STATISTICAL_METHODS.md)
+- Workflow internals and artifact contracts: [docs/TECHNICAL.md](docs/TECHNICAL.md)
+- Output interpretation: [docs/INTERPRETATION_GUIDE.md](docs/INTERPRETATION_GUIDE.md)
+- Manuscript-facing methods draft: [docs/METHODS_SECTION_PAPER.md](docs/METHODS_SECTION_PAPER.md)
