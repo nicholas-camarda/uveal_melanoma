@@ -13,7 +13,7 @@ scripts/old/*
 
 # Ignore history and .* files
 .Rhistory
-.history/
+.history
 .github/
 .cursor/
 .agent-os/
