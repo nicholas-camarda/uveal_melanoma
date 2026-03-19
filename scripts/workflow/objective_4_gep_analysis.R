@@ -4,7 +4,7 @@
 #' @param dataset_name Character string for dataset name
 #' @param output_dirs List of output directories
 #' @param prefix Character string for file prefix
-#' @param confounders Character vector of confounder variables to use for statistical adjustment (not used in GEP analysis)
+#' @param confounders Character vector of confounder variables to use for statistical adjustment in GEP MFS survival models
 #' @return List of analysis results
 run_objective_4 <- function(data, dataset_name, output_dirs, prefix, confounders = NULL) {
     step4_start_time <- Sys.time()
@@ -18,7 +18,8 @@ run_objective_4 <- function(data, dataset_name, output_dirs, prefix, confounders
             data = data,
             dataset_name = dataset_name,
             output_dirs = output_dirs,
-            prefix = prefix
+            prefix = prefix,
+            confounders = confounders
         )
     }, error = function(e) {
         logger::log_error(formatted(sprintf("MFS GEP validation failed: %s", e$message), indent = 2))

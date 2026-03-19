@@ -11,6 +11,7 @@
 #' @param timepoints Numeric vector of years (default `GEP_VALIDATION_TIMEPOINTS`)
 #' @param bootstrap_iterations Integer bootstrap iterations retained for API compatibility; the current calibration slope uses IPCW-weighted logistic recalibration rather than bootstrap optimism correction
 #' @param create_unified_at_base logical If TRUE, also write unified visuals at the parent objective dir
+#' @param confounders Character vector of confounders to use in adjusted MFS survival models
 #' @param output_dirs Named list of objective-specific output directories
 #' @param prefix Character prefix for all generated files
 #' @return A list with `validation_results`, `prame_analysis`, and `missing_data_analysis`.
@@ -19,6 +20,7 @@ analyze_gep_mfs_validation <- function(data,
                                        timepoints = GEP_VALIDATION_TIMEPOINTS,
                                        bootstrap_iterations = GEP_BOOTSTRAP_ITERATIONS,
                                        create_unified_at_base = FALSE,
+                                       confounders = NULL,
                                        output_dirs = NULL,
                                        prefix = "") {
     logger::log_info("Starting GEP Metastasis-Free Survival validation analysis")
@@ -248,6 +250,7 @@ analyze_gep_mfs_validation <- function(data,
                     validation_output_dir = mfs_validation_output_dir,
                     output_dirs = output_dirs,
                     prefix = prefix,
+                    confounders = confounders,
                     group_var = "biopsy1_gep",
                     model_group_var = "biopsy1_gep_model",
                     dataset_name = dataset_name

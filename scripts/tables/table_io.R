@@ -376,6 +376,14 @@ summarize_effect_model <- function(model,
     n_events <- NA_real_
     if (model_type == "cox" && !is.null(model_summary$nevent)) {
         n_events <- as.numeric(model_summary$nevent)
+        cox_model_n <- tryCatch(as.numeric(model$n), error = function(e) NA_real_)
+        if (!is.finite(cox_model_n) && !is.null(model$model)) {
+            cox_model_n <- nrow(model$model)
+        }
+        if (is.finite(cox_model_n)) {
+            n_patients <- cox_model_n
+            n_outcome_non_missing <- cox_model_n
+        }
     } else if (model_type == "logistic" && !is.null(outcome_values)) {
         n_events <- sum(as.numeric(outcome_values) == 1, na.rm = TRUE)
     }

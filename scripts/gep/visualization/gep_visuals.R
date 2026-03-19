@@ -10,7 +10,8 @@
 #' @param mfs_data data.frame Raw data for MFS survival curve
 #' @param output_dir character Destination directory (MFS outcome folder)
 #' @param prefix character Filename prefix
-create_mfs_gep_visuals <- function(mfs_results, mfs_data, output_dir, prefix, group_var = "biopsy1_gep", model_group_var = group_var, dataset_name = "GEP Validation", validation_output_dir = output_dir, output_dirs = NULL) {
+#' @param confounders Character vector of confounders to use in adjusted MFS survival models
+create_mfs_gep_visuals <- function(mfs_results, mfs_data, output_dir, prefix, confounders = NULL, group_var = "biopsy1_gep", model_group_var = group_var, dataset_name = "GEP Validation", validation_output_dir = output_dir, output_dirs = NULL) {
     # Directly write into centralized visuals folder created by create_output_structure()
     prame_results <- NULL
     if (!is.null(mfs_results$prame_analysis)) {
@@ -34,6 +35,7 @@ create_mfs_gep_visuals <- function(mfs_results, mfs_data, output_dir, prefix, gr
             mfs_data,
             output_dir,
             prefix,
+            confounders = confounders,
             group_var = group_var,
             model_group_var = model_group_var,
             dataset_name = dataset_name,
@@ -887,8 +889,9 @@ create_single_outcome_performance_plot <- function(results, outcome_type, output
 #' @param data Data frame with survival data
 #' @param output_dir Output directory for saved plots
 #' @param prefix Filename prefix
+#' @param confounders Character vector of confounders to use in adjusted MFS survival models
 #' @return Invisibly returns NULL after saving plots
-create_mfs_survival_curves <- function(data, output_dir, prefix, group_var = "biopsy1_gep", model_group_var = group_var, dataset_name = "GEP Validation", output_dirs = NULL) {
+create_mfs_survival_curves <- function(data, output_dir, prefix, confounders = NULL, group_var = "biopsy1_gep", model_group_var = group_var, dataset_name = "GEP Validation", output_dirs = NULL) {
     logger::log_info("Creating MFS survival curves by GEP class using existing survival analysis infrastructure")
 
     gep_prame_display_order <- c(
@@ -928,7 +931,7 @@ create_mfs_survival_curves <- function(data, output_dir, prefix, group_var = "bi
                 event_var = "mets_event",
                 group_var = group_var,
                 model_group_var = model_group_var,
-                confounders = NULL, # No confounders for MFS plotting
+                confounders = confounders,
                 ylab = "Metastasis-Free Survival Probability",
                 analysis_type = "post_treatment_only",
                 dataset_name = dataset_name,
@@ -962,6 +965,7 @@ create_mfs_survival_curves <- function(data, output_dir, prefix, group_var = "bi
         output_dir = output_dir,
         prefix = prefix,
         dataset_name = dataset_name,
+        confounders = confounders,
         output_dirs = resolved_output_dirs
     )
 
@@ -977,8 +981,9 @@ create_mfs_survival_curves <- function(data, output_dir, prefix, group_var = "bi
 #' @param output_dir Output directory for saved plots and tables
 #' @param prefix Filename prefix
 #' @param dataset_name Dataset label used in subtitles and reports
+#' @param confounders Character vector of confounders to use in adjusted MFS survival models
 #' @return Invisibly returns the survival-analysis result list or NULL
-create_mfs_simple_binary_survival_analysis <- function(data, output_dir, prefix, dataset_name = "GEP Validation", output_dirs = NULL) {
+create_mfs_simple_binary_survival_analysis <- function(data, output_dir, prefix, dataset_name = "GEP Validation", confounders = NULL, output_dirs = NULL) {
     logger::log_info("Creating binary simple-GEP MFS survival analysis using the standard survival workflow")
 
     plot_data <- data %>%
@@ -1048,7 +1053,7 @@ create_mfs_simple_binary_survival_analysis <- function(data, output_dir, prefix,
                 event_var = "mets_event",
                 group_var = "gep_class_simple",
                 model_group_var = "gep_class_simple",
-                confounders = NULL,
+                confounders = confounders,
                 ylab = "Metastasis-Free Survival Probability",
                 analysis_type = "post_treatment_only",
                 dataset_name = binary_dataset_name,

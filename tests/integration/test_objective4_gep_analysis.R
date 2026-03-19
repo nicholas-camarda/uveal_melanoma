@@ -1342,6 +1342,76 @@ test_that("run_objective_4 creates current canonical Objective 4 artifacts", {
     unlink(test_output_dir, recursive = TRUE)
 })
 
+test_that("run_objective_4 carries confounders into adjusted GEP MFS effect summaries", {
+    actual_data <- readRDS(here("final_data", "Analytic Dataset", "uveal_melanoma_full_cohort.rds"))
+    test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective4_adjusted_confounders")
+    output_dirs <- list(
+        obj4_mfs = file.path(test_output_dir, "04_GEP_Validation", "a_metastasis_free_survival"),
+        obj4_mss = file.path(test_output_dir, "04_GEP_Validation", "b_melanoma_specific_survival"),
+        obj4_ph_diagnostics = file.path(test_output_dir, "04_GEP_Validation", "c_proportional_hazards_diagnostics")
+    )
+    expected_confounders <- c("age_at_diagnosis_general_pop_median", "sex", "location")
+
+    for (dir_path in output_dirs) {
+        dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
+    }
+    on.exit(unlink(test_output_dir, recursive = TRUE), add = TRUE)
+
+    expect_no_error({
+        suppressWarnings(run_objective_4(
+            data = actual_data,
+            dataset_name = "uveal_melanoma_full_cohort",
+            output_dirs = output_dirs,
+            prefix = "test_",
+            confounders = expected_confounders
+        ))
+    })
+
+    effect_summary_paths <- list.files(
+        path = output_dirs$obj4_mfs,
+        pattern = "metastasis_free_survival_probability_effect_summary\\.xlsx$",
+        recursive = TRUE,
+        full.names = TRUE
+    )
+
+    full_summary_path <- effect_summary_paths[!grepl("simple_gep_binary", basename(effect_summary_paths))][1]
+    simple_summary_path <- effect_summary_paths[grepl("simple_gep_binary", basename(effect_summary_paths))][1]
+
+    expect_true(file.exists(full_summary_path))
+    expect_true(file.exists(simple_summary_path))
+
+    full_summary <- readxl::read_xlsx(full_summary_path)
+    simple_summary <- readxl::read_xlsx(simple_summary_path)
+
+    adjusted_full <- full_summary %>%
+        dplyr::filter(.data$model_label == "Adjusted Cox (confounders)")
+    adjusted_simple <- simple_summary %>%
+        dplyr::filter(.data$model_label == "Adjusted Cox (confounders)")
+    unadjusted_simple <- simple_summary %>%
+        dplyr::filter(.data$model_label == "Unadjusted (Cox data)")
+
+    expect_true(nrow(adjusted_full) > 0)
+    expect_true(nrow(adjusted_simple) > 0)
+    expect_true(all(adjusted_full$covariates_used != "None"))
+    expect_true(all(adjusted_simple$covariates_used != "None"))
+
+    for (confounder in expected_confounders) {
+        expect_true(all(grepl(confounder, adjusted_full$model_formula, fixed = TRUE)))
+        expect_true(all(grepl(confounder, adjusted_simple$model_formula, fixed = TRUE)))
+    }
+
+    merged_simple <- adjusted_simple %>%
+        dplyr::select(.data$term, adjusted_estimate = .data$estimate) %>%
+        dplyr::inner_join(
+            unadjusted_simple %>%
+                dplyr::select(.data$term, unadjusted_estimate = .data$estimate),
+            by = "term"
+        )
+
+    expect_true(nrow(merged_simple) > 0)
+    expect_true(any(merged_simple$adjusted_estimate != merged_simple$unadjusted_estimate))
+})
+
 test_that("4e: Existing Objective 4 cohort artifacts follow current placement conventions", {
     cohort_configs <- list(
         list(
