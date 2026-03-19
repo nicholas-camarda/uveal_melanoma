@@ -79,6 +79,45 @@ test_that("Objective 1 survival effect summaries include canonical columns", {
     expect_true(all(c("effect_measure", "estimate", "model_status") %in% names(pfs_summary)))
 })
 
+test_that("Objective 1 survival effect summaries separate modeled patients from events", {
+    test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective1_survival_n_metadata")
+    output_dirs <- build_objective1_output_dirs(test_output_dir)
+
+    dir.create(test_output_dir, recursive = TRUE, showWarnings = FALSE)
+    for (dir_path in output_dirs) {
+        dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
+    }
+    withr::defer(unlink(test_output_dir, recursive = TRUE), envir = parent.frame())
+
+    expect_no_error({
+        analyze_time_to_event_outcomes(
+            data = create_test_dataset(),
+            time_var = "tt_death_months",
+            event_var = "death_event",
+            group_var = "treatment_group",
+            model_group_var = "treatment_group",
+            confounders = c("age_at_diagnosis", "sex"),
+            ylab = "Overall Survival Probability",
+            analysis_type = "post_treatment_only",
+            dataset_name = "test_cohort",
+            output_dirs = output_dirs,
+            prefix = "test_"
+        )
+    })
+
+    os_summary <- readxl::read_xlsx(file.path(
+        output_dirs$obj1_os,
+        "test_overall_survival_probability_effect_summary.xlsx"
+    ))
+
+    cox_rows <- os_summary %>%
+        dplyr::filter(.data$effect_measure == "HR")
+
+    expect_true(all(cox_rows$n_patients >= cox_rows$n_events))
+    expect_true(any(cox_rows$n_patients > cox_rows$n_events))
+    expect_true(all(cox_rows$n_outcome_non_missing == cox_rows$n_patients))
+})
+
 test_that("Objective 1 diagnostics keep factor labels grouped before coefficients", {
     pipeline <- run_objective1_test(create_test_dataset(), output_tag = "objective1_diagnostics_ordering")
     withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
