@@ -77,8 +77,7 @@ final_data/
 |- Analytic Dataset/
 |  |- cohort_summary_statistics.json
 |  |- *.rds
-|  |- *_derived_precollapse.rds
-|  `- other_map.rds
+|  `- *_derived_precollapse.rds
 `- Analysis/
    |- uveal_full/
    |- uveal_restricted/
