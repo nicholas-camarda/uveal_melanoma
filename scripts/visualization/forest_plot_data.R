@@ -19,21 +19,38 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
     missing_interaction_vars <- character(0) # Track variables where interaction p could not be estimated
     diagnostics_rows <- list()
     show_event_counts <- toupper(effect_measure) %in% c("HR", "OR", "RR")
+    arm_count_header_label <- if (show_event_counts) "events/n" else "n/N"
+    arm_count_headers <- c(
+        sprintf("%s %s", treatment_labels[1], arm_count_header_label),
+        sprintf("%s %s", treatment_labels[2], arm_count_header_label)
+    )
+    effect_header <- sprintf("%s (95%% CI)", effect_measure)
 
     # Handle empty variable_order case
     if (length(variable_order) == 0) {
         # Return empty data structure
+        empty_data_frame <- data.frame(
+            Subgroup = character(),
+            GKSRS_n = character(),
+            PBT_n = character(),
+            ` ` = character(),
+            `HR (95% CI)` = character(),
+            `p-value` = character(),
+            `Int p` = character(),
+            stringsAsFactors = FALSE
+        )
+        colnames(empty_data_frame) <- c(
+            "Subgroup",
+            arm_count_headers[1],
+            arm_count_headers[2],
+            " ",
+            effect_header,
+            "p-value",
+            "Int p"
+        )
+
         return(list(
-            data_frame = data.frame(
-                Subgroup = character(),
-                `GKSRS n/N` = character(),
-                `PBT n/N` = character(),
-                ` ` = character(),
-                `HR (95% CI)` = character(),
-                `p-value` = character(),
-                `Int p` = character(),
-                stringsAsFactors = FALSE
-            ),
+            data_frame = empty_data_frame,
             est_values = numeric(),
             lower_values = numeric(),
             upper_values = numeric(),
@@ -481,13 +498,22 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
         # Create empty data frame with proper structure
         final_df <- data.frame(
             Subgroup = character(),
-            `GKSRS n/N` = character(),
-            `PBT n/N` = character(),
+            GKSRS_n = character(),
+            PBT_n = character(),
             ` ` = character(),
             `HR (95% CI)` = character(),
             `p-value` = character(),
             `Int p` = character(),
             stringsAsFactors = FALSE
+        )
+        colnames(final_df) <- c(
+            "Subgroup",
+            arm_count_headers[1],
+            arm_count_headers[2],
+            " ",
+            effect_header,
+            "p-value",
+            "Int p"
         )
         # Reset vectors to empty
         est_values <- numeric()
@@ -501,10 +527,10 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
     # Set proper column names that will become the forestploter headers
     colnames(final_df) <- c(
         "Subgroup",
-        sprintf("%s n/N", treatment_labels[1]),
-        sprintf("%s n/N", treatment_labels[2]),
+        arm_count_headers[1],
+        arm_count_headers[2],
         " ", # Blank column for CI
-        sprintf("%s (95%% CI)", effect_measure),
+        effect_header,
         "p-value",
         "Int p"
     )
