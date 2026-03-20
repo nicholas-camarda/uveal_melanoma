@@ -262,6 +262,31 @@ prepare_exploratory_no_gep_data <- function(data, dataset_name = "uveal_melanoma
     )
 }
 
+#' Choose a Parsimonious Predictor Set for Sensitivity Modeling
+#'
+#' Returns a pre-specified smaller baseline predictor set composed of broadly
+#' standard clinical variables so the direct-risk conclusions can be checked
+#' against a lower-complexity specification.
+#'
+#' @param prepared_data Output from `prepare_exploratory_no_gep_data()`.
+#'
+#' @return Character vector of retained parsimonious predictors.
+choose_exploratory_parsimonious_predictors <- function(prepared_data) {
+    preferred_predictors <- c(
+        "age_at_diagnosis",
+        "initial_tumor_diameter",
+        "location",
+        "initial_t_stage_simple"
+    )
+    parsimonious_predictors <- intersect(prepared_data$predictors, preferred_predictors)
+
+    if (length(parsimonious_predictors) < 3) {
+        stop("Parsimonious exploratory sensitivity model retained fewer than 3 baseline predictors.")
+    }
+
+    parsimonious_predictors
+}
+
 #' Screen Candidate Predictors for the Exploratory Models
 #'
 #' Applies shared completeness and sparse-level rules across the surrogate and
@@ -806,6 +831,43 @@ choose_binary_cv_folds <- function(outcome, preferred_folds = 5) {
     as.integer(max(2, max_supported))
 }
 
+#' Summarize an Empirical Uncertainty Interval
+#'
+#' Calculates a median and central percentile interval for a numeric metric
+#' vector after dropping missing values.
+#'
+#' @param values Numeric vector of metric values.
+#' @param conf_level Confidence level for the central interval.
+#'
+#' @return A named list with `median`, `lower`, `upper`, and `n`.
+summarize_numeric_interval <- function(values, conf_level = 0.95) {
+    valid_values <- values[is.finite(values)]
+
+    if (length(valid_values) == 0) {
+        return(list(
+            median = NA_real_,
+            lower = NA_real_,
+            upper = NA_real_,
+            n = 0L
+        ))
+    }
+
+    alpha <- (1 - conf_level) / 2
+    quantiles <- stats::quantile(
+        valid_values,
+        probs = c(alpha, 0.5, 1 - alpha),
+        na.rm = TRUE,
+        names = FALSE
+    )
+
+    list(
+        median = unname(quantiles[[2]]),
+        lower = unname(quantiles[[1]]),
+        upper = unname(quantiles[[3]]),
+        n = length(valid_values)
+    )
+}
+
 #' Cross-Validate Binary Model Predictions
 #'
 #' Performs simple K-fold cross-validation for a ridge-penalized logistic model.
@@ -868,6 +930,49 @@ cross_validate_binary_predictions <- function(data, outcome_var, predictors, fol
     }
 
     predictions
+}
+
+#' Repeat Cross-Validated Binary Metrics Across Multiple Random Partitions
+#'
+#' Repeats the internal cross-validation procedure across several seeds to
+#' quantify how sensitive the out-of-fold discrimination and calibration
+#' summaries are to fold assignment.
+#'
+#' @param data Modeling data frame.
+#' @param outcome_var Name of the binary outcome column.
+#' @param predictors Character vector of predictor names.
+#' @param repeats Number of repeated cross-validation runs.
+#' @param seed Base random seed.
+#'
+#' @return A tibble with one row per repeat and repeated CV metrics.
+repeat_cross_validated_binary_metrics <- function(data,
+                                                  outcome_var,
+                                                  predictors,
+                                                  repeats = 20,
+                                                  seed = 123) {
+    if (repeats < 1) {
+        return(tibble::tibble())
+    }
+
+    outcome <- data[[outcome_var]]
+
+    purrr::map_dfr(seq_len(repeats), function(repeat_id) {
+        cv_predictions <- cross_validate_binary_predictions(
+            data = data,
+            outcome_var = outcome_var,
+            predictors = predictors,
+            seed = seed + repeat_id - 1
+        )
+        cv_calibration <- summarize_binary_calibration(outcome, cv_predictions)
+
+        tibble::tibble(
+            repeat_id = repeat_id,
+            cv_auc = calculate_binary_auc(outcome, cv_predictions),
+            cv_brier = calculate_binary_brier(outcome, cv_predictions),
+            cv_calibration_intercept = cv_calibration$intercept,
+            cv_calibration_slope = cv_calibration$slope
+        )
+    })
 }
 
 #' Summarize Binary Calibration
@@ -1037,6 +1142,17 @@ fit_exploratory_binary_model <- function(data, outcome_var, predictors, model_na
         seed = seed
     )
     calibration <- summarize_binary_calibration(outcome, apparent_predictions)
+    cv_calibration <- summarize_binary_calibration(outcome, cv_predictions)
+    repeated_cv_metrics <- repeat_cross_validated_binary_metrics(
+        data = data,
+        outcome_var = outcome_var,
+        predictors = predictors,
+        repeats = 20,
+        seed = seed + 1000
+    )
+    cv_auc_interval <- summarize_numeric_interval(repeated_cv_metrics$cv_auc)
+    cv_brier_interval <- summarize_numeric_interval(repeated_cv_metrics$cv_brier)
+    cv_slope_interval <- summarize_numeric_interval(repeated_cv_metrics$cv_calibration_slope)
     coefficient_data <- extract_binary_model_coefficients(fitted_model, predictors = predictors)
     predictor_contributions <- summarize_predictor_contributions(coefficient_data, model_name = model_name)
 
@@ -1051,7 +1167,18 @@ fit_exploratory_binary_model <- function(data, outcome_var, predictors, model_na
         calibration_status = calibration$status,
         calibration_intercept = calibration$intercept,
         calibration_slope = calibration$slope,
+        cv_calibration_status = cv_calibration$status,
+        cv_calibration_intercept = cv_calibration$intercept,
+        cv_calibration_slope = cv_calibration$slope,
         cv_folds = cv_folds,
+        cv_repeats = nrow(repeated_cv_metrics),
+        cv_auc_ci_lower = cv_auc_interval$lower,
+        cv_auc_ci_upper = cv_auc_interval$upper,
+        cv_brier_ci_lower = cv_brier_interval$lower,
+        cv_brier_ci_upper = cv_brier_interval$upper,
+        cv_calibration_slope_ci_lower = cv_slope_interval$lower,
+        cv_calibration_slope_ci_upper = cv_slope_interval$upper,
+        uncertainty_method = sprintf("Repeated %d-fold CV percentile interval", cv_folds),
         lambda_min = fitted_model$lambda.min,
         lambda_1se = fitted_model$lambda.1se
     )
@@ -1062,28 +1189,10 @@ fit_exploratory_binary_model <- function(data, outcome_var, predictors, model_na
         coefficients = coefficient_data,
         predictor_contributions = predictor_contributions,
         calibration_curve = calibration$curve,
+        repeated_cv_metrics = repeated_cv_metrics,
         predictors = predictors,
         design_columns = colnames(design_matrix)
     )
-}
-
-#' Flatten Model Outputs for Workbook Export
-#'
-#' Creates a single workbook-ready data frame containing model metrics,
-#' coefficients, and calibration-curve rows.
-#'
-#' @param model_results Output from `fit_exploratory_binary_model()`.
-#'
-#' @return A data frame for one workbook tab.
-create_model_workbook_tab <- function(model_results) {
-    metrics_section <- model_results$metrics %>%
-        dplyr::mutate(section = "metrics")
-    coefficient_section <- model_results$coefficients %>%
-        dplyr::mutate(section = "coefficients")
-    calibration_section <- model_results$calibration_curve %>%
-        dplyr::mutate(section = "calibration_curve")
-
-    dplyr::bind_rows(metrics_section, coefficient_section, calibration_section)
 }
 
 #' Predict from an Exploratory Ridge Model
@@ -1126,6 +1235,479 @@ summarize_no_gep_predictions <- function(prediction_data) {
             observed_mfs_5yr_event_rate = mean(.data$mfs_event_5yr == 1, na.rm = TRUE),
             observed_mss_5yr_event_rate = mean(.data$mss_event_5yr == 1, na.rm = TRUE),
             .groups = "drop"
+    )
+}
+
+#' Format a Metric Interval as Text
+#'
+#' Combines a point estimate and percentile interval into a compact string for
+#' reader-facing workbook tabs.
+#'
+#' @param estimate Numeric point estimate.
+#' @param lower Numeric lower interval bound.
+#' @param upper Numeric upper interval bound.
+#' @param digits Number of digits to retain.
+#'
+#' @return Character scalar such as `"0.665 (0.590 to 0.728)"`.
+format_exploratory_metric_interval <- function(estimate, lower, upper, digits = 3) {
+    if (any(!is.finite(c(estimate, lower, upper)))) {
+        return(NA_character_)
+    }
+
+    sprintf(
+        paste0("%.", digits, "f (%.", digits, "f to %.", digits, "f)"),
+        estimate,
+        lower,
+        upper
+    )
+}
+
+#' Build a Four-Group 5-Year Risk Ladder
+#'
+#' Scores all four exploratory GEP groups with the direct 5-year MFS and MSS
+#' models so the no-GEP groups can be compared against definitive Class 1 and
+#' Class 2 on the same descriptive scale.
+#'
+#' @param full_data Prepared exploratory full cohort.
+#' @param direct_mfs_model Direct 5-year MFS model bundle.
+#' @param direct_mss_model Direct 5-year MSS model bundle.
+#'
+#' @return A grouped descriptive risk-ladder table.
+create_exploratory_risk_ladder <- function(full_data,
+                                           direct_mfs_model,
+                                           direct_mss_model) {
+    ladder_data <- full_data %>%
+        dplyr::filter(!is.na(.data$exploratory_gep_group)) %>%
+        dplyr::mutate(
+            exploratory_gep_group = factor(
+                as.character(.data$exploratory_gep_group),
+                levels = c("Class 1", "GEP Not Tested", "GEP Failed/Indeterminate", "Class 2")
+            ),
+            predicted_mfs_5yr_risk = NA_real_,
+            predicted_mss_5yr_risk = NA_real_
+        )
+
+    mfs_complete <- stats::complete.cases(ladder_data[, direct_mfs_model$predictors, drop = FALSE])
+    mss_complete <- stats::complete.cases(ladder_data[, direct_mss_model$predictors, drop = FALSE])
+
+    if (any(mfs_complete)) {
+        ladder_data$predicted_mfs_5yr_risk[mfs_complete] <- predict_exploratory_binary_model(
+            direct_mfs_model,
+            ladder_data[mfs_complete, , drop = FALSE]
+        )
+    }
+
+    if (any(mss_complete)) {
+        ladder_data$predicted_mss_5yr_risk[mss_complete] <- predict_exploratory_binary_model(
+            direct_mss_model,
+            ladder_data[mss_complete, , drop = FALSE]
+        )
+    }
+
+    ladder_data %>%
+        dplyr::group_by(.data$exploratory_gep_group) %>%
+        dplyr::summarise(
+            group = dplyr::first(.data$exploratory_gep_group),
+            n = dplyr::n(),
+            predictable_mfs_n = sum(!is.na(.data$predicted_mfs_5yr_risk)),
+            predictable_mss_n = sum(!is.na(.data$predicted_mss_5yr_risk)),
+            mfs_5yr_events = sum(.data$mfs_event_5yr == 1, na.rm = TRUE),
+            observed_5yr_mfs_event_rate = mean(.data$mfs_event_5yr == 1, na.rm = TRUE),
+            median_predicted_5yr_mfs_risk = stats::median(.data$predicted_mfs_5yr_risk, na.rm = TRUE),
+            mss_5yr_events = sum(.data$mss_event_5yr == 1, na.rm = TRUE),
+            observed_5yr_mss_event_rate = mean(.data$mss_event_5yr == 1, na.rm = TRUE),
+            median_predicted_5yr_mss_risk = stats::median(.data$predicted_mss_5yr_risk, na.rm = TRUE),
+            .groups = "drop"
+        ) %>%
+        dplyr::select(-exploratory_gep_group) %>%
+        dplyr::mutate(
+            interpretation = dplyr::case_when(
+                .data$group == "Class 1" ~ "Reference low-risk definitive GEP group.",
+                .data$group == "GEP Not Tested" ~ "Lower-risk no-GEP subgroup overall, but still above definitive Class 1 on direct baseline-only risk.",
+                .data$group == "GEP Failed/Indeterminate" ~ "Higher-risk no-GEP subgroup overall, sitting above GEP Not Tested and below definitive Class 2 on direct baseline-only risk.",
+                .data$group == "Class 2" ~ "Reference high-risk definitive GEP group.",
+                TRUE ~ NA_character_
+            )
+        )
+}
+
+#' Create the Minimal Start-Here Workbook Tab
+#'
+#' Builds a compact orientation sheet that tells readers what to conclude and
+#' which tabs to open next.
+#'
+#' @param surrogate_model Surrogate Class 2-like model result bundle.
+#' @param mfs_model Direct 5-year MFS model result bundle.
+#' @param mss_model Direct 5-year MSS model result bundle.
+#'
+#' @return A compact start-here table.
+create_exploratory_start_here_tab <- function(surrogate_model,
+                                              mfs_model,
+                                              mss_model) {
+    tibble::tibble(
+        row_order = seq_len(10),
+        section = c(
+            "study_question",
+            rep("bottom_line", 4),
+            rep("read_this_next", 4),
+            "guardrail"
+        ),
+        label = c(
+            "question",
+            "takeaway_1",
+            "takeaway_2",
+            "takeaway_3",
+            "takeaway_4",
+            "tab_1",
+            "tab_2",
+            "tab_3",
+            "tab_4",
+            "interpretation"
+        ),
+        value = c(
+            "What do baseline clinical features tell us about 5-year risk when GEP is unavailable or unusable?",
+            sprintf(
+                "Baseline clinical features provided moderate prognostic support for 5-year MFS and MSS (cross-validated AUC %.3f and %.3f).",
+                mfs_model$metrics$cv_auc[[1]],
+                mss_model$metrics$cv_auc[[1]]
+            ),
+            sprintf(
+                "Clinical features only weakly approximated definitive molecular class (surrogate cross-validated AUC %.3f).",
+                surrogate_model$metrics$cv_auc[[1]]
+            ),
+            "Do not relabel no-GEP patients into molecular classes based on the surrogate output.",
+            "Do not present no-GEP patients as one homogeneous intermediate-risk group; the failed/indeterminate subgroup is higher risk than the larger not-tested subgroup.",
+            "Open Key_Findings_5yr first for the main answer.",
+            "Open Risk_Ladder_5yr next to compare Class 1, Not Tested, Failed/Indeterminate, and Class 2 on one 5-year scale.",
+            "Open No_GEP_Subgroups to see the clinically relevant split within no-GEP patients.",
+            "Open Model_Performance for compact discrimination and calibration results.",
+            "Use direct MFS/MSS models as baseline-only prognostic support when GEP is unavailable; treat the surrogate as descriptive resemblance only."
+        )
+    )
+}
+
+#' Create the Main Key-Findings Workbook Table
+#'
+#' Reduces the four-group risk ladder into the reader-facing summary table that
+#' answers the main question first.
+#'
+#' @param risk_ladder Four-group descriptive risk-ladder table.
+#'
+#' @return A compact key-findings table.
+create_exploratory_key_findings_table <- function(risk_ladder) {
+    risk_ladder %>%
+        dplyr::transmute(
+            group = .data$group,
+            n = .data$n,
+            observed_5yr_mfs_event_rate = .data$observed_5yr_mfs_event_rate,
+            observed_5yr_mss_event_rate = .data$observed_5yr_mss_event_rate,
+            median_predicted_5yr_mfs_risk = .data$median_predicted_5yr_mfs_risk,
+            median_predicted_5yr_mss_risk = .data$median_predicted_5yr_mss_risk,
+            interpretation = .data$interpretation
+        )
+}
+
+#' Create a No-GEP Subgroup Comparison Table
+#'
+#' Focuses the workbook on the clinically important split between patients with
+#' failed/indeterminate GEP and those who were not tested.
+#'
+#' @param no_gep_summary Grouped no-GEP summary table.
+#'
+#' @return A subgroup-comparison table.
+create_exploratory_no_gep_subgroups_table <- function(no_gep_summary) {
+    no_gep_summary %>%
+        dplyr::transmute(
+            no_gep_group = .data$no_gep_group,
+            n = .data$n,
+            observed_5yr_mfs_event_rate = .data$observed_mfs_5yr_event_rate,
+            observed_5yr_mss_event_rate = .data$observed_mss_5yr_event_rate,
+            median_surrogate_class2_probability = .data$median_surrogate_class2_probability,
+            median_predicted_5yr_mfs_risk = .data$median_predicted_mfs_5yr_risk,
+            median_predicted_5yr_mss_risk = .data$median_predicted_mss_5yr_risk,
+            interpretation = dplyr::case_when(
+                .data$no_gep_group == "GEP Failed/Indeterminate" ~ "Higher-risk no-GEP subgroup overall; avoid interpretive pooling with GEP Not Tested.",
+                .data$no_gep_group == "GEP Not Tested" ~ "Lower-risk no-GEP subgroup overall, but still above definitive Class 1 on baseline-only risk.",
+                TRUE ~ NA_character_
+            )
+        ) %>%
+        dplyr::arrange(factor(.data$no_gep_group, levels = c("GEP Not Tested", "GEP Failed/Indeterminate")))
+}
+
+#' Create a Compact Model-Performance Table
+#'
+#' Produces one row per exploratory model with the discrimination,
+#' calibration, and practical interpretation needed for front-of-workbook
+#' review.
+#'
+#' @param surrogate_model Surrogate Class 2-like model result bundle.
+#' @param mfs_model Direct 5-year MFS model result bundle.
+#' @param mss_model Direct 5-year MSS model result bundle.
+#' @param parsimonious_mfs_model Parsimonious direct 5-year MFS model result bundle.
+#' @param parsimonious_mss_model Parsimonious direct 5-year MSS model result bundle.
+#'
+#' @return A compact model-performance table.
+create_exploratory_model_performance_table <- function(surrogate_model,
+                                                       mfs_model,
+                                                       mss_model,
+                                                       parsimonious_mfs_model,
+                                                       parsimonious_mss_model) {
+    model_specs <- list(
+        list(
+            label = "Surrogate Class 2-like",
+            outcome = "definitive_class_2",
+            population = "Definitive Class 1 vs Class 2 only",
+            practical_read = "Weak molecular approximation; descriptive only and not suitable for molecular reassignment.",
+            model_results = surrogate_model
+        ),
+        list(
+            label = "Direct 5-year MFS",
+            outcome = "5_year_mfs",
+            population = "Eligible full cohort",
+            practical_read = "Primary baseline-only clinical risk estimate when GEP is unavailable.",
+            model_results = mfs_model
+        ),
+        list(
+            label = "Direct 5-year MSS",
+            outcome = "5_year_mss",
+            population = "Eligible full cohort",
+            practical_read = "Primary baseline-only melanoma-specific risk estimate when GEP is unavailable.",
+            model_results = mss_model
+        ),
+        list(
+            label = "Parsimonious Direct 5-year MFS",
+            outcome = "5_year_mfs",
+            population = "Eligible full cohort",
+            practical_read = "Sensitivity check using a smaller pre-specified baseline feature set.",
+            model_results = parsimonious_mfs_model
+        ),
+        list(
+            label = "Parsimonious Direct 5-year MSS",
+            outcome = "5_year_mss",
+            population = "Eligible full cohort",
+            practical_read = "Sensitivity check using a smaller pre-specified baseline feature set.",
+            model_results = parsimonious_mss_model
+        )
+    )
+
+    purrr::map_dfr(model_specs, function(model_spec) {
+        metrics <- model_spec$model_results$metrics
+        tibble::tibble(
+            model = model_spec$label,
+            outcome = model_spec$outcome,
+            population = model_spec$population,
+            n = metrics$n[[1]],
+            events = metrics$events[[1]],
+            cv_auc = metrics$cv_auc[[1]],
+            cv_auc_ci = format_exploratory_metric_interval(
+                metrics$cv_auc[[1]],
+                metrics$cv_auc_ci_lower[[1]],
+                metrics$cv_auc_ci_upper[[1]]
+            ),
+            cv_brier = metrics$cv_brier[[1]],
+            cv_brier_ci = format_exploratory_metric_interval(
+                metrics$cv_brier[[1]],
+                metrics$cv_brier_ci_lower[[1]],
+                metrics$cv_brier_ci_upper[[1]]
+            ),
+            calibration_slope = metrics$cv_calibration_slope[[1]],
+            calibration_slope_ci = format_exploratory_metric_interval(
+                metrics$cv_calibration_slope[[1]],
+                metrics$cv_calibration_slope_ci_lower[[1]],
+                metrics$cv_calibration_slope_ci_upper[[1]]
+            ),
+            practical_read = model_spec$practical_read
+        )
+    })
+}
+
+#' Create a Coefficient Table for One Exploratory Model
+#'
+#' Converts the ridge coefficient output into a standard rectangular table with
+#' one row per design term and predictor-level ranking columns attached.
+#'
+#' @param model_results Exploratory model bundle.
+#'
+#' @return A coefficient table.
+create_exploratory_model_coefficients_table <- function(model_results) {
+    top_predictors <- model_results$predictor_contributions %>%
+        dplyr::transmute(
+            predictor = .data$predictor,
+            predictor_rank = .data$rank,
+            predictor_direction = .data$direction,
+            dominant_term_for_predictor = .data$dominant_term,
+            standardized_abs_coefficient = .data$standardized_abs_coefficient
+        )
+
+    model_results$coefficients %>%
+        dplyr::filter(.data$term != "(Intercept)") %>%
+        dplyr::left_join(top_predictors, by = "predictor") %>%
+        dplyr::mutate(
+            model = model_results$metrics$model[[1]],
+            odds_ratio_or_hazard_ratio = exp(.data$estimate),
+            penalty_context = "ridge_penalized_standardized"
+        ) %>%
+        dplyr::transmute(
+            model = .data$model,
+            predictor = .data$predictor,
+            term = .data$term,
+            estimate = .data$estimate,
+            odds_ratio_or_hazard_ratio = .data$odds_ratio_or_hazard_ratio,
+            coefficient_type = .data$coefficient_type,
+            penalty_context = .data$penalty_context,
+            predictor_rank = .data$predictor_rank,
+            predictor_direction = .data$predictor_direction,
+            dominant_term_for_predictor = .data$dominant_term_for_predictor,
+            standardized_abs_coefficient = .data$standardized_abs_coefficient
+        ) %>%
+        dplyr::arrange(.data$predictor_rank, dplyr::desc(abs(.data$estimate)), .data$term)
+}
+
+#' Create a Calibration Summary Table Across Exploratory Models
+#'
+#' Produces a one-row-per-model table containing apparent and cross-validated
+#' discrimination plus calibration summaries.
+#'
+#' @param surrogate_model Surrogate Class 2-like model result bundle.
+#' @param mfs_model Direct 5-year MFS model result bundle.
+#' @param mss_model Direct 5-year MSS model result bundle.
+#' @param parsimonious_mfs_model Parsimonious direct 5-year MFS model result bundle.
+#' @param parsimonious_mss_model Parsimonious direct 5-year MSS model result bundle.
+#'
+#' @return A calibration summary table.
+create_exploratory_model_calibration_table <- function(surrogate_model,
+                                                       mfs_model,
+                                                       mss_model,
+                                                       parsimonious_mfs_model,
+                                                       parsimonious_mss_model) {
+    model_results_list <- list(
+        surrogate_model,
+        mfs_model,
+        mss_model,
+        parsimonious_mfs_model,
+        parsimonious_mss_model
+    )
+
+    purrr::map_dfr(model_results_list, function(model_results) {
+        metrics <- model_results$metrics
+        tibble::tibble(
+            model = metrics$model[[1]],
+            n = metrics$n[[1]],
+            events = metrics$events[[1]],
+            apparent_auc = metrics$apparent_auc[[1]],
+            cv_auc = metrics$cv_auc[[1]],
+            apparent_brier = metrics$apparent_brier[[1]],
+            cv_brier = metrics$cv_brier[[1]],
+            calibration_status = metrics$calibration_status[[1]],
+            calibration_intercept = metrics$calibration_intercept[[1]],
+            calibration_slope = metrics$calibration_slope[[1]],
+            cv_calibration_status = metrics$cv_calibration_status[[1]],
+            cv_calibration_intercept = metrics$cv_calibration_intercept[[1]],
+            cv_calibration_slope = metrics$cv_calibration_slope[[1]],
+            cv_auc_ci_lower = metrics$cv_auc_ci_lower[[1]],
+            cv_auc_ci_upper = metrics$cv_auc_ci_upper[[1]],
+            cv_brier_ci_lower = metrics$cv_brier_ci_lower[[1]],
+            cv_brier_ci_upper = metrics$cv_brier_ci_upper[[1]],
+            cv_calibration_slope_ci_lower = metrics$cv_calibration_slope_ci_lower[[1]],
+            cv_calibration_slope_ci_upper = metrics$cv_calibration_slope_ci_upper[[1]],
+            cv_folds = metrics$cv_folds[[1]],
+            cv_repeats = metrics$cv_repeats[[1]],
+            uncertainty_method = metrics$uncertainty_method[[1]]
+        )
+    })
+}
+
+#' Create a Parsimonious Direct-Model Sensitivity Summary
+#'
+#' Compares the full direct-risk models against a smaller pre-specified direct
+#' model to check whether the no-GEP subgroup ordering materially changes under
+#' a lower-complexity specification.
+#'
+#' @param full_no_gep_predictions Row-level full-model no-GEP predictions.
+#' @param parsimonious_no_gep_predictions Row-level parsimonious-model no-GEP predictions.
+#' @param full_mfs_model Full direct 5-year MFS model bundle.
+#' @param full_mss_model Full direct 5-year MSS model bundle.
+#' @param parsimonious_mfs_model Parsimonious direct 5-year MFS model bundle.
+#' @param parsimonious_mss_model Parsimonious direct 5-year MSS model bundle.
+#' @param parsimonious_predictors Character vector of parsimonious predictors.
+#'
+#' @return A workbook-ready comparison table.
+create_exploratory_parsimonious_sensitivity <- function(full_no_gep_predictions,
+                                                        parsimonious_no_gep_predictions,
+                                                        full_mfs_model,
+                                                        full_mss_model,
+                                                        parsimonious_mfs_model,
+                                                        parsimonious_mss_model,
+                                                        parsimonious_predictors) {
+    summarize_prediction_medians <- function(data, prediction_col) {
+        data %>%
+            dplyr::group_by(.data$no_gep_group) %>%
+            dplyr::summarise(
+                median_prediction = stats::median(.data[[prediction_col]], na.rm = TRUE),
+                .groups = "drop"
+            )
+    }
+
+    full_mfs_medians <- summarize_prediction_medians(full_no_gep_predictions, "predicted_mfs_5yr_risk")
+    full_mss_medians <- summarize_prediction_medians(full_no_gep_predictions, "predicted_mss_5yr_risk")
+    parsimonious_mfs_medians <- summarize_prediction_medians(parsimonious_no_gep_predictions, "predicted_mfs_5yr_risk")
+    parsimonious_mss_medians <- summarize_prediction_medians(parsimonious_no_gep_predictions, "predicted_mss_5yr_risk")
+
+    dplyr::bind_rows(
+        tibble::tibble(
+            outcome = "MFS",
+            model_specification = c("Full direct model", "Parsimonious direct model"),
+            predictors = c(
+                paste(full_mfs_model$predictors, collapse = ", "),
+                paste(parsimonious_predictors, collapse = ", ")
+            ),
+            n = c(full_mfs_model$metrics$n[[1]], parsimonious_mfs_model$metrics$n[[1]]),
+            events = c(full_mfs_model$metrics$events[[1]], parsimonious_mfs_model$metrics$events[[1]]),
+            cv_auc = c(full_mfs_model$metrics$cv_auc[[1]], parsimonious_mfs_model$metrics$cv_auc[[1]]),
+            cv_auc_ci_lower = c(full_mfs_model$metrics$cv_auc_ci_lower[[1]], parsimonious_mfs_model$metrics$cv_auc_ci_lower[[1]]),
+            cv_auc_ci_upper = c(full_mfs_model$metrics$cv_auc_ci_upper[[1]], parsimonious_mfs_model$metrics$cv_auc_ci_upper[[1]]),
+            cv_brier = c(full_mfs_model$metrics$cv_brier[[1]], parsimonious_mfs_model$metrics$cv_brier[[1]]),
+            cv_brier_ci_lower = c(full_mfs_model$metrics$cv_brier_ci_lower[[1]], parsimonious_mfs_model$metrics$cv_brier_ci_lower[[1]]),
+            cv_brier_ci_upper = c(full_mfs_model$metrics$cv_brier_ci_upper[[1]], parsimonious_mfs_model$metrics$cv_brier_ci_upper[[1]]),
+            cv_calibration_slope = c(full_mfs_model$metrics$cv_calibration_slope[[1]], parsimonious_mfs_model$metrics$cv_calibration_slope[[1]]),
+            cv_calibration_slope_ci_lower = c(full_mfs_model$metrics$cv_calibration_slope_ci_lower[[1]], parsimonious_mfs_model$metrics$cv_calibration_slope_ci_lower[[1]]),
+            cv_calibration_slope_ci_upper = c(full_mfs_model$metrics$cv_calibration_slope_ci_upper[[1]], parsimonious_mfs_model$metrics$cv_calibration_slope_ci_upper[[1]]),
+            median_not_tested_predicted_risk = c(
+                full_mfs_medians$median_prediction[full_mfs_medians$no_gep_group == "GEP Not Tested"],
+                parsimonious_mfs_medians$median_prediction[parsimonious_mfs_medians$no_gep_group == "GEP Not Tested"]
+            ),
+            median_failed_indeterminate_predicted_risk = c(
+                full_mfs_medians$median_prediction[full_mfs_medians$no_gep_group == "GEP Failed/Indeterminate"],
+                parsimonious_mfs_medians$median_prediction[parsimonious_mfs_medians$no_gep_group == "GEP Failed/Indeterminate"]
+            )
+        ),
+        tibble::tibble(
+            outcome = "MSS",
+            model_specification = c("Full direct model", "Parsimonious direct model"),
+            predictors = c(
+                paste(full_mss_model$predictors, collapse = ", "),
+                paste(parsimonious_predictors, collapse = ", ")
+            ),
+            n = c(full_mss_model$metrics$n[[1]], parsimonious_mss_model$metrics$n[[1]]),
+            events = c(full_mss_model$metrics$events[[1]], parsimonious_mss_model$metrics$events[[1]]),
+            cv_auc = c(full_mss_model$metrics$cv_auc[[1]], parsimonious_mss_model$metrics$cv_auc[[1]]),
+            cv_auc_ci_lower = c(full_mss_model$metrics$cv_auc_ci_lower[[1]], parsimonious_mss_model$metrics$cv_auc_ci_lower[[1]]),
+            cv_auc_ci_upper = c(full_mss_model$metrics$cv_auc_ci_upper[[1]], parsimonious_mss_model$metrics$cv_auc_ci_upper[[1]]),
+            cv_brier = c(full_mss_model$metrics$cv_brier[[1]], parsimonious_mss_model$metrics$cv_brier[[1]]),
+            cv_brier_ci_lower = c(full_mss_model$metrics$cv_brier_ci_lower[[1]], parsimonious_mss_model$metrics$cv_brier_ci_lower[[1]]),
+            cv_brier_ci_upper = c(full_mss_model$metrics$cv_brier_ci_upper[[1]], parsimonious_mss_model$metrics$cv_brier_ci_upper[[1]]),
+            cv_calibration_slope = c(full_mss_model$metrics$cv_calibration_slope[[1]], parsimonious_mss_model$metrics$cv_calibration_slope[[1]]),
+            cv_calibration_slope_ci_lower = c(full_mss_model$metrics$cv_calibration_slope_ci_lower[[1]], parsimonious_mss_model$metrics$cv_calibration_slope_ci_lower[[1]]),
+            cv_calibration_slope_ci_upper = c(full_mss_model$metrics$cv_calibration_slope_ci_upper[[1]], parsimonious_mss_model$metrics$cv_calibration_slope_ci_upper[[1]]),
+            median_not_tested_predicted_risk = c(
+                full_mss_medians$median_prediction[full_mss_medians$no_gep_group == "GEP Not Tested"],
+                parsimonious_mss_medians$median_prediction[parsimonious_mss_medians$no_gep_group == "GEP Not Tested"]
+            ),
+            median_failed_indeterminate_predicted_risk = c(
+                full_mss_medians$median_prediction[full_mss_medians$no_gep_group == "GEP Failed/Indeterminate"],
+                parsimonious_mss_medians$median_prediction[parsimonious_mss_medians$no_gep_group == "GEP Failed/Indeterminate"]
+            )
+        )
     )
 }
 
@@ -1308,8 +1890,8 @@ create_no_gep_unified_overview <- function(analysis_results) {
             Interpretation_Note = dplyr::case_when(
                 .data$Group == "Class 1" ~ "Reference low-risk definitive GEP group.",
                 .data$Group == "Class 2" ~ "Reference high-risk definitive GEP group.",
-                .data$Group == "GEP Failed/Indeterminate" ~ "No-GEP subgroup with higher median baseline-only predicted risk than GEP Not Tested.",
-                .data$Group == "GEP Not Tested" ~ "Larger no-GEP subgroup with intermediate observed risk between definitive Class 1 and Class 2.",
+                .data$Group == "GEP Failed/Indeterminate" ~ "Higher-risk no-GEP subgroup overall; do not pool interpretively with GEP Not Tested without showing the subgroup split.",
+                .data$Group == "GEP Not Tested" ~ "Larger no-GEP subgroup with lower baseline-only risk than GEP Failed/Indeterminate, but still between definitive Class 1 and Class 2 overall.",
                 TRUE ~ NA_character_
             )
         )
@@ -1367,11 +1949,35 @@ create_no_gep_unified_model_comparison <- function(analysis_results) {
             label = "Direct 5-Year MSS Risk",
             training_set = "Full eligible cohort with 5-year melanoma-specific death endpoint",
             use_case = "Primary baseline-only melanoma-specific risk estimate when GEP is unusable."
+        ),
+        list(
+            key = "parsimonious_mfs",
+            label = "Parsimonious Direct 5-Year MFS Risk",
+            training_set = "Full eligible cohort with 4 pre-specified baseline predictors",
+            use_case = "Sensitivity check showing whether the no-GEP MFS ordering persists under a lower-complexity clinical model."
+        ),
+        list(
+            key = "parsimonious_mss",
+            label = "Parsimonious Direct 5-Year MSS Risk",
+            training_set = "Full eligible cohort with 4 pre-specified baseline predictors",
+            use_case = "Sensitivity check showing whether the no-GEP MSS ordering persists under a lower-complexity clinical model."
         )
     )
 
     purrr::map_dfr(model_specs, function(spec) {
-        model_results <- if (identical(spec$key, "surrogate")) analysis_results$surrogate_model else analysis_results$direct_models[[spec$key]]
+        model_results <- if (identical(spec$key, "surrogate")) {
+            analysis_results$surrogate_model
+        } else if (identical(spec$key, "mfs")) {
+            analysis_results$direct_models$mfs
+        } else if (identical(spec$key, "mss")) {
+            analysis_results$direct_models$mss
+        } else if (identical(spec$key, "parsimonious_mfs")) {
+            analysis_results$parsimonious_models$mfs
+        } else if (identical(spec$key, "parsimonious_mss")) {
+            analysis_results$parsimonious_models$mss
+        } else {
+            stop(sprintf("Unknown unified no-GEP model key: %s", spec$key))
+        }
         top_predictors <- model_results$predictor_contributions %>%
             dplyr::slice_head(n = 3) %>%
             dplyr::mutate(
@@ -1394,9 +2000,17 @@ create_no_gep_unified_model_comparison <- function(analysis_results) {
             CV_AUC = model_results$metrics$cv_auc[[1]],
             Apparent_Brier = model_results$metrics$apparent_brier[[1]],
             CV_Brier = model_results$metrics$cv_brier[[1]],
+            CV_AUC_CI_Lower = model_results$metrics$cv_auc_ci_lower[[1]],
+            CV_AUC_CI_Upper = model_results$metrics$cv_auc_ci_upper[[1]],
+            CV_Brier_CI_Lower = model_results$metrics$cv_brier_ci_lower[[1]],
+            CV_Brier_CI_Upper = model_results$metrics$cv_brier_ci_upper[[1]],
             Calibration_Status = model_results$metrics$calibration_status[[1]],
             Calibration_Intercept = model_results$metrics$calibration_intercept[[1]],
             Calibration_Slope = model_results$metrics$calibration_slope[[1]],
+            CV_Calibration_Slope = model_results$metrics$cv_calibration_slope[[1]],
+            CV_Calibration_Slope_CI_Lower = model_results$metrics$cv_calibration_slope_ci_lower[[1]],
+            CV_Calibration_Slope_CI_Upper = model_results$metrics$cv_calibration_slope_ci_upper[[1]],
+            CV_Repeats = model_results$metrics$cv_repeats[[1]],
             Top_Predictor_1 = top_predictors[[1]] %||% NA_character_,
             Top_Predictor_2 = top_predictors[[2]] %||% NA_character_,
             Top_Predictor_3 = top_predictors[[3]] %||% NA_character_,
@@ -1473,6 +2087,19 @@ collect_exploratory_no_gep_analysis <- function(data,
         predictors = prepared_data$predictors,
         model_name = "Direct 5-Year MSS Risk"
     )
+    parsimonious_predictors <- choose_exploratory_parsimonious_predictors(prepared_data)
+    parsimonious_mfs_model <- fit_exploratory_binary_model(
+        prepared_data$mfs_model_data,
+        outcome_var = "mfs_event_5yr",
+        predictors = parsimonious_predictors,
+        model_name = "Parsimonious Direct 5-Year MFS Risk"
+    )
+    parsimonious_mss_model <- fit_exploratory_binary_model(
+        prepared_data$mss_model_data,
+        outcome_var = "mss_event_5yr",
+        predictors = parsimonious_predictors,
+        model_name = "Parsimonious Direct 5-Year MSS Risk"
+    )
 
     no_gep_predictions <- prepared_data$no_gep_prediction %>%
         dplyr::mutate(
@@ -1485,23 +2112,59 @@ collect_exploratory_no_gep_analysis <- function(data,
             mfs_risk_bin = create_quantile_bins(.data$predicted_mfs_5yr_risk),
             mss_risk_bin = create_quantile_bins(.data$predicted_mss_5yr_risk)
         )
+    parsimonious_no_gep_predictions <- prepared_data$no_gep_prediction %>%
+        dplyr::mutate(
+            predicted_mfs_5yr_risk = predict_exploratory_binary_model(parsimonious_mfs_model, .),
+            predicted_mss_5yr_risk = predict_exploratory_binary_model(parsimonious_mss_model, .)
+        )
 
     no_gep_predictions_sheet <- create_no_gep_predictions_sheet(prepared_data, no_gep_predictions)
     no_gep_summary <- summarize_no_gep_predictions(no_gep_predictions)
     sensitivity_summary <- summarize_pooled_no_gep_sensitivity(no_gep_predictions)
     risk_strata_summary <- summarize_no_gep_risk_strata(no_gep_predictions)
+    risk_ladder <- create_exploratory_risk_ladder(
+        full_data = full_data,
+        direct_mfs_model = direct_mfs_model,
+        direct_mss_model = direct_mss_model
+    )
+    parsimonious_sensitivity <- create_exploratory_parsimonious_sensitivity(
+        full_no_gep_predictions = no_gep_predictions,
+        parsimonious_no_gep_predictions = parsimonious_no_gep_predictions,
+        full_mfs_model = direct_mfs_model,
+        full_mss_model = direct_mss_model,
+        parsimonious_mfs_model = parsimonious_mfs_model,
+        parsimonious_mss_model = parsimonious_mss_model,
+        parsimonious_predictors = parsimonious_predictors
+    )
     predictor_contribution <- create_predictor_contribution_tab(
         prepared_data = prepared_data,
         surrogate_model = surrogate_model,
         mfs_model = direct_mfs_model,
         mss_model = direct_mss_model
     )
-    summary_guide <- create_exploratory_summary_guide_tab(
-        prepared_data = prepared_data,
+    start_here <- create_exploratory_start_here_tab(
+        surrogate_model = surrogate_model,
+        mfs_model = direct_mfs_model,
+        mss_model = direct_mss_model
+    )
+    key_findings_5yr <- create_exploratory_key_findings_table(risk_ladder)
+    no_gep_subgroups <- create_exploratory_no_gep_subgroups_table(no_gep_summary)
+    model_performance <- create_exploratory_model_performance_table(
         surrogate_model = surrogate_model,
         mfs_model = direct_mfs_model,
         mss_model = direct_mss_model,
-        no_gep_summary = no_gep_summary
+        parsimonious_mfs_model = parsimonious_mfs_model,
+        parsimonious_mss_model = parsimonious_mss_model
+    )
+    surrogate_coefficients <- create_exploratory_model_coefficients_table(surrogate_model)
+    direct_mfs_coefficients <- create_exploratory_model_coefficients_table(direct_mfs_model)
+    direct_mss_coefficients <- create_exploratory_model_coefficients_table(direct_mss_model)
+    model_calibration <- create_exploratory_model_calibration_table(
+        surrogate_model = surrogate_model,
+        mfs_model = direct_mfs_model,
+        mss_model = direct_mss_model,
+        parsimonious_mfs_model = parsimonious_mfs_model,
+        parsimonious_mss_model = parsimonious_mss_model
     )
 
     analysis_results <- list(
@@ -1516,18 +2179,45 @@ collect_exploratory_no_gep_analysis <- function(data,
             mfs = direct_mfs_model,
             mss = direct_mss_model
         ),
+        parsimonious_models = list(
+            mfs = parsimonious_mfs_model,
+            mss = parsimonious_mss_model
+        ),
+        start_here = start_here,
+        key_findings_5yr = key_findings_5yr,
+        no_gep_subgroups = no_gep_subgroups,
+        model_performance = model_performance,
+        surrogate_model_coefficients = surrogate_coefficients,
+        direct_mfs_coefficients = direct_mfs_coefficients,
+        direct_mss_coefficients = direct_mss_coefficients,
+        model_calibration = model_calibration,
         predictor_contribution = predictor_contribution,
-        summary_and_guide = summary_guide,
         no_gep_summary = no_gep_summary,
         no_gep_predictions = no_gep_predictions,
         no_gep_predictions_sheet = no_gep_predictions_sheet,
         sensitivity_summary = sensitivity_summary,
-        risk_strata_summary = risk_strata_summary
+        risk_strata_summary = risk_strata_summary,
+        risk_ladder = risk_ladder,
+        parsimonious_sensitivity = parsimonious_sensitivity
     )
 
     analysis_results$unified_no_gep_overview <- create_no_gep_unified_overview(analysis_results)
     analysis_results$unified_no_gep_model_comparison <- create_no_gep_unified_model_comparison(analysis_results)
     analysis_results$unified_no_gep_risk_strata <- risk_strata_summary
+    analysis_results$unified_no_gep_risk_ladder <- risk_ladder %>%
+        dplyr::transmute(
+            Group = .data$group,
+            N = .data$n,
+            Predictable_MFS_N = .data$predictable_mfs_n,
+            Predictable_MSS_N = .data$predictable_mss_n,
+            MFS_5yr_Events = .data$mfs_5yr_events,
+            Observed_MFS_5yr_Event_Rate = .data$observed_5yr_mfs_event_rate,
+            Median_Predicted_MFS_5yr_Risk = .data$median_predicted_5yr_mfs_risk,
+            MSS_5yr_Events = .data$mss_5yr_events,
+            Observed_MSS_5yr_Event_Rate = .data$observed_5yr_mss_event_rate,
+            Median_Predicted_MSS_5yr_Risk = .data$median_predicted_5yr_mss_risk,
+            Interpretation = .data$interpretation
+        )
 
     analysis_results
 }
@@ -1698,10 +2388,11 @@ create_probability_density_plot <- function(data, probability_col, plot_title, o
 #' @param analysis_name Analysis label to filter.
 #' @param event_col Column containing the observed event rate.
 #' @param plot_title Plot title.
+#' @param x_label X-axis label for the bin names.
 #' @param output_path File path for the saved PNG.
 #'
 #' @return Invisibly returns the saved plot path.
-create_event_rate_bin_plot <- function(summary_data, analysis_name, event_col, plot_title, output_path) {
+create_event_rate_bin_plot <- function(summary_data, analysis_name, event_col, plot_title, x_label = "Predicted-risk bin", output_path) {
     plot_data <- summary_data %>%
         dplyr::filter(.data$analysis == analysis_name, !is.na(.data$bin))
 
@@ -1715,7 +2406,7 @@ create_event_rate_bin_plot <- function(summary_data, analysis_name, event_col, p
         ggplot2::scale_y_continuous(labels = function(x) sprintf("%.0f%%", 100 * x), limits = c(0, max(plot_data[[event_col]], na.rm = TRUE) * 1.2 + 0.01)) +
         ggplot2::labs(
             title = plot_title,
-            x = "Predicted-risk bin",
+            x = x_label,
             y = "Observed event rate"
         ) +
         ggplot2::theme_minimal(base_size = 14)
@@ -1724,79 +2415,6 @@ create_event_rate_bin_plot <- function(summary_data, analysis_name, event_col, p
     invisible(output_path)
 }
 
-#' Prepend Short Guide Text to a Workbook Sheet
-#'
-#' @param sheet_data Data frame to be written to the workbook.
-#' @param guide_lines Character vector of helper text lines.
-#'
-#' @return A data frame with guide rows prepended.
-prepend_sheet_guide <- function(sheet_data, guide_lines) {
-    guide_frame <- tibble::tibble(
-        section = "guide",
-        guide_text = guide_lines
-    )
-
-    dplyr::bind_rows(guide_frame, sheet_data)
-}
-
-#' Create the Workbook Summary and Guide Tab
-#'
-#' @param prepared_data Prepared exploratory data bundle.
-#' @param surrogate_model Surrogate model bundle.
-#' @param mfs_model Direct MFS model bundle.
-#' @param mss_model Direct MSS model bundle.
-#' @param no_gep_summary No-GEP group summary table.
-#'
-#' @return A summary-and-guide data frame.
-create_exploratory_summary_guide_tab <- function(prepared_data,
-                                                 surrogate_model,
-                                                 mfs_model,
-                                                 mss_model,
-                                                 no_gep_summary) {
-    top_surrogate <- surrogate_model$predictor_contributions %>% dplyr::slice_head(n = 3)
-    top_mfs <- mfs_model$predictor_contributions %>% dplyr::slice_head(n = 3)
-    top_mss <- mss_model$predictor_contributions %>% dplyr::slice_head(n = 3)
-
-    summary_rows <- tibble::tribble(
-        ~section, ~item, ~detail,
-        "What was computed", "Surrogate model", "Ridge-penalized logistic model trained only on patients with definitive Class 1 or Class 2 GEP results. It learns which baseline clinical features are more typical of the observed Class 1 and Class 2 groups, then gives each no-GEP patient a clinical resemblance probability showing how much their baseline profile looks like the observed Class 2 pattern rather than the observed Class 1 pattern in this cohort.",
-        "What was computed", "Direct MFS model", "Ridge-penalized logistic model estimating 5-year metastasis risk in the full eligible cohort.",
-        "What was computed", "Direct MSS model", "Ridge-penalized logistic model estimating 5-year melanoma-specific death risk in the full eligible cohort.",
-        "Primary findings", "Molecular reassignment", "The surrogate output is a clinical resemblance score anchored to definitive Class 1 and Class 2 patients. It is descriptive only and should not be treated as a recovered molecular class label.",
-        "Primary findings", "Direct risk use", "Direct MFS/MSS outputs are the primary clinically usable outputs for no-GEP patients.",
-        "How to interpret", "AUC", "AUC near 0.5 means poor discrimination; 0.6 to 0.7 means modest but usable ranking; >0.7 is stronger separation.",
-        "How to interpret", "Calibration", "Calibration slope/intercept summarize whether predicted risks are systematically too high or too low; sparse data can limit interpretation.",
-        "How to interpret", "Density plots", "A right-shifted density indicates a subgroup receiving higher predicted risk overall.",
-        "How to interpret", "Bin plots", "Observed event rates should generally increase from low to high predicted-risk bins if ranking is clinically useful.",
-        "How to interpret", "Individual use", "Treat patient-level predictions as exploratory risk support. The surrogate score answers which known class pattern a patient looks more like clinically, not what their true assay result must have been."
-    )
-
-    metric_rows <- tibble::tribble(
-        ~section, ~item, ~detail,
-        "Key metrics", "Surrogate CV AUC", sprintf("%.3f", surrogate_model$metrics$cv_auc[[1]]),
-        "Key metrics", "Direct MFS CV AUC", sprintf("%.3f", mfs_model$metrics$cv_auc[[1]]),
-        "Key metrics", "Direct MSS CV AUC", sprintf("%.3f", mss_model$metrics$cv_auc[[1]]),
-        "Key metrics", "Failed/Indeterminate median 5-year MFS risk", sprintf("%.3f", no_gep_summary$median_predicted_mfs_5yr_risk[no_gep_summary$no_gep_group == "GEP Failed/Indeterminate"]),
-        "Key metrics", "Not Tested median 5-year MFS risk", sprintf("%.3f", no_gep_summary$median_predicted_mfs_5yr_risk[no_gep_summary$no_gep_group == "GEP Not Tested"])
-    )
-
-    top_rows <- dplyr::bind_rows(
-        top_surrogate %>% dplyr::transmute(section = "Top predictors", item = paste0("Surrogate rank ", .data$rank), detail = sprintf("%s (%s)", .data$predictor, .data$direction)),
-        top_mfs %>% dplyr::transmute(section = "Top predictors", item = paste0("Direct MFS rank ", .data$rank), detail = sprintf("%s (%s)", .data$predictor, .data$direction)),
-        top_mss %>% dplyr::transmute(section = "Top predictors", item = paste0("Direct MSS rank ", .data$rank), detail = sprintf("%s (%s)", .data$predictor, .data$direction))
-    )
-
-    predictor_rows <- dplyr::bind_rows(
-        prepared_data$predictor_screening %>%
-            dplyr::filter(.data$status == "retained") %>%
-            dplyr::transmute(section = "Predictor screening", item = paste0("Retained: ", .data$predictor), detail = .data$reason),
-        prepared_data$predictor_screening %>%
-            dplyr::filter(.data$status == "dropped") %>%
-            dplyr::transmute(section = "Predictor screening", item = paste0("Dropped: ", .data$predictor), detail = .data$reason)
-    )
-
-    dplyr::bind_rows(summary_rows, metric_rows, top_rows, predictor_rows)
-}
 
 #' Create the Predictor Contribution Workbook Tab
 #'
@@ -1823,6 +2441,11 @@ create_predictor_contribution_tab <- function(prepared_data,
     dplyr::bind_rows(screening_section, contribution_section)
 }
 
+#' Format Group Percentages for Exploratory Text Output
+#'
+#' @param values Named numeric vector of proportions.
+#'
+#' @return A single comma-separated character string.
 format_exploratory_group_percentages <- function(values) {
     paste(
         sprintf("%s=%.1f%%", names(values), 100 * values),
@@ -1830,6 +2453,11 @@ format_exploratory_group_percentages <- function(values) {
     )
 }
 
+#' Format Group Medians for Exploratory Text Output
+#'
+#' @param values Named numeric vector of medians.
+#'
+#' @return A single comma-separated character string.
 format_exploratory_group_medians <- function(values) {
     paste(
         sprintf("%s=%.1f", names(values), values),
@@ -1837,6 +2465,12 @@ format_exploratory_group_medians <- function(values) {
     )
 }
 
+#' Remove the Predictor Prefix From a Dominant Design Term
+#'
+#' @param predictor Base predictor name.
+#' @param dominant_term Expanded design-matrix term.
+#'
+#' @return A shortened dominant-term label for narrative text.
 trim_exploratory_dominant_term <- function(predictor, dominant_term) {
     if (is.na(dominant_term) || !nzchar(dominant_term)) {
         return("term not recorded")
@@ -1850,6 +2484,12 @@ trim_exploratory_dominant_term <- function(predictor, dominant_term) {
     }
 }
 
+#' Summarize Descriptive Context for a Top Exploratory Predictor
+#'
+#' @param prepared_data Prepared exploratory data bundle.
+#' @param predictor Predictor name to summarize.
+#'
+#' @return A short narrative sentence.
 summarize_exploratory_predictor_context <- function(prepared_data, predictor) {
     data <- prepared_data$full_data %>%
         dplyr::filter(!is.na(.data$exploratory_gep_group))
@@ -1935,6 +2575,13 @@ summarize_exploratory_predictor_context <- function(prepared_data, predictor) {
     sprintf("%s ranked highly in the penalized model, but only coefficient direction is directly supportable from the current descriptive summaries.", predictor)
 }
 
+#' Summarize Observed Event Patterns Across Exploratory Risk Bins
+#'
+#' @param sensitivity_summary Pooled sensitivity summary table.
+#' @param analysis_name Analysis label to filter.
+#' @param event_col Event-rate column name.
+#'
+#' @return A short narrative sentence.
 summarize_exploratory_bin_pattern <- function(sensitivity_summary, analysis_name, event_col) {
     rows <- sensitivity_summary %>%
         dplyr::filter(.data$analysis == analysis_name, .data$bin %in% c("Low", "Intermediate", "High")) %>%
@@ -1946,8 +2593,8 @@ summarize_exploratory_bin_pattern <- function(sensitivity_summary, analysis_name
     }
 
     sprintf(
-        "%s-event rates across pooled %s bins were Low=%.1f%%, Intermediate=%.1f%%, and High=%.1f%%.",
-        if (identical(event_col, "observed_mfs_5yr_event_rate")) "5-year MFS " else "5-year MSS ",
+        "Observed %s event rates across pooled %s bins were Low=%.1f%%, Intermediate=%.1f%%, and High=%.1f%%.",
+        if (identical(event_col, "observed_mfs_5yr_event_rate")) "5-year MFS" else "5-year MSS",
         analysis_name,
         100 * rows[[event_col]][[1]],
         100 * rows[[event_col]][[2]],
@@ -1955,6 +2602,17 @@ summarize_exploratory_bin_pattern <- function(sensitivity_summary, analysis_name
     )
 }
 
+#' Create a Top-Predictor Narrative Block for One Exploratory Model
+#'
+#' @param model_label Display label for the model.
+#' @param model_results Exploratory model bundle.
+#' @param prepared_data Prepared exploratory data bundle.
+#' @param sensitivity_summary Pooled sensitivity summary table.
+#' @param analysis_name Analysis label for pooled bin summaries.
+#' @param event_col Event-rate column name for the pooled summary.
+#' @param model_context Leading context sentence for the block.
+#'
+#' @return Character vector of narrative lines.
 create_exploratory_top_predictor_block <- function(model_label,
                                                    model_results,
                                                    prepared_data,
@@ -1968,7 +2626,7 @@ create_exploratory_top_predictor_block <- function(model_label,
     predictor_lines <- purrr::map_chr(seq_len(nrow(top_rows)), function(i) {
         row <- top_rows[i, , drop = FALSE]
         sprintf(
-            "  * %s ranked %s (dominant term %s, standardized coefficient %.3f; %s). %s",
+            "  * %s ranked %s (largest contributing term %s, standardized coefficient %.3f; %s). %s",
             row$predictor[[1]],
             c("first", "second", "third")[[i]],
             trim_exploratory_dominant_term(row$predictor[[1]], row$dominant_term[[1]]),
@@ -1995,6 +2653,8 @@ create_exploratory_top_predictor_block <- function(model_label,
 #' @param mfs_model Direct 5-year MFS model result bundle.
 #' @param mss_model Direct 5-year MSS model result bundle.
 #' @param no_gep_summary Grouped no-GEP summary table.
+#' @param risk_ladder Four-group descriptive risk ladder table.
+#' @param parsimonious_sensitivity Parsimonious direct-model comparison table.
 #' @param output_path File path for the written text summary.
 #'
 #' @return Invisibly returns the saved summary path.
@@ -2007,10 +2667,20 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
                                                    mfs_model,
                                                    mss_model,
                                                    no_gep_summary,
+                                                   risk_ladder,
+                                                   parsimonious_sensitivity,
                                                    sensitivity_summary,
                                                    output_path) {
     failed_row <- no_gep_summary %>% dplyr::filter(.data$no_gep_group == "GEP Failed/Indeterminate")
     not_tested_row <- no_gep_summary %>% dplyr::filter(.data$no_gep_group == "GEP Not Tested")
+    class1_ladder <- risk_ladder %>% dplyr::filter(.data$group == "Class 1")
+    not_tested_ladder <- risk_ladder %>% dplyr::filter(.data$group == "GEP Not Tested")
+    failed_ladder <- risk_ladder %>% dplyr::filter(.data$group == "GEP Failed/Indeterminate")
+    class2_ladder <- risk_ladder %>% dplyr::filter(.data$group == "Class 2")
+    parsimonious_mfs <- parsimonious_sensitivity %>%
+        dplyr::filter(.data$outcome == "MFS", .data$model_specification == "Parsimonious direct model")
+    parsimonious_mss <- parsimonious_sensitivity %>%
+        dplyr::filter(.data$outcome == "MSS", .data$model_specification == "Parsimonious direct model")
     retained_predictors <- predictor_screening %>%
         dplyr::filter(.data$status == "retained") %>%
         dplyr::pull(.data$predictor)
@@ -2032,7 +2702,8 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
             analysis_name = "Surrogate_Class2_Probability",
             event_col = "observed_mfs_5yr_event_rate",
             model_context = sprintf(
-                "This is a descriptive Class 2-like clinical resemblance model rather than a molecular classifier. CV AUC was %.3f.",
+                "This is a descriptive Class 2-like clinical resemblance model rather than a molecular classifier. Apparent AUC was %.3f and 5-fold CV AUC was %.3f.",
+                surrogate_model$metrics$apparent_auc[[1]],
                 surrogate_model$metrics$cv_auc[[1]]
             )
         ),
@@ -2044,7 +2715,8 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
             analysis_name = "Direct_MFS_5yr_Risk",
             event_col = "observed_mfs_5yr_event_rate",
             model_context = sprintf(
-                "This is the main baseline-only metastasis-risk model for no-GEP patients. CV AUC was %.3f.",
+                "This is the main baseline-only metastasis-risk model for no-GEP patients. Apparent AUC was %.3f and 5-fold CV AUC was %.3f.",
+                mfs_model$metrics$apparent_auc[[1]],
                 mfs_model$metrics$cv_auc[[1]]
             )
         ),
@@ -2056,7 +2728,8 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
             analysis_name = "Direct_MSS_5yr_Risk",
             event_col = "observed_mss_5yr_event_rate",
             model_context = sprintf(
-                "This is the main baseline-only melanoma-specific risk model for no-GEP patients. CV AUC was %.3f.",
+                "This is the main baseline-only melanoma-specific risk model for no-GEP patients. Apparent AUC was %.3f and 5-fold CV AUC was %.3f.",
+                mss_model$metrics$apparent_auc[[1]],
                 mss_model$metrics$cv_auc[[1]]
             )
         )
@@ -2068,44 +2741,40 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
         "",
         sprintf("Dataset: %s", dataset_name),
         "",
-        "What was computed:",
-        "- A ridge-penalized surrogate model was trained only on patients with definitive Class 1 or Class 2 GEP results.",
-        "- That model learned what the baseline clinical patterns of the observed Class 1 and Class 2 patients looked like in this cohort, then assigned each no-GEP patient a Class 2-like clinical resemblance probability from those baseline features.",
-        "- Two ridge-penalized direct clinical models estimated 5-year MFS and 5-year MSS risk using baseline variables available without a usable GEP result.",
+        "Bottom line:",
+        "- Baseline clinical features provided moderate prognostic discrimination for 5-year MFS/MSS when GEP was unusable, but the same baseline features only weakly approximated definitive molecular class.",
+        "- The surrogate Class 2-like model is descriptive only and should not be used to relabel patients as true Class 1 or Class 2.",
+        "- The direct MFS/MSS models are the preferred outputs when a patient has no usable GEP, but they should be described as exploratory prognostic support rather than precise patient-level forecasts.",
+        "- The no-GEP population should not be presented as one homogeneous intermediate-risk group: overall it sits between definitive Class 1 and Class 2, but the failed/indeterminate subgroup is higher risk than the larger not-tested subgroup.",
         "",
-        "Interpretation guardrails:",
-        "- This report improves clinical risk assessment; it does not claim to recover the true molecular GEP class.",
-        "- GEP Failed/Indeterminate and GEP Not Tested are reported separately because they behave like distinct clinical populations.",
-        "- The surrogate output should be read as: among patients with known Class 1 and Class 2 results, which known clinical pattern does this no-GEP patient look more like?",
-        "- The surrogate stores P(Class 2-like | baseline features); its complement, 1 - P(Class 2-like | baseline features), is only Class 1-like resemblance within this surrogate and is not a true molecular Class 1 probability.",
-        "",
-        "Data audit highlights:",
+        "Key findings at 5 years:",
         sprintf(
             "- Group counts: %s",
             paste(sprintf("%s=%d", data_audit$group[seq_len(4)], data_audit$n[seq_len(4)]), collapse = ", ")
         ),
         sprintf(
-            "- Surrogate Class 2 model: apparent AUC %.3f, 5-fold CV AUC %.3f",
-            surrogate_model$metrics$apparent_auc[1],
-            surrogate_model$metrics$cv_auc[1]
+            "- Observed 5-year MFS events: Class 1 %.1f%%, GEP Not Tested %.1f%%, GEP Failed/Indeterminate %.1f%%, Class 2 %.1f%%.",
+            100 * class1_ladder$observed_5yr_mfs_event_rate[[1]],
+            100 * not_tested_ladder$observed_5yr_mfs_event_rate[[1]],
+            100 * failed_ladder$observed_5yr_mfs_event_rate[[1]],
+            100 * class2_ladder$observed_5yr_mfs_event_rate[[1]]
         ),
         sprintf(
-            "- Direct 5-year MFS risk model: apparent AUC %.3f, 5-fold CV AUC %.3f",
-            mfs_model$metrics$apparent_auc[1],
-            mfs_model$metrics$cv_auc[1]
+            "- Median predicted 5-year MFS risk from the direct clinical model: Class 1 %.3f, GEP Not Tested %.3f, GEP Failed/Indeterminate %.3f, Class 2 %.3f.",
+            class1_ladder$median_predicted_5yr_mfs_risk[[1]],
+            not_tested_ladder$median_predicted_5yr_mfs_risk[[1]],
+            failed_ladder$median_predicted_5yr_mfs_risk[[1]],
+            class2_ladder$median_predicted_5yr_mfs_risk[[1]]
         ),
         sprintf(
-            "- Direct 5-year MSS risk model: apparent AUC %.3f, 5-fold CV AUC %.3f",
-            mss_model$metrics$apparent_auc[1],
-            mss_model$metrics$cv_auc[1]
+            "- Median predicted 5-year MSS risk from the direct clinical model: Class 1 %.3f, GEP Not Tested %.3f, GEP Failed/Indeterminate %.3f, Class 2 %.3f.",
+            class1_ladder$median_predicted_5yr_mss_risk[[1]],
+            not_tested_ladder$median_predicted_5yr_mss_risk[[1]],
+            failed_ladder$median_predicted_5yr_mss_risk[[1]],
+            class2_ladder$median_predicted_5yr_mss_risk[[1]]
         ),
         "",
-        "Result interpretation:",
-        "- The surrogate Class 2-like model is a descriptive only clinical resemblance score and shows only modest discrimination, so it should not be used to relabel patients as true Class 1 or Class 2.",
-        "- The direct MFS/MSS models provide moderate risk stratification and are the preferred outputs when a patient has no usable GEP.",
-        "- Higher predicted-risk bins should be interpreted as clinically higher-risk groups, not as precise deterministic individual forecasts.",
-        "",
-        "No-GEP prediction summary:",
+        "No-GEP subgroup summary:",
         sprintf(
             "- Failed/Indeterminate: median Class 2-like probability %.3f, median predicted 5-year MFS risk %.3f, median predicted 5-year MSS risk %.3f",
             failed_row$median_surrogate_class2_probability[[1]],
@@ -2118,6 +2787,29 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
             not_tested_row$median_predicted_mfs_5yr_risk[[1]],
             not_tested_row$median_predicted_mss_5yr_risk[[1]]
         ),
+        "",
+        "Technical notes:",
+        "- A ridge-penalized surrogate model was trained only on patients with definitive Class 1 or Class 2 GEP results.",
+        "- That surrogate stores P(Class 2-like | baseline features); it is a clinical resemblance score, not a recovered molecular class label.",
+        "- Direct MFS and MSS models estimate baseline-only 5-year risk when GEP is unavailable or unusable.",
+        "- Apparent AUC is the in-sample fit; cross-validated AUC is the better estimate of expected performance on new patients.",
+        "- 95% repeated-CV intervals show how much AUC, Brier score, and calibration slope change across different fold assignments.",
+        "",
+        "Parsimonious sensitivity check:",
+        sprintf(
+            "- Parsimonious direct MFS model using %s retained a CV AUC of %.3f (95%% repeated-CV interval %.3f to %.3f).",
+            paste(unique(strsplit(parsimonious_mfs$predictors[[1]], ", ")[[1]]), collapse = ", "),
+            parsimonious_mfs$cv_auc[[1]],
+            parsimonious_mfs$cv_auc_ci_lower[[1]],
+            parsimonious_mfs$cv_auc_ci_upper[[1]]
+        ),
+        sprintf(
+            "- Parsimonious direct MSS model retained a CV AUC of %.3f (95%% repeated-CV interval %.3f to %.3f).",
+            parsimonious_mss$cv_auc[[1]],
+            parsimonious_mss$cv_auc_ci_lower[[1]],
+            parsimonious_mss$cv_auc_ci_upper[[1]]
+        ),
+        "- Similar performance under the parsimonious specification supports the subgroup ordering without requiring a larger baseline feature set.",
         "",
         "Retained baseline predictors used in all exploratory models:",
         paste0("- ", retained_predictors),
@@ -2206,60 +2898,42 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
     surrogate_model <- analysis_results$surrogate_model
     direct_mfs_model <- analysis_results$direct_models$mfs
     direct_mss_model <- analysis_results$direct_models$mss
+    parsimonious_mfs_model <- analysis_results$parsimonious_models$mfs
+    parsimonious_mss_model <- analysis_results$parsimonious_models$mss
+    start_here <- analysis_results$start_here
+    key_findings_5yr <- analysis_results$key_findings_5yr
+    no_gep_subgroups <- analysis_results$no_gep_subgroups
+    model_performance <- analysis_results$model_performance
+    surrogate_model_coefficients <- analysis_results$surrogate_model_coefficients
+    direct_mfs_coefficients <- analysis_results$direct_mfs_coefficients
+    direct_mss_coefficients <- analysis_results$direct_mss_coefficients
+    model_calibration <- analysis_results$model_calibration
     predictor_contribution <- analysis_results$predictor_contribution
-    summary_guide <- analysis_results$summary_and_guide
     no_gep_summary <- analysis_results$no_gep_summary
     no_gep_predictions <- analysis_results$no_gep_predictions
     no_gep_predictions_sheet <- analysis_results$no_gep_predictions_sheet
     sensitivity_summary <- analysis_results$sensitivity_summary
+    risk_ladder <- analysis_results$risk_ladder
+    parsimonious_sensitivity <- analysis_results$parsimonious_sensitivity
 
     workbook_data <- list(
-        Summary_and_Guide = summary_guide,
+        Start_Here = start_here,
+        Key_Findings_5yr = key_findings_5yr,
+        Risk_Ladder_5yr = risk_ladder,
+        No_GEP_Subgroups = no_gep_subgroups,
+        Model_Performance = model_performance,
+        Parsimonious_Sensitivity = parsimonious_sensitivity,
+        Surrogate_Model_Coefficients = surrogate_model_coefficients,
+        Direct_MFS_Coefficients = direct_mfs_coefficients,
+        Direct_MSS_Coefficients = direct_mss_coefficients,
+        Model_Calibration = model_calibration,
         Predictor_Contribution = predictor_contribution,
-        Data_Audit = data_audit,
         Baseline_Comparisons = baseline_summary,
+        Data_Audit = data_audit,
+        No_GEP_Predictions = no_gep_predictions_sheet,
+        Sensitivity_Pooled_No_GEP = sensitivity_summary,
         KM_Corrected_MFS = km_corrected_mfs,
-        KM_Corrected_MSS = km_corrected_mss,
-        Surrogate_Class2_Model = prepend_sheet_guide(
-            create_model_workbook_tab(surrogate_model),
-            c(
-                "Surrogate Class 2-like probability is a clinical resemblance score based on known Class 1 versus Class 2 baseline patterns; it is not equivalent to true molecular class reassignment.",
-                "Metrics summarize how well baseline features distinguish the known classes in this cohort; coefficients are ridge-shrunken terms for directionality and ranking, not p-value-based inference.",
-                sprintf("Retained predictors: %s", paste(prepared_data$predictors, collapse = ", "))
-            )
-        ),
-        Direct_MFS_Risk_Model = prepend_sheet_guide(
-            create_model_workbook_tab(direct_mfs_model),
-            c(
-                "This is the primary direct-risk model for 5-year metastasis-free survival in patients with no usable GEP.",
-                "Use CV AUC/Brier and calibration rows to judge overall support; use predictor contributions for ranked driver summaries.",
-                sprintf("Retained predictors: %s", paste(prepared_data$predictors, collapse = ", "))
-            )
-        ),
-        Direct_MSS_Risk_Model = prepend_sheet_guide(
-            create_model_workbook_tab(direct_mss_model),
-            c(
-                "This is the primary direct-risk model for 5-year melanoma-specific survival risk in patients with no usable GEP.",
-                "Sparse event support can weaken MSS calibration and make interpretation more cautious than MFS.",
-                sprintf("Retained predictors: %s", paste(prepared_data$predictors, collapse = ", "))
-            )
-        ),
-        No_GEP_Predictions = prepend_sheet_guide(
-            no_gep_predictions_sheet,
-            c(
-                "Each row is a patient with failed/indeterminate or not-tested GEP and baseline-only exploratory predictions.",
-                "Surrogate Class 2-like probability answers which known definitive-GEP clinical pattern the patient resembles more; direct MFS/MSS risks are the main clinically usable outputs.",
-                "Risk bins are pooled low/intermediate/high quantile groupings used for descriptive calibration checks."
-            )
-        ),
-        Sensitivity_Pooled_No_GEP = prepend_sheet_guide(
-            sensitivity_summary,
-            c(
-                "This sheet pools failed/indeterminate and not-tested patients only for sensitivity summaries.",
-                "Higher observed event rates across bins support useful risk ordering, but this is still exploratory internal validation.",
-                "Primary interpretation should stay with the separate subgroup summaries rather than the pooled rows alone."
-            )
-        )
+        KM_Corrected_MSS = km_corrected_mss
     )
 
     workbook_path <- file.path(output_dir, "full_cohort_exploratory_no_gep_report.xlsx")
@@ -2276,7 +2950,9 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
         mfs_model = direct_mfs_model,
         mss_model = direct_mss_model,
         no_gep_summary = no_gep_summary,
+        risk_ladder = risk_ladder,
         sensitivity_summary = sensitivity_summary,
+        parsimonious_sensitivity = parsimonious_sensitivity,
         output_path = summary_path
     )
 
@@ -2321,7 +2997,8 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
         sensitivity_summary,
         analysis_name = "Surrogate_Class2_Probability",
         event_col = "observed_mfs_5yr_event_rate",
-        plot_title = "Observed 5-Year MFS Event Rate by Surrogate Probability Bin",
+        plot_title = "Observed 5-Year MFS Event Rate by Surrogate Class 2-Like Score Bin",
+        x_label = "Surrogate Class 2-like score bin",
         output_path = plot_paths$surrogate_bins
     )
     create_event_rate_bin_plot(
@@ -2351,15 +3028,29 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
             mfs = direct_mfs_model,
             mss = direct_mss_model
         ),
+        parsimonious_models = list(
+            mfs = parsimonious_mfs_model,
+            mss = parsimonious_mss_model
+        ),
+        start_here = start_here,
+        key_findings_5yr = key_findings_5yr,
+        no_gep_subgroups = no_gep_subgroups,
+        model_performance = model_performance,
+        surrogate_model_coefficients = surrogate_model_coefficients,
+        direct_mfs_coefficients = direct_mfs_coefficients,
+        direct_mss_coefficients = direct_mss_coefficients,
+        model_calibration = model_calibration,
         predictor_contribution = predictor_contribution,
-        summary_and_guide = summary_guide,
         no_gep_summary = no_gep_summary,
         no_gep_predictions = no_gep_predictions_sheet,
         sensitivity_summary = sensitivity_summary,
         risk_strata_summary = analysis_results$risk_strata_summary,
+        risk_ladder = risk_ladder,
+        parsimonious_sensitivity = parsimonious_sensitivity,
         unified_no_gep_overview = analysis_results$unified_no_gep_overview,
         unified_no_gep_model_comparison = analysis_results$unified_no_gep_model_comparison,
         unified_no_gep_risk_strata = analysis_results$unified_no_gep_risk_strata,
+        unified_no_gep_risk_ladder = analysis_results$unified_no_gep_risk_ladder,
         output_paths = c(
             list(workbook = workbook_path, summary = summary_path),
             plot_paths

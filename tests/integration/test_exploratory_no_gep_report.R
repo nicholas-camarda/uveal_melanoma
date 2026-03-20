@@ -104,22 +104,52 @@ test_that("exploratory no-GEP report writes workbook, summary, and plots", {
     expect_true(file.exists(results$output_paths$surrogate_density))
 
     workbook_sheets <- openxlsx::getSheetNames(results$output_paths$workbook)
-    expect_true(all(c(
-        "Summary_and_Guide",
-        "Predictor_Contribution",
-        "Data_Audit",
-        "Baseline_Comparisons",
-        "KM_Corrected_MFS",
-        "KM_Corrected_MSS",
-        "Surrogate_Class2_Model",
-        "Direct_MFS_Risk_Model",
-        "Direct_MSS_Risk_Model",
-        "No_GEP_Predictions",
-        "Sensitivity_Pooled_No_GEP"
-    ) %in% workbook_sheets))
+    expect_equal(
+        workbook_sheets,
+        c(
+            "Start_Here",
+            "Key_Findings_5yr",
+            "Risk_Ladder_5yr",
+            "No_GEP_Subgroups",
+            "Model_Performance",
+            "Parsimonious_Sensitivity",
+            "Surrogate_Model_Coefficients",
+            "Direct_MFS_Coefficients",
+            "Direct_MSS_Coefficients",
+            "Model_Calibration",
+            "Predictor_Contribution",
+            "Baseline_Comparisons",
+            "Data_Audit",
+            "No_GEP_Predictions",
+            "Sensitivity_Pooled_No_GEP",
+            "KM_Corrected_MFS",
+            "KM_Corrected_MSS"
+        )
+    )
+
+    start_here_sheet <- openxlsx::read.xlsx(results$output_paths$workbook, sheet = "Start_Here")
+    key_findings_sheet <- openxlsx::read.xlsx(results$output_paths$workbook, sheet = "Key_Findings_5yr")
+    risk_ladder_sheet <- openxlsx::read.xlsx(results$output_paths$workbook, sheet = "Risk_Ladder_5yr")
+    model_performance_sheet <- openxlsx::read.xlsx(results$output_paths$workbook, sheet = "Model_Performance")
+
+    expect_false(any(c("section", "item", "detail", "guide_text") %in% names(key_findings_sheet)))
+    expect_false(any(c("section", "item", "detail", "guide_text") %in% names(risk_ladder_sheet)))
+    expect_false(any(c("section", "item", "detail", "guide_text") %in% names(model_performance_sheet)))
+    expect_equal(nrow(key_findings_sheet), 4)
+    expect_equal(
+        key_findings_sheet$group,
+        c("Class 1", "GEP Not Tested", "GEP Failed/Indeterminate", "Class 2")
+    )
+    expect_true(all(c("section", "label", "value") %in% names(start_here_sheet)))
+    expect_true(all(c("group", "n", "observed_5yr_mfs_event_rate", "median_predicted_5yr_mfs_risk") %in% names(risk_ladder_sheet)))
+    expect_true(all(c("model", "cv_auc", "cv_auc_ci", "calibration_slope_ci", "practical_read") %in% names(model_performance_sheet)))
 
     summary_text <- paste(readLines(results$output_paths$summary), collapse = "\n")
     expect_match(summary_text, "descriptive only", fixed = TRUE)
+    expect_match(summary_text, "homogeneous intermediate-risk group", fixed = TRUE)
+    expect_match(summary_text, "Key findings at 5 years:", fixed = TRUE)
+    expect_match(summary_text, "95% repeated-CV interval", fixed = TRUE)
+    expect_match(summary_text, "Parsimonious sensitivity check", fixed = TRUE)
     expect_match(summary_text, "Retained baseline predictors used in all exploratory models", fixed = TRUE)
     expect_match(summary_text, "standardized coefficient", fixed = TRUE)
     expect_match(summary_text, "ranked first", fixed = TRUE)
@@ -129,14 +159,30 @@ test_that("exploratory no-GEP report writes workbook, summary, and plots", {
     expect_s3_class(results$surrogate_model$model, "cv.glmnet")
     expect_s3_class(results$direct_models$mfs$model, "cv.glmnet")
     expect_s3_class(results$direct_models$mss$model, "cv.glmnet")
+    expect_s3_class(results$parsimonious_models$mfs$model, "cv.glmnet")
+    expect_s3_class(results$parsimonious_models$mss$model, "cv.glmnet")
     expect_true("calibration_status" %in% names(results$surrogate_model$metrics))
     expect_true("calibration_status" %in% names(results$direct_models$mfs$metrics))
     expect_true("calibration_status" %in% names(results$direct_models$mss$metrics))
+    expect_true(all(c("cv_auc_ci_lower", "cv_auc_ci_upper", "cv_repeats") %in% names(results$direct_models$mfs$metrics)))
+    expect_true(all(c("cv_auc_ci_lower", "cv_auc_ci_upper", "cv_repeats") %in% names(results$direct_models$mss$metrics)))
     expect_true(all(unique(results$no_gep_predictions$no_gep_group) %in% c("GEP Failed/Indeterminate", "GEP Not Tested")))
-    expect_true("summary_and_guide" %in% names(results))
+    expect_true("start_here" %in% names(results))
+    expect_true("key_findings_5yr" %in% names(results))
+    expect_true("no_gep_subgroups" %in% names(results))
+    expect_true("model_performance" %in% names(results))
+    expect_true("surrogate_model_coefficients" %in% names(results))
+    expect_true("model_calibration" %in% names(results))
     expect_true("predictor_contribution" %in% names(results))
+    expect_true("risk_ladder" %in% names(results))
+    expect_true("parsimonious_sensitivity" %in% names(results))
     expect_true(any(results$predictor_contribution$section == "model_contribution"))
     expect_true(all(c("Group", "Interpretation_Note") %in% names(results$unified_no_gep_overview)))
-    expect_true(all(c("Model", "Top_Predictor_1", "Use_Case") %in% names(results$unified_no_gep_model_comparison)))
+    expect_true(all(c("Model", "Top_Predictor_1", "Use_Case", "CV_AUC_CI_Lower", "CV_AUC_CI_Upper") %in% names(results$unified_no_gep_model_comparison)))
     expect_true(all(c("No_GEP_Group", "Analysis", "Bin") %in% names(results$unified_no_gep_risk_strata)))
+    expect_true(all(c("Group", "Observed_MFS_5yr_Event_Rate", "Median_Predicted_MFS_5yr_Risk") %in% names(results$unified_no_gep_risk_ladder)))
+    expect_equal(
+        as.character(results$risk_ladder$group),
+        c("Class 1", "GEP Not Tested", "GEP Failed/Indeterminate", "Class 2")
+    )
 })
