@@ -174,6 +174,74 @@ build_gep_cumulative_hazard_diagnostic_data <- function(analysis_data, time_var,
     plot_data
 }
 
+#' Prepare endpoint data for extrapolation assumption checks
+#'
+#' Remove rows that cannot inform a continuous-time parametric fit and apply a
+#' documented small positive offset only when an event is recorded at time zero.
+#'
+#' @param analysis_data Data frame containing the endpoint-specific time and
+#'   event variables.
+#' @param time_var Character name of the follow-up time variable in months.
+#' @param event_var Character name of the event indicator variable.
+#' @return Named list containing the cleaned data and a plain-language note about
+#'   any zero-time handling that was required.
+prepare_gep_extrapolation_analysis_data <- function(analysis_data, time_var, event_var) {
+    cleaned_data <- analysis_data %>%
+        dplyr::filter(
+            !is.na(.data[[time_var]]),
+            !is.na(.data[[event_var]]),
+            .data[[time_var]] >= 0
+        )
+
+    zero_time_event_count <- sum(cleaned_data[[time_var]] == 0 & cleaned_data[[event_var]] == 1, na.rm = TRUE)
+    zero_time_censored_count <- sum(cleaned_data[[time_var]] == 0 & cleaned_data[[event_var]] == 0, na.rm = TRUE)
+
+    handling_notes <- character()
+
+    if (zero_time_censored_count > 0) {
+        cleaned_data <- cleaned_data %>%
+            dplyr::filter(!( .data[[time_var]] == 0 & .data[[event_var]] == 0))
+        handling_notes <- c(
+            handling_notes,
+            sprintf(
+                "Dropped %d zero-time censored row%s from the parametric extrapolation check because they provide no positive follow-up information for a continuous-time fit.",
+                zero_time_censored_count,
+                ifelse(zero_time_censored_count == 1, "", "s")
+            )
+        )
+    }
+
+    if (zero_time_event_count > 0) {
+        positive_times <- cleaned_data[[time_var]][cleaned_data[[time_var]] > 0]
+        epsilon_months <- if (length(positive_times) > 0) {
+            max(min(positive_times, na.rm = TRUE) / 2, 1e-04)
+        } else {
+            1 / 30
+        }
+        cleaned_data[[time_var]] <- ifelse(
+            cleaned_data[[time_var]] == 0 & cleaned_data[[event_var]] == 1,
+            epsilon_months,
+            cleaned_data[[time_var]]
+        )
+        handling_notes <- c(
+            handling_notes,
+            sprintf(
+                "Shifted %d zero-time event row%s to %.4f months so the continuous-time parametric fit could proceed under a minimal positive-time convention.",
+                zero_time_event_count,
+                ifelse(zero_time_event_count == 1, "", "s"),
+                epsilon_months
+            )
+        )
+    }
+
+    list(
+        data = cleaned_data,
+        note = if (length(handling_notes) > 0) paste(handling_notes, collapse = " ") else NA_character_,
+        zero_time_censored_count = zero_time_censored_count,
+        zero_time_event_count = zero_time_event_count
+    )
+}
+
 #' Classify Objective 4 extrapolation support
 #'
 #' Convert the exponential-versus-Weibull comparison and the crude piecewise
@@ -296,12 +364,12 @@ evaluate_gep_extrapolation_assumption <- function(analysis_data,
                                                   dataset_name = NULL) {
     endpoint_config <- get_gep_extrapolation_endpoint_config(outcome_type)
 
-    cleaned_data <- analysis_data %>%
-        dplyr::filter(
-            !is.na(.data[[endpoint_config$time_var]]),
-            !is.na(.data[[endpoint_config$event_var]]),
-            .data[[endpoint_config$time_var]] >= 0
-        )
+    prepared_data <- prepare_gep_extrapolation_analysis_data(
+        analysis_data = analysis_data,
+        time_var = endpoint_config$time_var,
+        event_var = endpoint_config$event_var
+    )
+    cleaned_data <- prepared_data$data
 
     event_count <- sum(cleaned_data[[endpoint_config$event_var]] == 1, na.rm = TRUE)
     follow_up_beyond_5yr <- sum(cleaned_data[[endpoint_config$time_var]] > 60, na.rm = TRUE)
@@ -380,7 +448,10 @@ evaluate_gep_extrapolation_assumption <- function(analysis_data,
             Post5yr_Hazard_Per_Year = NA_real_,
             Post_vs_Pre_Hazard_Ratio = NA_real_,
             Support_Status = "Unsupported",
-            Support_Note = sprintf("The extrapolation check could not be completed: %s", model_results$error),
+            Support_Note = paste(
+                sprintf("The extrapolation check could not be completed: %s", model_results$error),
+                prepared_data$note %||% ""
+            ),
             stringsAsFactors = FALSE
         )
 
@@ -412,7 +483,10 @@ evaluate_gep_extrapolation_assumption <- function(analysis_data,
         Post5yr_Hazard_Per_Year = model_results$piecewise_summary$post_hazard_per_year,
         Post_vs_Pre_Hazard_Ratio = model_results$piecewise_summary$post_vs_pre_hazard_ratio,
         Support_Status = model_results$support$status,
-        Support_Note = model_results$support$note,
+        Support_Note = paste(
+            model_results$support$note,
+            prepared_data$note %||% ""
+        ),
         stringsAsFactors = FALSE
     )
 
@@ -472,4 +546,3 @@ evaluate_gep_extrapolation_assumption <- function(analysis_data,
         piecewise_summary = model_results$piecewise_summary
     )
 }
-

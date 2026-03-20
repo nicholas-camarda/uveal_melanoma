@@ -2602,33 +2602,98 @@ summarize_exploratory_bin_pattern <- function(sensitivity_summary, analysis_name
     )
 }
 
-#' Create a Top-Predictor Narrative Block for One Exploratory Model
+#' Extract Exploratory Risk-Bin Rates
+#'
+#' @param sensitivity_summary Pooled sensitivity summary table.
+#' @param analysis_name Analysis label to filter.
+#' @param event_col Event-rate column name.
+#'
+#' @return Named numeric vector with Low, Intermediate, and High rates, or
+#'   `NULL` when the summary is incomplete.
+extract_exploratory_bin_rates <- function(sensitivity_summary,
+                                          analysis_name,
+                                          event_col) {
+    rows <- sensitivity_summary %>%
+        dplyr::filter(.data$analysis == analysis_name, .data$bin %in% c("Low", "Intermediate", "High")) %>%
+        dplyr::mutate(bin = factor(.data$bin, levels = c("Low", "Intermediate", "High"))) %>%
+        dplyr::arrange(.data$bin)
+
+    if (nrow(rows) != 3) {
+        return(NULL)
+    }
+
+    stats::setNames(rows[[event_col]], rows$bin)
+}
+
+#' Create an Exploratory Model Overview Table Row
+#'
+#' @param model_label Display label for the model.
+#' @param model_context Short description of the model's role.
+#' @param model_results Exploratory model bundle.
+#' @param sensitivity_summary Pooled sensitivity summary table.
+#' @param analysis_name Analysis label for pooled bin summaries.
+#' @param event_col Event-rate column name for the pooled summary.
+#'
+#' @return A single fixed-width table row as character.
+create_exploratory_model_overview_row <- function(model_label,
+                                                  model_context,
+                                                  model_results,
+                                                  sensitivity_summary,
+                                                  analysis_name,
+                                                  event_col) {
+    bin_rates <- extract_exploratory_bin_rates(
+        sensitivity_summary = sensitivity_summary,
+        analysis_name = analysis_name,
+        event_col = event_col
+    )
+    event_label <- if (identical(event_col, "observed_mfs_5yr_event_rate")) {
+        "5-year MFS"
+    } else {
+        "5-year MSS"
+    }
+    bin_summary <- if (is.null(bin_rates)) {
+        "Unavailable"
+    } else {
+        sprintf(
+            "%s bins L/I/H %.1f%% / %.1f%% / %.1f%%",
+            event_label,
+            100 * bin_rates[["Low"]],
+            100 * bin_rates[["Intermediate"]],
+            100 * bin_rates[["High"]]
+        )
+    }
+
+    sprintf(
+        "| %-24s | %-32s | %13.3f | %10.3f | %-33s |",
+        model_label,
+        model_context,
+        model_results$metrics$apparent_auc[[1]],
+        model_results$metrics$cv_auc[[1]],
+        bin_summary
+    )
+}
+
+#' Create a Top-Predictor Table Block for One Exploratory Model
 #'
 #' @param model_label Display label for the model.
 #' @param model_results Exploratory model bundle.
 #' @param prepared_data Prepared exploratory data bundle.
-#' @param sensitivity_summary Pooled sensitivity summary table.
-#' @param analysis_name Analysis label for pooled bin summaries.
-#' @param event_col Event-rate column name for the pooled summary.
-#' @param model_context Leading context sentence for the block.
+#' @param model_context Short description of the model's role.
 #'
-#' @return Character vector of narrative lines.
-create_exploratory_top_predictor_block <- function(model_label,
+#' @return Character vector of fixed-width table lines.
+create_exploratory_top_predictor_table <- function(model_label,
                                                    model_results,
                                                    prepared_data,
-                                                   sensitivity_summary,
-                                                   analysis_name,
-                                                   event_col,
                                                    model_context) {
     top_rows <- model_results$predictor_contributions %>%
         dplyr::slice_head(n = 3)
 
-    predictor_lines <- purrr::map_chr(seq_len(nrow(top_rows)), function(i) {
+    predictor_rows <- purrr::map_chr(seq_len(nrow(top_rows)), function(i) {
         row <- top_rows[i, , drop = FALSE]
         sprintf(
-            "  * %s ranked %s (largest contributing term %s, standardized coefficient %.3f; %s). %s",
+            "| %-4s | %-24s | %-18s | %10.3f | %-18s | %-s |",
+            paste0("#", i),
             row$predictor[[1]],
-            c("first", "second", "third")[[i]],
             trim_exploratory_dominant_term(row$predictor[[1]], row$dominant_term[[1]]),
             row$standardized_coefficient[[1]],
             row$direction[[1]],
@@ -2637,8 +2702,11 @@ create_exploratory_top_predictor_block <- function(model_label,
     })
 
     c(
-        sprintf("- %s: %s %s", model_label, model_context, summarize_exploratory_bin_pattern(sensitivity_summary, analysis_name, event_col)),
-        predictor_lines
+        sprintf("%s", model_label),
+        sprintf("Role: %s", model_context),
+        "| Rank | Predictor                | Dominant term      | Std. coef. | Direction          | Data-backed context |",
+        "| ---- | ------------------------ | ------------------ | ---------- | ------------------ | ------------------- |",
+        predictor_rows
     )
 }
 
@@ -2693,45 +2761,54 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
         dplyr::slice_min(.data$p_value, n = 1, with_ties = FALSE)
 
     top_predictor_block <- c(
+        "Model overview:",
+        "| Model                    | Purpose                          | Apparent AUC | 5-fold CV AUC | Observed pooled risk-bin rates      |",
+        "| ------------------------ | -------------------------------- | ------------ | ------------- | ----------------------------------- |",
+        create_exploratory_model_overview_row(
+            model_label = "Surrogate Class 2-like",
+            model_context = "Clinical resemblance, not molecular class",
+            model_results = surrogate_model,
+            sensitivity_summary = sensitivity_summary,
+            analysis_name = "Surrogate_Class2_Probability",
+            event_col = "observed_mfs_5yr_event_rate"
+        ),
+        create_exploratory_model_overview_row(
+            model_label = "Direct 5-year MFS",
+            model_context = "Main no-GEP metastasis-risk model",
+            model_results = mfs_model,
+            sensitivity_summary = sensitivity_summary,
+            analysis_name = "Direct_MFS_5yr_Risk",
+            event_col = "observed_mfs_5yr_event_rate"
+        ),
+        create_exploratory_model_overview_row(
+            model_label = "Direct 5-year MSS",
+            model_context = "Main no-GEP melanoma-specific model",
+            model_results = mss_model,
+            sensitivity_summary = sensitivity_summary,
+            analysis_name = "Direct_MSS_5yr_Risk",
+            event_col = "observed_mss_5yr_event_rate"
+        ),
+        "",
         "Top predictors with data-backed context:",
-        create_exploratory_top_predictor_block(
+        create_exploratory_top_predictor_table(
             model_label = "Surrogate Class 2-like",
             model_results = surrogate_model,
             prepared_data = prepared_data,
-            sensitivity_summary = sensitivity_summary,
-            analysis_name = "Surrogate_Class2_Probability",
-            event_col = "observed_mfs_5yr_event_rate",
-            model_context = sprintf(
-                "This is a descriptive Class 2-like clinical resemblance model rather than a molecular classifier. Apparent AUC was %.3f and 5-fold CV AUC was %.3f.",
-                surrogate_model$metrics$apparent_auc[[1]],
-                surrogate_model$metrics$cv_auc[[1]]
-            )
+            model_context = "Descriptive Class 2-like clinical resemblance score; do not treat this as a recovered molecular label."
         ),
-        create_exploratory_top_predictor_block(
+        "",
+        create_exploratory_top_predictor_table(
             model_label = "Direct 5-year MFS",
             model_results = mfs_model,
             prepared_data = prepared_data,
-            sensitivity_summary = sensitivity_summary,
-            analysis_name = "Direct_MFS_5yr_Risk",
-            event_col = "observed_mfs_5yr_event_rate",
-            model_context = sprintf(
-                "This is the main baseline-only metastasis-risk model for no-GEP patients. Apparent AUC was %.3f and 5-fold CV AUC was %.3f.",
-                mfs_model$metrics$apparent_auc[[1]],
-                mfs_model$metrics$cv_auc[[1]]
-            )
+            model_context = "Preferred baseline-only metastasis-risk output when GEP is unavailable or unusable."
         ),
-        create_exploratory_top_predictor_block(
+        "",
+        create_exploratory_top_predictor_table(
             model_label = "Direct 5-year MSS",
             model_results = mss_model,
             prepared_data = prepared_data,
-            sensitivity_summary = sensitivity_summary,
-            analysis_name = "Direct_MSS_5yr_Risk",
-            event_col = "observed_mss_5yr_event_rate",
-            model_context = sprintf(
-                "This is the main baseline-only melanoma-specific risk model for no-GEP patients. Apparent AUC was %.3f and 5-fold CV AUC was %.3f.",
-                mss_model$metrics$apparent_auc[[1]],
-                mss_model$metrics$cv_auc[[1]]
-            )
+            model_context = "Preferred baseline-only melanoma-specific risk output when GEP is unavailable or unusable."
         )
     )
 
