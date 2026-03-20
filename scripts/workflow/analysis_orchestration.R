@@ -349,6 +349,41 @@ run_specific_objective <- function(dataset_name, objective_number) {
     return(invisible(results))
 }
 
+#' Run selected objectives across multiple cohorts
+#'
+#' This helper keeps the entry script thin by letting callers specify a cohort
+#' vector and an objective vector, while reusing `run_my_analysis()` for the
+#' actual orchestration.
+#'
+#' @param cohort_names Character vector of cohort dataset names to run.
+#' @param objective_numbers Integer vector of objectives to run for each cohort.
+#' @return Invisible named list of results keyed by cohort name.
+#' @export
+run_selected_objectives <- function(cohort_names, objective_numbers) {
+    cohort_names <- as.character(cohort_names)
+    objective_numbers <- as.integer(objective_numbers)
+    results <- list()
+
+    for (cohort_name in cohort_names) {
+        logger::log_info(sprintf(
+            "Running selected objectives for cohort '%s': %s",
+            cohort_name,
+            paste(objective_numbers, collapse = ", ")
+        ))
+
+        results[[cohort_name]] <- with_log_context(
+            cohort = cohort_name,
+            objective = paste0("objectives_", paste(objective_numbers, collapse = "_")),
+            subobjective = NULL,
+            expr = {
+                run_my_analysis(cohort_name, objectives_to_run = objective_numbers)
+            }
+        )
+    }
+
+    invisible(results)
+}
+
 #' Merge baseline tables from all cohorts using provided data
 #' This function merges baseline tables using data that's already loaded in memory
 #'

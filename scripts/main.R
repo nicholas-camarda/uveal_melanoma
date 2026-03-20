@@ -23,35 +23,14 @@ if (USE_LOGS) {
     setup_logging(log_path = NULL, level = "INFO", progress = interactive(), quiet_html = TRUE)
 }
 
-# Uncomment the appropriate line below to run:
-# Run full analysis (all objectives, all datasets, merged tables)
-main_execution()
+# Set these vectors to choose which cohorts and objectives to run.
+# Examples:
+# cohorts_to_run <- c("uveal_melanoma_full_cohort", "uveal_melanoma_restricted_cohort")
+# objectives_to_run <- c(1, 4) # Run only objectives 1 and 4
+cohorts_to_run <- c("uveal_melanoma_full_cohort", "uveal_melanoma_gksrs_only_cohort")
+objectives_to_run <- c(4)
 
-# DEBUG: We are running specific objectives for all cohorts to debug each objective in isolation
-# Run specific objective for specific dataset and objective number
-# my_cohort <- "uveal_melanoma_full_cohort"
-# my_cohort <- "uveal_melanoma_restricted_cohort"
-# my_cohort <- "uveal_melanoma_gksrs_only_cohort"
-
-# invisible(with_log_context(cohort = my_cohort, objective = "objective_0_data_processing", subobjective = NULL, expr = {
-#     run_specific_objective(my_cohort, 0)
-# }))
-
-# invisible(with_log_context(cohort = my_cohort, objective = "objective_1_primary_outcomes", subobjective = NULL, expr = {
-#     run_specific_objective(my_cohort, 1)
-# }))
-
-# invisible(with_log_context(cohort = my_cohort, objective = "objective_2_safety_toxicity", subobjective = NULL, expr = {
-#     run_specific_objective(my_cohort, 2)
-# }))
-
-# invisible(with_log_context(cohort = my_cohort, objective = "objective_3_repeat_radiation", subobjective = NULL, expr = {
-#     run_specific_objective(my_cohort, 3)
-# }))
-
-# invisible(with_log_context(cohort = my_cohort, objective = "objective_4_gep_analysis", subobjective = NULL, expr = {
-#     run_specific_objective(my_cohort, 4)
-# }))
+invisible(run_selected_objectives(cohorts_to_run, objectives_to_run))
 
 # invisible(with_log_context(cohort = "all_cohorts", objective = "merged_tables", subobjective = NULL, expr = {
 #     merge_baseline_tables()
