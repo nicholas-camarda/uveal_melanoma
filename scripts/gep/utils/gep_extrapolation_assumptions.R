@@ -174,6 +174,22 @@ build_gep_cumulative_hazard_diagnostic_data <- function(analysis_data, time_var,
     plot_data
 }
 
+#' Format extrapolation metric values for narrative output
+#'
+#' Convert numeric diagnostic values into concise strings used in support notes
+#' and text summaries.
+#'
+#' @param value Numeric value to format.
+#' @param digits Integer number of decimal places.
+#' @return Character scalar containing a formatted number or `NA`.
+format_gep_extrapolation_value <- function(value, digits = 2) {
+    if (!is.finite(value)) {
+        return("NA")
+    }
+
+    sprintf(paste0("%.", digits, "f"), value)
+}
+
 #' Prepare endpoint data for extrapolation assumption checks
 #'
 #' Remove rows that cannot inform a continuous-time parametric fit and apply a
@@ -259,16 +275,6 @@ classify_gep_extrapolation_support <- function(event_count,
                                                exponential_fit,
                                                weibull_fit,
                                                piecewise_summary) {
-    if (!is.finite(event_count) || event_count < 10) {
-        return(list(
-            status = "Unsupported",
-            note = "Fewer than 10 events were available, so the constant-hazard assumption could not be meaningfully interrogated.",
-            weibull_shape_supports_constant = FALSE,
-            aic_supports_constant = FALSE,
-            piecewise_supports_constant = FALSE
-        ))
-    }
-
     delta_aic <- weibull_fit$aic - exponential_fit$aic
     shape_ci_contains_one <- is.finite(weibull_fit$shape_ci_lower) &&
         is.finite(weibull_fit$shape_ci_upper) &&
@@ -282,10 +288,53 @@ classify_gep_extrapolation_support <- function(event_count,
         is.finite(hazard_ratio) &&
         (hazard_ratio < (2 / 3) || hazard_ratio > 1.5)
 
-    if (!shape_ci_contains_one || delta_aic <= -2 || piecewise_clear_break) {
+    shape_note <- sprintf(
+        "Weibull shape %.2f (95%% CI %.2f to %.2f)",
+        weibull_fit$shape,
+        weibull_fit$shape_ci_lower,
+        weibull_fit$shape_ci_upper
+    )
+    aic_note <- sprintf(
+        "Delta AIC (Weibull - exponential) = %.2f",
+        delta_aic
+    )
+    piecewise_note <- sprintf(
+        "pre-5-year hazard %.3f/year vs post-5-year hazard %.3f/year (ratio %.2f)",
+        piecewise_summary$pre_hazard_per_year,
+        piecewise_summary$post_hazard_per_year,
+        hazard_ratio
+    )
+
+    if (!is.finite(event_count) || event_count < 10) {
         return(list(
             status = "Unsupported",
-            note = "At least one diagnostic favored non-constant hazard, so the exponential extrapolation is not well supported by the observed data.",
+            note = sprintf(
+                "Fewer than 10 events were available (%d observed events), so the constant-hazard assumption could not be meaningfully interrogated.",
+                event_count
+            ),
+            weibull_shape_supports_constant = FALSE,
+            aic_supports_constant = FALSE,
+            piecewise_supports_constant = FALSE
+        ))
+    }
+
+    if (!shape_ci_contains_one || delta_aic <= -2 || piecewise_clear_break) {
+        failure_reasons <- c()
+        if (!shape_ci_contains_one) {
+            failure_reasons <- c(failure_reasons, sprintf("%s does not stay comfortably centered on 1", shape_note))
+        }
+        if (delta_aic <= -2) {
+            failure_reasons <- c(failure_reasons, sprintf("%s favors Weibull over exponential", aic_note))
+        }
+        if (piecewise_clear_break) {
+            failure_reasons <- c(failure_reasons, sprintf("%s indicates materially lower late hazard", piecewise_note))
+        }
+        return(list(
+            status = "Unsupported",
+            note = sprintf(
+                "The exponential extrapolation is not well supported by the observed data because %s.",
+                paste(failure_reasons, collapse = "; ")
+            ),
             weibull_shape_supports_constant = shape_ci_contains_one,
             aic_supports_constant = delta_aic > -2,
             piecewise_supports_constant = !piecewise_clear_break
@@ -293,9 +342,23 @@ classify_gep_extrapolation_support <- function(event_count,
     }
 
     if (delta_aic < 2 || !enough_piecewise_information) {
+        limitation_reasons <- c(piecewise_note)
+        if (delta_aic < 2) {
+            limitation_reasons <- c(
+                limitation_reasons,
+                sprintf("%s is only borderline in favor of exponential", aic_note)
+            )
+        }
+        if (!enough_piecewise_information) {
+            limitation_reasons <- c(limitation_reasons, "post-5-year information is limited")
+        }
         return(list(
             status = "Weakly Supported",
-            note = "The observed data did not clearly contradict constant hazard, but the support is limited by borderline fit comparisons or limited post-5-year information.",
+            note = sprintf(
+                "The observed data did not clearly contradict constant hazard: %s. %s. Support is therefore only weak.",
+                shape_note,
+                paste(limitation_reasons, collapse = "; ")
+            ),
             weibull_shape_supports_constant = shape_ci_contains_one,
             aic_supports_constant = delta_aic >= 0,
             piecewise_supports_constant = !piecewise_clear_break
@@ -304,7 +367,12 @@ classify_gep_extrapolation_support <- function(event_count,
 
     list(
         status = "Supported",
-        note = "The exponential and Weibull fits were similar, the Weibull shape remained compatible with 1, and the pre/post-5-year hazards did not show a major break.",
+        note = sprintf(
+            "The exponential extrapolation is reasonably supported: %s, %s, and %s show no major departure from constant hazard.",
+            shape_note,
+            aic_note,
+            piecewise_note
+        ),
         weibull_shape_supports_constant = TRUE,
         aic_supports_constant = TRUE,
         piecewise_supports_constant = TRUE
