@@ -391,6 +391,55 @@ test_that("risk table preserves requested row order for a subset of present stra
     expect_equal(extract_displayed_risk_counts(result$plot$table, time_point = 0), unname(baseline_counts[present_order]))
 })
 
+test_that("four-group collapsed MFS KM retains both no-GEP strata as separate rows", {
+    test_output_dir <- tempfile("objective4_four_group_km_")
+    dir.create(test_output_dir, recursive = TRUE, showWarnings = FALSE)
+    on.exit(unlink(test_output_dir, recursive = TRUE), add = TRUE)
+
+    test_data <- tibble::tibble(
+        tt_mets_months = c(12, 24, 18, 36, 6, 30, 9, 42),
+        mets_event = c(0, 1, 0, 1, 1, 0, 1, 0),
+        biopsy1_gep = c(
+            "Class 1 PRAME Negative",
+            "Class 1 PRAME Positive",
+            "Class 2 PRAME Negative",
+            "Class 2 PRAME Positive",
+            "GEP Not Tested",
+            "GEP Not Tested",
+            "GEP Failed/Indeterminate",
+            "GEP Failed/Indeterminate"
+        ),
+        gep_class_simple = c("Class 1", "Class 1", "Class 2", "Class 2", NA, NA, NA, NA)
+    )
+
+    result <- suppressWarnings(
+        create_mfs_four_group_survival_curves(
+            data = test_data,
+            output_dir = test_output_dir,
+            km_output_dir = test_output_dir,
+            prefix = "unit_",
+            dataset_name = "unit_test_four_group_km",
+            return_plot = TRUE,
+            save_plot = TRUE
+        )
+    )
+
+    expect_equal(
+        result$present_levels,
+        c("Class 1", "Class 2", "GEP Not Tested", "GEP Failed/Indeterminate")
+    )
+    expect_true(all(
+        c("GEP Not Tested", "GEP Failed/Indeterminate") %in%
+            unique(as.character(stats::na.omit(result$plot_data$gep_km_simple)))
+    ))
+    expect_equal(
+        rev(extract_risk_table_y_limits(result$plot$table)),
+        c("Class 1", "Class 2", "GEP Not Tested", "GEP Failed/Indeterminate")
+    )
+    expect_equal(extract_displayed_risk_counts(result$plot$table, time_point = 0), c(2L, 2L, 2L, 2L))
+    expect_true(file.exists(file.path(test_output_dir, "unit_mfs_four_group_gep_km.png")))
+})
+
 test_that("Cox diagnostics keep group counts and event rates in Raw_model_output", {
     test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective4_group_counts_in_raw_output")
     dir.create(test_output_dir, recursive = TRUE, showWarnings = FALSE)
@@ -1335,7 +1384,8 @@ test_that("run_objective_4 creates current canonical Objective 4 artifacts", {
         "Missing_Data_Comparison",
         "No_GEP_Overview",
         "No_GEP_Model_Comparison",
-        "No_GEP_Risk_Strata"
+        "No_GEP_Risk_Strata",
+        "No_GEP_Risk_Ladder"
     ) %in% unified_sheets))
     expect_false(any(c("Unified_Calibration", "Unified_Discrimination", "PRAME_Summary", "Missing_Data_Summary") %in% unified_sheets))
 

@@ -960,6 +960,14 @@ create_mfs_survival_curves <- function(data, output_dir, prefix, confounders = N
         dataset_name = dataset_name
     )
 
+    create_mfs_four_group_survival_curves(
+        data = data,
+        output_dir = output_dir,
+        km_output_dir = resolve_obj4_output_dir(resolved_output_dirs, output_dir, "km"),
+        prefix = prefix,
+        dataset_name = dataset_name
+    )
+
     create_mfs_simple_binary_survival_analysis(
         data = data,
         output_dir = output_dir,
@@ -1077,29 +1085,44 @@ create_mfs_simple_binary_survival_analysis <- function(data, output_dir, prefix,
     invisible(binary_result)
 }
 
-#' Create simplified MFS survival curves for Class 1, Class 2, and GEP Not Tested
+#' Create collapsed MFS survival curves for selected GEP strata
 #'
-#' Adds a reader-facing companion KM plot that collapses PRAME subgroups,
-#' retains GEP Not Tested, and excludes GEP Failed/Indeterminate.
+#' Builds reader-facing companion KM plots that collapse PRAME subgroups into
+#' Class 1 and Class 2 while optionally retaining one or both no-GEP strata.
 #'
-#' @param data Data frame with survival data and GEP labels
-#' @param output_dir Output directory for saved plots
-#' @param prefix Filename prefix
-#' @param dataset_name Dataset label used in the subtitle
-#' @param km_output_dir Directory used for the saved simplified KM figure.
+#' @param data Data frame with survival data and GEP labels.
+#' @param output_dir Output directory for saved plots.
+#' @param prefix Filename prefix.
+#' @param dataset_name Dataset label used in the subtitle.
+#' @param km_output_dir Directory used for the saved KM figure.
+#' @param include_failed_indeterminate Logical indicating whether
+#'   `GEP Failed/Indeterminate` should be retained as a separate stratum.
+#' @param subtitle_suffix Additional subtitle text describing the collapsed view.
+#' @param output_filename Filename written to `km_output_dir`.
 #' @param return_plot When `TRUE`, returns the assembled plot objects for
 #'   verification or testing instead of only writing files.
 #' @param save_plot When `FALSE`, skips writing the PNG to disk.
 #'
 #' @return Invisibly returns `NULL` after saving plots, or a list of plot
 #'   objects when `return_plot = TRUE`.
-create_mfs_simplified_survival_curves <- function(data, output_dir, prefix, dataset_name = "GEP Validation", km_output_dir = output_dir, return_plot = FALSE, save_plot = TRUE) {
-    logger::log_info("Creating simplified MFS survival curves for Class 1, Class 2, and GEP Not Tested")
+create_mfs_collapsed_survival_curves <- function(data, output_dir, prefix, dataset_name = "GEP Validation", km_output_dir = output_dir, include_failed_indeterminate = FALSE, subtitle_suffix, output_filename, return_plot = FALSE, save_plot = TRUE) {
+    target_levels <- c("Class 1", "Class 2", "GEP Not Tested")
+    if (isTRUE(include_failed_indeterminate)) {
+        target_levels <- c(target_levels, "GEP Failed/Indeterminate")
+    }
+
+    plot_label <- if (isTRUE(include_failed_indeterminate)) {
+        "collapsed four-group"
+    } else {
+        "simplified three-group"
+    }
+    logger::log_info(sprintf("Creating %s MFS survival curves", plot_label))
 
     plot_data <- data %>%
         dplyr::mutate(
             gep_km_simple = dplyr::case_when(
                 .data$biopsy1_gep == "GEP Not Tested" ~ "GEP Not Tested",
+                isTRUE(include_failed_indeterminate) & .data$biopsy1_gep == "GEP Failed/Indeterminate" ~ "GEP Failed/Indeterminate",
                 .data$gep_class_simple %in% c("Class 1", "Class 2") ~ as.character(.data$gep_class_simple),
                 TRUE ~ NA_character_
             )
@@ -1113,19 +1136,20 @@ create_mfs_simplified_survival_curves <- function(data, output_dir, prefix, data
         dplyr::mutate(
             gep_km_simple = factor(
                 .data$gep_km_simple,
-                levels = c("Class 1", "Class 2", "GEP Not Tested")
+                levels = target_levels
             )
         ) %>%
         as.data.frame()
 
     present_levels <- levels(droplevels(plot_data$gep_km_simple))
     if (nrow(plot_data) == 0 || length(unique(stats::na.omit(plot_data$gep_km_simple))) < 2) {
-        logger::log_warn("Insufficient data/groups for simplified MFS survival curves")
+        logger::log_warn(sprintf("Insufficient data/groups for %s MFS survival curves", plot_label))
         return(invisible(NULL))
     }
 
     logger::log_info(sprintf(
-        "Simplified MFS KM groups: %s",
+        "Collapsed MFS KM groups (%s): %s",
+        plot_label,
         paste(
             capture.output(print(table(plot_data$gep_km_simple, useNA = "no"))),
             collapse = " "
@@ -1155,7 +1179,7 @@ create_mfs_simplified_survival_curves <- function(data, output_dir, prefix, data
         subtitle = paste(
             c(
                 if (!is.null(dataset_name)) paste("Cohort:", dataset_name) else NULL,
-                "Simplified display: Class 1, Class 2, and GEP Not Tested"
+                subtitle_suffix
             ),
             collapse = "\n"
         ),
@@ -1321,18 +1345,19 @@ create_mfs_simplified_survival_curves <- function(data, output_dir, prefix, data
         )
     )
 
+    output_path <- NULL
     if (save_plot) {
         target_km_dir <- ensure_output_dir(km_output_dir)
-        km_path <- file.path(target_km_dir, paste0(prefix, "mfs_simplified_gep_km.png"))
+        output_path <- file.path(target_km_dir, paste0(prefix, output_filename))
         ggplot2::ggsave(
-            km_path,
+            output_path,
             combined_km,
             width = simplified_plot_width,
             height = simplified_plot_height,
             dpi = PLOT_DPI,
             bg = "white"
         )
-        logger::log_info(sprintf("Simplified MFS survival curves saved: %s", km_path))
+        logger::log_info(sprintf("Collapsed MFS survival curves saved: %s", output_path))
     }
 
     if (return_plot) {
@@ -1340,11 +1365,74 @@ create_mfs_simplified_survival_curves <- function(data, output_dir, prefix, data
             plot = surv_plot,
             combined_plot = combined_km,
             plot_data = plot_data,
-            present_levels = present_levels
+            present_levels = present_levels,
+            output_path = output_path
         ))
     }
 
     invisible(NULL)
+}
+
+#' Create simplified MFS survival curves for Class 1, Class 2, and GEP Not Tested
+#'
+#' Adds a reader-facing companion KM plot that collapses PRAME subgroups,
+#' retains GEP Not Tested, and excludes GEP Failed/Indeterminate.
+#'
+#' @param data Data frame with survival data and GEP labels.
+#' @param output_dir Output directory for saved plots.
+#' @param prefix Filename prefix.
+#' @param dataset_name Dataset label used in the subtitle.
+#' @param km_output_dir Directory used for the saved simplified KM figure.
+#' @param return_plot When `TRUE`, returns the assembled plot objects for
+#'   verification or testing instead of only writing files.
+#' @param save_plot When `FALSE`, skips writing the PNG to disk.
+#'
+#' @return Invisibly returns `NULL` after saving plots, or a list of plot
+#'   objects when `return_plot = TRUE`.
+create_mfs_simplified_survival_curves <- function(data, output_dir, prefix, dataset_name = "GEP Validation", km_output_dir = output_dir, return_plot = FALSE, save_plot = TRUE) {
+    create_mfs_collapsed_survival_curves(
+        data = data,
+        output_dir = output_dir,
+        prefix = prefix,
+        dataset_name = dataset_name,
+        km_output_dir = km_output_dir,
+        include_failed_indeterminate = FALSE,
+        subtitle_suffix = "Simplified display: Class 1, Class 2, and GEP Not Tested",
+        output_filename = "mfs_simplified_gep_km.png",
+        return_plot = return_plot,
+        save_plot = save_plot
+    )
+}
+
+#' Create four-group MFS survival curves including both no-GEP strata
+#'
+#' Adds a reader-facing companion KM plot that collapses PRAME subgroups and
+#' displays `GEP Not Tested` and `GEP Failed/Indeterminate` as separate strata.
+#'
+#' @param data Data frame with survival data and GEP labels.
+#' @param output_dir Output directory for saved plots.
+#' @param prefix Filename prefix.
+#' @param dataset_name Dataset label used in the subtitle.
+#' @param km_output_dir Directory used for the saved four-group KM figure.
+#' @param return_plot When `TRUE`, returns the assembled plot objects for
+#'   verification or testing instead of only writing files.
+#' @param save_plot When `FALSE`, skips writing the PNG to disk.
+#'
+#' @return Invisibly returns `NULL` after saving plots, or a list of plot
+#'   objects when `return_plot = TRUE`.
+create_mfs_four_group_survival_curves <- function(data, output_dir, prefix, dataset_name = "GEP Validation", km_output_dir = output_dir, return_plot = FALSE, save_plot = TRUE) {
+    create_mfs_collapsed_survival_curves(
+        data = data,
+        output_dir = output_dir,
+        prefix = prefix,
+        dataset_name = dataset_name,
+        km_output_dir = km_output_dir,
+        include_failed_indeterminate = TRUE,
+        subtitle_suffix = "Collapsed display: Class 1, Class 2, GEP Not Tested, and GEP Failed/Indeterminate",
+        output_filename = "mfs_four_group_gep_km.png",
+        return_plot = return_plot,
+        save_plot = save_plot
+    )
 }
 
 #' Create MSS cumulative incidence curves using ggsurvfit
