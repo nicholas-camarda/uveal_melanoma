@@ -630,9 +630,12 @@ If you only need the highest-yield no-GEP summary inside the root Objective 4 wo
 1. `No_GEP_Overview`
   - Use this first for counts, observed outcomes, median no-GEP predicted risks, and the strongest baseline-separation note.
 2. `No_GEP_Model_Comparison`
-  - Use this next to compare the surrogate, direct 5-year MFS, and direct 5-year MSS models side by side.
+  - Use this next to compare the surrogate, full direct 5-year MFS/MSS models, and parsimonious direct sensitivity models side by side.
   - The `Use_Case` column distinguishes the descriptive surrogate from the clinically preferred direct-risk outputs.
-3. `No_GEP_Risk_Strata`
+3. `No_GEP_Risk_Ladder`
+  - Use this before the pooled-bin sheet when you need to place `GEP Not Tested` and `GEP Failed/Indeterminate` relative to definitive `Class 1` and `Class 2`.
+  - This is the safest place to support an “overall between Class 1 and Class 2, but internally heterogeneous” interpretation.
+4. `No_GEP_Risk_Strata`
   - Use this to confirm whether low/intermediate/high predicted bins actually show increasing observed 5-year MFS or MSS event rates.
 
 Then open the appendix workbook only if you need the full baseline table, patient-level predictions, or the full predictor-contribution sheets.
@@ -649,18 +652,26 @@ Use this reading order:
 2. Read `Predictor_Contribution`.
   - This tab shows which retained baseline predictors are doing the most work in the exploratory models.
   - Larger absolute ridge coefficients mean stronger contribution to the model's risk ordering, not stronger statistical proof.
-3. Check `Surrogate_Class2_Model`, `Direct_MFS_Risk_Model`, and `Direct_MSS_Risk_Model`.
+3. Check `Risk_Ladder_5yr`.
+  - This sheet compares definitive `Class 1`, `GEP Not Tested`, `GEP Failed/Indeterminate`, and definitive `Class 2` on the same 5-year descriptive scale.
+  - Use it to support statements about whether the no-GEP groups sit between the definitive GEP groups overall.
+  - Do not collapse the two no-GEP groups into one interpretive bucket if this sheet shows they are meaningfully separated.
+4. Check `Surrogate_Class2_Model`, `Direct_MFS_Risk_Model`, and `Direct_MSS_Risk_Model`.
   - `CV AUC` tells you whether the model can rank higher-risk versus lower-risk patients better than chance.
+  - `CV_AUC_CI_Lower` and `CV_AUC_CI_Upper` show how much the internal-validation signal moves when the fold assignment changes.
   - `CV Brier` gives a compact overall prediction-error summary.
   - Calibration rows tell you whether risks are systematically too high or too low, when the data are rich enough to estimate that reliably.
-4. Read `No_GEP_Predictions`.
+5. Read `Parsimonious_Sensitivity`.
+  - This compares the full direct models against a smaller pre-specified baseline predictor set.
+  - If the parsimonious models preserve similar ranking and subgroup ordering, that strengthens the claim without requiring more covariates.
+6. Read `No_GEP_Predictions`.
   - This is the patient-level output for the two no-GEP groups.
   - `surrogate_class2_probability` is descriptive only.
   - It is a clinical resemblance score showing how much the patient's baseline profile resembles the observed Class 2 pattern versus the observed Class 1 pattern in the definitive-GEP reference set.
   - If you mentally convert it to the opposite pole, `1 - surrogate_class2_probability` means `Class 1-like` resemblance only.
   - Do not write or say that either of these values is a true molecular `Class 1` or `Class 2` probability.
   - `predicted_mfs_5yr_risk` and `predicted_mss_5yr_risk` are the main clinically usable outputs.
-5. Read `Sensitivity_Pooled_No_GEP`.
+7. Read `Sensitivity_Pooled_No_GEP`.
   - This checks whether pooled low/intermediate/high predicted-risk bins show increasing observed event rates.
   - If observed event rates increase across bins, the model is at least ordering patients in a clinically meaningful direction.
 
@@ -668,7 +679,7 @@ How to interpret the exploratory plots:
 
 - Corrected KM/CIF plots:
   - These show where `GEP Failed/Indeterminate` and `GEP Not Tested` sit relative to definitive `Class 1` and `Class 2`.
-  - An intermediate curve suggests an intermediate-risk phenotype at the group level.
+  - Curves between definitive `Class 1` and `Class 2` support an overall between-group interpretation, but inspect `GEP Failed/Indeterminate` and `GEP Not Tested` separately before calling the whole no-GEP population “intermediate risk.”
 - Density plots:
   - A right-shifted density means the subgroup is receiving higher predicted probability overall.
   - If `GEP Failed/Indeterminate` is shifted to the right of `GEP Not Tested`, it suggests the failed group is clinically higher risk on the retained baseline features.

@@ -1066,11 +1066,17 @@ All three models use the same screened retained predictor set so interpretation 
 - sample size and event count
 - apparent AUC and Brier score
 - cross-validated AUC and Brier score
+- repeated-cross-validation percentile intervals for cross-validated AUC, Brier score, and calibration slope
 - calibration status, intercept, and slope
 - cross-validation folds used (`cv_folds`)
+- repeated cross-validation runs used for uncertainty (`cv_repeats`)
 - ridge tuning parameters (`lambda_min`, `lambda_1se`)
 
 Cross-validation uses out-of-fold predictions with fold counts chosen adaptively (up to 5) to preserve class support in sparse settings.
+
+To quantify internal-validation stability without introducing a larger baseline feature set, each exploratory model also repeats the cross-validation procedure across multiple random fold assignments. The resulting percentile intervals are descriptive uncertainty summaries for the internal validation metrics rather than external-validation confidence intervals.
+
+In addition, the workflow fits a pre-specified parsimonious direct-model sensitivity analysis using `age_at_diagnosis`, `initial_tumor_diameter`, `location`, and `initial_t_stage_simple` when those variables survive screening. These parsimonious models are used only to check whether the no-GEP subgroup ordering is robust to a lower-complexity baseline specification.
 
 The coefficient tables in this report are ridge-shrunken design-matrix coefficients at `lambda.min`. They are included for directionality and relative contribution ranking, not p-value-based inference.
 
@@ -1096,13 +1102,16 @@ The exploratory workbook includes:
 
 - row-level no-GEP predictions with surrogate class-likeness and direct 5-year MFS/MSS risk probabilities
 - grouped summaries split by `GEP Failed/Indeterminate` and `GEP Not Tested`
+- a four-group 5-year risk ladder placing `Class 1`, `GEP Not Tested`, `GEP Failed/Indeterminate`, and `Class 2` on the same descriptive event-rate and predicted-risk scale
 - pooled low/intermediate/high-style sensitivity summaries based on quantile bins
+- a parsimonious direct-model sensitivity table comparing the full and lower-complexity direct models
 
 The full-cohort unified Objective 4 workbook adds a compact version of the same material:
 
 - `No_GEP_Overview` — group counts, observed outcomes, median no-GEP predicted risks, and a short interpretation note
-- `No_GEP_Model_Comparison` — side-by-side surrogate/direct MFS/direct MSS model metrics with top predictors and intended use
+- `No_GEP_Model_Comparison` — side-by-side surrogate/full direct/parsimonious direct model metrics with top predictors, repeated-CV intervals, and intended use
 - `No_GEP_Risk_Strata` — subgroup-by-bin event-rate summaries showing whether predicted ordering tracks observed 5-year outcomes
+- `No_GEP_Risk_Ladder` — four-group descriptive summary showing where the two no-GEP groups sit relative to definitive `Class 1` and `Class 2`
 
 #### Interpretation contract
 
@@ -1112,6 +1121,8 @@ The surrogate `Class 2-like` probability is descriptive and should not be interp
 - if needed, the implied `Class 1-like` probability is simply `1 - surrogate_class2_probability`, but this is still only a clinical resemblance probability, not a recovered molecular-class probability
 - use direct 5-year MFS/MSS predictions as the main risk estimates when a future patient has failed or unavailable GEP
 - interpret both as internally validated exploratory outputs rather than externally confirmed bedside calculators
+- do not collapse `GEP Failed/Indeterminate` and `GEP Not Tested` into one homogeneous interpretive category without showing the subgroup split
+- describe the no-GEP groups as occupying a heterogeneous position between definitive `Class 1` and `Class 2` overall only when the risk ladder or subgroup summaries actually support that ordering
 
 ### Quick Interpretation Shortcuts
 

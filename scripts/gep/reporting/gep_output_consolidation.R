@@ -735,6 +735,9 @@ create_unified_gep_validation_summary <- function(mfs_results, mss_results, outp
         if (!is.null(no_gep_results$unified_no_gep_risk_strata) && nrow(no_gep_results$unified_no_gep_risk_strata) > 0) {
             unified_workbook[["No_GEP_Risk_Strata"]] <- no_gep_results$unified_no_gep_risk_strata
         }
+        if (!is.null(no_gep_results$unified_no_gep_risk_ladder) && nrow(no_gep_results$unified_no_gep_risk_ladder) > 0) {
+            unified_workbook[["No_GEP_Risk_Ladder"]] <- no_gep_results$unified_no_gep_risk_ladder
+        }
     }
 
     # Save unified workbook
@@ -756,6 +759,7 @@ create_unified_gep_validation_summary <- function(mfs_results, mss_results, outp
         no_gep_overview = no_gep_results$unified_no_gep_overview %||% data.frame(),
         no_gep_model_comparison = no_gep_results$unified_no_gep_model_comparison %||% data.frame(),
         no_gep_risk_strata = no_gep_results$unified_no_gep_risk_strata %||% data.frame(),
+        no_gep_risk_ladder = no_gep_results$unified_no_gep_risk_ladder %||% data.frame(),
         text_summary = unified_text
     ))
 }
