@@ -86,7 +86,8 @@ save_mfs_validation_results <- function(validation_results,
         outcome_type = "MFS",
         prame_analysis = prame_analysis,
         missing_data_analysis = missing_data_analysis,
-        dataset_name = dataset_name
+        dataset_name = dataset_name,
+        extrapolation_assessment = extrapolation_assessment
     )
     
     summary_path <- file.path(output_dir, paste0(prefix, "mfs_validation_narrative_summary.txt"))
@@ -339,7 +340,8 @@ create_mss_validation_summary_text <- function(standard_results, competing_resul
         outcome_type = "MSS",
         prame_analysis = prame_results,
         missing_data_analysis = missing_data,
-        dataset_name = dataset_name
+        dataset_name = dataset_name,
+        extrapolation_assessment = extrapolation_assessment
     )
     
     # Save comprehensive summary

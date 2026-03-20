@@ -1,14 +1,63 @@
 # GEP Summary Generation Functions
 # Comprehensive summary creation for GEP validation results
 
-create_gep_prediction_source_note <- function() {
+create_gep_prediction_source_note <- function(extrapolation_assessment = NULL) {
+    extrapolation_lines <- if (!is.null(extrapolation_assessment)) {
+        c(
+            "The 7-year and 10-year values are therefore assumption-dependent extensions rather than direct imported assay outputs.",
+            sprintf(
+                "Current extrapolation support status: %s",
+                extrapolation_assessment$status %||% "Unavailable"
+            ),
+            sprintf(
+                "Current extrapolation support note: %s",
+                extrapolation_assessment$note %||% "No extrapolation support note available."
+            )
+        )
+    } else {
+        "The 7-year and 10-year values should be interpreted as assumption-dependent extensions."
+    }
+
     c(
         "PREDICTION SOURCE NOTE",
         "----------------------",
         "The base GEP predictions are imported lab-reported 5-year survival probabilities, not newly fit model outputs.",
         "At 5 years the pipeline uses the supplied lab value directly; at 7 and 10 years it derives survival from that same 5-year value using exponential-decay extrapolation:",
         "  - 7-year survival = (5-year survival)^(7/5)",
-        "  - 10-year survival = (5-year survival)^(10/5)"
+        "  - 10-year survival = (5-year survival)^(10/5)",
+        extrapolation_lines
+    )
+}
+
+#' Create narrative lines for extrapolation interpretation
+#'
+#' Summarize the later-horizon extrapolation support result in plain language for
+#' the narrative summary files.
+#'
+#' @param extrapolation_assessment Objective 4 extrapolation-support summary for
+#'   later horizons.
+#' @return Character vector containing a formatted narrative section.
+create_gep_extrapolation_narrative_section <- function(extrapolation_assessment = NULL) {
+    if (is.null(extrapolation_assessment)) {
+        return(c(
+            "EXTRAPOLATION INTERPRETATION",
+            "============================",
+            "No later-horizon extrapolation-support assessment was supplied."
+        ))
+    }
+
+    c(
+        "EXTRAPOLATION INTERPRETATION",
+        "============================",
+        sprintf(
+            "Support status: %s",
+            extrapolation_assessment$status %||% "Unavailable"
+        ),
+        sprintf(
+            "Interpretation: %s",
+            extrapolation_assessment$note %||% "No extrapolation support note available."
+        ),
+        "Reading rule: later-horizon issues usually reflect the 7-year and 10-year extension rule, not the imported 5-year assay output itself."
     )
 }
 
@@ -74,10 +123,13 @@ create_prame_added_value_summary_line <- function(prame_analysis) {
 #' @param prame_analysis PRAME-augmented analysis results (may be NULL)
 #' @param missing_data_analysis Missing-data diagnostics results
 #' @param dataset_name Optional dataset label used in the report
+#' @param extrapolation_assessment Objective 4 extrapolation-support summary for
+#'   later horizons.
 #' @param include_prediction_source_note Whether to include the base-prediction
 #'   source note in this summary body.
 #' @return A comprehensive summary text suitable for saving
 create_comprehensive_gep_summary <- function(validation_results, outcome_type, prame_analysis, missing_data_analysis, dataset_name,
+                                             extrapolation_assessment = NULL,
                                              include_prediction_source_note = TRUE) {
     logger::log_info(sprintf("Creating comprehensive GEP validation summary for %s", outcome_type))
 
@@ -226,10 +278,11 @@ create_comprehensive_gep_summary <- function(validation_results, outcome_type, p
     })
 
     prediction_source_note <- if (isTRUE(include_prediction_source_note)) {
-        c("", create_gep_prediction_source_note())
+        c("", create_gep_prediction_source_note(extrapolation_assessment = extrapolation_assessment))
     } else {
         character()
     }
+    extrapolation_narrative <- c("", create_gep_extrapolation_narrative_section(extrapolation_assessment = extrapolation_assessment))
     
     # Build comprehensive report
     report_lines <- c(
@@ -241,6 +294,7 @@ create_comprehensive_gep_summary <- function(validation_results, outcome_type, p
         sprintf("Outcome: %s", outcome_type),
         sprintf("Timepoints analyzed: %s", paste(timepoints, collapse = ", ")),
         prediction_source_note,
+        extrapolation_narrative,
         "",
         "CLINICAL SUMMARY",
         "================",
