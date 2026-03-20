@@ -907,6 +907,29 @@ Practical reading rule:
 - `Weakly Supported`: later-horizon extrapolation was not clearly contradicted, but evidence was limited or mixed.
 - `Unsupported`: later-horizon extrapolation should be treated as exploratory rather than defensible.
 
+Important distinction:
+- `Unsupported` does not always mean the data proved the hazard was non-constant.
+- It can also mean the check was too sparse to be informative, or that the fitting routine encountered a technical issue that prevented a meaningful comparison.
+- Read `Support_Note` before interpreting `Unsupported` as scientific evidence against exponential extrapolation.
+
+How to read common `Support_Note` patterns:
+- `Fewer than 10 events were available...`
+  This means the data were too sparse to interrogate hazard shape responsibly. It is an information problem, not proof that exponential extrapolation is wrong.
+- `The extrapolation check could not be completed...`
+  This means the parametric comparison failed technically. Interpret this as “the assumption has not yet been adequately checked,” not as “the assumption has been disproved.”
+- `At least one diagnostic favored non-constant hazard...`
+  This is the strongest form of `Unsupported`, because it means the diagnostic comparisons themselves pointed away from constant hazard.
+
+Why the 5-year model can still be fine when 7-year and 10-year rows are not:
+- The 5-year GEP value is imported directly from the assay workflow.
+- The 7-year and 10-year values are not directly imported assay outputs in this pipeline. They are extrapolated from the 5-year value using a constant-hazard rule.
+- So a later-horizon problem usually means the extension rule is questionable, not that the imported 5-year prediction necessarily failed.
+
+Why the pipeline does not simply switch to a “better” later-horizon model:
+- Replacing exponential extrapolation with a Weibull or flexible model would introduce a new modeling layer based on this dataset rather than on the imported assay.
+- That may be useful as a sensitivity analysis, but it is not the same as validating the original assay output.
+- For that reason, the main pipeline keeps the original 5-year imported prediction as primary and uses the extrapolation support tier to qualify the 7-year and 10-year interpretation.
+
 #### `PRAME_Summary`
 
 - `N`, `Events`: Sample sizes for the PRAME-complete subset at that timepoint.

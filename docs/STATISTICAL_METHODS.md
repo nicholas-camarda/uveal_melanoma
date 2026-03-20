@@ -594,6 +594,29 @@ $$
 \hat{p}_i(t) = 1 - S_i(t)
 $$
 
+#### Zero-time handling in the extrapolation check
+
+The focused extrapolation-support routine uses continuous-time parametric survival models, which require strictly positive event or censoring times. In the Objective 4 cohorts, some analyzable rows can have exactly 0 months of follow-up because the treatment date and last-known-alive date are identical. These are same-day censored observations rather than same-day metastasis or same-day melanoma death events.
+
+For the extrapolation-support check only:
+
+- zero-time censored rows are dropped from the parametric fit because they contribute no positive follow-up information about hazard shape,
+- zero-time event rows, if they occur, are shifted to a minimal positive time using a small documented offset so the continuous-time fit can proceed.
+
+This handling is used only to make the assumption check numerically well-defined. It does not alter the underlying 5-year imported GEP prediction, and it does not redefine the primary Objective 4 validation estimands.
+
+#### Why the pipeline does not automatically replace exponential extrapolation with a "better" model
+
+Objective 4 is primarily a validation of imported 5-year assay outputs, not a de novo long-horizon prognostic modeling exercise. Switching from exponential extrapolation to a Weibull or more flexible later-horizon model would answer a different question: how this dataset would extrapolate beyond 5 years under a new modeling choice, rather than how well the imported assay validates on its own terms.
+
+Accordingly:
+
+- the 5-year imported prediction remains the primary validated quantity,
+- the 7-year and 10-year rows remain assumption-dependent extensions,
+- and the assumption check is used to qualify interpretation rather than to silently substitute a new extrapolation model as if it were the assay itself.
+
+If a manuscript needs a stronger later-horizon sensitivity analysis, alternative extrapolation models can be compared explicitly, but that should be presented as a secondary modeling exercise rather than as the main validation result.
+
 The expected number of events in a cohort or subgroup is:
 
 $$
