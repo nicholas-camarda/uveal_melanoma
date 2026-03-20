@@ -267,6 +267,7 @@ Age (per year)          0.98    0.96, 1.00      0.071
 
 **For Snellen Line Change Distribution in Objective 2a:**
 - Categories are ordered from `≥3-line improvement` to `≥3-line loss`
+- The stable category is `Stable (0-line change)` after nearest-line rounding with halves away from zero
 - OR > 1.0 therefore favors better vision outcomes
 - OR < 1.0 therefore favors worse vision outcomes
 

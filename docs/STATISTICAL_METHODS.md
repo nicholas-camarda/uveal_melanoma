@@ -409,7 +409,7 @@ ordered_outcome ~ treatment + confounders
 
 | Outcome | Ordered Levels | Location |
 |---------|----------------|----------|
-| **Snellen Line Change Distribution** | `≥3-line improvement` to `≥3-line loss` | Objective 2a |
+| **Snellen Line Change Distribution** | `≥3-line improvement`, `2-line improvement`, `1-line improvement`, `Stable (0-line change)`, `1-line loss`, `2-line loss`, `≥3-line loss` | Objective 2a |
 
 ### Interpretation
 
@@ -427,6 +427,8 @@ ordered_outcome ~ treatment + confounders
 For practical reading of ordered-outcome model tables, see [Ordinal Regression Tables (Ordered Outcomes)](INTERPRETATION_GUIDE.md#ordinal-regression-tables-ordered-outcomes).
 
 For Objective 2 vision, ordinal modeling is reserved for the 7-level `Snellen Line Change Distribution`. The exact integer `Snellen Line Change` outcome is modeled with adjusted linear regression, and a full exact-integer ordinal model is not used because the observed line-count support is very wide and sparse across cohorts. Reader-facing output files therefore separate `Snellen Line Change` from `Snellen Line Change Distribution`, and each Objective 2 subfolder now also includes a flat `*_effect_summary.xlsx` workbook that combines descriptive, unadjusted, and adjusted rows in one sheet.
+
+For avoidance of doubt, the stable distribution level is the exact `0-line` category after nearest-line rounding with halves away from zero. Small non-zero logMAR deltas with absolute magnitude below 0.05 therefore round to `0` and are reported as stable rather than as 1-line gain or loss.
 
 For consistency across the ordinal HTML tables and the effect-summary workbooks, ordinal (`polr`) treatment effects are reported as proportional-odds ORs with 95% Wald confidence intervals and likelihood-ratio-test p-values. Other model families retain their standard reporting conventions: linear models report mean differences with Wald CIs/p-values, logistic models report odds ratios with model-based Wald CIs and the pipeline's standard term-level p-values, and Cox models report hazard ratios with the native Cox confidence intervals and Cox-model p-values.
 

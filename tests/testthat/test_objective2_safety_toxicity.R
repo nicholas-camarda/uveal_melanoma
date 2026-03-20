@@ -22,6 +22,49 @@ test_that("Snellen conversion rounds to the nearest line away from zero", {
     )
 })
 
+test_that("Snellen line-change buckets keep sub-half-line deltas in the stable 0-line category", {
+    bucket_counts <- tibble::tibble(
+        treatment_group = factor(
+            c(rep("PBT", 5), rep("GKSRS", 5)),
+            levels = c("PBT", "GKSRS")
+        ),
+        vision_change = c(
+            0.00, 0.04, -0.04, 0.06, -0.06,
+            0.00, 0.03, -0.03, 0.24, -0.24
+        )
+    ) %>%
+        dplyr::mutate(
+            vision_line_change_bucket = assign_line_change_bucket(
+                compute_line_change_lines(vision_change)
+            )
+        ) %>%
+        dplyr::count(treatment_group, vision_line_change_bucket, name = "count") %>%
+        dplyr::arrange(treatment_group, vision_line_change_bucket)
+
+    expect_equal(
+        bucket_counts,
+        tibble::tibble(
+            treatment_group = factor(
+                c("PBT", "PBT", "PBT", "GKSRS", "GKSRS", "GKSRS"),
+                levels = c("PBT", "GKSRS")
+            ),
+            vision_line_change_bucket = factor(
+                c(
+                    "1-line improvement",
+                    "Stable (0-line change)",
+                    "1-line loss",
+                    "2-line improvement",
+                    "Stable (0-line change)",
+                    "2-line loss"
+                ),
+                levels = VISION_LINE_CHANGE_CATEGORY_LEVELS,
+                ordered = TRUE
+            ),
+            count = c(1L, 3L, 1L, 1L, 3L, 1L)
+        )
+    )
+})
+
 test_that("Objective 2 writes adjusted outputs in each side-effect subfolder", {
     test_data <- create_test_dataset()
     test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective2_test")
