@@ -12,26 +12,38 @@
 #' @param prefix Filename prefix for saved files
 #' @param prame_results Optional PRAME analysis results object (may be NULL)
 #' @param missing_data Optional missing-data analysis results object (may be NULL)
+#' @param extrapolation_assessment Optional Objective 4 extrapolation-support
+#'   summary for later horizons.
 #' @return List of created table names
-create_consolidated_gep_tables <- function(validation_results, outcome_type, output_dir, prefix, prame_results = NULL, missing_data = NULL) {
+create_consolidated_gep_tables <- function(validation_results,
+                                           outcome_type,
+                                           output_dir,
+                                           prefix,
+                                           prame_results = NULL,
+                                           missing_data = NULL,
+                                           extrapolation_assessment = NULL) {
     logger::log_info(formatted(sprintf("Creating consolidated %s tables to replace redundant outputs", outcome_type), indent = 1))
 
     prame_note <- get_prame_availability_note(prame_results, sprintf("%s PRAME analysis", outcome_type))
 
     # Create consolidated observed/expected table across all timepoints
-    oe_consolidated <- create_consolidated_oe_summary_table(validation_results)
+    oe_consolidated <- create_consolidated_oe_summary_table(validation_results, extrapolation_assessment = extrapolation_assessment)
 
     # Create consolidated calibration table across all timepoints
-    cal_consolidated <- create_consolidated_calibration_table(validation_results, outcome_type)
+    cal_consolidated <- create_consolidated_calibration_table(validation_results, outcome_type, extrapolation_assessment = extrapolation_assessment)
 
     # Create consolidated discrimination table across all timepoints
-    disc_consolidated <- create_consolidated_discrimination_table(validation_results, outcome_type)
+    disc_consolidated <- create_consolidated_discrimination_table(validation_results, outcome_type, extrapolation_assessment = extrapolation_assessment)
 
     # REMOVED: Redundant performance table that duplicates discrimination metrics
     # perf_consolidated <- create_consolidated_performance_table(validation_results, outcome_type)
 
     # Create consolidated decision curve table across all timepoints (enriched)
-    dca_consolidated <- create_consolidated_decision_curve_table(validation_results, outcome_type)
+    dca_consolidated <- create_consolidated_decision_curve_table(validation_results, outcome_type, extrapolation_assessment = extrapolation_assessment)
+    extrapolation_consolidated <- create_consolidated_extrapolation_assumption_table(
+        extrapolation_assessment = extrapolation_assessment,
+        outcome_type = outcome_type
+    )
     if (nrow(dca_consolidated) > 0) {
         # Add enriched columns when available
         if (!"Optimal_Threshold" %in% names(dca_consolidated) && "Net_Benefit_Threshold" %in% names(dca_consolidated)) {
@@ -144,6 +156,7 @@ create_consolidated_gep_tables <- function(validation_results, outcome_type, out
     # REMOVED: Redundant performance summary
     # if (nrow(perf_consolidated) > 0) consolidated_workbook[["Performance_Summary"]] <- perf_consolidated
     if (nrow(dca_consolidated) > 0) consolidated_workbook[["Decision_Curve_Summary"]] <- dca_consolidated
+    if (nrow(extrapolation_consolidated) > 0) consolidated_workbook[["Extrapolation_Assumption_Checks"]] <- extrapolation_consolidated
     consolidated_workbook[["PRAME_Summary"]] <- prame_consolidated
     if (nrow(missing_consolidated) > 0) consolidated_workbook[["Missing_Data_Summary"]] <- missing_consolidated
 
@@ -160,7 +173,8 @@ create_consolidated_gep_tables <- function(validation_results, outcome_type, out
         outcome_type = outcome_type,
         cal_consolidated = cal_consolidated,
         disc_consolidated = disc_consolidated,
-        dca_consolidated = dca_consolidated
+        dca_consolidated = dca_consolidated,
+        extrapolation_consolidated = extrapolation_consolidated
     )
 
     # REMOVED: Text file generation to eliminate redundancy
@@ -173,6 +187,7 @@ create_consolidated_gep_tables <- function(validation_results, outcome_type, out
         calibration = cal_consolidated,
         discrimination = disc_consolidated,
         decision_curves = dca_consolidated,
+        extrapolation_assumptions = extrapolation_consolidated,
         prame = prame_consolidated,
         missing_data = missing_consolidated,
         text_summary = text_summary
@@ -186,8 +201,10 @@ create_consolidated_gep_tables <- function(validation_results, outcome_type, out
 #' p-values.
 #'
 #' @param validation_results Named list of per-timepoint validation results.
+#' @param extrapolation_assessment Optional Objective 4 extrapolation-support
+#'   summary for later horizons.
 #' @return Data frame with one row per timepoint.
-create_consolidated_oe_summary_table <- function(validation_results) {
+create_consolidated_oe_summary_table <- function(validation_results, extrapolation_assessment = NULL) {
     oe_data <- data.frame()
 
     for (tp_name in names(validation_results)) {
@@ -208,7 +225,7 @@ create_consolidated_oe_summary_table <- function(validation_results) {
         }
     }
 
-    oe_data
+    append_gep_extrapolation_metadata(oe_data, extrapolation_assessment = extrapolation_assessment)
 }
 
 #' Describe PRAME result availability
@@ -327,6 +344,73 @@ create_unified_prame_placeholder_row <- function(outcome_label, note) {
     )
 }
 
+#' Append extrapolation metadata to a consolidated table
+#'
+#' Add the imported-versus-extrapolated reporting fields required for Objective
+#' 4 later-horizon summaries.
+#'
+#' @param summary_table Data frame containing a `Timepoint` column.
+#' @param extrapolation_assessment Optional Objective 4 extrapolation-support
+#'   summary for later horizons.
+#' @return Data frame with the metadata columns appended.
+append_gep_extrapolation_metadata <- function(summary_table, extrapolation_assessment = NULL) {
+    if (!is.data.frame(summary_table) || nrow(summary_table) == 0 || !"Timepoint" %in% names(summary_table)) {
+        return(summary_table)
+    }
+
+    metadata_rows <- lapply(summary_table$Timepoint, function(timepoint_label) {
+        create_gep_extrapolation_metadata(
+            timepoint_label = timepoint_label,
+            extrapolation_assessment = extrapolation_assessment
+        )
+    })
+    metadata_frame <- dplyr::bind_rows(metadata_rows)
+
+    dplyr::bind_cols(summary_table, metadata_frame)
+}
+
+#' Create the workbook-ready extrapolation-assumption table
+#'
+#' Normalize the endpoint-level extrapolation-support result into a single-sheet
+#' workbook table.
+#'
+#' @param extrapolation_assessment Optional Objective 4 extrapolation-support
+#'   summary for later horizons.
+#' @param outcome_type Character outcome label used when a placeholder row is
+#'   required.
+#' @return Data frame containing the extrapolation-assumption summary.
+create_consolidated_extrapolation_assumption_table <- function(extrapolation_assessment, outcome_type) {
+    if (!is.null(extrapolation_assessment) &&
+        !is.null(extrapolation_assessment$summary_table) &&
+        is.data.frame(extrapolation_assessment$summary_table) &&
+        nrow(extrapolation_assessment$summary_table) > 0) {
+        return(extrapolation_assessment$summary_table)
+    }
+
+    data.frame(
+        Outcome = outcome_type,
+        Dataset = NA_character_,
+        N = NA_real_,
+        Events = NA_real_,
+        Followup_Beyond_5yr_n = NA_real_,
+        Exponential_Hazard_Per_Year = NA_real_,
+        Exponential_Hazard_CI_Lower = NA_real_,
+        Exponential_Hazard_CI_Upper = NA_real_,
+        Weibull_Shape = NA_real_,
+        Weibull_Shape_CI_Lower = NA_real_,
+        Weibull_Shape_CI_Upper = NA_real_,
+        Exponential_AIC = NA_real_,
+        Weibull_AIC = NA_real_,
+        Delta_AIC_Weibull_minus_Exponential = NA_real_,
+        Pre5yr_Hazard_Per_Year = NA_real_,
+        Post5yr_Hazard_Per_Year = NA_real_,
+        Post_vs_Pre_Hazard_Ratio = NA_real_,
+        Support_Status = "Unavailable",
+        Support_Note = "No extrapolation-assumption summary was supplied.",
+        stringsAsFactors = FALSE
+    )
+}
+
 #' Create consolidated calibration table across all timepoints
 #'
 #' Gather timepoint-specific calibration outputs into a single workbook-ready
@@ -335,8 +419,10 @@ create_unified_prame_placeholder_row <- function(outcome_label, note) {
 #' @param validation_results Named list of per-timepoint validation results.
 #' @param outcome_type Character outcome label retained for interface
 #'   consistency.
+#' @param extrapolation_assessment Optional Objective 4 extrapolation-support
+#'   summary for later horizons.
 #' @return Data frame with one row per timepoint.
-create_consolidated_calibration_table <- function(validation_results, outcome_type) {
+create_consolidated_calibration_table <- function(validation_results, outcome_type, extrapolation_assessment = NULL) {
     cal_data <- data.frame()
 
     for (tp_name in names(validation_results)) {
@@ -380,7 +466,7 @@ create_consolidated_calibration_table <- function(validation_results, outcome_ty
         }
     }
 
-    return(cal_data)
+    append_gep_extrapolation_metadata(cal_data, extrapolation_assessment = extrapolation_assessment)
 }
 
 #' Create consolidated discrimination table across all timepoints
@@ -391,8 +477,10 @@ create_consolidated_calibration_table <- function(validation_results, outcome_ty
 #' @param validation_results Named list of per-timepoint validation results.
 #' @param outcome_type Character outcome label retained for interface
 #'   consistency.
+#' @param extrapolation_assessment Optional Objective 4 extrapolation-support
+#'   summary for later horizons.
 #' @return Data frame with one row per timepoint.
-create_consolidated_discrimination_table <- function(validation_results, outcome_type) {
+create_consolidated_discrimination_table <- function(validation_results, outcome_type, extrapolation_assessment = NULL) {
     disc_data <- data.frame()
 
     for (tp_name in names(validation_results)) {
@@ -418,7 +506,7 @@ create_consolidated_discrimination_table <- function(validation_results, outcome
         }
     }
 
-    return(disc_data)
+    append_gep_extrapolation_metadata(disc_data, extrapolation_assessment = extrapolation_assessment)
 }
 
 #' Create consolidated performance table across all timepoints
@@ -460,8 +548,10 @@ create_consolidated_performance_table <- function(validation_results, outcome_ty
 #' @param validation_results Named list of per-timepoint validation results.
 #' @param outcome_type Character outcome label retained for interface
 #'   consistency.
+#' @param extrapolation_assessment Optional Objective 4 extrapolation-support
+#'   summary for later horizons.
 #' @return Data frame with one row per timepoint.
-create_consolidated_decision_curve_table <- function(validation_results, outcome_type) {
+create_consolidated_decision_curve_table <- function(validation_results, outcome_type, extrapolation_assessment = NULL) {
     dca_data <- data.frame()
 
     for (tp_name in names(validation_results)) {
@@ -484,7 +574,7 @@ create_consolidated_decision_curve_table <- function(validation_results, outcome
         }
     }
 
-    return(dca_data)
+    append_gep_extrapolation_metadata(dca_data, extrapolation_assessment = extrapolation_assessment)
 }
 
 #' Create comprehensive text summary from consolidated tables
@@ -497,10 +587,11 @@ create_consolidated_decision_curve_table <- function(validation_results, outcome
 #' @param cal_consolidated Consolidated calibration data frame.
 #' @param disc_consolidated Consolidated discrimination data frame.
 #' @param dca_consolidated Consolidated decision-curve data frame.
+#' @param extrapolation_consolidated Consolidated extrapolation-support table.
 #' @return Character scalar containing a newline-delimited summary.
 create_comprehensive_text_summary <- function(validation_results, outcome_type,
                                               cal_consolidated, disc_consolidated,
-                                              dca_consolidated) {
+                                              dca_consolidated, extrapolation_consolidated = data.frame()) {
     summary_lines <- c()
     summary_lines <- c(summary_lines, paste("=", outcome_type, "Validation - Consolidated Summary", "="))
     summary_lines <- c(summary_lines, "")
@@ -580,6 +671,24 @@ create_comprehensive_text_summary <- function(validation_results, outcome_type,
                     ifelse(is.na(row$Optimal_Net_Benefit), "NA", sprintf("%.4f", row$Optimal_Net_Benefit))
                 )
             )
+        }
+        summary_lines <- c(summary_lines, "")
+    }
+
+    if (nrow(extrapolation_consolidated) > 0) {
+        summary_lines <- c(summary_lines, "EXTRAPOLATION ASSUMPTION CHECK:")
+        summary_lines <- c(summary_lines, "")
+        for (i in seq_len(nrow(extrapolation_consolidated))) {
+            row <- extrapolation_consolidated[i, ]
+            summary_lines <- c(summary_lines, sprintf(
+                "%s support: %s",
+                row$Outcome %||% outcome_type,
+                row$Support_Status %||% "Unavailable"
+            ))
+            summary_lines <- c(summary_lines, sprintf(
+                "Note: %s",
+                row$Support_Note %||% "No extrapolation support note available."
+            ))
         }
         summary_lines <- c(summary_lines, "")
     }
@@ -857,7 +966,22 @@ create_unified_calibration_summary <- function(mfs_results, mss_results) {
         }
     }
 
-    return(unified_cal)
+    if (nrow(unified_cal) == 0) {
+        return(unified_cal)
+    }
+
+    unified_cal <- dplyr::bind_rows(
+        append_gep_extrapolation_metadata(
+            unified_cal %>% dplyr::filter(.data$Outcome == "MFS"),
+            extrapolation_assessment = mfs_results$extrapolation_assessment %||% NULL
+        ),
+        append_gep_extrapolation_metadata(
+            unified_cal %>% dplyr::filter(.data$Outcome == "MSS"),
+            extrapolation_assessment = mss_results$extrapolation_assessment %||% NULL
+        )
+    )
+
+    unified_cal
 }
 
 #' Create unified discrimination summary across outcomes
@@ -917,7 +1041,22 @@ create_unified_discrimination_summary <- function(mfs_results, mss_results) {
         }
     }
 
-    return(unified_disc)
+    if (nrow(unified_disc) == 0) {
+        return(unified_disc)
+    }
+
+    unified_disc <- dplyr::bind_rows(
+        append_gep_extrapolation_metadata(
+            unified_disc %>% dplyr::filter(.data$Outcome == "MFS"),
+            extrapolation_assessment = mfs_results$extrapolation_assessment %||% NULL
+        ),
+        append_gep_extrapolation_metadata(
+            unified_disc %>% dplyr::filter(.data$Outcome == "MSS"),
+            extrapolation_assessment = mss_results$extrapolation_assessment %||% NULL
+        )
+    )
+
+    unified_disc
 }
 
 # REMOVED: create_unified_performance_summary function

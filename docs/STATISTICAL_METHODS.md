@@ -520,7 +520,7 @@ For workbook-first reading order and plain-language interpretation, start with [
 
 **Goal:** Assess whether lab-reported GEP survival probabilities accurately predict patient outcomes
 
-In Objective 4, the starting predictions are externally supplied patient-level GEP survival probabilities that are already present in the analytic dataset: `biopsy1_gep_mfs` for metastasis-free survival and `biopsy1_gep_mss` for melanoma-specific survival. The pipeline copies those lab-reported 5-year survival values into the 5-year `expected_*` columns, then derives the 7- and 10-year survival values from the same 5-year probabilities during preprocessing using an exponential-decay extrapolation: $S(7) = S(5)^{7/5}$ and $S(10) = S(5)^{10/5}$. It then converts survival to event risk as $1 - S(t)$ whenever a validation metric needs predicted event probability rather than predicted survival. Objective 4 therefore validates imported GEP predictions; it does not fit a new prognostic model to generate the base GEP probabilities.
+In Objective 4, the starting predictions are externally supplied patient-level GEP survival probabilities that are already present in the analytic dataset: `biopsy1_gep_mfs` for metastasis-free survival and `biopsy1_gep_mss` for melanoma-specific survival. The pipeline copies those lab-reported 5-year survival values into the 5-year `expected_*` columns, then derives the 7- and 10-year survival values from the same 5-year probabilities during preprocessing using an exponential-decay extrapolation: $S(7) = S(5)^{7/5}$ and $S(10) = S(5)^{10/5}$. This is an exponential constant-hazard assumption rather than an independently imported assay output. The pipeline then converts survival to event risk as $1 - S(t)$ whenever a validation metric needs predicted event probability rather than predicted survival. Objective 4 therefore validates imported GEP predictions at 5 years and assumption-checked extrapolations at 7 and 10 years; it does not fit a new prognostic model to generate the base GEP probabilities.
 
 The analyzable Objective 4 subset is narrower than “any row with a GEP-related field.” MFS and MSS validation require a definitive raw DecisionDx label, valid endpoint-specific imported GEP probabilities, and the required observed outcome fields. Definitive raw labels are `Class_1A_PRAME_negative`, `Class_1A_PRAME_positive`, `Class_1B_PRAME_negative`, `Class_1B_PRAME_positive`, `Class_2_PRAME_negative`, and `Class_2_PRAME_positive`. Nondefinitive labels such as `*_not_reported`, `Class_2_PRAME_Unknown`, `Class_1A_PRAME_discordant`, `Failed`, `Unknown`, `Other`, and `No` are excluded from `mfs_analysis_eligible` and `mss_analysis_eligible`. Objective 4 entry points refresh these flags before analysis so the definitive-label rule is applied consistently.
 
@@ -582,7 +582,13 @@ For a workbook-first overview written for non-statistical readers, see [Understa
 
 ### How Expected Counts Are Calculated
 
-For Objective 4, the expected event count at time $t$ is derived from the patient-level GEP survival probability carried into the analytic dataset. At 5 years this comes directly from the lab-reported value. At 7 and 10 years, the current pipeline does not read separate source columns; instead it extrapolates from the imported 5-year survival using $S(7) = S(5)^{7/5}$ and $S(10) = S(5)^{10/5}$, implemented as `biopsy1_gep_mfs^(7/5)` / `biopsy1_gep_mfs^(10/5)` for MFS and `biopsy1_gep_mss^(7/5)` / `biopsy1_gep_mss^(10/5)` for MSS. If patient $i$ has predicted survival $S_i(t)$, then the predicted event probability is:
+For Objective 4, the expected event count at time $t$ is derived from the patient-level GEP survival probability carried into the analytic dataset. At 5 years this comes directly from the lab-reported value. At 7 and 10 years, the current pipeline does not read separate source columns; instead it extrapolates from the imported 5-year survival using $S(7) = S(5)^{7/5}$ and $S(10) = S(5)^{10/5}$, implemented as `biopsy1_gep_mfs^(7/5)` / `biopsy1_gep_mfs^(10/5)` for MFS and `biopsy1_gep_mss^(7/5)` / `biopsy1_gep_mss^(10/5)` for MSS. Because this transformation assumes constant hazard beyond the imported 5-year horizon, Objective 4 now runs a focused assumption check for each cohort-endpoint pair using:
+
+- exponential versus Weibull intercept-only survival models,
+- a pre/post-5-year piecewise hazard comparison,
+- and a cumulative-hazard linearity diagnostic plot.
+
+Later-horizon rows are therefore reported with `Assumption_Support_Status` and `Assumption_Support_Notes` fields rather than being treated as automatically defensible. If patient $i$ has predicted survival $S_i(t)$, then the predicted event probability is:
 
 $$
 \hat{p}_i(t) = 1 - S_i(t)

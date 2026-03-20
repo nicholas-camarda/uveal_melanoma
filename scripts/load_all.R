@@ -167,6 +167,7 @@ source(here("scripts", "subgroup", "subgroup_formatting.R"))
 # Source GEP evaluation modules
 source(here("scripts", "gep", "utils", "gep_model_evaluation_metrics.R"))
 source(here("scripts", "gep", "utils", "gep_excel_output.R"))
+source(here("scripts", "gep", "utils", "gep_extrapolation_assumptions.R"))
 source(here("scripts", "gep", "cores", "gep_evaluation_core_mfs.R"))
 source(here("scripts", "gep", "cores", "gep_evaluation_core_mss.R"))
 source(here("scripts", "gep", "visualization", "gep_visuals.R"))

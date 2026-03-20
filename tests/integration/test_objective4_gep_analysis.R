@@ -1036,10 +1036,20 @@ test_that("Consolidated calibration outputs include method traceability columns"
     expect_true(is.na(consolidated$Slope_Unavailable_Reason[[1]]))
 
     unified <- create_unified_calibration_summary(
-        mfs_results = list(validation_results = validation_results),
-        mss_results = list(standard_results = validation_results)
+        mfs_results = list(
+            validation_results = validation_results,
+            extrapolation_assessment = list(status = "Supported", note = "Supportable")
+        ),
+        mss_results = list(
+            standard_results = validation_results,
+            extrapolation_assessment = list(status = "Weakly Supported", note = "Limited support")
+        )
     )
-    expect_true(all(c("Fit_N", "Status", "Events", "Non_Events", "Unique_Risk_Count", "Nam_D_Agostino_Method", "ICI_Method", "Slope_Method", "Slope_Unavailable_Reason") %in% names(unified)))
+    expect_true(all(c(
+        "Fit_N", "Status", "Events", "Non_Events", "Unique_Risk_Count",
+        "Nam_D_Agostino_Method", "ICI_Method", "Slope_Method", "Slope_Unavailable_Reason",
+        "Prediction_Source", "Extrapolation_Assumption", "Assumption_Support_Status", "Assumption_Support_Notes"
+    ) %in% names(unified)))
 })
 
 test_that("Sparse consolidated summaries tolerate all-NA calibration slopes", {
@@ -1091,6 +1101,95 @@ test_that("Sparse consolidated summaries tolerate all-NA calibration slopes", {
     expect_match(summary_text, "could not be estimated at any timepoint")
     expect_match(summary_text, "too few patients had usable data")
     expect_match(summary_text, "Best discrimination at 7yr")
+})
+
+test_that("consolidated Objective 4 summaries carry extrapolation metadata", {
+    validation_results <- list(
+        `5yr` = list(
+            calibration = list(n = 30, fit_n = 28, status = "ok", events = 8, non_events = 20, unique_risk_count = 28),
+            discrimination = list(n = 30, events = 8, harrell_c = 0.82, integrated_auc = 0.78),
+            decision_curve = list(n = 30, events = 8, event_rate = 8 / 30, optimal_threshold = 0.3, optimal_net_benefit = 0.01),
+            observed_expected = list(overall_n = 30, overall_observed = 8, overall_expected = 7.5)
+        ),
+        `7yr` = list(
+            calibration = list(n = 30, fit_n = 27, status = "ok", events = 10, non_events = 17, unique_risk_count = 27),
+            discrimination = list(n = 30, events = 10, harrell_c = 0.84, integrated_auc = 0.8),
+            decision_curve = list(n = 30, events = 10, event_rate = 10 / 30, optimal_threshold = 0.35, optimal_net_benefit = 0.015),
+            observed_expected = list(overall_n = 30, overall_observed = 10, overall_expected = 9.4)
+        )
+    )
+    extrapolation_assessment <- list(
+        status = "Weakly Supported",
+        note = "Borderline model-fit differences left only limited support for constant hazard."
+    )
+
+    cal_consolidated <- create_consolidated_calibration_table(
+        validation_results,
+        outcome_type = "MFS",
+        extrapolation_assessment = extrapolation_assessment
+    )
+    disc_consolidated <- create_consolidated_discrimination_table(
+        validation_results,
+        outcome_type = "MFS",
+        extrapolation_assessment = extrapolation_assessment
+    )
+    dca_consolidated <- create_consolidated_decision_curve_table(
+        validation_results,
+        outcome_type = "MFS",
+        extrapolation_assessment = extrapolation_assessment
+    )
+
+    for (summary_df in list(cal_consolidated, disc_consolidated, dca_consolidated)) {
+        expect_true(all(c(
+            "Prediction_Source",
+            "Extrapolation_Assumption",
+            "Assumption_Support_Status",
+            "Assumption_Support_Notes"
+        ) %in% names(summary_df)))
+        expect_equal(summary_df$Prediction_Source[[1]], "Imported")
+        expect_equal(summary_df$Extrapolation_Assumption[[1]], "Not Applicable")
+        expect_equal(summary_df$Prediction_Source[[2]], "Extrapolated from imported 5-year value")
+        expect_equal(summary_df$Assumption_Support_Status[[2]], "Weakly Supported")
+    }
+})
+
+test_that("Objective 4 extrapolation check classifies sparse data as unsupported", {
+    sparse_data <- tibble::tibble(
+        tt_mets_months = c(12, 18, 24, 36, 48, 72, 84, 96, 108),
+        mets_event = c(1, 0, 1, 0, 0, 1, 0, 1, 0)
+    )
+
+    results <- evaluate_gep_extrapolation_assumption(
+        analysis_data = sparse_data,
+        outcome_type = "MFS"
+    )
+
+    expect_identical(results$status, "Unsupported")
+    expect_match(results$note, "Fewer than 10 events")
+})
+
+test_that("Objective 4 extrapolation check distinguishes exponential from non-exponential data", {
+    set.seed(42)
+    exponential_data <- tibble::tibble(
+        tt_mets_months = rexp(400, rate = 0.015) * 12,
+        mets_event = 1
+    )
+    weibull_data <- tibble::tibble(
+        tt_mets_months = rweibull(400, shape = 2.5, scale = 8) * 12,
+        mets_event = 1
+    )
+
+    exponential_results <- evaluate_gep_extrapolation_assumption(
+        analysis_data = exponential_data,
+        outcome_type = "MFS"
+    )
+    weibull_results <- evaluate_gep_extrapolation_assumption(
+        analysis_data = weibull_data,
+        outcome_type = "MFS"
+    )
+
+    expect_true(exponential_results$status %in% c("Supported", "Weakly Supported"))
+    expect_identical(weibull_results$status, "Unsupported")
 })
 
 test_that("Clinical interpretation tolerates unavailable slopes", {
@@ -1354,9 +1453,13 @@ test_that("run_objective_4 creates current canonical Objective 4 artifacts", {
     expect_true(file.exists(file.path(output_dirs$obj4_mfs, "test_mfs_validation_technical_details.xlsx")))
     expect_true(file.exists(file.path(output_dirs$obj4_mfs, "test_MFS_consolidated_summary.xlsx")))
     expect_true(file.exists(file.path(output_dirs$obj4_mfs, "test_mfs_validation_narrative_summary.txt")))
+    expect_true(file.exists(file.path(output_dirs$obj4_mfs, "test_mfs_extrapolation_assumption_summary.txt")))
+    expect_true(file.exists(file.path(output_dirs$obj4_mfs, "test_mfs_extrapolation_cumhaz_diagnostic.png")))
     expect_true(file.exists(file.path(output_dirs$obj4_mss, "test_MSS_consolidated_summary.xlsx")))
     expect_true(file.exists(file.path(output_dirs$obj4_mss, "test_mss_validation_technical_details.xlsx")))
     expect_true(file.exists(file.path(output_dirs$obj4_mss, "test_mss_validation_narrative_summary.txt")))
+    expect_true(file.exists(file.path(output_dirs$obj4_mss, "test_mss_extrapolation_assumption_summary.txt")))
+    expect_true(file.exists(file.path(output_dirs$obj4_mss, "test_mss_extrapolation_cumhaz_diagnostic.png")))
     expect_true(file.exists(file.path(output_dirs$obj4_mfs, "test_mfs_prame_delta_c.png")))
     expect_true(file.exists(file.path(output_dirs$obj4_mss, "test_mss_prame_delta_c.png")))
     expect_true(file.exists(file.path(dirname(output_dirs$obj4_mfs), "test_unified_gep_validation_summary.xlsx")))
@@ -1370,7 +1473,7 @@ test_that("run_objective_4 creates current canonical Objective 4 artifacts", {
     expect_false(any(c("Calibration", "Discrimination") %in% mfs_technical_sheets))
 
     mfs_consolidated_sheets <- readxl::excel_sheets(file.path(output_dirs$obj4_mfs, "test_MFS_consolidated_summary.xlsx"))
-    expect_true(all(c("Observed_Expected_Summary", "PRAME_Summary") %in% mfs_consolidated_sheets))
+    expect_true(all(c("Observed_Expected_Summary", "PRAME_Summary", "Extrapolation_Assumption_Checks") %in% mfs_consolidated_sheets))
 
     mss_technical_sheets <- readxl::excel_sheets(file.path(output_dirs$obj4_mss, "test_mss_validation_technical_details.xlsx"))
     expect_true("Observed_Expected_by_class" %in% mss_technical_sheets)

@@ -14,7 +14,8 @@
 #' @param confounders Character vector of confounders to use in adjusted MFS survival models
 #' @param output_dirs Named list of objective-specific output directories
 #' @param prefix Character prefix for all generated files
-#' @return A list with `validation_results`, `prame_analysis`, and `missing_data_analysis`.
+#' @return A list with `validation_results`, `prame_analysis`,
+#'   `missing_data_analysis`, and `extrapolation_assessment`.
 analyze_gep_mfs_validation <- function(data,
                                        dataset_name = NULL,
                                        timepoints = GEP_VALIDATION_TIMEPOINTS,
@@ -129,6 +130,13 @@ analyze_gep_mfs_validation <- function(data,
         logger::log_info(formatted(sprintf("%s: %d events %s", names(events_per_timepoint)[i], events_per_timepoint[i], ep_status), indent = 2))
     }
     missing_data_analysis <- assess_gep_missing_data(data)
+    extrapolation_assessment <- evaluate_gep_extrapolation_assumption(
+        analysis_data = analysis_data,
+        outcome_type = "MFS",
+        output_dir = mfs_summary_output_dir,
+        prefix = prefix,
+        dataset_name = dataset_name
+    )
     validation_results <- list()
     for (tp in timepoints) {
         logger::log_info(formatted(sprintf("Analyzing %d-year MFS validation", tp), indent = 1))
@@ -154,7 +162,15 @@ analyze_gep_mfs_validation <- function(data,
     
     # NEW: Use comprehensive GEP summary system instead of old repetitive reports
     # The save_mfs_validation_results function now creates comprehensive summaries automatically
-    save_mfs_validation_results(validation_results, missing_data_analysis, prame_analysis, mfs_summary_output_dir, prefix, dataset_name = dataset_name)
+    save_mfs_validation_results(
+        validation_results = validation_results,
+        missing_data_analysis = missing_data_analysis,
+        prame_analysis = prame_analysis,
+        extrapolation_assessment = extrapolation_assessment,
+        output_dir = mfs_summary_output_dir,
+        prefix = prefix,
+        dataset_name = dataset_name
+    )
 
     # Optionally create unified visuals at the GEP objective root directory
     if (create_unified_at_base) {
@@ -293,7 +309,8 @@ analyze_gep_mfs_validation <- function(data,
     return(list(
         validation_results = validation_results,
         prame_analysis = prame_analysis,
-        missing_data_analysis = missing_data_analysis
+        missing_data_analysis = missing_data_analysis,
+        extrapolation_assessment = extrapolation_assessment
         # validation_report removed - now using comprehensive summary system
     ))
 }
@@ -312,7 +329,7 @@ analyze_gep_mfs_validation <- function(data,
 #' @param output_dirs Named list of objective-specific output directories
 #' @param prefix Character prefix for generated files
 #' @return A list with `standard_results`, `competing_results`, `prame_results`,
-#'   `missing_data_analysis`.
+#'   `missing_data_analysis`, and `extrapolation_assessment`.
 analyze_gep_mss_validation <- function(data,
                                        dataset_name = NULL,
                                        timepoints = GEP_VALIDATION_TIMEPOINTS,
@@ -439,6 +456,13 @@ analyze_gep_mss_validation <- function(data,
         logger::log_info(formatted(sprintf("%s: %d events %s", names(events_per_timepoint)[i], events_per_timepoint[i], ep_status), indent = 2))
     }
     missing_data_analysis <- assess_gep_missing_data(data)
+    extrapolation_assessment <- evaluate_gep_extrapolation_assumption(
+        analysis_data = analysis_data,
+        outcome_type = "MSS",
+        output_dir = mss_summary_output_dir,
+        prefix = prefix,
+        dataset_name = dataset_name
+    )
     standard_results <- list()
     display_analysis_data <- restore_gep_display_variables(analysis_data, dataset_name = dataset_name)
     for (tp in timepoints) {
@@ -480,8 +504,13 @@ analyze_gep_mss_validation <- function(data,
     # NEW: Use comprehensive GEP summary system instead of old repetitive reports
     # The save_mss_validation_results function now creates comprehensive summaries automatically
     save_mss_validation_results(
-        standard_results, competing_results,
-        missing_data_analysis, prame_results, mss_summary_output_dir, prefix,
+        standard_results = standard_results,
+        competing_results = competing_results,
+        missing_data = missing_data_analysis,
+        prame_results = prame_results,
+        extrapolation_assessment = extrapolation_assessment,
+        output_dir = mss_summary_output_dir,
+        prefix = prefix,
         group_var = mss_reporting_grouping$var,
         dataset_name = dataset_name
     )
@@ -536,7 +565,8 @@ analyze_gep_mss_validation <- function(data,
         standard_results = standard_results,
         competing_results = competing_results,
         prame_results = prame_results,
-        missing_data_analysis = missing_data_analysis
+        missing_data_analysis = missing_data_analysis,
+        extrapolation_assessment = extrapolation_assessment
         # validation_report removed - now using comprehensive summary system
     ))
 }

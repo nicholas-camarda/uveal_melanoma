@@ -582,7 +582,7 @@ Global test          6.89     3      0.075
 
 ## Understanding GEP Analysis
 
-Gene Expression Profiling (GEP) is an external molecular risk assay for metastatic spread. Objective 4 does not recompute the Castle-type 15-gene signature inside this pipeline. Instead, it takes the lab-reported patient-level 5-year GEP survival predictions already present in the analytic dataset, uses those values directly for the 5-year `expected_*` columns, derives the 7-year and 10-year values from the same 5-year probabilities using $S(7) = S(5)^{7/5}$ and $S(10) = S(5)^{10/5}$, and then converts those horizon-specific survival values into risk quantities needed for validation. The downstream methods then ask different questions: Kaplan-Meier or competing-risk summaries estimate observed outcome risk from follow-up data, calibration tools assess agreement between supplied GEP risk and observed risk, discrimination tools test rank-ordering, and PRAME-based analyses evaluate whether reclassification improves clinical utility.
+Gene Expression Profiling (GEP) is an external molecular risk assay for metastatic spread. Objective 4 does not recompute the Castle-type 15-gene signature inside this pipeline. Instead, it takes the lab-reported patient-level 5-year GEP survival predictions already present in the analytic dataset, uses those values directly for the 5-year `expected_*` columns, derives the 7-year and 10-year values from the same 5-year probabilities using $S(7) = S(5)^{7/5}$ and $S(10) = S(5)^{10/5}$, and then converts those horizon-specific survival values into risk quantities needed for validation. Those 7-year and 10-year values are assumption-checked extrapolations rather than direct imported assay outputs. The downstream methods then ask different questions: Kaplan-Meier or competing-risk summaries estimate observed outcome risk from follow-up data, calibration tools assess agreement between supplied GEP risk and observed risk, discrimination tools test rank-ordering, PRAME-based analyses evaluate whether reclassification improves clinical utility, and the extrapolation-assumption check asks whether the constant-hazard extension beyond 5 years is reasonably compatible with the observed data.
 
 The main Objective 4 denominator is deliberately stricter than “any row with a GEP-related label.” Only tumors with definitive raw DecisionDx Class 1 or Class 2 calls plus valid endpoint-specific imported probabilities enter the MFS and MSS eligible subsets. Rows representing `GEP Failed/Indeterminate`, `GEP Not Tested`, `Other`, PRAME-not-reported, unknown, or discordant raw labels are excluded from the main analytic denominators even though reader-facing display restoration may still show canonical labels elsewhere in the workbook ecosystem.
 
@@ -604,6 +604,7 @@ The main Objective 4 denominator is deliberately stricter than “any row with a
 | `Calibration_Summary` | Predicted vs observed agreement. | `docs/STATISTICAL_METHODS.md#gep-validation-metrics` (Calibration subsection) |
 | `Discrimination_Summary` | Rank-order performance across timepoints. | `STATISTICAL_METHODS.md` (Discrimination subsection) |
 | `Decision_Curve_Summary` | Net benefit across threshold probabilities. | `STATISTICAL_METHODS.md` (Clinical Utility subsection) |
+| `Extrapolation_Assumption_Checks` | Focused support check for the 7-year and 10-year exponential extrapolation. | `STATISTICAL_METHODS.md` (GEP Validation Metrics subsection) |
 | `PRAME_Summary` | GEP-only vs GEP-plus-PRAME incremental discrimination comparison; sparse cohorts may show an explanatory placeholder row instead of full results. | Same Clinical Utility subsection |
 | `Missing_Data_Summary` | QC signals that contextualize Objective 4. | `STATISTICAL_METHODS.md` (Missing Data diagnostics) |
 
@@ -822,6 +823,10 @@ Important distinction:
 #### `Calibration_Summary`
 
 - `Timepoint`, `N`: context columns described above.
+- `Prediction_Source`: `Imported` at 5 years and `Extrapolated from imported 5-year value` at 7 and 10 years.
+- `Extrapolation_Assumption`: `Not Applicable` at 5 years and `Exponential constant hazard` at 7 and 10 years.
+- `Assumption_Support_Status`: interpretive support tier for the later-horizon extrapolation. `Supported` means the data were reasonably compatible with constant hazard, `Weakly Supported` means the diagnostics were mixed or limited, and `Unsupported` means the data either argued against constant hazard or were too sparse to assess it well.
+- `Assumption_Support_Notes`: plain-language reason for the support tier. Treat `Unsupported` later-horizon rows as exploratory.
 - `Nam_D_Agostino_p`: p-value from the grouped Greenwood Nam-D'Agostino survival-calibration test. Smaller values mean stronger evidence that predicted and observed risk do not agree well across the risk groups.
 - `Nam_D_Agostino_Method`: method label for the grouped goodness-of-fit field; currently this should read `greenwood_nam_dagostino`.
 - `ICI`: Integrated Calibration Index — lower is better.
@@ -864,6 +869,7 @@ If you want the shortest possible version, read [GEP Calibration Made Simple](#g
 
 #### `Discrimination_Summary`
 
+- `Prediction_Source`, `Extrapolation_Assumption`, `Assumption_Support_Status`, `Assumption_Support_Notes`: read these exactly as in `Calibration_Summary`. They are there so you do not accidentally treat 7-year and 10-year concordance results as if they were based on independently imported assay predictions.
 - `Events`: Number of outcome events accumulated by that year.
 - `Harrell_C`: Primary concordance field. For MFS, this is a horizon-specific concordance estimate after truncating follow-up at the sheet's timepoint. For MSS, this is computed from the full observed follow-up within the horizon-specific analytic subset rather than the same horizon-truncated estimand used for MFS.
 - `Integrated_AUC`: Mean `riskRegression::Score()` AUC over monthly follow-up intervals rather than a single landmark AUC.
@@ -877,6 +883,7 @@ If you want the shortest possible version, read [GEP Discrimination Made Simple]
 
 #### `Decision_Curve_Summary`
 
+- `Prediction_Source`, `Extrapolation_Assumption`, `Assumption_Support_Status`, `Assumption_Support_Notes`: use these to qualify 7-year and 10-year clinical-utility interpretations. If support is weak or unsupported, present the decision-curve result cautiously.
 - `Event_Rate`: Observed event rate at the horizon (use it to sanity-check IPA swings).
 - `Optimal_Threshold`: Probability threshold delivering maximum net benefit; mirrors `Net_Benefit_Threshold` when present.
 - `Optimal_Net_Benefit`: Net benefit at the optimal threshold relative to treat-all/none.
@@ -884,6 +891,21 @@ If you want the shortest possible version, read [GEP Discrimination Made Simple]
 - `Area_Between_Curves`: Integral of the net-benefit gain vs treat-none across the range.
 
 If you want the shortest possible version, read [GEP Decision Curve Made Simple](#gep-decision-curve-made-simple) first.
+
+#### `Extrapolation_Assumption_Checks`
+
+- `Exponential_Hazard_Per_Year`: hazard implied by the intercept-only exponential model.
+- `Weibull_Shape`: the key non-exponential comparator. Values near 1 are more compatible with constant hazard.
+- `Delta_AIC_Weibull_minus_Exponential`: negative values favor Weibull, positive values favor exponential.
+- `Pre5yr_Hazard_Per_Year` and `Post5yr_Hazard_Per_Year`: crude piecewise hazards before and after 5 years.
+- `Post_vs_Pre_Hazard_Ratio`: a quick screen for an obvious hazard break after 5 years.
+- `Support_Status`: overall interpretation used to label 7-year and 10-year workbook rows.
+- `Support_Note`: plain-language explanation of why the later-horizon extrapolation was judged supported, weakly supported, or unsupported.
+
+Practical reading rule:
+- `Supported`: later-horizon extrapolation looked reasonably compatible with the observed data.
+- `Weakly Supported`: later-horizon extrapolation was not clearly contradicted, but evidence was limited or mixed.
+- `Unsupported`: later-horizon extrapolation should be treated as exploratory rather than defensible.
 
 #### `PRAME_Summary`
 

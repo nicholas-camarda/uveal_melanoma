@@ -9,11 +9,19 @@
 #' @param validation_results Named list of per-timepoint MFS results
 #' @param missing_data_analysis Missing-data diagnostics results
 #' @param prame_analysis PRAME-augmented analysis results (may be NULL)
+#' @param extrapolation_assessment Objective 4 extrapolation-support summary for
+#'   later horizons.
 #' @param output_dir Directory path to save artifacts
 #' @param prefix Filename prefix for saved files
 #' @param dataset_name Optional dataset label for saved narrative summaries
 #' @return Invisibly returns NULL after writing files
-save_mfs_validation_results <- function(validation_results, missing_data_analysis, prame_analysis, output_dir, prefix, dataset_name = NULL) {
+save_mfs_validation_results <- function(validation_results,
+                                        missing_data_analysis,
+                                        prame_analysis,
+                                        extrapolation_assessment,
+                                        output_dir,
+                                        prefix,
+                                        dataset_name = NULL) {
     logger::log_info(formatted("Saving MFS validation results", indent = 1))
     tryCatch(
         {
@@ -91,7 +99,8 @@ save_mfs_validation_results <- function(validation_results, missing_data_analysi
         output_dir = output_dir,
         prefix = prefix,
         prame_results = prame_analysis,
-        missing_data = missing_data_analysis
+        missing_data = missing_data_analysis,
+        extrapolation_assessment = extrapolation_assessment
     )
     
     logger::log_info(sprintf("MFS validation summary saved: %s", summary_path))
@@ -119,13 +128,15 @@ save_mfs_validation_results <- function(validation_results, missing_data_analysi
 #' @param competing_results Named list of competing risk MSS results (per timepoint)
 #' @param missing_data Missing-data diagnostics results (may be NULL)
 #' @param prame_results PRAME-augmented MSS analysis results (may be NULL)
+#' @param extrapolation_assessment Objective 4 extrapolation-support summary for
+#'   later horizons.
 #' @param output_dir Directory path to save artifacts
 #' @param prefix Filename prefix for saved files
 #' @param group_var Variable name for grouping (default: "biopsy1_gep")
 #' @param dataset_name Optional dataset label for saved narrative summaries
 #' @return Invisibly returns NULL after writing files
 save_mss_validation_results <- function(standard_results, competing_results,
-                                        missing_data, prame_results, output_dir, prefix,
+                                        missing_data, prame_results, extrapolation_assessment, output_dir, prefix,
                                         group_var = get_gep_grouping_for_context("mss", "reporting")$var, dataset_name = NULL) {
     logger::log_info("Saving MSS validation results")
     if (GEP_SAVE_RDS) {
@@ -152,6 +163,7 @@ save_mss_validation_results <- function(standard_results, competing_results,
         competing_results = competing_results,
         missing_data = missing_data,
         prame_results = prame_results,
+        extrapolation_assessment = extrapolation_assessment,
         output_dir = output_dir,
         prefix = prefix,
         group_var = group_var,
@@ -298,8 +310,23 @@ create_mss_validation_excel_files <- function(standard_results, competing_result
 }
 
 #' Create MSS validation summary text
+#'
+#' Render the narrative and consolidated workbook outputs for MSS validation.
+#'
+#' @param standard_results Named list of standard MSS validation results.
+#' @param competing_results Named list of competing-risk MSS results.
+#' @param missing_data Missing-data diagnostics results.
+#' @param prame_results PRAME analysis results.
+#' @param extrapolation_assessment Objective 4 extrapolation-support summary for
+#'   later horizons.
+#' @param output_dir Directory path to save artifacts.
+#' @param prefix Character filename prefix for saved files.
+#' @param group_var Character grouping variable retained for interface
+#'   compatibility.
+#' @param dataset_name Optional dataset label for narrative reporting.
+#' @return Invisibly returns `NULL` after writing the outputs.
 create_mss_validation_summary_text <- function(standard_results, competing_results,
-                                               missing_data, prame_results, output_dir, prefix,
+                                               missing_data, prame_results, extrapolation_assessment, output_dir, prefix,
                                                group_var = get_gep_grouping_for_context("mss", "reporting")$var, dataset_name = NULL) {
     logger::log_info("Creating MSS validation summary text file")
     
@@ -326,7 +353,8 @@ create_mss_validation_summary_text <- function(standard_results, competing_resul
         output_dir = output_dir,
         prefix = prefix,
         prame_results = prame_results,
-        missing_data = missing_data
+        missing_data = missing_data,
+        extrapolation_assessment = extrapolation_assessment
     )
     
     logger::log_info(sprintf("MSS validation summary saved: %s", summary_path))
