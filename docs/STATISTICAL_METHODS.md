@@ -577,6 +577,11 @@ For a workbook-first overview written for non-statistical readers, see [Understa
 **Workbook traceability:**
 - The `Calibration_Summary` and `Calibration_Comparison` sheets now also carry method columns so the statistical variant used for each horizon is explicit: `Nam_D_Agostino_Method`, `ICI_Method`, and `Slope_Method`.
 
+**Full calibration curve plots (PNG):**
+- The pipeline also writes one full-spectrum calibration figure per outcome (`*mfs_calibration_full.png`, `*mss_calibration_full.png`), faceted by timepoint.
+- Each dot represents one predicted-risk quantile bin (typically deciles when sample size supports it): x = mean predicted risk within the bin, y = observed risk at the horizon estimated via Kaplan–Meier within that bin (`1 - \hat{S}(t)`).
+- The smooth curve is an IPCW-weighted logistic spline recalibration fit evaluated on a dense risk grid. It is omitted (bins-only fallback) when the horizon-known subset lacks enough distinct risk support or event/non-event counts for a stable smooth fit.
+
 **Endpoint note:**
 - MFS uses metastasis events.
 - MSS standard validation uses melanoma-specific death as the event.
@@ -1018,7 +1023,7 @@ For a plain-English reading order for PRAME outputs, see [Understanding PRAME In
 - Export the simple QC workbook `unified_summary/*simple_gep_validation.xlsx`
 - For the full cohort only, append compact exploratory no-GEP summary sheets to the root unified workbook so the main Objective 4 file also summarizes baseline-only risk support for `GEP Failed/Indeterminate` and `GEP Not Tested`
 - Ensure narrative summaries preserve the cohort label used for the run and print the overall O/E ratio with its Poisson CI and Pearson goodness-of-fit p-value
-- Provide KM (MFS) or CIF (MSS) curves only; calibration/decision/discrimination visuals live in tables
+- Provide KM (MFS) or CIF (MSS) curves plus full-spectrum calibration curves; remaining calibration/decision/discrimination visuals live in tables
 
 ### Expected Outputs
 
@@ -1032,7 +1037,7 @@ For a plain-English reading order for PRAME outputs, see [Understanding PRAME In
 - `*unified_gep_validation_summary.xlsx` at the root of `04_GEP_Validation/` — comparison-only cross-outcome workbook
 - For the full cohort, the unified workbook also includes `No_GEP_Overview`, `No_GEP_Model_Comparison`, and `No_GEP_Risk_Strata`
 - `unified_summary/*simple_gep_validation.*` — optional actual-vs-expected QC output from the simple checker
-- Limited PNGs: KM for MFS, CIF for MSS, and optional outcome-specific PRAME delta-C plots (`*mfs_prame_delta_c.png`, `*mss_prame_delta_c.png`)
+- Limited PNGs: KM for MFS, CIF for MSS, full-spectrum calibration curves (`*mfs_calibration_full.png`, `*mss_calibration_full.png`), and optional outcome-specific PRAME delta-C plots (`*mfs_prame_delta_c.png`, `*mss_prame_delta_c.png`)
 
 **Schema note:** `PRAME_Summary` is always written in consolidated workbooks, and `PRAME_Comparison` is always written in unified workbooks. Sparse cohorts may receive explanatory placeholder rows instead of full PRAME incremental-comparison results. The full-cohort unified workbook may additionally append `No_GEP_*` tabs, but restricted and GKSRS cohorts do not currently receive those exploratory sheets.
 

@@ -459,7 +459,7 @@ create_comprehensive_gep_validation_summary <- function(mfs_results, mss_results
     summary_lines <- c(summary_lines, "",
         "CONSOLIDATION BENEFITS",
         "---------------------",
-        "✓ Eliminated redundant calibration plots (6 plots → 1 comprehensive table)",
+        "✓ Calibration summarized as 1 full-spectrum curve per outcome (faceted by timepoint)",
         "✓ Eliminated redundant decision curve plots (6 plots → 1 comprehensive table)",
         "✓ Eliminated redundant performance plots (4 plots → 1 comprehensive table)",
         "✓ Eliminated unnecessary subfolder structure",

@@ -18,8 +18,8 @@ create_mfs_gep_visuals <- function(mfs_results, mfs_data, output_dir, prefix, co
         prame_results <- mfs_results$prame_analysis
     }
 
-    # Calibration plots
-    # create_calibration_plots(mfs_results, "MFS", output_dir, prefix)
+    # Full-spectrum calibration plot (continuous risk)
+    create_full_survival_calibration_plot(mfs_results, "MFS", validation_output_dir, prefix)
 
     # Discrimination plots (per-outcome)
     # create_single_outcome_discrimination_plot(mfs_results, "MFS", output_dir, prefix)
@@ -61,8 +61,8 @@ create_mss_gep_visuals <- function(mss_results, mss_data, output_dir, prefix, gr
     # Directly write into centralized visuals folder created by create_output_structure()
     prame_results <- mss_results$prame_results %||% NULL
 
-    # Calibration plots (removed per spec; included in consolidated summary)
-    # create_calibration_plots(mss_results, "MSS", output_dir, prefix)
+    # Full-spectrum calibration plot (continuous risk)
+    create_full_survival_calibration_plot(mss_results, "MSS", validation_output_dir, prefix)
 
     # Discrimination plots (per-outcome)
     # create_single_outcome_discrimination_plot(mss_results, "MSS", output_dir, prefix)
@@ -290,6 +290,254 @@ create_calibration_plots <- function(results, outcome_type, output_dir, prefix) 
             logger::log_warn(sprintf("Skipping calibration plot for %s - %s: no valid observed_expected data", outcome_type, tp_name))
         }
     }
+}
+
+#' Create a full-spectrum survival calibration plot (continuous risk)
+#'
+#' Produce one outcome-level calibration figure faceted by timepoint, with
+#' predicted risk on the x-axis and observed (KM) risk on the y-axis. Each facet
+#' displays quantile-bin points (KM at horizon) and, when available, an
+#' IPCW-weighted spline smooth. Point shapes are keyed to the predicted-risk
+#' quantile bins and displayed in the legend.
+#'
+#' @param results list Container holding per-timepoint validation results for an
+#'   outcome (MFS or MSS).
+#' @param outcome_type character Outcome label used in titles (`"MFS"` or `"MSS"`).
+#' @param output_dir character Destination directory for the saved PNG.
+#' @param prefix character Filename prefix for the saved PNG.
+#' @return Invisibly returns `NULL` after writing the file, or `NULL` when no
+#'   calibration curve data are available.
+create_full_survival_calibration_plot <- function(results, outcome_type, output_dir, prefix) {
+    logger::log_info(formatted(sprintf("Creating full-spectrum calibration plot for %s", outcome_type), indent = 1))
+
+    containers <- list(
+        validation_results = results$validation_results,
+        standard_validation = results$standard_validation,
+        standard_results = results$standard_results
+    )
+
+    tp_container <- NULL
+    if (!is.null(containers$validation_results)) {
+        tp_container <- containers$validation_results
+    } else if (!is.null(containers$standard_validation)) {
+        tp_container <- containers$standard_validation
+    } else if (!is.null(containers$standard_results)) {
+        tp_container <- containers$standard_results
+    }
+
+    if (is.null(tp_container) || length(tp_container) == 0) {
+        logger::log_warn(sprintf("No per-timepoint container found for %s calibration plotting", outcome_type))
+        return(invisible(NULL))
+    }
+
+    bins_rows <- list()
+    smooth_rows <- list()
+
+    for (tp_name in names(tp_container)) {
+        tp_results <- tp_container[[tp_name]]
+        cal <- tp_results$calibration %||% NULL
+        if (is.null(cal) || !is.list(cal)) {
+            next
+        }
+
+        bins <- NULL
+        if (!is.null(cal$curve) && is.list(cal$curve) && is.data.frame(cal$curve$bins)) {
+            bins <- cal$curve$bins
+        } else if (is.data.frame(cal$group_results) && nrow(cal$group_results) > 0) {
+            bins <- cal$group_results %>%
+                dplyr::mutate(
+                    timepoint_months = NA_real_,
+                    risk_bin = .data$risk_group %||% NA_integer_,
+                    mean_predicted_risk = as.numeric(.data$mean_predicted_risk),
+                    observed_risk_km = as.numeric(.data$observed_rate),
+                    km_survival_se = as.numeric(.data$km_survival_se)
+                ) %>%
+                dplyr::select(
+                    timepoint_months,
+                    risk_bin,
+                    n,
+                    mean_predicted_risk,
+                    observed_risk_km,
+                    km_survival_se
+                ) %>%
+                as.data.frame()
+        }
+
+        if (!is.null(bins) && nrow(bins) > 0) {
+            bins <- bins %>%
+                dplyr::mutate(timepoint = tp_name) %>%
+                dplyr::filter(!is.na(risk_bin), is.finite(mean_predicted_risk), is.finite(observed_risk_km))
+            if (nrow(bins) > 0) {
+                bins_rows[[tp_name]] <- as.data.frame(bins)
+            }
+        }
+
+        smooth <- NULL
+        if (!is.null(cal$curve) && is.list(cal$curve) && is.data.frame(cal$curve$smooth)) {
+            smooth <- cal$curve$smooth
+        }
+        if (!is.null(smooth) && nrow(smooth) > 1) {
+            smooth <- smooth %>%
+                dplyr::mutate(timepoint = tp_name) %>%
+                dplyr::filter(is.finite(predicted_risk), is.finite(observed_risk_ipcw_spline))
+            if (nrow(smooth) > 1) {
+                smooth_rows[[tp_name]] <- as.data.frame(smooth)
+            }
+        }
+    }
+
+    bins_df <- if (length(bins_rows) > 0) do.call(rbind, bins_rows) else data.frame()
+    smooth_df <- if (length(smooth_rows) > 0) do.call(rbind, smooth_rows) else data.frame()
+
+    if (nrow(bins_df) == 0 && nrow(smooth_df) == 0) {
+        logger::log_warn(sprintf("No calibration curve data available to plot for %s", outcome_type))
+        return(invisible(NULL))
+    }
+
+    has_bins <- nrow(bins_df) > 0 && "risk_bin" %in% names(bins_df)
+    bin_levels <- numeric()
+    bin_labels <- character()
+    if (has_bins) {
+        bin_levels <- sort(unique(as.numeric(bins_df$risk_bin[!is.na(bins_df$risk_bin)])))
+        if (length(bin_levels) > 0) {
+            ordinal <- seq_along(bin_levels)
+            if (length(ordinal) == 1) {
+                bin_labels <- "Bin 1"
+            } else {
+                bin_labels <- c(
+                    sprintf("Q%d (lowest)", ordinal[1]),
+                    if (length(ordinal) > 2) sprintf("Q%d", ordinal[2:(length(ordinal) - 1)]) else character(),
+                    sprintf("Q%d (highest)", ordinal[length(ordinal)])
+                )
+            }
+            bins_df$risk_bin_label <- factor(
+                as.numeric(bins_df$risk_bin),
+                levels = bin_levels,
+                labels = bin_labels,
+                ordered = TRUE
+            )
+        }
+    }
+
+    all_timepoints <- unique(c(as.character(bins_df$timepoint %||% character()), as.character(smooth_df$timepoint %||% character())))
+    timepoint_numeric <- suppressWarnings(as.numeric(gsub("yr", "", all_timepoints)))
+    ordered_levels <- all_timepoints[order(timepoint_numeric)]
+    if (nrow(bins_df) > 0) {
+        bins_df$timepoint <- factor(as.character(bins_df$timepoint), levels = ordered_levels)
+    }
+    if (nrow(smooth_df) > 0) {
+        smooth_df$timepoint <- factor(as.character(smooth_df$timepoint), levels = ordered_levels)
+    }
+
+    percent_labels <- function(x) sprintf("%d%%", round(100 * x))
+    primary_color <- get_qualitative_palette(1)[1]
+
+    p <- ggplot2::ggplot() +
+        ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed", linewidth = 0.9, color = "gray55")
+
+    if (nrow(smooth_df) > 1) {
+        p <- p +
+            ggplot2::geom_line(
+                data = smooth_df,
+                ggplot2::aes(x = predicted_risk, y = observed_risk_ipcw_spline, group = timepoint),
+                color = primary_color,
+                linewidth = 1.25,
+                alpha = 0.95,
+                na.rm = TRUE
+            )
+    }
+
+    if (nrow(bins_df) > 0) {
+        p <- p +
+            ggplot2::geom_point(
+                data = bins_df,
+                ggplot2::aes(
+                    x = mean_predicted_risk,
+                    y = observed_risk_km,
+                    shape = .data$risk_bin_label
+                ),
+                color = primary_color,
+                size = 3.9,
+                alpha = 0.90,
+                na.rm = TRUE
+            )
+    }
+
+    if (has_bins && length(bin_levels) > 0) {
+        shape_values <- c(16, 17, 15, 3, 7, 8, 0, 1, 2, 4)
+        shape_values <- shape_values[seq_len(min(length(shape_values), length(bin_levels)))]
+        names(shape_values) <- bin_labels[seq_len(length(shape_values))]
+
+        p <- p +
+            ggplot2::scale_shape_manual(
+                name = "Risk bin",
+                values = shape_values,
+                drop = FALSE
+            ) +
+            ggplot2::guides(
+                shape = ggplot2::guide_legend(
+                    title = "Risk bin (quantiles)",
+                    nrow = 2,
+                    byrow = TRUE,
+                    override.aes = list(color = primary_color, alpha = 1)
+                )
+            )
+    }
+
+    p <- p +
+        ggplot2::facet_wrap(~timepoint, nrow = 1) +
+        ggplot2::coord_equal(xlim = c(0, 1), ylim = c(0, 1)) +
+        ggplot2::scale_x_continuous(
+            limits = c(0, 1),
+            breaks = seq(0, 1, 0.2),
+            labels = percent_labels,
+            expand = ggplot2::expansion(mult = c(0.01, 0.01))
+        ) +
+        ggplot2::scale_y_continuous(
+            limits = c(0, 1),
+            breaks = seq(0, 1, 0.2),
+            labels = percent_labels,
+            expand = ggplot2::expansion(mult = c(0.01, 0.01))
+        ) +
+        ggplot2::labs(
+            title = sprintf("%s Calibration (Observed vs Predicted Risk)", outcome_type),
+            subtitle = "Points = quantile bins (KM at horizon; see legend); line = IPCW spline smooth",
+            x = "Predicted risk",
+            y = "Observed risk"
+        ) +
+        ggplot2::theme_classic(base_size = 18) +
+        ggplot2::theme(
+            plot.background = ggplot2::element_rect(fill = "white", color = NA),
+            panel.background = ggplot2::element_rect(fill = "white", color = NA),
+            plot.title = ggplot2::element_text(size = 22, face = "bold"),
+            plot.subtitle = ggplot2::element_text(size = 18, margin = ggplot2::margin(b = 8)),
+            axis.title = ggplot2::element_text(size = 19),
+            axis.text = ggplot2::element_text(size = 16),
+            strip.text = ggplot2::element_text(size = 16, face = "bold", color = "black"),
+            legend.position = if (has_bins && length(bin_levels) > 0) "bottom" else "none",
+            legend.title = ggplot2::element_text(size = 17),
+            legend.text = ggplot2::element_text(size = 16),
+            plot.margin = ggplot2::margin(8, 12, 8, 8),
+            axis.line = ggplot2::element_line(linewidth = 0.9),
+            axis.ticks = ggplot2::element_line(linewidth = 0.9)
+        )
+
+    if (!dir.exists(output_dir)) {
+        dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+
+    plot_path <- file.path(output_dir, paste0(prefix, tolower(outcome_type), "_calibration_full.png"))
+    ggplot2::ggsave(
+        plot_path,
+        p,
+        width = SURVIVAL_PLOT_WIDTH,
+        height = 6.75,
+        dpi = PLOT_DPI,
+        bg = "white"
+    )
+    logger::log_info(sprintf("Full calibration plot saved: %s", plot_path))
+
+    invisible(NULL)
 }
 
 #' Create discrimination plots across outcomes

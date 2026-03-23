@@ -311,6 +311,117 @@ calculate_smoothed_ipcw_ici <- function(cal_data, grouped_calibration) {
     )
 }
 
+#' Build plot-ready survival calibration curve data
+#'
+#' Convert grouped Kaplan-Meier calibration summaries and (when feasible) an
+#' IPCW-weighted spline recalibration fit into a tidy payload suitable for full
+#' calibration plots.
+#'
+#' @param cal_data Data frame produced by `prepare_horizon_calibration_data()`.
+#'   Must include `predicted_risk`, `logit_predicted_risk`, `horizon_event`,
+#'   `ipcw_weight`, and `known_status`.
+#' @param grouped_calibration List returned by `calculate_greenwood_nam_dagostino()`.
+#' @param eval_time_months Numeric horizon in months.
+#' @return Named list with `bins`, `smooth`, and `curve_method`. `bins` is a
+#'   data frame with `timepoint_months`, `risk_bin`, `n`, `mean_predicted_risk`,
+#'   `observed_risk_km`, and `km_survival_se`. `smooth` is either `NULL` or a
+#'   data frame with `predicted_risk` and `observed_risk_ipcw_spline`.
+build_survival_calibration_curve <- function(cal_data, grouped_calibration, eval_time_months) {
+    bins <- grouped_calibration$group_results %||% data.frame()
+    if (nrow(bins) > 0) {
+        bins <- bins %>%
+            dplyr::mutate(
+                timepoint_months = eval_time_months,
+                risk_bin = .data$risk_group %||% NA_integer_,
+                mean_predicted_risk = as.numeric(.data$mean_predicted_risk),
+                observed_risk_km = as.numeric(.data$observed_rate),
+                km_survival_se = as.numeric(.data$km_survival_se)
+            ) %>%
+            dplyr::select(
+                timepoint_months,
+                risk_bin,
+                n,
+                mean_predicted_risk,
+                observed_risk_km,
+                km_survival_se
+            ) %>%
+            as.data.frame()
+    } else {
+        bins <- data.frame(
+            timepoint_months = numeric(),
+            risk_bin = integer(),
+            n = integer(),
+            mean_predicted_risk = numeric(),
+            observed_risk_km = numeric(),
+            km_survival_se = numeric()
+        )
+    }
+
+    fit_data <- cal_data %>%
+        dplyr::filter(known_status, ipcw_weight > 0, is.finite(logit_predicted_risk))
+
+    event_count <- sum(fit_data$horizon_event == 1, na.rm = TRUE)
+    non_event_count <- sum(fit_data$horizon_event == 0, na.rm = TRUE)
+    unique_risk_count <- length(unique(fit_data$predicted_risk))
+
+    can_fit_smooth_curve <-
+        nrow(fit_data) >= GEP_MIN_SAMPLE_SIZE &&
+        unique_risk_count >= GEP_DEFAULT_N_GROUPS &&
+        event_count >= GEP_MIN_CALIBRATION_EVENTS &&
+        non_event_count >= GEP_MIN_CALIBRATION_EVENTS
+
+    smooth <- NULL
+    if (can_fit_smooth_curve) {
+        spline_df <- min(
+            GEP_CALIBRATION_SPLINE_DF,
+            unique_risk_count - 1L,
+            nrow(fit_data) - 1L
+        )
+
+        if (spline_df >= 2) {
+            smooth_model <- tryCatch(
+                suppressWarnings(
+                    stats::glm(
+                        horizon_event ~ splines::ns(logit_predicted_risk, df = spline_df),
+                        data = fit_data,
+                        family = stats::quasibinomial(),
+                        weights = ipcw_weight
+                    )
+                ),
+                error = function(e) NULL
+            )
+
+            if (!is.null(smooth_model)) {
+                risk_grid <- seq(
+                    from = min(fit_data$predicted_risk, na.rm = TRUE),
+                    to = max(fit_data$predicted_risk, na.rm = TRUE),
+                    length.out = 200
+                )
+                risk_grid <- pmin(pmax(risk_grid, GEP_MIN_RISK_PREDICTION), GEP_MAX_RISK_PREDICTION)
+
+                grid_frame <- data.frame(
+                    logit_predicted_risk = stats::qlogis(risk_grid)
+                )
+
+                fitted_risk <- suppressWarnings(stats::predict(smooth_model, newdata = grid_frame, type = "response"))
+                fitted_risk <- pmin(pmax(as.numeric(fitted_risk), 0), 1)
+
+                smooth <- data.frame(
+                    predicted_risk = as.numeric(risk_grid),
+                    observed_risk_ipcw_spline = fitted_risk,
+                    stringsAsFactors = FALSE
+                )
+            }
+        }
+    }
+
+    list(
+        bins = bins,
+        smooth = smooth,
+        curve_method = if (!is.null(smooth) && nrow(smooth) > 1) "ipcw_logistic_spline" else "bins_only_fallback"
+    )
+}
+
 #' Assign grouped calibration risk bins
 #'
 #' Split predicted risks into approximately equal-sized groups for grouped
@@ -485,7 +596,14 @@ calculate_greenwood_nam_dagostino <- function(data, predicted_risk_var, time_var
 #' @param event_var Character name of the observed event indicator column.
 #' @param eval_time_months Numeric horizon in months.
 #' @return Named list containing calibration summary metrics, method labels,
-#'   group-level results, and Brier score diagnostics.
+#'   group-level results, Brier score diagnostics, and a plot-ready calibration
+#'   curve payload. The `curve` element is a named list with:
+#'   - `bins`: grouped Kaplan-Meier observed risk by predicted-risk quantile bin
+#'     (x = mean predicted risk in bin; y = KM observed risk at the horizon).
+#'   - `smooth`: optional IPCW-weighted spline recalibration curve evaluated on a
+#'     dense risk grid (or `NULL` when not feasible).
+#'   - `curve_method`: method label indicating whether the smooth curve was used
+#'     (`ipcw_logistic_spline`) or the plot relies on bins only.
 calculate_survival_calibration_summary <- function(data, predicted_risk_var, time_var, event_var, eval_time_months) {
     cal_data <- prepare_horizon_calibration_data(
         data = data,
@@ -511,7 +629,12 @@ calculate_survival_calibration_summary <- function(data, predicted_risk_var, tim
             nam_dagostino_statistic = NA_real_,
             nam_dagostino_method = "greenwood_nam_dagostino",
             n_groups = NA_integer_,
-            group_results = data.frame()
+            group_results = data.frame(),
+            curve = list(
+                bins = data.frame(),
+                smooth = NULL,
+                curve_method = "bins_only_fallback"
+            )
         ))
     }
 
@@ -563,6 +686,22 @@ calculate_survival_calibration_summary <- function(data, predicted_risk_var, tim
         )
     })
 
+    curve_payload <- tryCatch(
+        build_survival_calibration_curve(
+            cal_data = cal_data,
+            grouped_calibration = grouped_calibration,
+            eval_time_months = eval_time_months
+        ),
+        error = function(e) {
+            logger::log_warn(sprintf("Calibration curve payload build failed: %s", e$message))
+            list(
+                bins = data.frame(),
+                smooth = NULL,
+                curve_method = "bins_only_fallback"
+            )
+        }
+    )
+
     list(
         n = nrow(cal_data),
         known_status_n = sum(cal_data$known_status, na.rm = TRUE),
@@ -589,7 +728,8 @@ calculate_survival_calibration_summary <- function(data, predicted_risk_var, tim
         brier_score = brier_result$brier_score,
         brier_method = brier_result$method_used,
         brier_fallback_used = brier_result$fallback_triggered,
-        brier_calculation_notes = brier_result$calculation_notes
+        brier_calculation_notes = brier_result$calculation_notes,
+        curve = curve_payload
     )
 }
 

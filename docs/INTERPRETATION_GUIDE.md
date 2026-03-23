@@ -593,6 +593,7 @@ The main Objective 4 denominator is deliberately stricter than “any row with a
 - Start with the outcome-specific consolidated workbook named `<prefix>MFS_consolidated_summary.xlsx` or `<prefix>MSS_consolidated_summary.xlsx`.
 - Technical-detail workbooks `<prefix>mfs_validation_technical_details.xlsx` and `<prefix>mss_validation_technical_details.xlsx` sit in the matching outcome folders. They are now companion detail files rather than alternate summary workbooks.
 - Narrative text summaries `<prefix>mfs_validation_narrative_summary.txt` and `<prefix>mss_validation_narrative_summary.txt` sit alongside those technical workbooks.
+- Full calibration curve figures `<prefix>mfs_calibration_full.png` and `<prefix>mss_calibration_full.png` sit in the outcome validation folders and summarize calibration across the risk spectrum. Each dot is one predicted-risk quantile bin (x = mean predicted risk in bin; y = KM observed risk at the horizon), and the smooth line is an IPCW-weighted spline recalibration curve when feasible.
 - Unified cross-outcome summaries live at the root of `04_GEP_Validation/` as `<prefix>unified_gep_validation_summary.xlsx`. This workbook is comparison-only rather than a second outcome-summary workbook.
 - For the full cohort, that unified workbook now also includes compact no-GEP tabs: `No_GEP_Overview`, `No_GEP_Model_Comparison`, and `No_GEP_Risk_Strata`.
 - Simple actual-vs-expected QC outputs live in `04_GEP_Validation/unified_summary/` as `<prefix>simple_gep_validation.xlsx`.
@@ -616,6 +617,7 @@ The main Objective 4 denominator is deliberately stricter than “any row with a
 | Primary workbook pattern | `<prefix>MFS_consolidated_summary.xlsx` or `<prefix>MSS_consolidated_summary.xlsx`. |
 | Technical workbooks | `<prefix>mfs_validation_technical_details.xlsx` and `<prefix>mss_validation_technical_details.xlsx` in the outcome folders; these keep lower-level detail and no longer repeat the consolidated summary calibration/discrimination tables. |
 | Narrative summaries | `<prefix>mfs_validation_narrative_summary.txt` and `<prefix>mss_validation_narrative_summary.txt`. |
+| Calibration curve PNGs | `<prefix>mfs_calibration_full.png` and `<prefix>mss_calibration_full.png` (one per outcome; faceted by timepoint). |
 | Unified workbook | `<prefix>unified_gep_validation_summary.xlsx` at the root of `04_GEP_Validation/`; this workbook uses comparison-only sheet names such as `Calibration_Comparison`, `Discrimination_Comparison`, `PRAME_Comparison`, and `Missing_Data_Comparison`. The full cohort additionally appends `No_GEP_Overview`, `No_GEP_Model_Comparison`, and `No_GEP_Risk_Strata`. |
 | Simple QC workbook | `unified_summary/<prefix>simple_gep_validation.xlsx`. |
 | Default directory | `final_data/Analysis/<cohort>/04_GEP_Validation/` with `a_metastasis_free_survival/`, `b_melanoma_specific_survival/`, and `unified_summary/`. |
