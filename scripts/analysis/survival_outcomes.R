@@ -447,7 +447,7 @@ assess_rmst_feasibility <- function(data, time_var, event_var, group_var, time_p
             levels = TREATMENT_FACTOR_LEVELS
         )
     } else {
-        complete_data[[group_var]] <- factor(complete_data[[group_var]])
+        complete_data[[group_var]] <- coerce_to_factor_preserving_levels(complete_data[[group_var]])
     }
     complete_data[[group_var]] <- droplevels(complete_data[[group_var]])
     factor_levels <- levels(complete_data[[group_var]])
@@ -2255,7 +2255,7 @@ test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Surv
                             event_section_added <- TRUE
                         }
 
-                        var_factor <- factor(var_data, exclude = NULL)
+                        var_factor <- if (is.factor(var_data)) droplevels(var_data) else coerce_to_factor_preserving_levels(var_data)
                         level_counts <- table(var_factor, useNA = "ifany")
                         event_counts <- tapply(status, var_factor, function(x) sum(x == 1, na.rm = TRUE))
                         event_counts <- event_counts[names(level_counts)]

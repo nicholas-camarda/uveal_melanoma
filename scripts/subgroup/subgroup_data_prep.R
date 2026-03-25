@@ -113,7 +113,7 @@ process_subgroup_data <- function(data, subgroup_var, confounders, include_basel
     } else if (is_categorical_factor) {
         subgroup_var_to_use <- subgroup_var
     } else {
-        if (!is.factor(processed_data[[subgroup_var]])) processed_data[[subgroup_var]] <- as.factor(processed_data[[subgroup_var]])
+        processed_data[[subgroup_var]] <- coerce_to_factor_preserving_levels(processed_data[[subgroup_var]])
         subgroup_var_to_use <- subgroup_var
     }
     if (is.factor(processed_data[[subgroup_var_to_use]])) {

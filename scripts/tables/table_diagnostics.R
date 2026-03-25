@@ -390,7 +390,7 @@ build_group_outcome_summary_lookup <- function(model_fit, outcome_var) {
 
         var_values <- as.character(var_data[complete_mask])
         event_subset <- event_values[complete_mask]
-        level_order <- if (is.factor(var_data)) levels(var_data) else unique(var_values)
+        level_order <- get_stable_factor_levels(var_data)
         present_levels <- level_order[level_order %in% unique(var_values)]
 
         if (length(present_levels) == 0) {

@@ -159,10 +159,10 @@ derive_binary_endpoint <- function(data, event_col, time_col, horizon_months) {
 #' @return An unordered factor with preserved level order when available.
 preserve_exploratory_factor_levels <- function(values) {
     if (is.factor(values)) {
-        return(factor(as.character(values), levels = levels(values), ordered = FALSE))
+        return(coerce_to_factor_preserving_levels(values))
     }
 
-    factor(as.character(values))
+    coerce_to_factor_preserving_levels(values)
 }
 
 #' Prepare Data for Exploratory No-GEP Modeling

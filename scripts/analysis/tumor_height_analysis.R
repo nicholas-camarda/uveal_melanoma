@@ -273,7 +273,7 @@ summarize_tumor_size_by_treatment <- function(data, size_var = "initial_tumor_he
         return(list(summary = NULL, plot = NULL, output_files = list(summary = NULL, plot = NULL)))
     }
 
-    treatment_levels <- levels(factor(tumor_df$treatment_group))
+    treatment_levels <- get_stable_factor_levels(tumor_df$treatment_group)
     palette <- get_palette_by_variable("treatment_group", treatment_levels)
     size_label <- if (size_var == "initial_tumor_height") "Baseline tumor height (mm)" else size_var
 

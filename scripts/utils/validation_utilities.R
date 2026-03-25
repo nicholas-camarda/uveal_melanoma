@@ -181,55 +181,8 @@ validate_factor_level_consistency <- function(cohort_list, phase = "data_process
     logger::log_info("=== STARTING FACTOR LEVEL CONSISTENCY VALIDATION ===")
     validation_passed <- TRUE
 
-    # Define expected factor configurations
-    expected_factors <- list(
-        treatment_group = list(
-            levels = TREATMENT_FACTOR_LEVELS,
-            reference = TREATMENT_REFERENCE_LEVEL,
-            comparison = TREATMENT_COMPARISON_LEVEL,
-            critical = TRUE
-        ),
-        recurrence1 = list(
-            levels = YN_DISPLAY_LABELS,
-            reference = YN_DISPLAY_LABELS[1], # "No"
-            critical = TRUE
-        ),
-        sex = list(
-            levels = SEX_FACTOR_LEVELS,
-            reference = SEX_FACTOR_LEVELS[1],
-            critical = FALSE
-        ),
-        location = list(
-            levels = c("Choroidal", "Ciliary Body", "Cilio-Choroidal", "Conjunctival", "Irido-Ciliary", "Iris"),
-            reference = "Choroidal",
-            critical = FALSE
-        ),
-        internal_reflectivity = list(
-            levels = c("Very Low", "Low", "Low-Medium", "Medium", "Medium-High", "High", "Unknown"),
-            reference = "Very Low",
-            critical = FALSE
-        ),
-        srf = list(
-            levels = YN_DISPLAY_LABELS,
-            reference = YN_DISPLAY_LABELS[1], # "No"
-            critical = FALSE
-        ),
-        initial_t_stage_simple = list(
-            levels = c("T1", "T2", "T3", "T4"),
-            reference = "T1",
-            critical = FALSE
-        ),
-        gep_class_simple = list(
-            levels = c("Class 1", "Class 2", "GEP Failed/Indeterminate", "GEP Not Tested"),
-            reference = "Class 1",
-            critical = FALSE
-        ),
-        optic_nerve = list(
-            levels = YN_DISPLAY_LABELS, # c("No", "Yes")
-            reference = YN_DISPLAY_LABELS[1], # "No"
-            critical = TRUE
-        )
-    )
+    # Define expected factor configurations from the shared canonical map
+    expected_factors <- get_canonical_factor_level_expectations()
 
     # Check each cohort for factor level consistency
     for (cohort_name in names(cohort_list)) {
