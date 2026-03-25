@@ -71,21 +71,18 @@ test_that("get_export_snapshot_dir constructs dated snapshot path", {
     export_root <- file.path(tmp_root, "export")
 
     old_export_analysis <- EXPORT_ANALYSIS_DIR
-    old_slug <- PROJECT_SLUG
 
     on.exit({
         assign("EXPORT_ANALYSIS_DIR", old_export_analysis, envir = .GlobalEnv)
-        assign("PROJECT_SLUG", old_slug, envir = .GlobalEnv)
         unlink(tmp_root, recursive = TRUE, force = TRUE)
     }, add = TRUE)
 
     assign("EXPORT_ANALYSIS_DIR", file.path(export_root, "Analysis"), envir = .GlobalEnv)
-    assign("PROJECT_SLUG", "om_workspace", envir = .GlobalEnv)
 
     snapshot_dir <- get_export_snapshot_dir("2026-03-25")
     expect_equal(
         snapshot_dir,
-        file.path(EXPORT_ANALYSIS_DIR, PROJECT_SLUG, "2026-03-25")
+        file.path(EXPORT_ANALYSIS_DIR, "2026-03-25")
     )
 })
 
@@ -128,20 +125,17 @@ test_that("publish_outputs dry run reports publishable outputs and excludes runt
     old_output <- OUTPUT_DIR
     old_merged <- MERGED_TABLES_DIR
     old_export_analysis <- EXPORT_ANALYSIS_DIR
-    old_slug <- PROJECT_SLUG
 
     on.exit({
         assign("OUTPUT_DIR", old_output, envir = .GlobalEnv)
         assign("MERGED_TABLES_DIR", old_merged, envir = .GlobalEnv)
         assign("EXPORT_ANALYSIS_DIR", old_export_analysis, envir = .GlobalEnv)
-        assign("PROJECT_SLUG", old_slug, envir = .GlobalEnv)
         unlink(tmp_root, recursive = TRUE, force = TRUE)
     }, add = TRUE)
 
     assign("OUTPUT_DIR", output_root, envir = .GlobalEnv)
     assign("MERGED_TABLES_DIR", file.path(output_root, "merged_tables"), envir = .GlobalEnv)
     assign("EXPORT_ANALYSIS_DIR", file.path(export_root, "Analysis"), envir = .GlobalEnv)
-    assign("PROJECT_SLUG", "om_workspace", envir = .GlobalEnv)
 
     result <- publish_outputs(snapshot_id = "2026-03-25-unit", dry_run = TRUE)
 
@@ -164,20 +158,17 @@ test_that("publish_outputs creates a new snapshot and rejects existing snapshot 
     old_output <- OUTPUT_DIR
     old_merged <- MERGED_TABLES_DIR
     old_export_analysis <- EXPORT_ANALYSIS_DIR
-    old_slug <- PROJECT_SLUG
 
     on.exit({
         assign("OUTPUT_DIR", old_output, envir = .GlobalEnv)
         assign("MERGED_TABLES_DIR", old_merged, envir = .GlobalEnv)
         assign("EXPORT_ANALYSIS_DIR", old_export_analysis, envir = .GlobalEnv)
-        assign("PROJECT_SLUG", old_slug, envir = .GlobalEnv)
         unlink(tmp_root, recursive = TRUE, force = TRUE)
     }, add = TRUE)
 
     assign("OUTPUT_DIR", output_root, envir = .GlobalEnv)
     assign("MERGED_TABLES_DIR", file.path(output_root, "merged_tables"), envir = .GlobalEnv)
     assign("EXPORT_ANALYSIS_DIR", file.path(export_root, "Analysis"), envir = .GlobalEnv)
-    assign("PROJECT_SLUG", "om_workspace", envir = .GlobalEnv)
 
     first_publish <- publish_outputs(snapshot_id = "2026-03-25-publish", dry_run = FALSE)
     expect_true(dir.exists(first_publish$snapshot_dir))

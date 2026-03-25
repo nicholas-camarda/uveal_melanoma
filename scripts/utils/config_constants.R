@@ -203,7 +203,7 @@ get_export_snapshot_dir <- function(snapshot_id = format(Sys.Date(), "%Y-%m-%d")
         stop(sprintf("Snapshot id '%s' cannot contain path separators.", snapshot_id), call. = FALSE)
     }
 
-    file.path(EXPORT_ANALYSIS_DIR, PROJECT_SLUG, snapshot_id)
+    file.path(EXPORT_ANALYSIS_DIR, snapshot_id)
 }
 
 #' Determine whether a file path is publishable to synced exports
