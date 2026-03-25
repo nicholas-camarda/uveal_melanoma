@@ -7,8 +7,16 @@ library(readr)
 library(tidyr)
 library(readxl)
 
+if (!requireNamespace("here", quietly = TRUE)) {
+    stop("Package 'here' is required to locate project files.")
+}
+
+if (!exists("PROCESSED_DATA_DIR", inherits = TRUE) || !exists("RAW_DATA_DIR", inherits = TRUE)) {
+    source(here::here("scripts", "load_all.R"))
+}
+
 # Load the full cohort data
-full_cohort <- readRDS("final_data/Analytic Dataset/uveal_melanoma_full_cohort.rds")
+full_cohort <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
 
 #' Analyze NA patterns focusing on variables with few NAs
 #' @param data Data frame
@@ -67,8 +75,8 @@ analyze_na_patterns_focused <- function(data, cohort_name) {
 full_analysis <- analyze_na_patterns_focused(full_cohort, "Full Cohort")
 
 # Load other cohorts for comparison
-restricted_cohort <- readRDS("final_data/Analytic Dataset/uveal_melanoma_restricted_cohort.rds")
-gksrs_cohort <- readRDS("final_data/Analytic Dataset/uveal_melanoma_gksrs_only_cohort.rds")
+restricted_cohort <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_restricted_cohort.rds"))
+gksrs_cohort <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_gksrs_only_cohort.rds"))
 
 restricted_analysis <- analyze_na_patterns_focused(restricted_cohort, "Restricted Cohort")
 gksrs_analysis <- analyze_na_patterns_focused(gksrs_cohort, "GKSRS-Only Cohort")
@@ -118,7 +126,7 @@ if (length(common_full_restricted) > 0) {
 cat("\n=== Examining Original Raw Data ===\n")
 
 # Load original raw data
-raw_data <- read_excel("final_data/Original Files/Ocular Melanoma Master Spreadsheet REVISED FOR STATS (5-10-25, TJM).xlsx", sheet = 1)
+raw_data <- read_excel(file.path(RAW_DATA_DIR, INPUT_FILENAME), sheet = 1)
 
 # Get unique patient IDs with NAs in variables with 1-5 NAs
 all_na_patients <- unique(c(full_na_patients, restricted_na_patients, gksrs_na_patients))

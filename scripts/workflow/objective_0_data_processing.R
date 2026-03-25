@@ -74,6 +74,8 @@ run_objective_0 <- function() {
         data_start_time <- Sys.time()
 
         logger::log_info("RECREATE_ANALYTIC_DATASETS = TRUE: Creating new analytic datasets")
+        assert_required_input_paths(input_filename = INPUT_FILENAME, require_data_dictionary = FALSE)
+        logger::log_info(sprintf("Validated raw inputs at export-backed path: %s", RAW_DATA_DIR))
 
         temp_output_dirs_by_cohort <- build_objective_0_output_dirs()
 
@@ -105,7 +107,7 @@ run_objective_0 <- function() {
     } else {
         log_phase("DATA LOADING PHASE")
         logger::log_info("RECREATE_ANALYTIC_DATASETS = FALSE: Skipping analytic dataset creation")
-        logger::log_info("Using existing datasets from final_data/Analytic Dataset/")
+        logger::log_info(sprintf("Using existing runtime datasets from: %s", PROCESSED_DATA_DIR))
         logger::log_info("Set RECREATE_ANALYTIC_DATASETS = TRUE if you need to reprocess raw data")
 
         existing_data <- load_existing_analytic_cohorts(expected_cohorts)

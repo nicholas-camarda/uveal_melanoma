@@ -3,13 +3,17 @@
 # Perfect Separation Investigation Tool
 # Purpose: Analyze event counts and perfect separation issues in real analysis data
 
-source("scripts/utils/load_all.R")
+if (!requireNamespace("here", quietly = TRUE)) {
+    stop("Package 'here' is required to locate project files.")
+}
+
+source(here::here("scripts", "load_all.R"))
 
 # Load the real analysis data
 cat("Loading analysis data...\n")
-full_cohort <- readRDS("final_data/Analytic Dataset/uveal_melanoma_full_cohort.rds")
-restricted_cohort <- readRDS("final_data/Analytic Dataset/uveal_melanoma_restricted_cohort.rds")
-gksrs_only_cohort <- readRDS("final_data/Analytic Dataset/uveal_melanoma_gksrs_only_cohort.rds")
+full_cohort <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
+restricted_cohort <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_restricted_cohort.rds"))
+gksrs_only_cohort <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_gksrs_only_cohort.rds"))
 
 #' Analyze event counts for small-sample separation risks
 #' @param data Data frame with outcome and group columns

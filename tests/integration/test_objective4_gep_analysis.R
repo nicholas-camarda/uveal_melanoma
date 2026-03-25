@@ -36,7 +36,7 @@ extract_displayed_risk_counts <- function(risk_table_plot, time_point = 0) {
 # Test 4a: GEP MFS validation produces valid statistical results
 test_that("4a: GEP MFS validation produces valid statistical results", {
     # Load actual data to test with
-    actual_data <- readRDS(here("final_data", "Analytic Dataset", "uveal_melanoma_full_cohort.rds"))
+    actual_data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
 
     # Create minimal output directories
     test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective4_test")
@@ -987,7 +987,7 @@ test_that("ICI falls back to grouped KM when predicted risks are too discrete", 
 })
 
 test_that("Unstable IPCW recalibration fits are suppressed as unavailable", {
-    actual_data <- readRDS(here("final_data", "Analytic Dataset", "uveal_melanoma_full_cohort.rds"))
+    actual_data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
     analysis_data <- actual_data %>% filter(mss_analysis_eligible)
 
     cal <- calculate_survival_calibration_summary(
@@ -1305,7 +1305,7 @@ test_that("PRAME incremental helper returns delta-C metrics on deterministic dat
 })
 
 test_that("MSS PRAME incremental analysis runs without fatal model warnings", {
-    actual_data <- readRDS(here("final_data", "Analytic Dataset", "uveal_melanoma_full_cohort.rds"))
+    actual_data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
 
     expect_no_warning({
         prame_results <- perform_prame_augmented_analysis_mss(actual_data, GEP_VALIDATION_TIMEPOINTS)
@@ -1317,7 +1317,7 @@ test_that("MSS PRAME incremental analysis runs without fatal model warnings", {
 })
 
 test_that("Objective 4 MSS core components run without fatal errors", {
-    actual_data <- readRDS(here("final_data", "Analytic Dataset", "uveal_melanoma_full_cohort.rds"))
+    actual_data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
     test_data <- actual_data %>% filter(mss_analysis_eligible)
 
     required_vars <- c(
@@ -1427,7 +1427,7 @@ test_that("Competing-risk MSS feasibility returns explicit skip metadata", {
 })
 
 test_that("run_objective_4 creates current canonical Objective 4 artifacts", {
-    actual_data <- readRDS(here("final_data", "Analytic Dataset", "uveal_melanoma_full_cohort.rds"))
+    actual_data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
     test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective4_runtime")
     output_dirs <- list(
         obj4_mfs = file.path(test_output_dir, "04_GEP_Validation", "a_metastasis_free_survival"),
@@ -1496,7 +1496,7 @@ test_that("run_objective_4 creates current canonical Objective 4 artifacts", {
 })
 
 test_that("run_objective_4 carries confounders into adjusted GEP MFS effect summaries", {
-    actual_data <- readRDS(here("final_data", "Analytic Dataset", "uveal_melanoma_full_cohort.rds"))
+    actual_data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
     test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective4_adjusted_confounders")
     output_dirs <- list(
         obj4_mfs = file.path(test_output_dir, "04_GEP_Validation", "a_metastasis_free_survival"),
@@ -1569,17 +1569,17 @@ test_that("4e: Existing Objective 4 cohort artifacts follow current placement co
     cohort_configs <- list(
         list(
             name = "full",
-            base_dir = here("final_data", "Analysis", "uveal_full", "04_GEP_Validation"),
+            base_dir = file.path(OUTPUT_DIR, "uveal_full", "04_GEP_Validation"),
             prefix = "full_cohort_"
         ),
         list(
             name = "restricted",
-            base_dir = here("final_data", "Analysis", "uveal_restricted", "04_GEP_Validation"),
+            base_dir = file.path(OUTPUT_DIR, "uveal_restricted", "04_GEP_Validation"),
             prefix = "restricted_cohort_"
         ),
         list(
             name = "gksrs",
-            base_dir = here("final_data", "Analysis", "gksrs", "04_GEP_Validation"),
+            base_dir = file.path(OUTPUT_DIR, "gksrs", "04_GEP_Validation"),
             prefix = "gksrs_only_cohort_"
         )
     )
@@ -1678,7 +1678,7 @@ test_that("Objective 4 eligibility refresh removes failed and other rows from co
     )
 
     for (dataset_name in cohort_names) {
-        actual_data <- readRDS(here("final_data", "Analytic Dataset", paste0(dataset_name, ".rds")))
+        actual_data <- readRDS(file.path(PROCESSED_DATA_DIR, paste0(dataset_name, ".rds")))
         refreshed_data <- refresh_gep_analysis_flags(actual_data)
         display_data <- restore_gep_display_variables(refreshed_data, dataset_name = dataset_name)
 
@@ -1701,7 +1701,7 @@ test_that("Objective 4 eligibility refresh removes failed and other rows from co
 })
 
 test_that("Canonical GEP variables retain original levels without cohort-wide collapse", {
-    actual_data <- readRDS(here("final_data", "Analytic Dataset", "uveal_melanoma_full_cohort.rds"))
+    actual_data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
 
     expect_false(file.exists(file.path(PROCESSED_DATA_DIR, "other_map.rds")))
     expect_true(all(c("biopsy1_gep_raw", GEP_DISPLAY_VARIABLES, "location") %in% names(actual_data)))

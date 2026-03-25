@@ -1444,7 +1444,7 @@ export_repeat_treatment_descriptive_stats <- function(full_cohort_data, restrict
 
     # Set default output path if not provided
     if (is.null(output_path)) {
-        output_path <- file.path(DATA_DIR, "Analysis", "merged_tables")
+        output_path <- MERGED_TABLES_DIR
     }
 
     # Create output directory

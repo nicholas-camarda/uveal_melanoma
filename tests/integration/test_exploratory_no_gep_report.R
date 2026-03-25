@@ -5,7 +5,7 @@ skip_if_local_data_unavailable()
 library(dplyr)
 
 test_that("exploratory no-GEP dataset preparation isolates training and prediction sets", {
-    actual_data <- readRDS(here("final_data", "Analytic Dataset", "uveal_melanoma_full_cohort.rds"))
+    actual_data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
 
     prepared <- prepare_exploratory_no_gep_data(actual_data)
 
@@ -31,7 +31,7 @@ test_that("exploratory no-GEP dataset preparation isolates training and predicti
 })
 
 test_that("exploratory no-GEP KM verification checks displayed counts and cohort counts", {
-    actual_data <- readRDS(here("final_data", "Analytic Dataset", "uveal_melanoma_full_cohort.rds"))
+    actual_data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
 
     verification <- verify_exploratory_no_gep_km_fix(actual_data)
     expect_equal(verification$observed_n, c(58L, 27L, 13L, 162L))
@@ -86,7 +86,7 @@ test_that("exploratory predictor screening ignores unused Other factor levels", 
 })
 
 test_that("exploratory no-GEP report writes workbook, summary, and plots", {
-    actual_data <- readRDS(here("final_data", "Analytic Dataset", "uveal_melanoma_full_cohort.rds"))
+    actual_data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
     test_output_dir <- file.path(TEST_OUTPUT_DIR, "exploratory_no_gep")
     withr::defer(unlink(test_output_dir, recursive = TRUE), teardown_env())
 

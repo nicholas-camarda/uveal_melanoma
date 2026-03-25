@@ -257,7 +257,7 @@ test_that("representative survival and CIF plots do not emit duplicate-scale mes
         )
     )
 
-    actual_data <- readRDS(here("final_data", "Analytic Dataset", "uveal_melanoma_full_cohort.rds"))
+    actual_data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
     cif_test_data <- actual_data %>% dplyr::filter(mss_analysis_eligible)
     cif_output_dir <- tempfile("cif-noise-")
     dir.create(cif_output_dir, recursive = TRUE, showWarnings = FALSE)

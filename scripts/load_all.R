@@ -195,6 +195,7 @@ source(here("scripts", "visualization", "forest_plot_formatting.R"))
 
 # Workflow scripts
 source(here("scripts", "workflow", "analysis_orchestration.R"))
+source(here("scripts", "workflow", "publish_outputs.R"))
 
 # Objective scripts
 source(here("scripts", "workflow", "objective_0_data_processing.R"))
@@ -210,9 +211,8 @@ source(here("scripts", "workflow", "objective_4_gep_analysis.R"))
 # Set seed for reproducibility
 set.seed(123)
 
-# Create necessary directories now that libraries are loaded
-dir.create(PROCESSED_DATA_DIR, showWarnings = FALSE, recursive = TRUE)
-dir.create(OUTPUT_DIR, showWarnings = FALSE, recursive = TRUE)
+# Create runtime directories now that configuration is loaded
+initialize_runtime_dirs()
 
 ######################################################################
 ############### CENTRALIZED OUTPUT DIRECTORY MANAGEMENT ###############
@@ -252,7 +252,7 @@ setup_cohort_outputs <- function(dataset_name, cohort_dir_name = NULL) {
     }
 
     # Create cohort base directory
-    cohort_base_dir <- file.path(DATA_DIR, "Analysis", cohort_dir_name)
+    cohort_base_dir <- file.path(OUTPUT_DIR, cohort_dir_name)
 
     # Create the complete directory structure
     output_dirs <- create_output_structure(cohort_base_dir)

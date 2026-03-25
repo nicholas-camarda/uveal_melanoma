@@ -25,28 +25,221 @@ options(contrasts = c("contr.treatment", "contr.poly"))
 # =============================================================================
 # CORE DATA PATHS AND DIRECTORIES
 # =============================================================================
-# CRITICAL: These paths define the entire data structure for the analysis
-# - DATA_DIR: Root directory containing all data files
-# - RAW_DATA_DIR: Original Excel files from clinical database
-# - PROCESSED_DATA_DIR: Cleaned and processed analytic datasets
-# - OUTPUT_DIR: All analysis results, tables, plots, and diagnostics
-DATA_DIR <- here("final_data")
-RAW_DATA_DIR <- here(DATA_DIR, "Original Files")
-PROCESSED_DATA_DIR <- here(DATA_DIR, "Analytic Dataset")
-OUTPUT_DIR <- here(DATA_DIR, "Analysis")
+# CRITICAL: Enforce three-location architecture with one canonical slug:
+# - Code root (source controlled): PROJECT_ROOT / CODE_ROOT
+# - Runtime root (local non-synced): RUNTIME_ROOT
+# - Export root (synced): EXPORT_ROOT
+PROJECT_ROOT <- here::here()
+PROJECT_SLUG <- basename(PROJECT_ROOT)
+CODE_ROOT <- PROJECT_ROOT
 
-# =============================================================================
-# TOOL PATHS AND CONFIGURATION
-# =============================================================================
-TOOLS_OUTPUT_DIR <- here(PROCESSED_DATA_DIR, "tools_output")
-DATA_DICTIONARY_PATH <- here(RAW_DATA_DIR, "Data Dictionary.xlsx")
+#' Resolve a configured filesystem path with fallback behavior
+#'
+#' Returns a normalized absolute path from a configured value. Empty or missing
+#' values fall back to `default_path`. Relative paths are resolved against
+#' `PROJECT_ROOT`.
+#'
+#' @param path_value Character scalar configured path (often from env vars).
+#' @param default_path Character scalar default path when `path_value` is empty.
+#' @return Character scalar absolute path.
+#' @examples
+#' resolve_config_path("", "~/ProjectsRuntime")
+resolve_config_path <- function(path_value, default_path) {
+    candidate_path <- path_value
+    if (is.null(candidate_path) || !nzchar(trimws(candidate_path))) {
+        candidate_path <- default_path
+    }
 
-# =============================================================================
-# LOGGING AND OUTPUT PATHS
-# =============================================================================
-LOGS_DIR <- here("logs")
-MERGED_TABLES_DIR <- here(OUTPUT_DIR, "merged_tables")
-TEST_OUTPUT_DIR <- here("test_output")
+    if (is.null(candidate_path) || !nzchar(trimws(candidate_path))) {
+        stop("Path resolution failed: both configured and default paths are empty.", call. = FALSE)
+    }
+
+    expanded_path <- path.expand(trimws(candidate_path))
+    is_absolute <- grepl("^(/|[A-Za-z]:[/\\\\])", expanded_path)
+    if (!is_absolute) {
+        expanded_path <- file.path(PROJECT_ROOT, expanded_path)
+    }
+
+    normalizePath(expanded_path, winslash = "/", mustWork = FALSE)
+}
+
+RUNTIME_PARENT_DIR <- resolve_config_path(
+    Sys.getenv("OCULAR_RUNTIME_PARENT_DIR", unset = ""),
+    "~/ProjectsRuntime"
+)
+RUNTIME_ROOT <- resolve_config_path(
+    Sys.getenv("OCULAR_RUNTIME_ROOT", unset = ""),
+    file.path(RUNTIME_PARENT_DIR, PROJECT_SLUG)
+)
+
+configured_export_root <- Sys.getenv("OCULAR_EXPORT_ROOT", unset = "")
+if (!nzchar(trimws(configured_export_root))) {
+    configured_export_root <- Sys.getenv("DATA_DIR", unset = "")
+}
+EXPORT_ROOT <- resolve_config_path(configured_export_root, here::here("final_data"))
+EXPORT_ANALYSIS_DIR <- file.path(EXPORT_ROOT, "Analysis")
+
+# Export-backed raw input paths (authoritative source files)
+RAW_DATA_DIR <- resolve_config_path(
+    Sys.getenv("RAW_DATA_DIR", unset = ""),
+    file.path(EXPORT_ROOT, "Original Files")
+)
+DATA_DICTIONARY_PATH <- resolve_config_path(
+    Sys.getenv("DATA_DICTIONARY_PATH", unset = ""),
+    file.path(RAW_DATA_DIR, "Data Dictionary.xlsx")
+)
+
+# Runtime-only generated artifacts
+PROCESSED_DATA_DIR <- resolve_config_path(
+    Sys.getenv("PROCESSED_DATA_DIR", unset = ""),
+    file.path(RUNTIME_ROOT, "Analytic Dataset")
+)
+OUTPUT_DIR <- resolve_config_path(
+    Sys.getenv("OUTPUT_DIR", unset = ""),
+    file.path(RUNTIME_ROOT, "Analysis")
+)
+LOGS_DIR <- resolve_config_path(
+    Sys.getenv("LOGS_DIR", unset = ""),
+    file.path(RUNTIME_ROOT, "logs")
+)
+TOOLS_OUTPUT_DIR <- resolve_config_path(
+    Sys.getenv("TOOLS_OUTPUT_DIR", unset = ""),
+    file.path(RUNTIME_ROOT, "tools_output")
+)
+TEST_OUTPUT_DIR <- resolve_config_path(
+    Sys.getenv("TEST_OUTPUT_DIR", unset = ""),
+    file.path(RUNTIME_ROOT, "test_output")
+)
+MERGED_TABLES_DIR <- resolve_config_path(
+    Sys.getenv("MERGED_TABLES_DIR", unset = ""),
+    file.path(OUTPUT_DIR, "merged_tables")
+)
+
+# Deprecated compatibility alias retained for transition code paths only.
+DATA_DIR <- EXPORT_ROOT
+
+#' Create runtime directories required for analysis execution
+#'
+#' Initializes all runtime-only directories under `RUNTIME_ROOT` so analyses do
+#' not write intermediate artifacts into repository or synced export trees.
+#'
+#' @return Character vector of initialized runtime directories.
+#' @examples
+#' initialize_runtime_dirs()
+initialize_runtime_dirs <- function() {
+    runtime_dirs <- unique(c(
+        RUNTIME_ROOT,
+        PROCESSED_DATA_DIR,
+        OUTPUT_DIR,
+        LOGS_DIR,
+        TOOLS_OUTPUT_DIR,
+        TEST_OUTPUT_DIR,
+        MERGED_TABLES_DIR
+    ))
+
+    for (dir_path in runtime_dirs) {
+        if (!dir.exists(dir_path)) {
+            dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
+        }
+    }
+
+    invisible(runtime_dirs)
+}
+
+#' Assert that required raw input paths are available
+#'
+#' Fails fast when raw input directories or required files are missing from the
+#' synced export root.
+#'
+#' @param input_filename Character scalar input Excel filename.
+#' @param require_data_dictionary Logical; whether to require dictionary presence.
+#' @return Invisibly returns TRUE when all checks pass.
+#' @examples
+#' assert_required_input_paths()
+assert_required_input_paths <- function(input_filename = INPUT_FILENAME, require_data_dictionary = FALSE) {
+    path_issues <- character()
+
+    if (!dir.exists(RAW_DATA_DIR)) {
+        path_issues <- c(path_issues, sprintf("Raw data directory is missing: %s", RAW_DATA_DIR))
+    }
+
+    source_file_path <- file.path(RAW_DATA_DIR, input_filename)
+    if (!file.exists(source_file_path)) {
+        path_issues <- c(path_issues, sprintf("Required input file is missing: %s", source_file_path))
+    }
+
+    if (isTRUE(require_data_dictionary) && !file.exists(DATA_DICTIONARY_PATH)) {
+        path_issues <- c(path_issues, sprintf("Data dictionary is missing: %s", DATA_DICTIONARY_PATH))
+    }
+
+    if (length(path_issues) > 0) {
+        stop(
+            paste(
+                "Required raw input path checks failed:",
+                paste(paste0("- ", path_issues), collapse = "\n"),
+                sprintf("Configured export root: %s", EXPORT_ROOT),
+                sep = "\n"
+            ),
+            call. = FALSE
+        )
+    }
+
+    invisible(TRUE)
+}
+
+#' Construct the dated export snapshot directory path
+#'
+#' @param snapshot_id Character scalar snapshot identifier.
+#' @return Character scalar export snapshot directory path.
+#' @examples
+#' get_export_snapshot_dir()
+get_export_snapshot_dir <- function(snapshot_id = format(Sys.Date(), "%Y-%m-%d")) {
+    if (is.null(snapshot_id) || !nzchar(trimws(snapshot_id))) {
+        stop("Snapshot id must be a non-empty string.", call. = FALSE)
+    }
+
+    snapshot_id <- trimws(snapshot_id)
+    if (grepl("[/\\\\]", snapshot_id)) {
+        stop(sprintf("Snapshot id '%s' cannot contain path separators.", snapshot_id), call. = FALSE)
+    }
+
+    file.path(EXPORT_ANALYSIS_DIR, PROJECT_SLUG, snapshot_id)
+}
+
+#' Determine whether a file path is publishable to synced exports
+#'
+#' Publishable artifacts are final deliverables (tables, figures, summaries) and
+#' explicitly exclude runtime-only formats and directories.
+#'
+#' @param path Character scalar file path to evaluate.
+#' @return Logical scalar indicating publish eligibility.
+#' @examples
+#' is_publishable_artifact("summary.xlsx")
+is_publishable_artifact <- function(path) {
+    if (is.null(path) || is.na(path) || !nzchar(trimws(path)) || dir.exists(path)) {
+        return(FALSE)
+    }
+
+    normalized_path <- normalizePath(path.expand(path), winslash = "/", mustWork = FALSE)
+    extension <- tolower(tools::file_ext(normalized_path))
+    publishable_extensions <- c("xlsx", "xls", "html", "htm", "txt", "png", "pdf", "csv", "tsv")
+    if (!(extension %in% publishable_extensions)) {
+        return(FALSE)
+    }
+
+    excluded_directories <- c("logs", "cache", "caches", "tools_output", "test_output", "tmp", "temp")
+    path_segments <- strsplit(normalized_path, "/", fixed = TRUE)[[1]]
+    if (any(path_segments %in% excluded_directories)) {
+        return(FALSE)
+    }
+
+    file_name <- basename(normalized_path)
+    if (grepl("(^\\.|~$|\\.tmp$|\\.temp$)", file_name, ignore.case = TRUE)) {
+        return(FALSE)
+    }
+
+    TRUE
+}
 
 # =============================================================================
 # DATA PROCESSING CONSTANTS

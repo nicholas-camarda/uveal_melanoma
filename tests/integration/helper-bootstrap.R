@@ -4,8 +4,8 @@ if (!identical(Sys.getenv("OCULAR_INTEGRATION_BOOTSTRAPPED"), "true")) {
 
     Sys.setenv(TEST_OUTPUT_DIR = integration_output_root)
     Sys.setenv(OUTPUT_DIR = file.path(integration_output_root, "analysis"))
-    Sys.setenv(TOOLS_OUTPUT_DIR = file.path(integration_output_root, "tools"))
-    Sys.setenv(MERGED_TABLES_DIR = file.path(integration_output_root, "merged_tables"))
+    Sys.setenv(TOOLS_OUTPUT_DIR = file.path(integration_output_root, "tools_output"))
+    Sys.setenv(MERGED_TABLES_DIR = file.path(integration_output_root, "analysis", "merged_tables"))
     Sys.setenv(LOGS_DIR = file.path(integration_output_root, "logs"))
 
     withr::defer(
@@ -17,11 +17,10 @@ if (!identical(Sys.getenv("OCULAR_INTEGRATION_BOOTSTRAPPED"), "true")) {
     source(here::here("tests", "testthat", "test_helper_data.R"))
 
     assign("TEST_OUTPUT_DIR", integration_output_root, envir = .GlobalEnv)
-    assign("DATA_DIR", here::here("final_data"), envir = .GlobalEnv)
+    assign("DATA_DIR", EXPORT_ROOT, envir = .GlobalEnv)
     assign("OUTPUT_DIR", file.path(integration_output_root, "analysis"), envir = .GlobalEnv)
-    assign("RAW_DATA_DIR", here::here("final_data", "Original Files"), envir = .GlobalEnv)
-    assign("TOOLS_OUTPUT_DIR", file.path(integration_output_root, "tools"), envir = .GlobalEnv)
-    assign("MERGED_TABLES_DIR", file.path(integration_output_root, "merged_tables"), envir = .GlobalEnv)
+    assign("TOOLS_OUTPUT_DIR", file.path(integration_output_root, "tools_output"), envir = .GlobalEnv)
+    assign("MERGED_TABLES_DIR", file.path(integration_output_root, "analysis", "merged_tables"), envir = .GlobalEnv)
     assign("LOGS_DIR", file.path(integration_output_root, "logs"), envir = .GlobalEnv)
 
     Sys.setenv(OCULAR_INTEGRATION_BOOTSTRAPPED = "true")
@@ -39,8 +38,8 @@ skip_if_integration_disabled <- function() {
 }
 
 skip_if_local_data_unavailable <- function() {
-    data_root <- here::here("final_data", "Analytic Dataset")
-    raw_file <- file.path(here::here("final_data", "Original Files"), INPUT_FILENAME)
+    data_root <- PROCESSED_DATA_DIR
+    raw_file <- file.path(RAW_DATA_DIR, INPUT_FILENAME)
     testthat::skip_if_not(
         dir.exists(data_root),
         paste("Local analytic data directory is unavailable:", data_root)

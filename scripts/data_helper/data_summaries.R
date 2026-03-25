@@ -134,7 +134,7 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
                 cohort_name, cohort_dir_key, treatment_duration_dir, baseline_output_dir
             ))
         } else {
-            derived_output_dirs <- create_output_structure(file.path(DATA_DIR, "Analysis", cohort_dir_name))
+            derived_output_dirs <- create_output_structure(file.path(OUTPUT_DIR, cohort_dir_name))
             treatment_duration_dir <- derived_output_dirs$treatment_duration
             baseline_output_dir <- derived_output_dirs$baseline_characteristics
             logger::log_warn(sprintf(

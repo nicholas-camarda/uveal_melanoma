@@ -34,8 +34,11 @@ get_default_output_dir <- function() {
     if (exists("OUTPUT_DIR", inherits = TRUE)) {
         return(get("OUTPUT_DIR", inherits = TRUE))
     }
-    # Fallback to standard location
-    return(here::here("final_data", "Analysis"))
+    # Fallback to runtime analysis location
+    if (exists("RUNTIME_ROOT", inherits = TRUE)) {
+        return(file.path(get("RUNTIME_ROOT", inherits = TRUE), "Analysis"))
+    }
+    return(file.path(path.expand("~/ProjectsRuntime"), basename(here::here()), "Analysis"))
 }
 
 # Simple CLI args parser

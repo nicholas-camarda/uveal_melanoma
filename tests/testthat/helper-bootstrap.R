@@ -2,13 +2,20 @@ if (!identical(Sys.getenv("OCULAR_TESTTHAT_BOOTSTRAPPED"), "true")) {
     test_output_root <- tempfile("ocular-testthat-")
     dir.create(test_output_root, recursive = TRUE, showWarnings = FALSE)
 
-    Sys.setenv(TEST_OUTPUT_DIR = test_output_root)
-    Sys.setenv(DATA_DIR = file.path(test_output_root, "data"))
-    Sys.setenv(OUTPUT_DIR = file.path(test_output_root, "analysis"))
-    Sys.setenv(RAW_DATA_DIR = file.path(test_output_root, "raw"))
-    Sys.setenv(TOOLS_OUTPUT_DIR = file.path(test_output_root, "tools"))
-    Sys.setenv(MERGED_TABLES_DIR = file.path(test_output_root, "merged_tables"))
-    Sys.setenv(LOGS_DIR = file.path(test_output_root, "logs"))
+    runtime_root <- file.path(test_output_root, "runtime")
+    export_root <- file.path(test_output_root, "export")
+    dir.create(file.path(export_root, "Original Files"), recursive = TRUE, showWarnings = FALSE)
+
+    Sys.setenv(OCULAR_RUNTIME_ROOT = runtime_root)
+    Sys.setenv(OCULAR_EXPORT_ROOT = export_root)
+    Sys.setenv(DATA_DIR = export_root)
+    Sys.setenv(PROCESSED_DATA_DIR = file.path(runtime_root, "Analytic Dataset"))
+    Sys.setenv(OUTPUT_DIR = file.path(runtime_root, "Analysis"))
+    Sys.setenv(RAW_DATA_DIR = file.path(export_root, "Original Files"))
+    Sys.setenv(TOOLS_OUTPUT_DIR = file.path(runtime_root, "tools_output"))
+    Sys.setenv(MERGED_TABLES_DIR = file.path(runtime_root, "Analysis", "merged_tables"))
+    Sys.setenv(LOGS_DIR = file.path(runtime_root, "logs"))
+    Sys.setenv(TEST_OUTPUT_DIR = file.path(runtime_root, "test_output"))
 
     withr::defer(
         unlink(test_output_root, recursive = TRUE, force = TRUE),
@@ -18,13 +25,16 @@ if (!identical(Sys.getenv("OCULAR_TESTTHAT_BOOTSTRAPPED"), "true")) {
     source(here::here("scripts", "load_all.R"))
     source(here::here("tests", "testthat", "test_helper_data.R"))
 
-    assign("TEST_OUTPUT_DIR", test_output_root, envir = .GlobalEnv)
-    assign("DATA_DIR", file.path(test_output_root, "data"), envir = .GlobalEnv)
-    assign("OUTPUT_DIR", file.path(test_output_root, "analysis"), envir = .GlobalEnv)
-    assign("RAW_DATA_DIR", file.path(test_output_root, "raw"), envir = .GlobalEnv)
-    assign("TOOLS_OUTPUT_DIR", file.path(test_output_root, "tools"), envir = .GlobalEnv)
-    assign("MERGED_TABLES_DIR", file.path(test_output_root, "merged_tables"), envir = .GlobalEnv)
-    assign("LOGS_DIR", file.path(test_output_root, "logs"), envir = .GlobalEnv)
+    assign("RUNTIME_ROOT", runtime_root, envir = .GlobalEnv)
+    assign("EXPORT_ROOT", export_root, envir = .GlobalEnv)
+    assign("TEST_OUTPUT_DIR", file.path(runtime_root, "test_output"), envir = .GlobalEnv)
+    assign("DATA_DIR", export_root, envir = .GlobalEnv)
+    assign("PROCESSED_DATA_DIR", file.path(runtime_root, "Analytic Dataset"), envir = .GlobalEnv)
+    assign("OUTPUT_DIR", file.path(runtime_root, "Analysis"), envir = .GlobalEnv)
+    assign("RAW_DATA_DIR", file.path(export_root, "Original Files"), envir = .GlobalEnv)
+    assign("TOOLS_OUTPUT_DIR", file.path(runtime_root, "tools_output"), envir = .GlobalEnv)
+    assign("MERGED_TABLES_DIR", file.path(runtime_root, "Analysis", "merged_tables"), envir = .GlobalEnv)
+    assign("LOGS_DIR", file.path(runtime_root, "logs"), envir = .GlobalEnv)
 
     Sys.setenv(OCULAR_TESTTHAT_BOOTSTRAPPED = "true")
 }

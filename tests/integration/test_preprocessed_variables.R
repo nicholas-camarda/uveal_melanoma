@@ -8,7 +8,7 @@ skip_if_local_data_unavailable()
 
 test_that("Pre-processed variables are created correctly in data processing", {
   # Load test data
-  data <- readRDS(here("final_data", "Analytic Dataset", "uveal_melanoma_full_cohort.rds"))
+  data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
   
   # Create derived variables (this is what we're testing)
   data_derived <- create_derived_variables(data)
@@ -54,7 +54,7 @@ test_that("Pre-processed variables are created correctly in data processing", {
 
 test_that("Analysis eligibility filters work correctly", {
   # Load and process data
-  data <- readRDS(here("final_data", "Analytic Dataset", "uveal_melanoma_full_cohort.rds"))
+  data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
   data_derived <- create_derived_variables(data)
   
   # Test MFS analysis eligibility
@@ -80,7 +80,7 @@ test_that("Analysis eligibility filters work correctly", {
 
 test_that("Time-specific event indicators are calculated correctly", {
   # Load and process data
-  data <- readRDS(here("final_data", "Analytic Dataset", "uveal_melanoma_full_cohort.rds"))
+  data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
   data_derived <- create_derived_variables(data)
   
   # Test that event indicators are binary (0 or 1)
@@ -113,7 +113,7 @@ test_that("Time-specific event indicators are calculated correctly", {
 
 test_that("Pre-calculated risk variables are valid", {
   # Load and process data
-  data <- readRDS(here("final_data", "Analytic Dataset", "uveal_melanoma_full_cohort.rds"))
+  data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
   data_derived <- create_derived_variables(data)
   
   # Test that risk variables are between 0 and 1
@@ -144,7 +144,7 @@ test_that("Pre-calculated risk variables are valid", {
 
 test_that("Competing risk variables are valid", {
   # Load and process data
-  data <- readRDS(here("final_data", "Analytic Dataset", "uveal_melanoma_full_cohort.rds"))
+  data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
   data_derived <- create_derived_variables(data)
   
   # Test that event type variables are valid (0, 1, 2, or NA)
@@ -170,7 +170,7 @@ test_that("Competing risk variables are valid", {
 
 test_that("GEP analysis functions can use pre-processed variables", {
   # Load and process data
-  data <- readRDS(here("final_data", "Analytic Dataset", "uveal_melanoma_full_cohort.rds"))
+  data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
   data_derived <- create_derived_variables(data)
   
   # Test that MFS analysis functions can access pre-processed variables

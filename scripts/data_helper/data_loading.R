@@ -72,6 +72,7 @@ fix_event_date_consistency <- function(data, event_var, date_var, event_yes = "Y
 #' @examples
 #' load_and_clean_data()
 load_and_clean_data <- function(filename) {
+    assert_required_input_paths(input_filename = filename, require_data_dictionary = FALSE)
     logger::log_info(sprintf("Loading data from directory: %s", RAW_DATA_DIR))
     logger::log_info(sprintf("Loading data from file: %s", filename))
     raw_data <- read_excel(
