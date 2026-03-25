@@ -32,6 +32,9 @@ options(contrasts = c("contr.treatment", "contr.poly"))
 PROJECT_ROOT <- here::here()
 PROJECT_SLUG <- basename(PROJECT_ROOT)
 CODE_ROOT <- PROJECT_ROOT
+DEFAULT_RUNTIME_PARENT_DIR <- "~/ProjectsRuntime"
+DEFAULT_RUNTIME_ROOT <- file.path(DEFAULT_RUNTIME_PARENT_DIR, PROJECT_SLUG)
+DEFAULT_EXPORT_ROOT <- "/Users/ncamarda/Library/CloudStorage/OneDrive-Personal/residency/ophthalmology/research projects/ocular melanoma/uveal_melanoma"
 
 #' Resolve a configured filesystem path with fallback behavior
 #'
@@ -65,18 +68,18 @@ resolve_config_path <- function(path_value, default_path) {
 
 RUNTIME_PARENT_DIR <- resolve_config_path(
     Sys.getenv("OCULAR_RUNTIME_PARENT_DIR", unset = ""),
-    "~/ProjectsRuntime"
+    DEFAULT_RUNTIME_PARENT_DIR
 )
 RUNTIME_ROOT <- resolve_config_path(
     Sys.getenv("OCULAR_RUNTIME_ROOT", unset = ""),
-    file.path(RUNTIME_PARENT_DIR, PROJECT_SLUG)
+    DEFAULT_RUNTIME_ROOT
 )
 
 configured_export_root <- Sys.getenv("OCULAR_EXPORT_ROOT", unset = "")
 if (!nzchar(trimws(configured_export_root))) {
     configured_export_root <- Sys.getenv("DATA_DIR", unset = "")
 }
-EXPORT_ROOT <- resolve_config_path(configured_export_root, here::here("final_data"))
+EXPORT_ROOT <- resolve_config_path(configured_export_root, DEFAULT_EXPORT_ROOT)
 EXPORT_ANALYSIS_DIR <- file.path(EXPORT_ROOT, "Analysis")
 
 # Export-backed raw input paths (authoritative source files)
