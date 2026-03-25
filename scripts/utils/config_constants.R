@@ -76,9 +76,6 @@ RUNTIME_ROOT <- resolve_config_path(
 )
 
 configured_export_root <- Sys.getenv("OCULAR_EXPORT_ROOT", unset = "")
-if (!nzchar(trimws(configured_export_root))) {
-    configured_export_root <- Sys.getenv("DATA_DIR", unset = "")
-}
 EXPORT_ROOT <- resolve_config_path(configured_export_root, DEFAULT_EXPORT_ROOT)
 EXPORT_ANALYSIS_DIR <- file.path(EXPORT_ROOT, "Analysis")
 
