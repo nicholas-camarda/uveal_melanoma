@@ -1448,13 +1448,20 @@ test_that("run_objective_4 creates current canonical Objective 4 artifacts", {
         ))
     })
 
-    expect_true(all(c("mfs_gep_results", "mss_gep_results", "simple_gep_results", "exploratory_no_gep_results") %in% names(results)))
+    expect_true(all(c(
+        "mfs_gep_results",
+        "mss_gep_results",
+        "simple_gep_results",
+        "mfs_sensitivity_results",
+        "exploratory_no_gep_results"
+    ) %in% names(results)))
 
     expect_true(file.exists(file.path(output_dirs$obj4_mfs, "test_mfs_validation_technical_details.xlsx")))
     expect_true(file.exists(file.path(output_dirs$obj4_mfs, "test_MFS_consolidated_summary.xlsx")))
     expect_true(file.exists(file.path(output_dirs$obj4_mfs, "test_mfs_validation_narrative_summary.txt")))
     expect_true(file.exists(file.path(output_dirs$obj4_mfs, "test_mfs_extrapolation_assumption_summary.txt")))
     expect_true(file.exists(file.path(output_dirs$obj4_mfs, "test_mfs_extrapolation_cumhaz_diagnostic.png")))
+    expect_true(file.exists(file.path(output_dirs$obj4_mfs, "test_mfs_calibration_full.png")))
     expect_true(file.exists(file.path(output_dirs$obj4_mss, "test_MSS_consolidated_summary.xlsx")))
     expect_true(file.exists(file.path(output_dirs$obj4_mss, "test_mss_validation_technical_details.xlsx")))
     expect_true(file.exists(file.path(output_dirs$obj4_mss, "test_mss_validation_narrative_summary.txt")))
@@ -1464,6 +1471,8 @@ test_that("run_objective_4 creates current canonical Objective 4 artifacts", {
     expect_true(file.exists(file.path(output_dirs$obj4_mss, "test_mss_prame_delta_c.png")))
     expect_true(file.exists(file.path(dirname(output_dirs$obj4_mfs), "test_unified_gep_validation_summary.xlsx")))
     expect_true(file.exists(file.path(dirname(output_dirs$obj4_mfs), "unified_summary", "test_simple_gep_validation.xlsx")))
+    expect_true(file.exists(file.path(dirname(output_dirs$obj4_mfs), "unified_summary", "test_mfs_sensitivity_summary.xlsx")))
+    expect_true(file.exists(file.path(dirname(output_dirs$obj4_mfs), "unified_summary", "test_mfs_sensitivity_summary.txt")))
     expect_true(file.exists(file.path(dirname(output_dirs$obj4_mfs), "d_exploratory_no_gep", "full_cohort_exploratory_no_gep_report.xlsx")))
     expect_true(file.exists(file.path(dirname(output_dirs$obj4_mfs), "d_exploratory_no_gep", "full_cohort_exploratory_no_gep_summary.txt")))
     expect_false(file.exists(file.path(dirname(output_dirs$obj4_mfs), "test_prame_delta_c.png")))
@@ -1491,6 +1500,15 @@ test_that("run_objective_4 creates current canonical Objective 4 artifacts", {
         "No_GEP_Risk_Ladder"
     ) %in% unified_sheets))
     expect_false(any(c("Unified_Calibration", "Unified_Discrimination", "PRAME_Summary", "Missing_Data_Summary") %in% unified_sheets))
+
+    sensitivity_sheets <- readxl::excel_sheets(file.path(dirname(output_dirs$obj4_mfs), "unified_summary", "test_mfs_sensitivity_summary.xlsx"))
+    expect_true(all(c(
+        "Followup_Operational",
+        "Followup_5yr",
+        "TxMix_ByClass",
+        "Repeat_Comparison",
+        "Guardrail_Notes"
+    ) %in% sensitivity_sheets))
 
     unlink(test_output_dir, recursive = TRUE)
 })
@@ -1599,6 +1617,10 @@ test_that("4e: Existing Objective 4 cohort artifacts follow current placement co
             info = sprintf("Root-level unified workbook should exist for %s cohort", cfg$name))
         expect_true(file.exists(file.path(unified_dir, paste0(cfg$prefix, "simple_gep_validation.xlsx"))),
             info = sprintf("Simple validation workbook should exist in unified_summary for %s cohort", cfg$name))
+        expect_true(file.exists(file.path(unified_dir, paste0(cfg$prefix, "mfs_sensitivity_summary.xlsx"))),
+            info = sprintf("MFS sensitivity workbook should exist in unified_summary for %s cohort", cfg$name))
+        expect_true(file.exists(file.path(unified_dir, paste0(cfg$prefix, "mfs_sensitivity_summary.txt"))),
+            info = sprintf("MFS sensitivity summary text should exist in unified_summary for %s cohort", cfg$name))
 
         if (identical(cfg$name, "gksrs")) {
             expect_true(file.exists(file.path(mfs_dir, paste0(cfg$prefix, "metastasis_free_survival_probability_cox_NO_CONTENT_DIAGNOSTIC.html"))),

@@ -19,7 +19,13 @@ create_mfs_gep_visuals <- function(mfs_results, mfs_data, output_dir, prefix, co
     }
 
     # Full-spectrum calibration plot (continuous risk)
-    create_full_survival_calibration_plot(mfs_results, "MFS", validation_output_dir, prefix)
+    create_full_survival_calibration_plot(
+        mfs_results,
+        "MFS",
+        validation_output_dir,
+        prefix,
+        dataset_name = dataset_name
+    )
 
     # Discrimination plots (per-outcome)
     # create_single_outcome_discrimination_plot(mfs_results, "MFS", output_dir, prefix)
@@ -307,7 +313,7 @@ create_calibration_plots <- function(results, outcome_type, output_dir, prefix) 
 #' @param prefix character Filename prefix for the saved PNG.
 #' @return Invisibly returns `NULL` after writing the file, or `NULL` when no
 #'   calibration curve data are available.
-create_full_survival_calibration_plot <- function(results, outcome_type, output_dir, prefix) {
+create_full_survival_calibration_plot <- function(results, outcome_type, output_dir, prefix, dataset_name = NULL) {
     logger::log_info(formatted(sprintf("Creating full-spectrum calibration plot for %s", outcome_type), indent = 1))
 
     containers <- list(
@@ -431,6 +437,11 @@ create_full_survival_calibration_plot <- function(results, outcome_type, output_
 
     percent_labels <- function(x) sprintf("%d%%", round(100 * x))
     primary_color <- get_qualitative_palette(1)[1]
+    caption_text <- if (identical(outcome_type, "MFS")) {
+        build_objective4_mfs_calibration_caption(results, dataset_name = dataset_name)
+    } else {
+        NULL
+    }
 
     p <- ggplot2::ggplot() +
         ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed", linewidth = 0.9, color = "gray55")
@@ -502,6 +513,7 @@ create_full_survival_calibration_plot <- function(results, outcome_type, output_
         ggplot2::labs(
             title = sprintf("%s Calibration (Observed vs Predicted Risk)", outcome_type),
             subtitle = "Points = quantile bins (KM at horizon; see legend); line = IPCW spline smooth",
+            caption = caption_text,
             x = "Predicted risk",
             y = "Observed risk"
         ) +
@@ -517,6 +529,7 @@ create_full_survival_calibration_plot <- function(results, outcome_type, output_
             legend.position = if (has_bins && length(bin_levels) > 0) "bottom" else "none",
             legend.title = ggplot2::element_text(size = 17),
             legend.text = ggplot2::element_text(size = 16),
+            plot.caption = ggplot2::element_text(size = 14, face = "bold", hjust = 0, margin = ggplot2::margin(t = 10)),
             plot.margin = ggplot2::margin(8, 12, 8, 8),
             axis.line = ggplot2::element_line(linewidth = 0.9),
             axis.ticks = ggplot2::element_line(linewidth = 0.9)
@@ -531,7 +544,7 @@ create_full_survival_calibration_plot <- function(results, outcome_type, output_
         plot_path,
         p,
         width = SURVIVAL_PLOT_WIDTH,
-        height = 6.75,
+        height = if (is.null(caption_text)) 6.75 else 7.4,
         dpi = PLOT_DPI,
         bg = "white"
     )

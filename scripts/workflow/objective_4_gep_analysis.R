@@ -122,6 +122,20 @@ run_objective_4 <- function(data, dataset_name, output_dirs, prefix, confounders
         logger::log_info(formatted("Simple GEP validation completed", indent = 1))
     }
 
+    mfs_sensitivity_results <- tryCatch({
+        logger::log_info(formatted("Executing Objective 4 MFS sensitivity summary", indent = 1))
+        run_objective4_mfs_sensitivity_summary(
+            data = data,
+            dataset_name = dataset_name,
+            output_dir = file.path(gep_base_dir, "unified_summary"),
+            prefix = prefix
+        )
+    }, error = function(e) {
+        logger::log_warn(formatted(sprintf("Objective 4 MFS sensitivity summary failed: %s", e$message), indent = 2))
+        warning_issues <<- append_issue(warning_issues, sprintf("mfs_sensitivity:%s", e$message))
+        NULL
+    })
+
     run_state <- determine_run_state(unique(fatal_issues), unique(warning_issues))
 
     logger::log_info(sprintf(">>> COMPLETED %s (Duration: %.1f seconds)",
@@ -133,6 +147,7 @@ run_objective_4 <- function(data, dataset_name, output_dirs, prefix, confounders
         mfs_gep_results = mfs_gep_results,
         mss_gep_results = mss_gep_results,
         simple_gep_results = simple_gep_results,
+        mfs_sensitivity_results = mfs_sensitivity_results,
         exploratory_no_gep_results = exploratory_no_gep_results,
         unified_summary_completed = isTRUE(unified_summary_status),
         fatal_issues = unique(fatal_issues),

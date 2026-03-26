@@ -85,6 +85,7 @@ analyze_gep_mfs_validation <- function(data,
     # Use pre-processed analysis eligibility for consistency in risk-based metrics
     analysis_data <- data %>%
         filter(mfs_analysis_eligible)
+    simple_class_summary_5yr <- build_objective4_simple_mfs_plot_annotations(analysis_data)
     display_analysis_data <- restore_gep_display_variables(analysis_data, dataset_name = dataset_name)
     logger::log_info(formatted(sprintf("Analysis dataset: %d patients with valid GEP and MFS data", nrow(analysis_data)), indent = 1))
 
@@ -259,7 +260,8 @@ analyze_gep_mfs_validation <- function(data,
                 create_mfs_gep_visuals(
                     mfs_results = list(
                         validation_results = validation_results,
-                        prame_analysis = prame_analysis
+                        prame_analysis = prame_analysis,
+                        simple_class_summary_5yr = simple_class_summary_5yr
                     ),
                     mfs_data = km_ph_display_data,
                     output_dir = mfs_output_dir,
@@ -310,7 +312,8 @@ analyze_gep_mfs_validation <- function(data,
         validation_results = validation_results,
         prame_analysis = prame_analysis,
         missing_data_analysis = missing_data_analysis,
-        extrapolation_assessment = extrapolation_assessment
+        extrapolation_assessment = extrapolation_assessment,
+        simple_class_summary_5yr = simple_class_summary_5yr
         # validation_report removed - now using comprehensive summary system
     ))
 }

@@ -11,65 +11,80 @@
 #' @param mfs_output_dir Directory path to save the MFS image
 #' @param mss_output_dir Directory path to save the MSS image
 #' @param prefix Filename prefix for saved files
+#' @param dataset_name Optional dataset identifier used for cohort labeling
 #' @return Invisibly returns NULL after writing files
-create_simple_gep_plots <- function(mfs_results, mss_results, mfs_output_dir, mss_output_dir, prefix) {
-    build_simple_gep_plot <- function(results_df, title_text) {
-        rate_range <- range(c(results_df$expected_rate, results_df$actual_rate), na.rm = TRUE)
-        y_padding <- max(diff(rate_range) * 0.2, 0.03)
-        y_min <- max(0, rate_range[1] - y_padding)
-        y_max <- min(1, rate_range[2] + y_padding)
-
-        ggplot(results_df, aes(x = gep_class_simple)) +
-            geom_segment(
-                aes(
-                    x = gep_class_simple, xend = gep_class_simple,
-                    y = expected_rate, yend = actual_rate
-                ),
-                linetype = "dashed",
-                linewidth = 0.8,
-                alpha = 0.6,
-                color = "gray45"
-            ) +
-            geom_point(aes(y = expected_rate, color = "Expected"), size = 4.5) +
-            geom_point(aes(y = actual_rate, color = "Actual"), size = 4.5) +
-            labs(
-                title = title_text,
-                x = "GEP Class",
-                y = "Survival Rate",
-                color = "Rate Type"
-            ) +
-            scale_y_continuous(
-                limits = c(y_min, y_max),
-                expand = expansion(mult = c(0.01, 0.02))
-            ) +
-            scale_x_discrete(expand = expansion(mult = c(0.15, 0.15))) +
-            scale_color_manual(
-                values = {
-                    pal <- get_qualitative_palette(2)
-                    names(pal) <- c("Expected", "Actual")
-                    pal
-                },
-                breaks = c("Actual", "Expected")
-            ) +
-            guides(color = guide_legend(override.aes = list(size = 5))) +
-            theme_classic(base_size = 18) +
-            theme(
-                plot.background = element_rect(fill = "white", color = NA),
-                panel.background = element_rect(fill = "white", color = NA),
-                plot.title = element_text(size = 22, face = "bold", margin = margin(b = 10)),
-                axis.title = element_text(size = 19),
-                axis.text = element_text(size = 16),
-                legend.position = "top",
-                legend.direction = "horizontal",
-                legend.title = element_text(size = 17, face = "bold"),
-                legend.text = element_text(size = 15),
-                legend.margin = margin(),
-                legend.box.margin = margin(b = 2),
-                plot.margin = margin(8, 12, 8, 8),
-                axis.line = element_line(linewidth = 0.9),
-                axis.ticks = element_line(linewidth = 0.9)
-            )
+build_simple_gep_plot <- function(results_df, title_text, cohort_label = NULL) {
+    x_label_map <- if ("plot_x_label" %in% names(results_df)) {
+        stats::setNames(results_df$plot_x_label, results_df$gep_class_simple)
+    } else {
+        waiver()
     }
+
+    rate_range <- range(c(results_df$expected_rate, results_df$actual_rate), na.rm = TRUE)
+    y_padding <- max(diff(rate_range) * 0.2, 0.03)
+    y_min <- max(0, rate_range[1] - y_padding)
+    y_max <- min(1, rate_range[2] + y_padding)
+
+    ggplot(results_df, aes(x = gep_class_simple)) +
+        geom_segment(
+            aes(
+                x = gep_class_simple, xend = gep_class_simple,
+                y = expected_rate, yend = actual_rate
+            ),
+            linetype = "dashed",
+            linewidth = 0.8,
+            alpha = 0.6,
+            color = "gray45"
+        ) +
+        geom_point(aes(y = expected_rate, color = "Expected"), size = 4.5) +
+        geom_point(aes(y = actual_rate, color = "Actual"), size = 4.5) +
+        labs(
+            title = title_text,
+            subtitle = cohort_label,
+            x = "GEP Class",
+            y = "Survival Rate",
+            color = "Rate Type"
+        ) +
+        scale_y_continuous(
+            limits = c(y_min, y_max),
+            expand = expansion(mult = c(0.01, 0.02))
+        ) +
+        scale_x_discrete(
+            labels = x_label_map,
+            expand = expansion(mult = c(0.15, 0.15))
+        ) +
+        scale_color_manual(
+            values = {
+                pal <- get_qualitative_palette(2)
+                names(pal) <- c("Expected", "Actual")
+                pal
+            },
+            breaks = c("Actual", "Expected")
+        ) +
+        guides(color = guide_legend(override.aes = list(size = 5))) +
+        theme_classic(base_size = 18) +
+        theme(
+            plot.background = element_rect(fill = "white", color = NA),
+            panel.background = element_rect(fill = "white", color = NA),
+            plot.title = element_text(size = 22, face = "bold", margin = margin(b = 10)),
+            plot.subtitle = element_text(size = 17, margin = margin(b = 8)),
+            axis.title = element_text(size = 19),
+            axis.text = element_text(size = 16),
+            axis.text.x = element_text(lineheight = 0.95),
+            legend.position = "top",
+            legend.direction = "horizontal",
+            legend.title = element_text(size = 17, face = "bold"),
+            legend.text = element_text(size = 15),
+            legend.margin = margin(),
+            legend.box.margin = margin(b = 2),
+            plot.margin = margin(8, 12, 8, 8),
+            axis.line = element_line(linewidth = 0.9),
+            axis.ticks = element_line(linewidth = 0.9)
+        )
+}
+
+create_simple_gep_plots <- function(mfs_results, mss_results, mfs_output_dir, mss_output_dir, prefix, dataset_name = NULL) {
+    cohort_label <- format_objective4_gep_cohort_label(dataset_name)
 
     simple_plot_width <- 6.75
     simple_plot_height <- 6
@@ -79,7 +94,8 @@ create_simple_gep_plots <- function(mfs_results, mss_results, mfs_output_dir, ms
 
     mfs_plot <- build_simple_gep_plot(
         mfs_results,
-        "5-Year MFS: Expected vs Actual Rates"
+        "5-Year MFS: Expected vs Actual Rates",
+        cohort_label = cohort_label
     )
 
     ggsave(file.path(validation_mfs_dir, paste0(prefix, "simple_mfs_validation.png")),
@@ -89,7 +105,8 @@ create_simple_gep_plots <- function(mfs_results, mss_results, mfs_output_dir, ms
 
     mss_plot <- build_simple_gep_plot(
         mss_results,
-        "5-Year MSS: Expected vs Actual Rates"
+        "5-Year MSS: Expected vs Actual Rates",
+        cohort_label = cohort_label
     )
 
     ggsave(file.path(validation_mss_dir, paste0(prefix, "simple_mss_validation.png")),
@@ -239,6 +256,12 @@ simple_gep_validation <- function(data, output_dirs, prefix, dataset_name = NULL
             percent_difference = (difference / expected_rate) * 100
         )
 
+    mfs_results <- mfs_results %>%
+        dplyr::left_join(
+            build_objective4_simple_mfs_plot_annotations(mfs_data),
+            by = "gep_class_simple"
+        )
+
     mss_data <- data %>%
         filter(
             !is.na(.data[[expected_mss_col]]),
@@ -309,7 +332,14 @@ simple_gep_validation <- function(data, output_dirs, prefix, dataset_name = NULL
         "Overall_Summary" = overall_summary
     ), file.path(unified_dir, paste0(prefix, "simple_gep_validation.xlsx")))
 
-    create_simple_gep_plots(mfs_results, mss_results, mfs_validation_dir, mss_validation_dir, prefix)
+    create_simple_gep_plots(
+        mfs_results,
+        mss_results,
+        mfs_validation_dir,
+        mss_validation_dir,
+        prefix,
+        dataset_name = dataset_name
+    )
     create_simple_gep_report(mfs_results, mss_results, overall_summary, unified_dir, prefix)
 
     logger::log_info("Simple GEP validation completed")
