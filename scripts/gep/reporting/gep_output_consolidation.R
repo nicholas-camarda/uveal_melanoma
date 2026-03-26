@@ -873,6 +873,19 @@ create_unified_gep_validation_summary <- function(mfs_results, mss_results, outp
     ))
 }
 
+#' Resolve MSS Standard Validation Results Across Legacy Container Shapes
+#'
+#' @param mss_results MSS result container.
+#'
+#' @return Named list of standard validation results or `NULL`.
+resolve_mss_standard_validation_results <- function(mss_results) {
+    if (is.null(mss_results)) {
+        return(NULL)
+    }
+
+    mss_results$standard_validation %||% mss_results$standard_results
+}
+
 #' Create unified calibration summary across outcomes
 #'
 #' Combine MFS and MSS calibration outputs into a single cross-outcome
@@ -926,9 +939,10 @@ create_unified_calibration_summary <- function(mfs_results, mss_results) {
     }
 
     # Add MSS calibration data
-    if (!is.null(mss_results$standard_results)) {
-        for (tp_name in names(mss_results$standard_results)) {
-            tp_results <- mss_results$standard_results[[tp_name]]
+    mss_standard_results <- resolve_mss_standard_validation_results(mss_results)
+    if (!is.null(mss_standard_results)) {
+        for (tp_name in names(mss_standard_results)) {
+            tp_results <- mss_standard_results[[tp_name]]
             if (!is.null(tp_results$calibration)) {
                 cal <- tp_results$calibration
                 unified_cal <- rbind(unified_cal, data.frame(
@@ -1019,9 +1033,10 @@ create_unified_discrimination_summary <- function(mfs_results, mss_results) {
     }
 
     # Add MSS discrimination data
-    if (!is.null(mss_results$standard_results)) {
-        for (tp_name in names(mss_results$standard_results)) {
-            tp_results <- mss_results$standard_results[[tp_name]]
+    mss_standard_results <- resolve_mss_standard_validation_results(mss_results)
+    if (!is.null(mss_standard_results)) {
+        for (tp_name in names(mss_standard_results)) {
+            tp_results <- mss_standard_results[[tp_name]]
             if (!is.null(tp_results$discrimination)) {
                 disc <- tp_results$discrimination
                 unified_disc <- rbind(unified_disc, data.frame(

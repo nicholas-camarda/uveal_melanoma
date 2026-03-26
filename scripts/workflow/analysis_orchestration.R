@@ -139,6 +139,7 @@ collect_unexpected_failure_signals <- function(x, path = "root") {
 #'
 #' @return The list returned by `run_objective_0()`.
 run_objective_0_with_global_context <- function() {
+    initialize_runtime_dirs()
     with_log_context(
         cohort = NULL,
         objective = "objective_0_data_processing",
@@ -149,6 +150,17 @@ run_objective_0_with_global_context <- function() {
             run_objective_0()
         }
     )
+}
+
+#' Discover Analytic Cohort Dataset Names Available for Downstream Objectives
+#'
+#' Reads the processed-data directory and returns cohort dataset ids in the form
+#' expected by `run_my_analysis()`.
+#'
+#' @return Character vector of cohort dataset names without file extensions.
+discover_analysis_datasets <- function() {
+    datasets_to_analyze_temp <- tools::file_path_sans_ext(list_available_datasets())
+    grep("^uveal_melanoma_.*_cohort$", datasets_to_analyze_temp, value = TRUE)
 }
 
 #' Run analysis for a single dataset and selected objectives
@@ -169,6 +181,8 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
     results <- list()
     fatal_issues <- character()
     warning_issues <- character()
+
+    initialize_runtime_dirs()
 
     # Clean dataset name for display
     display_name <- tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name)))
@@ -226,9 +240,9 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
     # Set up cohort outputs using centralized function
     cohort_outputs <- setup_cohort_outputs(dataset_name)
 
-    prefix <<- cohort_outputs$prefix
-    cohort_base_dir <<- cohort_outputs$cohort_base_dir
-    output_dirs <<- cohort_outputs$output_dirs
+    prefix <- cohort_outputs$prefix
+    cohort_base_dir <- cohort_outputs$cohort_base_dir
+    output_dirs <- cohort_outputs$output_dirs
 
     # CRITICAL: Validate naming consistency to prevent bugs
     if (!validate_naming_consistency(dataset_name, prefix, basename(cohort_base_dir))) {
@@ -527,14 +541,9 @@ merge_baseline_tables <- function() {
 #' @export
 main_execution <- function() {
     main_start_time <- Sys.time()
+    initialize_runtime_dirs()
     set_log_context(replace = TRUE)
     log_phase("MAIN EXECUTION PHASE")
-
-    # Define datasets to analyze
-    # this should be generated from the list_available_datasets function and named appropriately so that run_my_analysis can be called with the correct dataset name
-    datasets_to_analyze_temp <- tools::file_path_sans_ext(list_available_datasets())
-    # Keep only true cohort datasets (already filtered by list_available_datasets, but double-guard here)
-    datasets_to_analyze <- grep("^uveal_melanoma_.*_cohort$", datasets_to_analyze_temp, value = TRUE)
 
     fatal_issues <- character()
     warning_issues <- character()
@@ -542,7 +551,6 @@ main_execution <- function() {
     # Store data for merging at the end
     cohort_data <- list()
 
-    logger::log_info(sprintf("Found %d datasets to analyze", length(datasets_to_analyze)))
     logger::log_info("Starting global Objective 0 preflight")
 
     preflight_result <- tryCatch(
@@ -570,6 +578,9 @@ main_execution <- function() {
     if (isTRUE(preflight_result$success)) {
         logger::log_info("Objective 0 preflight completed successfully")
     }
+
+    datasets_to_analyze <- discover_analysis_datasets()
+    logger::log_info(sprintf("Found %d datasets to analyze", length(datasets_to_analyze)))
 
     if (length(fatal_issues) > 0) {
         logger::log_error(">>> ANALYSES COMPLETED WITH ERRORS. Objective 0 preflight failed.")

@@ -183,7 +183,7 @@ test_that("Objective 2 writes adjusted outputs in each side-effect subfolder", {
     )
     expect_match(
         ordinal_html,
-        "Plaque</td>\\s*<td headers=\"estimate\" class=\"gt_row gt_center\">[0-9.]+</td>",
+        "PBT</td>\\s*<td headers=\"estimate\" class=\"gt_row gt_center\">[0-9.]+</td>",
         perl = TRUE
     )
 

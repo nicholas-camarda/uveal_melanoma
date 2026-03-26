@@ -64,9 +64,9 @@ If you only need the shortest route:
 | `*_cox_coxph.html` | Cox regression models | Adjusted treatment effects for survival |
 | `*_logistic_glm.html` | Logistic regression | Adjusted odds ratios for binary outcomes |
 | `*_linear_lm.html` | Linear regression | Mean differences for continuous outcomes |
-| `*_survival_curve.png` | Kaplan-Meier plots | Visual survival comparison |
-| `*_rmst_difference.png` | RMST plots | Alternative to Cox when PH violated |
-| `*_forest_plot.png` | Subgroup analysis | Treatment effect heterogeneity |
+| `*_km.png` | Kaplan-Meier plots | Visual survival comparison |
+| `*_rmst_pvalue_progression.png` | RMST p-value progression plots | Alternative time-horizon view when PH is weak or RMST is the focus |
+| `*_subgroup_forest_plot.png` | Subgroup analysis | Treatment effect heterogeneity |
 
 ---
 
@@ -295,7 +295,7 @@ After adjustment, GKSRS is associated with higher odds of a better Snellen line-
 
 ### Kaplan-Meier Plots
 
-**File:** `*_survival_curve.png`
+**File:** `*_km.png`
 
 **Key Components:**
 
@@ -370,7 +370,7 @@ The 5-year overall survival was 75% for PBT and 82% for GKSRS (log-rank p=0.12).
 
 ### RMST Difference Plots
 
-**File:** `*_rmst_difference.png`
+**File:** `*_rmst_pvalue_progression.png`
 
 **Key Components:**
 
@@ -420,7 +420,7 @@ Within the first 5 years, GKSRS patients survived an average of 4.6 years compar
 
 ### Structure
 
-**File:** `*_forest_plot.png`
+**File:** `*_subgroup_forest_plot.png`
 
 **Layout:**
 ```

@@ -115,3 +115,30 @@ test_that("effect-summary audit flags Cox sample-size and missing-adjustment iss
     expect_true("adjusted_model_formula_missing_expected_confounders" %in% findings$issue_type)
     expect_true("adjusted_matches_unadjusted_without_covariates" %in% findings$issue_type)
 })
+
+test_that("create_effect_summary_rows expands zero-length metadata safely", {
+    effect_summary <- create_effect_summary_rows(
+        dataset_name = "unit_test_dataset",
+        analysis_label = "Safe metadata recycling",
+        model_label = "Unadjusted",
+        term = c("term_a", "term_b"),
+        model_formula = character(),
+        covariates_used = character(),
+        effect_measure = "HR",
+        estimate = c(1.1, 1.2),
+        ci_lower = c(0.9, 1.0),
+        ci_upper = c(1.4, 1.5),
+        p_value = c(0.2, 0.3),
+        n_patients = c(10, 12),
+        n_events = c(3, 4),
+        n_outcome_non_missing = c(10, 12),
+        data_source = character(),
+        model_status = character()
+    )
+
+    expect_equal(nrow(effect_summary), 2)
+    expect_true(all(is.na(effect_summary$model_formula)))
+    expect_true(all(is.na(effect_summary$covariates_used)))
+    expect_true(all(is.na(effect_summary$data_source)))
+    expect_true(all(is.na(effect_summary$model_status)))
+})

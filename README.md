@@ -21,10 +21,12 @@ Use the documentation set by purpose rather than reading every file linearly.
 
 - R 4.4 or newer
 - Access to the project input spreadsheet referenced in `scripts/utils/config_constants.R`
+- Installed packages from `scripts/bootstrap_packages.R`
 
 ### Run the pipeline
 
 ```r
+source("scripts/bootstrap_packages.R") # one-time bootstrap on a new machine
 source("scripts/load_all.R")
 
 # All cohorts, all objectives
@@ -107,6 +109,22 @@ Objective 4 has a deliberate reading path:
 2. Use [docs/STATISTICAL_METHODS.md](docs/STATISTICAL_METHODS.md#gep-validation-metrics) for the formal validation framework.
 3. Use [docs/INTERPRETATION_GUIDE.md](docs/INTERPRETATION_GUIDE.md#understanding-gep-analysis) for workbook-first reading guidance.
 4. Use [docs/TECHNICAL.md](docs/TECHNICAL.md#objective-4-gep-predictive-accuracy) for implementation and artifact contracts.
+
+## Publish Workflow
+
+Publishing is a manual step. Runtime artifacts stay in `~/ProjectsRuntime/uveal_melanoma/...`; synced exports only receive selected final deliverables under `<EXPORT_ROOT>/Analysis/<YYYY-MM-DD>/`.
+
+```r
+source("scripts/load_all.R")
+
+# Review the candidate snapshot first
+publish_outputs(dry_run = TRUE)
+
+# Copy the approved deliverables into the dated export snapshot
+publish_outputs(dry_run = FALSE)
+```
+
+The publish step copies only registry-approved deliverables. It excludes `.rds`, diagnostics workbooks, caches, logs, test output, and ad hoc intermediate files by design.
 
 ## Configuration
 

@@ -350,7 +350,7 @@ test_that("factor labels appear before corresponding coefficients in diagnostics
 
     raw_output <- diagnostics$raw_model_output
     treatment_factor_idx <- which(raw_output$variable == "treatment_group" & raw_output$row_type == "Factor Label")
-    treatment_coeff_idx <- which(grepl("^treatment_group", raw_output$variable) & raw_output$row_type == "Coefficient")
+    treatment_coeff_idx <- which(raw_output$variable_base == "treatment_group" & raw_output$row_type == "Coefficient")
 
     if (length(treatment_factor_idx) == 0 || length(treatment_coeff_idx) == 0) {
         skip("No treatment factor rows available for ordering check in this diagnostic output.")

@@ -20,6 +20,13 @@ enforce_unordered_factors <- function(data, verbose = FALSE) {
         logger::log_info("Enforcing unordered factors for modeling")
     }
 
+    if (!is.data.frame(data) || ncol(data) == 0) {
+        if (verbose) {
+            logger::log_info("✓ No columns available - skipping factor normalization")
+        }
+        return(data)
+    }
+
     factor_vars <- names(data)[sapply(data, is.factor)]
     converted_count <- 0
 
@@ -51,6 +58,61 @@ enforce_unordered_factors <- function(data, verbose = FALSE) {
     }
 
     return(data)
+}
+
+#' Normalize Treatment Group Labels to Canonical Values
+#'
+#' Preserves the existing level semantics while remapping legacy aliases (for
+#' example `Plaque`) onto the project-standard treatment labels used in models,
+#' plots, and tables.
+#'
+#' @param values Vector of treatment labels.
+#'
+#' @return Vector with legacy aliases normalized to canonical labels.
+normalize_treatment_group_values <- function(values) {
+    normalized_values <- as.character(values)
+    alias_map <- c(
+        "Plaque" = "PBT",
+        "Plaque Brachytherapy" = "PBT"
+    )
+
+    alias_hits <- normalized_values %in% names(alias_map)
+    normalized_values[alias_hits] <- alias_map[normalized_values[alias_hits]]
+    normalized_values
+}
+
+#' Normalize Treatment Group Columns Within a Data Frame
+#'
+#' Applies canonical treatment-group label normalization to the requested
+#' columns when they are present, preserving factor order when the input is a
+#' factor.
+#'
+#' @param data Data frame to normalize.
+#' @param columns Character vector of candidate treatment columns.
+#'
+#' @return Data frame with normalized treatment labels.
+normalize_treatment_group_data <- function(data, columns = "treatment_group") {
+    if (!is.data.frame(data) || length(columns) == 0) {
+        return(data)
+    }
+
+    for (column_name in columns[columns %in% names(data)]) {
+        original_values <- data[[column_name]]
+        normalized_values <- normalize_treatment_group_values(original_values)
+
+        if (is.factor(original_values)) {
+            normalized_levels <- unique(normalize_treatment_group_values(levels(original_values)))
+            data[[column_name]] <- factor(
+                normalized_values,
+                levels = normalized_levels,
+                ordered = is.ordered(original_values)
+            )
+        } else {
+            data[[column_name]] <- normalized_values
+        }
+    }
+
+    data
 }
 
 #' Get Stable Factor Levels Without Reordering Existing Factors

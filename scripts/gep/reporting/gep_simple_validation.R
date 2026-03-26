@@ -199,27 +199,22 @@ simple_gep_validation <- function(data, output_dirs, prefix, dataset_name = NULL
         if (!dir.exists(d)) dir.create(d, recursive = TRUE, showWarnings = FALSE)
     }
 
-    analysis_data <- data %>%
-        filter(
-            !is.na(biopsy1_gep_mfs),
-            !is.na(biopsy1_gep_mss),
-            biopsy1_gep_mfs >= 0 & biopsy1_gep_mfs <= 1,
-            biopsy1_gep_mss >= 0 & biopsy1_gep_mss <= 1
-        )
-    display_analysis_data <- restore_gep_display_variables(analysis_data, dataset_name = dataset_name)
-    logger::log_info(sprintf("Analysis dataset: %d patients with valid GEP predictions", nrow(analysis_data)))
-
-    expected_mfs_col <- if ("expected_mfs_5yr" %in% names(analysis_data)) "expected_mfs_5yr" else "biopsy1_gep_mfs"
-    expected_mss_col <- if ("expected_mss_5yr" %in% names(analysis_data)) "expected_mss_5yr" else "biopsy1_gep_mss"
-    mfs_event_col <- if ("mfs_event_5yr" %in% names(analysis_data)) "mfs_event_5yr" else NULL
-    mss_event_col <- if ("mss_event_5yr" %in% names(analysis_data)) "mss_event_5yr" else NULL
+    expected_mfs_col <- if ("expected_mfs_5yr" %in% names(data)) "expected_mfs_5yr" else "biopsy1_gep_mfs"
+    expected_mss_col <- if ("expected_mss_5yr" %in% names(data)) "expected_mss_5yr" else "biopsy1_gep_mss"
+    mfs_event_col <- if ("mfs_event_5yr" %in% names(data)) "mfs_event_5yr" else NULL
+    mss_event_col <- if ("mss_event_5yr" %in% names(data)) "mss_event_5yr" else NULL
     mss_time_col <- dplyr::case_when(
-        "tt_death_months" %in% names(analysis_data) ~ "tt_death_months",
-        "tt_death_years" %in% names(analysis_data) ~ "tt_death_years",
+        "tt_death_months" %in% names(data) ~ "tt_death_months",
+        "tt_death_years" %in% names(data) ~ "tt_death_years",
         TRUE ~ NA_character_
     )
 
-    mfs_data <- display_analysis_data %>%
+    mfs_data <- data %>%
+        filter(
+            !is.na(.data[[expected_mfs_col]]),
+            .data[[expected_mfs_col]] >= 0 & .data[[expected_mfs_col]] <= 1
+        ) %>%
+        restore_gep_display_variables(dataset_name = dataset_name) %>%
         filter(
             if ("mfs_analysis_eligible" %in% names(.)) mfs_analysis_eligible else !is.na(tt_mets_months) & !is.na(mets_event),
             !is.na(.data[[expected_mfs_col]]),
@@ -244,7 +239,12 @@ simple_gep_validation <- function(data, output_dirs, prefix, dataset_name = NULL
             percent_difference = (difference / expected_rate) * 100
         )
 
-    mss_data <- display_analysis_data %>%
+    mss_data <- data %>%
+        filter(
+            !is.na(.data[[expected_mss_col]]),
+            .data[[expected_mss_col]] >= 0 & .data[[expected_mss_col]] <= 1
+        ) %>%
+        restore_gep_display_variables(dataset_name = dataset_name) %>%
         filter(
             if ("mss_analysis_eligible" %in% names(.)) mss_analysis_eligible else !is.na(melanoma_death_event) & !is.na(.data[[mss_time_col]]),
             !is.na(.data[[expected_mss_col]]),
@@ -274,6 +274,12 @@ simple_gep_validation <- function(data, output_dirs, prefix, dataset_name = NULL
             difference = actual_rate - expected_rate,
             percent_difference = (difference / expected_rate) * 100
         )
+
+    logger::log_info(sprintf(
+        "Analysis dataset: %d patients with valid MFS predictions; %d patients with valid MSS predictions",
+        nrow(mfs_data),
+        nrow(mss_data)
+    ))
 
     logger::log_info("Creating simple validation summary")
     overall_summary <- data.frame(

@@ -69,15 +69,19 @@ test_that("assert_required_input_paths fails fast for missing raw inputs", {
 test_that("get_export_snapshot_dir constructs dated snapshot path", {
     tmp_root <- tempfile("runtime-export-")
     export_root <- file.path(tmp_root, "export")
+    export_analysis_root <- file.path(export_root, "Analysis")
 
+    old_export_root <- EXPORT_ROOT
     old_export_analysis <- EXPORT_ANALYSIS_DIR
 
     on.exit({
+        assign("EXPORT_ROOT", old_export_root, envir = .GlobalEnv)
         assign("EXPORT_ANALYSIS_DIR", old_export_analysis, envir = .GlobalEnv)
         unlink(tmp_root, recursive = TRUE, force = TRUE)
     }, add = TRUE)
 
-    assign("EXPORT_ANALYSIS_DIR", file.path(export_root, "Analysis"), envir = .GlobalEnv)
+    assign("EXPORT_ROOT", export_root, envir = .GlobalEnv)
+    assign("EXPORT_ANALYSIS_DIR", export_analysis_root, envir = .GlobalEnv)
 
     snapshot_dir <- get_export_snapshot_dir("2026-03-25")
     expect_equal(
@@ -86,25 +90,19 @@ test_that("get_export_snapshot_dir constructs dated snapshot path", {
     )
 })
 
-test_that("is_publishable_artifact enforces extension and directory rules", {
-    tmp_root <- tempfile("runtime-publishable-")
-    dir.create(tmp_root, recursive = TRUE, showWarnings = FALSE)
+test_that("resolve_config_path rejects relative runtime or export overrides", {
+    expect_error(
+        resolve_config_path("relative/runtime", "/tmp/runtime-default"),
+        regexp = "must be absolute"
+    )
+})
 
-    allowed_file <- file.path(tmp_root, "summary.xlsx")
-    blocked_ext_file <- file.path(tmp_root, "model.rds")
-    blocked_dir <- file.path(tmp_root, "logs")
-    blocked_dir_file <- file.path(blocked_dir, "log.txt")
-
-    dir.create(blocked_dir, recursive = TRUE, showWarnings = FALSE)
-    writeLines("ok", allowed_file)
-    writeLines("model", blocked_ext_file)
-    writeLines("log", blocked_dir_file)
-
-    on.exit(unlink(tmp_root, recursive = TRUE, force = TRUE), add = TRUE)
-
-    expect_true(is_publishable_artifact(allowed_file))
-    expect_false(is_publishable_artifact(blocked_ext_file))
-    expect_false(is_publishable_artifact(blocked_dir_file))
+test_that("artifact registry allowlists only explicit publishable outputs", {
+    expect_true(is_publishable_relative_artifact("01_Efficacy/summary.xlsx", "cohort"))
+    expect_true(is_publishable_relative_artifact("merged_tables/final_table.csv", "merged_tables"))
+    expect_false(is_publishable_relative_artifact("01_Efficacy/model.rds", "cohort"))
+    expect_false(is_publishable_relative_artifact("01_Efficacy/summary_diagnostics.xlsx", "cohort"))
+    expect_false(is_publishable_relative_artifact("cache/intermediate.csv", "cohort"))
 })
 
 test_that("publish_outputs dry run reports publishable outputs and excludes runtime artifacts", {
@@ -112,37 +110,42 @@ test_that("publish_outputs dry run reports publishable outputs and excludes runt
     runtime_root <- file.path(tmp_root, "runtime")
     output_root <- file.path(runtime_root, "Analysis")
     export_root <- file.path(tmp_root, "export")
+    export_analysis_root <- file.path(export_root, "Analysis")
 
-    dir.create(file.path(output_root, "uveal_full"), recursive = TRUE, showWarnings = FALSE)
+    dir.create(file.path(output_root, "uveal_full", "01_Efficacy"), recursive = TRUE, showWarnings = FALSE)
     dir.create(file.path(output_root, "uveal_full", "cache"), recursive = TRUE, showWarnings = FALSE)
-    dir.create(file.path(output_root, "merged_tables"), recursive = TRUE, showWarnings = FALSE)
 
-    writeLines("report", file.path(output_root, "uveal_full", "summary.xlsx"))
-    writeLines("model", file.path(output_root, "uveal_full", "model.rds"))
+    writeLines("report", file.path(output_root, "uveal_full", "01_Efficacy", "summary.xlsx"))
+    writeLines("model", file.path(output_root, "uveal_full", "01_Efficacy", "model.rds"))
+    writeLines("diagnostics", file.path(output_root, "uveal_full", "01_Efficacy", "summary_diagnostics.xlsx"))
     writeLines("cache", file.path(output_root, "uveal_full", "cache", "cache.csv"))
-    writeLines("merged", file.path(output_root, "merged_tables", "merged_baseline.csv"))
 
     old_output <- OUTPUT_DIR
     old_merged <- MERGED_TABLES_DIR
+    old_export_root <- EXPORT_ROOT
     old_export_analysis <- EXPORT_ANALYSIS_DIR
 
     on.exit({
         assign("OUTPUT_DIR", old_output, envir = .GlobalEnv)
         assign("MERGED_TABLES_DIR", old_merged, envir = .GlobalEnv)
+        assign("EXPORT_ROOT", old_export_root, envir = .GlobalEnv)
         assign("EXPORT_ANALYSIS_DIR", old_export_analysis, envir = .GlobalEnv)
         unlink(tmp_root, recursive = TRUE, force = TRUE)
     }, add = TRUE)
 
     assign("OUTPUT_DIR", output_root, envir = .GlobalEnv)
     assign("MERGED_TABLES_DIR", file.path(output_root, "merged_tables"), envir = .GlobalEnv)
-    assign("EXPORT_ANALYSIS_DIR", file.path(export_root, "Analysis"), envir = .GlobalEnv)
+    assign("EXPORT_ROOT", export_root, envir = .GlobalEnv)
+    assign("EXPORT_ANALYSIS_DIR", export_analysis_root, envir = .GlobalEnv)
 
     result <- publish_outputs(snapshot_id = "2026-03-25-unit", dry_run = TRUE)
 
     expect_true(result$dry_run)
-    expect_equal(result$summary$would_copy, 2)
+    expect_equal(result$summary$would_copy, 1)
     expect_equal(result$summary$copied, 0)
     expect_true(any(result$manifest$status == "skipped_not_publishable"))
+    expect_true(any(result$manifest$status == "optional_root_absent"))
+    expect_equal(result$summary$missing, 0)
     expect_false(dir.exists(result$snapshot_dir))
 })
 
@@ -151,28 +154,35 @@ test_that("publish_outputs creates a new snapshot and rejects existing snapshot 
     runtime_root <- file.path(tmp_root, "runtime")
     output_root <- file.path(runtime_root, "Analysis")
     export_root <- file.path(tmp_root, "export")
+    export_analysis_root <- file.path(export_root, "Analysis")
 
-    dir.create(file.path(output_root, "uveal_full"), recursive = TRUE, showWarnings = FALSE)
-    writeLines("report", file.path(output_root, "uveal_full", "summary.xlsx"))
+    dir.create(file.path(output_root, "uveal_full", "01_Efficacy"), recursive = TRUE, showWarnings = FALSE)
+    dir.create(file.path(output_root, "merged_tables"), recursive = TRUE, showWarnings = FALSE)
+    writeLines("report", file.path(output_root, "uveal_full", "01_Efficacy", "summary.xlsx"))
+    writeLines("merged", file.path(output_root, "merged_tables", "merged_baseline.csv"))
 
     old_output <- OUTPUT_DIR
     old_merged <- MERGED_TABLES_DIR
+    old_export_root <- EXPORT_ROOT
     old_export_analysis <- EXPORT_ANALYSIS_DIR
 
     on.exit({
         assign("OUTPUT_DIR", old_output, envir = .GlobalEnv)
         assign("MERGED_TABLES_DIR", old_merged, envir = .GlobalEnv)
+        assign("EXPORT_ROOT", old_export_root, envir = .GlobalEnv)
         assign("EXPORT_ANALYSIS_DIR", old_export_analysis, envir = .GlobalEnv)
         unlink(tmp_root, recursive = TRUE, force = TRUE)
     }, add = TRUE)
 
     assign("OUTPUT_DIR", output_root, envir = .GlobalEnv)
     assign("MERGED_TABLES_DIR", file.path(output_root, "merged_tables"), envir = .GlobalEnv)
-    assign("EXPORT_ANALYSIS_DIR", file.path(export_root, "Analysis"), envir = .GlobalEnv)
+    assign("EXPORT_ROOT", export_root, envir = .GlobalEnv)
+    assign("EXPORT_ANALYSIS_DIR", export_analysis_root, envir = .GlobalEnv)
 
     first_publish <- publish_outputs(snapshot_id = "2026-03-25-publish", dry_run = FALSE)
     expect_true(dir.exists(first_publish$snapshot_dir))
-    expect_true(file.exists(file.path(first_publish$snapshot_dir, "uveal_full", "summary.xlsx")))
+    expect_true(file.exists(file.path(first_publish$snapshot_dir, "uveal_full", "01_Efficacy", "summary.xlsx")))
+    expect_true(file.exists(file.path(first_publish$snapshot_dir, "merged_tables", "merged_baseline.csv")))
     expect_true(file.exists(file.path(first_publish$snapshot_dir, "publish_manifest.csv")))
 
     expect_error(

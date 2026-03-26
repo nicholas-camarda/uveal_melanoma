@@ -22,30 +22,21 @@ run_objective1_test <- function(data, output_tag = "objective1_test") {
         dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
     }
 
-    result <- tryCatch(
+    result <- testthat::expect_no_error(
         run_objective_1(
             data = data,
             dataset_name = "test_cohort",
             output_dirs = output_dirs,
             prefix = "test_",
             confounders = c("age_at_diagnosis", "sex")
-        ),
-        error = function(e) structure(list(error = e$message), class = "objective1_failure")
+        )
     )
-
     list(results = result, output_dirs = output_dirs, test_output_dir = test_output_dir)
-}
-
-skip_if_objective1_failed <- function(pipeline) {
-    if (inherits(pipeline$results, "objective1_failure")) {
-        skip(paste("Objective 1 synthetic run failed:", pipeline$results$error))
-    }
 }
 
 test_that("Objective 1 pipeline returns expected top-level analyses", {
     pipeline <- run_objective1_test(create_test_dataset())
     withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
-    skip_if_objective1_failed(pipeline)
 
     expect_true(all(c(
         "recurrence_rates",
@@ -64,7 +55,6 @@ test_that("Objective 1 pipeline returns expected top-level analyses", {
 test_that("Objective 1 survival effect summaries include canonical columns", {
     pipeline <- run_objective1_test(create_test_dataset(), output_tag = "objective1_effect_summary_test")
     withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
-    skip_if_objective1_failed(pipeline)
 
     os_summary <- readxl::read_xlsx(file.path(
         pipeline$output_dirs$obj1_os,
@@ -121,7 +111,6 @@ test_that("Objective 1 survival effect summaries separate modeled patients from 
 test_that("Objective 1 diagnostics keep factor labels grouped before coefficients", {
     pipeline <- run_objective1_test(create_test_dataset(), output_tag = "objective1_diagnostics_ordering")
     withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
-    skip_if_objective1_failed(pipeline)
 
     diagnostics_files <- list.files(
         path = pipeline$test_output_dir,
@@ -158,9 +147,11 @@ test_that("Objective 1 diagnostics keep factor labels grouped before coefficient
             }
 
             coeff_rows <- raw_output[(factor_index + 1):coeff_end, , drop = FALSE]
-            invalid_coeff <- coeff_rows$row_type != "Coefficient" |
-                !grepl(paste0("^", factor_name), coeff_rows$variable)
-            expect_false(any(invalid_coeff), info = basename(file_path))
+            valid_detail_rows <- coeff_rows$row_type %in% c("Coefficient", "Reference Level", "Group Summary")
+            expect_true(all(valid_detail_rows), info = basename(file_path))
+
+            same_factor_rows <- coeff_rows$variable_base == factor_name
+            expect_true(all(same_factor_rows), info = basename(file_path))
         }
     }
 })

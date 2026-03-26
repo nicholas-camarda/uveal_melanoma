@@ -3,11 +3,15 @@ if (!identical(Sys.getenv("OCULAR_TESTTHAT_BOOTSTRAPPED"), "true")) {
     dir.create(test_output_root, recursive = TRUE, showWarnings = FALSE)
 
     runtime_root <- file.path(test_output_root, "runtime")
-    export_root <- file.path(test_output_root, "export")
+    export_parent_dir <- file.path(test_output_root, "export_parent")
+    export_root <- file.path(export_parent_dir, basename(here::here()))
+    export_analysis_dir <- file.path(export_root, "Analysis")
     dir.create(file.path(export_root, "Original Files"), recursive = TRUE, showWarnings = FALSE)
+    dir.create(export_analysis_dir, recursive = TRUE, showWarnings = FALSE)
 
     Sys.setenv(OCULAR_RUNTIME_ROOT = runtime_root)
-    Sys.setenv(OCULAR_EXPORT_ROOT = export_root)
+    Sys.setenv(OCULAR_EXPORT_PARENT_DIR = export_parent_dir)
+    Sys.unsetenv("OCULAR_EXPORT_ROOT")
     Sys.setenv(DATA_DIR = export_root)
     Sys.setenv(PROCESSED_DATA_DIR = file.path(runtime_root, "Analytic Dataset"))
     Sys.setenv(OUTPUT_DIR = file.path(runtime_root, "Analysis"))
@@ -26,7 +30,9 @@ if (!identical(Sys.getenv("OCULAR_TESTTHAT_BOOTSTRAPPED"), "true")) {
     source(here::here("tests", "testthat", "test_helper_data.R"))
 
     assign("RUNTIME_ROOT", runtime_root, envir = .GlobalEnv)
+    assign("EXPORT_PARENT_DIR", export_parent_dir, envir = .GlobalEnv)
     assign("EXPORT_ROOT", export_root, envir = .GlobalEnv)
+    assign("EXPORT_ANALYSIS_DIR", export_analysis_dir, envir = .GlobalEnv)
     assign("TEST_OUTPUT_DIR", file.path(runtime_root, "test_output"), envir = .GlobalEnv)
     assign("DATA_DIR", export_root, envir = .GlobalEnv)
     assign("PROCESSED_DATA_DIR", file.path(runtime_root, "Analytic Dataset"), envir = .GlobalEnv)

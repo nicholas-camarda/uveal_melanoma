@@ -122,8 +122,11 @@ load_and_clean_data <- function(filename) {
     logger::log_info(sprintf("Found %d patients in full cohort", nrow(cleaned_data)))
     logger::log_info(sprintf("Found %d patients in restricted cohort", nrow(cleaned_data %>% filter(consort_group == "eligible_both"))))
     logger::log_info(sprintf("Found %d patients in GKSRS-only cohort", nrow(cleaned_data %>% filter(consort_group == "gksrs_only"))))
-    logger::log_info(sprintf("Found %d patients in other cohort", nrow(cleaned_data %>% filter(consort_group == "other"))))
-    print(cleaned_data %>% filter(consort_group == "other") %>% select(id, initial_tumor_diameter, initial_tumor_height, optic_nerve))
+    other_count <- nrow(cleaned_data %>% filter(consort_group == "other"))
+    logger::log_info(sprintf("Found %d patients in other cohort", other_count))
+    if (other_count > 0) {
+        logger::log_warn("Patients fell into the catch-all 'other' cohort. Review aggregate cohort assignment diagnostics if this count is unexpected.")
+    }
     message("\n")
     logger::log_info("NOTE: NOT splitting into cohorts yet!")
     message("\n")

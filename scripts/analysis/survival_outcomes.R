@@ -665,6 +665,7 @@ summarize_cox_hr <- function(model, dataset_name, analysis_label, model_label, g
 #' @param prefix File prefix for outputs
 #' @return List with KM/cox outputs and diagnostics
 analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var = "treatment_group", model_group_var = group_var, confounders = NULL, ylab = "Survival Probability", analysis_type = "post_treatment_only", dataset_name = NULL, legend_labels = NULL, output_dirs = NULL, prefix = NULL, risk_table_height = 0.18, risk_table_rel_heights = c(0.78, 0.22), risk_table_y_expand = c(0.18, 0.18), saved_plot_height = NULL) {
+    data <- normalize_treatment_group_data(data)
     plot_group_var <- group_var
     palette_group_var <- group_var
 
@@ -1106,7 +1107,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             name = paste0(ylab, " (%)")
         ) +
         ggplot2::labs(x = "Time (months)") +  # Explicitly set x-axis label with black color via theme
-        ggplot2::geom_hline(yintercept = 0.5, linetype = "solid", color = "black", size = 0.9)  # 50% reference line
+        ggplot2::geom_hline(yintercept = 0.5, linetype = "solid", color = "black", linewidth = 0.9)  # 50% reference line
     # Make risk table text larger and easier to read
     surv_plot$table <- surv_plot$table + theme_minimal() +
         ggplot2::theme(

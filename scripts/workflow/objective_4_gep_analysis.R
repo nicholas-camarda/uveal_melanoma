@@ -8,6 +8,8 @@
 #' @return List of analysis results
 run_objective_4 <- function(data, dataset_name, output_dirs, prefix, confounders = NULL) {
     step4_start_time <- Sys.time()
+    fatal_issues <- character()
+    warning_issues <- character()
     display_name <- tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name)))
     log_phase(paste("STEP 4: GEP PREDICTIVE ACCURACY VALIDATION", display_name, sep = " - "))
 
@@ -24,12 +26,13 @@ run_objective_4 <- function(data, dataset_name, output_dirs, prefix, confounders
     }, error = function(e) {
         logger::log_error(formatted(sprintf("MFS GEP validation failed: %s", e$message), indent = 2))
         logger::log_error(formatted("This will prevent complete GEP analysis completion", indent = 2))
-        # Return NULL to allow the function to continue
+        fatal_issues <<- append_issue(fatal_issues, sprintf("mfs_validation:%s", e$message))
         NULL
     })
     
     if (is.null(mfs_gep_results)) {
         logger::log_warn(formatted("MFS analysis failed - GEP analysis will be incomplete", indent = 1))
+        fatal_issues <- append_issue(fatal_issues, "mfs_validation:missing_results")
     } else {
         logger::log_info(formatted("MFS GEP validation completed", indent = 1))
     }
@@ -46,12 +49,13 @@ run_objective_4 <- function(data, dataset_name, output_dirs, prefix, confounders
     }, error = function(e) {
         logger::log_error(formatted(sprintf("MSS GEP validation failed: %s", e$message), indent = 2))
         logger::log_error(formatted("This will prevent complete GEP analysis completion", indent = 2))
-        # Return NULL to allow the function to continue
+        fatal_issues <<- append_issue(fatal_issues, sprintf("mss_validation:%s", e$message))
         NULL
     })
     
     if (is.null(mss_gep_results)) {
         logger::log_warn(formatted("MSS analysis failed - GEP analysis will be incomplete", indent = 1))
+        fatal_issues <- append_issue(fatal_issues, "mss_validation:missing_results")
     } else {
         logger::log_info(formatted("MSS GEP validation completed", indent = 1))
     }
@@ -74,13 +78,14 @@ run_objective_4 <- function(data, dataset_name, output_dirs, prefix, confounders
             )
         }, error = function(e) {
             logger::log_warn(formatted(sprintf("Exploratory no-GEP integration failed: %s", e$message), indent = 2))
+            warning_issues <<- append_issue(warning_issues, sprintf("exploratory_no_gep:%s", e$message))
             NULL
         })
     }
 
     # Unified summary and visuals (only once, with both results)
     gep_base_dir <- dirname(output_dirs$obj4_mfs)
-    tryCatch({
+    unified_summary_status <- tryCatch({
         create_unified_gep_validation_summary(
             mfs_results = mfs_gep_results,
             mss_results = mss_gep_results,
@@ -96,15 +101,28 @@ run_objective_4 <- function(data, dataset_name, output_dirs, prefix, confounders
             prefix = prefix
         )
         # Unified artifacts only; no post-hoc file moving
+        TRUE
     }, error = function(e) {
         logger::log_warn(sprintf("Unified summary creation/organization failed: %s", e$message))
+        fatal_issues <<- append_issue(fatal_issues, sprintf("unified_summary:%s", e$message))
+        FALSE
     })
 
     # Simple GEP validation
     logger::log_info(formatted("Executing simple_gep_validation: Simple GEP validation - Actual vs Expected rates", indent = 1))
     # Simple GEP outputs: PNGs to MFS/MSS, combined report/XLSX to unified_summary
-    simple_gep_results <- simple_gep_validation(data, output_dirs, prefix, dataset_name = dataset_name)
-    logger::log_info(formatted("Simple GEP validation completed", indent = 1))
+    simple_gep_results <- tryCatch({
+        simple_gep_validation(data, output_dirs, prefix, dataset_name = dataset_name)
+    }, error = function(e) {
+        logger::log_warn(formatted(sprintf("Simple GEP validation failed: %s", e$message), indent = 1))
+        fatal_issues <<- append_issue(fatal_issues, sprintf("simple_gep_validation:%s", e$message))
+        NULL
+    })
+    if (!is.null(simple_gep_results)) {
+        logger::log_info(formatted("Simple GEP validation completed", indent = 1))
+    }
+
+    run_state <- determine_run_state(unique(fatal_issues), unique(warning_issues))
 
     logger::log_info(sprintf(">>> COMPLETED %s (Duration: %.1f seconds)",
         "STEP 4: GEP PREDICTIVE ACCURACY VALIDATION",
@@ -115,6 +133,12 @@ run_objective_4 <- function(data, dataset_name, output_dirs, prefix, confounders
         mfs_gep_results = mfs_gep_results,
         mss_gep_results = mss_gep_results,
         simple_gep_results = simple_gep_results,
-        exploratory_no_gep_results = exploratory_no_gep_results
+        exploratory_no_gep_results = exploratory_no_gep_results,
+        unified_summary_completed = isTRUE(unified_summary_status),
+        fatal_issues = unique(fatal_issues),
+        warning_issues = unique(warning_issues),
+        run_state = run_state,
+        had_errors = identical(run_state, "failed"),
+        had_warnings = identical(run_state, "completed_with_warnings")
     ))
 }

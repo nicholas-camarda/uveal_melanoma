@@ -24,6 +24,28 @@ get_qualitative_palette <- function(n) {
     return(rep(base, length.out = n))
 }
 
+#' Fill Unknown Palette Levels Without Failing on Short Fallbacks
+#'
+#' @param out Named character vector containing known colors and `NA` for
+#'   unknown levels.
+#' @param mapping Named character vector of canonical colors already reserved.
+#'
+#' @return Named character vector with all `NA` entries replaced.
+fill_unknown_palette_levels <- function(out, mapping) {
+    if (!any(is.na(out))) {
+        return(out)
+    }
+
+    needed <- sum(is.na(out))
+    fill <- setdiff(get_qualitative_palette(max(length(out), needed)), unname(mapping))
+    if (length(fill) < needed) {
+        fill <- rep(get_qualitative_palette(max(needed, 1L)), length.out = needed)
+    }
+
+    out[is.na(out)] <- fill[seq_len(needed)]
+    out
+}
+
 #' Consistent colors for GEP classes
 #' Supports legacy (Class 1A/1B/2), binary (Class 1/2), and 4-class PRAME system
 #' @param levels Character vector of class levels (e.g., c("Class 1 PRAME Negative","Class 1 PRAME Positive", ...))
@@ -48,12 +70,7 @@ get_gep_class_palette <- function(levels) {
     )
     lv <- unique(as.character(levels))
     out <- mapping[lv]
-    # For any unknown levels, append from qualitative palette after the known ones
-    if (any(is.na(out))) {
-        needed <- sum(is.na(out))
-        fill <- setdiff(get_qualitative_palette(length(lv)), unname(mapping))
-        out[is.na(out)] <- head(fill, needed)
-    }
+    out <- fill_unknown_palette_levels(out, mapping)
     names(out) <- lv
     out
 }
@@ -69,11 +86,7 @@ get_prame_palette <- function(levels) {
     )
     lv <- unique(as.character(levels))
     out <- mapping[lv]
-    if (any(is.na(out))) {
-        needed <- sum(is.na(out))
-        fill <- setdiff(get_qualitative_palette(length(lv)), unname(mapping))
-        out[is.na(out)] <- head(fill, needed)
-    }
+    out <- fill_unknown_palette_levels(out, mapping)
     names(out) <- lv
     out
 }
@@ -84,16 +97,13 @@ get_prame_palette <- function(levels) {
 get_treatment_palette <- function(levels) {
     mapping <- c(
         "PBT" = "#0072B5FF", # blue
+        "Plaque" = "#0072B5FF", # legacy alias of PBT
         "GKSRS"  = "#BC3C29FF", # red
         "Other"  = "#E18727FF" # orange
     )
-    lv <- unique(as.character(levels))
+    lv <- unique(normalize_treatment_group_values(levels))
     out <- mapping[lv]
-    if (any(is.na(out))) {
-        needed <- sum(is.na(out))
-        fill <- setdiff(get_qualitative_palette(length(lv)), unname(mapping))
-        out[is.na(out)] <- head(fill, needed)
-    }
+    out <- fill_unknown_palette_levels(out, mapping)
     names(out) <- lv
     out
 }
@@ -109,11 +119,7 @@ get_recurrence_palette <- function(levels) {
     )
     lv <- unique(as.character(levels))
     out <- mapping[lv]
-    if (any(is.na(out))) {
-        needed <- sum(is.na(out))
-        fill <- setdiff(get_qualitative_palette(length(lv)), unname(mapping))
-        out[is.na(out)] <- head(fill, needed)
-    }
+    out <- fill_unknown_palette_levels(out, mapping)
     names(out) <- lv
     out
 }
@@ -123,7 +129,11 @@ get_recurrence_palette <- function(levels) {
 #' @param levels Character vector of factor levels in plotting order
 #' @return Character vector of colors in the same order as levels
 get_palette_by_variable <- function(variable_name, levels) {
-    lv <- unique(as.character(levels))
+    lv <- if (identical(variable_name, "treatment_group")) {
+        unique(normalize_treatment_group_values(levels))
+    } else {
+        unique(as.character(levels))
+    }
     pal <- switch(variable_name,
         "gep_class_simple" = get_gep_class_palette(lv),
         "biopsy1_gep" = get_gep_class_palette(lv),

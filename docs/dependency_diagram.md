@@ -92,7 +92,7 @@ flowchart LR
     end
 
     %% I/O anchors
-    RAW[(OneDrive/uveal_melanoma/Original Files/*.xlsx)]
+    RAW[(OneDrive/research projects/uveal_melanoma/Original Files/*.xlsx)]
     PDATA[(ProjectsRuntime/uveal_melanoma/Analytic Dataset/*.rds, other_map.rds)]
     OUT[(ProjectsRuntime/uveal_melanoma/Analysis/...)]
     LOGS[(ProjectsRuntime/uveal_melanoma/logs/run_log_*.txt)]

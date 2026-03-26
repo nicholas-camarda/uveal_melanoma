@@ -26,6 +26,7 @@ analyze_binary_outcome_rates <- function(
     dataset_name = NULL,
     output_dirs = NULL,
     prefix = NULL) {
+    data <- normalize_treatment_group_data(data)
     # Check that there are at least two groups to compare
     if (length(unique(data[[group_var]])) < 2) {
         warning(sprintf("Only one level of %s present; skipping logistic model.", group_var))

@@ -118,7 +118,7 @@ This three-cohort design addresses key clinical and methodological challenges:
 
 ### Dataset Identities and Construction
 
-The analytic datasets in `final_data/Analytic Dataset/` are not separate raw sources. They are three derived views of the same cleaned and fully processed master table, created once in Objective 0 and then reused by Objectives 1-4.
+The analytic datasets in `~/ProjectsRuntime/uveal_melanoma/Analytic Dataset/` are not separate raw sources. They are three derived views of the same cleaned and fully processed master table, created once in Objective 0 and then reused by Objectives 1-4.
 
 | Dataset file | Runtime dataset id | Output folder | What it means | How it is constructed | Why it exists |
 |--------------|--------------------|---------------|---------------|-----------------------|---------------|
@@ -132,7 +132,7 @@ These three files should be interpreted as intentionally overlapping analytic co
 - The **restricted cohort** is the clinically balanced subset of the full cohort.
 - The **GKSRS-only cohort** is the clinically excluded-from-PBT subset of the full cohort.
 
-The additional files in `final_data/Analytic Dataset/` support consistent downstream reporting:
+The additional files in `~/ProjectsRuntime/uveal_melanoma/Analytic Dataset/` support consistent downstream reporting:
 
 | Supporting file | What it contains | Why it is saved |
 |-----------------|------------------|-----------------|
@@ -245,7 +245,8 @@ Analysis outputs follow a **cohort → objective → sub-objective** structure:
 ```
 scripts/
 ├── main.R                          # Main execution entrypoint
-├── load_all.R                      # Dependency loader
+├── load_all.R                      # Source installed dependencies and project code
+├── bootstrap_packages.R            # Explicit dependency bootstrap/install step
 ├── analysis/                       # Statistical analysis functions
 │   ├── binary_outcomes.R
 │   ├── survival_analysis.R
@@ -320,7 +321,7 @@ scripts/
 ### Data Flow Summary
 ### Tool Refresh Outputs
 
-Documentation-oriented utilities under [scripts/tools](../scripts/tools) write their canonical artifacts to `final_data/Analytic Dataset/tools_output/`, which is the path behind `TOOLS_OUTPUT_DIR` in [scripts/utils/config_constants.R](../scripts/utils/config_constants.R).
+Documentation-oriented utilities under [scripts/tools](../scripts/tools) write their canonical runtime artifacts to `~/ProjectsRuntime/uveal_melanoma/tools_output/`, which is the path behind `TOOLS_OUTPUT_DIR` in [scripts/utils/config_constants.R](../scripts/utils/config_constants.R).
 
 The current refresh entry point is [scripts/tools/run_tool_refreshes.R](../scripts/tools/run_tool_refreshes.R). It orchestrates the documentation-focused tools, writes per-tool run summaries, and leaves behind a suite-level manifest so periodic refreshes can be audited without opening the workbooks themselves.
 

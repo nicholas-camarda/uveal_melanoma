@@ -29,6 +29,7 @@
 #'     confounders = c("age_at_diagnosis", "sex")
 #' )
 analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders) {
+    data <- normalize_treatment_group_data(data)
     # Use height_change variable that was already calculated in data_processing.R
     data_with_height_change <- enforce_unordered_factors(data)
 

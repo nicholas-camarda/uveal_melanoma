@@ -155,6 +155,12 @@ create_effect_summary_rows <- function(dataset_name,
 
     recycle_value <- function(value, mode = c("character", "numeric")) {
         mode <- match.arg(mode)
+        if (length(value) == 0) {
+            if (mode == "character") {
+                return(rep(NA_character_, n_rows))
+            }
+            return(rep(NA_real_, n_rows))
+        }
         if (length(value) == 1) {
             value <- rep(value, n_rows)
         }

@@ -61,7 +61,8 @@ perform_standard_mss_validation <- function(data, timepoint, bootstrap_iteration
     # Decision curve analysis at this timepoint
     decision_curve <- perform_decision_curve_analysis_mss(
         data = analysis_data,
-        timepoint = timepoint
+        timepoint = timepoint,
+        time_unit = "months"
     )
 
     return(list(
@@ -565,19 +566,24 @@ perform_discrimination_mss <- function(data, timepoint) {
 #' Computes net benefit across threshold probabilities using observed events by
 #' the specified timepoint (in years) and predicted risk from expected MSS.
 #'
-#' @param data Data frame with columns: time_to_event (years), event_occurred (0/1), and expected_mss_*yr
+#' @param data Data frame with columns: `time_to_event`, `event_occurred`
+#'   (0/1), and `expected_mss_*yr`.
 #' @param timepoint numeric Time in years for evaluation (e.g., 5)
+#' @param time_unit Character scalar giving the units stored in
+#'   `data$time_to_event`. Supported values are `"months"` and `"years"`.
 #' @return List with DCA summary and curve data, similar to MFS
-perform_decision_curve_analysis_mss <- function(data, timepoint) {
+perform_decision_curve_analysis_mss <- function(data, timepoint, time_unit = c("months", "years")) {
     logger::log_info(formatted(sprintf("Performing decision curve analysis for %d-year MSS", timepoint), indent = 2))
+    time_unit <- match.arg(time_unit)
 
     expected_var <- paste0("expected_mss_", timepoint, "yr")
+    evaluation_horizon <- if (identical(time_unit, "months")) timepoint * 12 else timepoint
 
     dca_data <- data %>%
         dplyr::filter(!is.na(.data[[expected_var]]), !is.na(time_to_event), !is.na(event_occurred)) %>%
         dplyr::mutate(
             predicted_risk = 1 - .data[[expected_var]],
-            outcome = as.integer(event_occurred == 1 & time_to_event <= timepoint)
+            outcome = as.integer(event_occurred == 1 & time_to_event <= evaluation_horizon)
         )
 
     if (nrow(dca_data) < GEP_MIN_SAMPLE_SIZE) {

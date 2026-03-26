@@ -28,26 +28,30 @@ options(contrasts = c("contr.treatment", "contr.poly"))
 # CRITICAL: Enforce three-location architecture with one canonical slug:
 # - Code root (source controlled): PROJECT_ROOT / CODE_ROOT
 # - Runtime root (local non-synced): RUNTIME_ROOT
-# - Export root (synced): EXPORT_ROOT
+# - Export parent (synced): EXPORT_PARENT_DIR
+# - Project export root (synced): EXPORT_ROOT = EXPORT_PARENT_DIR / PROJECT_SLUG
+# - Published analysis root (synced): EXPORT_ANALYSIS_DIR = EXPORT_ROOT / Analysis
 PROJECT_ROOT <- here::here()
 PROJECT_SLUG <- basename(PROJECT_ROOT)
 CODE_ROOT <- PROJECT_ROOT
 DEFAULT_RUNTIME_PARENT_DIR <- "~/ProjectsRuntime"
 DEFAULT_RUNTIME_ROOT <- file.path(DEFAULT_RUNTIME_PARENT_DIR, PROJECT_SLUG)
-DEFAULT_EXPORT_ROOT <- "/Users/ncamarda/Library/CloudStorage/OneDrive-Personal/residency/ophthalmology/research projects/uveal_melanoma"
+DEFAULT_EXPORT_PARENT_DIR <- "/Users/ncamarda/Library/CloudStorage/OneDrive-Personal/residency/ophthalmology/research projects"
+DEFAULT_EXPORT_ROOT <- file.path(DEFAULT_EXPORT_PARENT_DIR, PROJECT_SLUG)
 
 #' Resolve a configured filesystem path with fallback behavior
 #'
 #' Returns a normalized absolute path from a configured value. Empty or missing
-#' values fall back to `default_path`. Relative paths are resolved against
-#' `PROJECT_ROOT`.
+#' values fall back to `default_path`. Relative paths are rejected so runtime
+#' and export roots cannot silently collapse back into the repository tree.
 #'
 #' @param path_value Character scalar configured path (often from env vars).
 #' @param default_path Character scalar default path when `path_value` is empty.
+#' @param allow_relative Logical indicating whether relative paths are allowed.
 #' @return Character scalar absolute path.
 #' @examples
 #' resolve_config_path("", "~/ProjectsRuntime")
-resolve_config_path <- function(path_value, default_path) {
+resolve_config_path <- function(path_value, default_path, allow_relative = FALSE) {
     candidate_path <- path_value
     if (is.null(candidate_path) || !nzchar(trimws(candidate_path))) {
         candidate_path <- default_path
@@ -60,10 +64,63 @@ resolve_config_path <- function(path_value, default_path) {
     expanded_path <- path.expand(trimws(candidate_path))
     is_absolute <- grepl("^(/|[A-Za-z]:[/\\\\])", expanded_path)
     if (!is_absolute) {
+        if (!isTRUE(allow_relative)) {
+            stop(
+                sprintf(
+                    "Configured path '%s' must be absolute. Relative runtime/export overrides are not allowed.",
+                    candidate_path
+                ),
+                call. = FALSE
+            )
+        }
         expanded_path <- file.path(PROJECT_ROOT, expanded_path)
     }
 
     normalizePath(expanded_path, winslash = "/", mustWork = FALSE)
+}
+
+#' Resolve the canonical synced export root for this project
+#'
+#' Prefers `OCULAR_EXPORT_PARENT_DIR`, which should point to the synced parent
+#' folder. `OCULAR_EXPORT_ROOT` is retained as a one-release compatibility shim
+#' for callers that still pass the project-specific export directory directly.
+#'
+#' @return A list containing `export_parent_dir`, `export_root`, and
+#'   `used_legacy_root`.
+resolve_export_root_config <- function() {
+    configured_export_parent_dir <- Sys.getenv("OCULAR_EXPORT_PARENT_DIR", unset = "")
+    configured_export_root <- Sys.getenv("OCULAR_EXPORT_ROOT", unset = "")
+
+    if (nzchar(trimws(configured_export_parent_dir))) {
+        export_parent_dir <- resolve_config_path(
+            configured_export_parent_dir,
+            DEFAULT_EXPORT_PARENT_DIR
+        )
+        return(list(
+            export_parent_dir = export_parent_dir,
+            export_root = file.path(export_parent_dir, PROJECT_SLUG),
+            used_legacy_root = FALSE
+        ))
+    }
+
+    if (nzchar(trimws(configured_export_root))) {
+        warning(
+            "OCULAR_EXPORT_ROOT is deprecated; prefer OCULAR_EXPORT_PARENT_DIR pointing to the synced parent directory.",
+            call. = FALSE
+        )
+        export_root <- resolve_config_path(configured_export_root, DEFAULT_EXPORT_ROOT)
+        return(list(
+            export_parent_dir = dirname(export_root),
+            export_root = export_root,
+            used_legacy_root = TRUE
+        ))
+    }
+
+    list(
+        export_parent_dir = resolve_config_path("", DEFAULT_EXPORT_PARENT_DIR),
+        export_root = DEFAULT_EXPORT_ROOT,
+        used_legacy_root = FALSE
+    )
 }
 
 RUNTIME_PARENT_DIR <- resolve_config_path(
@@ -75,8 +132,9 @@ RUNTIME_ROOT <- resolve_config_path(
     DEFAULT_RUNTIME_ROOT
 )
 
-configured_export_root <- Sys.getenv("OCULAR_EXPORT_ROOT", unset = "")
-EXPORT_ROOT <- resolve_config_path(configured_export_root, DEFAULT_EXPORT_ROOT)
+export_root_config <- resolve_export_root_config()
+EXPORT_PARENT_DIR <- export_root_config$export_parent_dir
+EXPORT_ROOT <- normalizePath(export_root_config$export_root, winslash = "/", mustWork = FALSE)
 EXPORT_ANALYSIS_DIR <- file.path(EXPORT_ROOT, "Analysis")
 
 # Export-backed raw input paths (authoritative source files)
@@ -239,6 +297,44 @@ is_publishable_artifact <- function(path) {
     }
 
     TRUE
+}
+
+PUBLISH_ARTIFACT_REGISTRY <- list(
+    cohort = c(
+        "^00_General/.+\\.(xlsx|html|txt|csv|tsv)$",
+        "^01_Efficacy/.+\\.(xlsx|html|png|pdf|txt|csv|tsv)$",
+        "^02_Safety/.+\\.(xlsx|html|png|pdf|txt|csv|tsv)$",
+        "^03_Repeat_Radiation/.+\\.(xlsx|html|png|pdf|txt|csv|tsv)$",
+        "^04_GEP_Validation/.+\\.(xlsx|html|png|pdf|txt|csv|tsv)$"
+    ),
+    merged_tables = c(
+        "^.+\\.(xlsx|html|csv|tsv|txt)$"
+    ),
+    excluded = c(
+        "(^|/)(logs|cache|caches|tools_output|test_output|tmp|temp)(/|$)",
+        "(^|/).*(?:_diagnostics\\.xlsx|_SKIPPED\\.html|_NO_CONTENT_DIAGNOSTIC\\.html|publish_manifest\\.csv)$"
+    )
+)
+
+#' Determine whether a relative publish path is approved by the artifact registry
+#'
+#' @param relative_path Character scalar path relative to a publish root.
+#' @param root_kind Character scalar publish root type.
+#'
+#' @return Logical scalar indicating whether the artifact is allowed.
+is_publishable_relative_artifact <- function(relative_path, root_kind = c("cohort", "merged_tables")) {
+    root_kind <- match.arg(root_kind)
+    relative_path <- gsub("^\\./", "", relative_path)
+
+    if (is.null(relative_path) || is.na(relative_path) || !nzchar(relative_path)) {
+        return(FALSE)
+    }
+
+    if (any(vapply(PUBLISH_ARTIFACT_REGISTRY$excluded, grepl, logical(1), x = relative_path, perl = TRUE))) {
+        return(FALSE)
+    }
+
+    any(vapply(PUBLISH_ARTIFACT_REGISTRY[[root_kind]], grepl, logical(1), x = relative_path, perl = TRUE))
 }
 
 # =============================================================================

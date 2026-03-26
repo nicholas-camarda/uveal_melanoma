@@ -13,6 +13,10 @@ get_ordered_treatment_groups <- function(data, group_var = "treatment_group") {
         return(character())
     }
 
+    if (identical(group_var, "treatment_group")) {
+        group_values <- normalize_treatment_group_values(group_values)
+    }
+
     if (is.factor(group_values)) {
         return(levels(droplevels(group_values)))
     }
@@ -142,6 +146,7 @@ build_binary_rate_note <- function(data, outcome_var) {
 #' @examples
 #' analyze_visual_acuity_changes(data, output_dirs, prefix)
 analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders = NULL, dataset_name = NULL) {
+    data <- normalize_treatment_group_data(data)
     # Calculate vision changes (row-level)
     # Vision change is already calculated in data derivation (Objective 0)
     # Positive values = improvement (lower logMAR), negative = worsening
@@ -942,6 +947,7 @@ build_binary_skip_diagnostics <- function(data,
 #' @examples
 #' analyze_radiation_complications(data, "retinopathy", confounders, "uveal_full", output_dirs, prefix)
 analyze_radiation_complications <- function(data, sequela_type, confounders = NULL, dataset_name = NULL, output_dirs = NULL, prefix = NULL) {
+    data <- normalize_treatment_group_data(data)
     # Validate sequela type
     valid_sequelae <- c("retinopathy", "nvg", "srd")
     if (!sequela_type %in% valid_sequelae) {

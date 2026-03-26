@@ -51,41 +51,93 @@ map_publish_cohort_dir <- function(cohort_name) {
 #' @examples
 #' collect_publish_candidates()
 collect_publish_candidates <- function(cohorts = NULL, include_merged_tables = TRUE) {
-    roots <- character()
+    root_specs <- list()
 
     if (is.null(cohorts)) {
         default_roots <- list.dirs(OUTPUT_DIR, recursive = FALSE, full.names = TRUE)
-        roots <- default_roots[dir.exists(default_roots)]
-        if (length(roots) == 0 && dir.exists(OUTPUT_DIR)) {
-            roots <- OUTPUT_DIR
+        default_roots <- default_roots[basename(default_roots) != basename(MERGED_TABLES_DIR)]
+        for (root_path in default_roots) {
+            root_specs[[length(root_specs) + 1L]] <- list(
+                root_path = root_path,
+                root_kind = "cohort",
+                root_label = basename(root_path),
+                optional = FALSE
+            )
         }
     } else {
         cohort_dirs <- unique(vapply(cohorts, map_publish_cohort_dir, character(1)))
-        roots <- file.path(OUTPUT_DIR, cohort_dirs)
+        for (cohort_dir in cohort_dirs) {
+            root_specs[[length(root_specs) + 1L]] <- list(
+                root_path = file.path(OUTPUT_DIR, cohort_dir),
+                root_kind = "cohort",
+                root_label = cohort_dir,
+                optional = FALSE
+            )
+        }
     }
 
     if (isTRUE(include_merged_tables)) {
-        roots <- c(roots, MERGED_TABLES_DIR)
-    } else {
-        roots <- roots[normalize_publish_path(roots) != normalize_publish_path(MERGED_TABLES_DIR)]
+        root_specs[[length(root_specs) + 1L]] <- list(
+            root_path = MERGED_TABLES_DIR,
+            root_kind = "merged_tables",
+            root_label = "merged_tables",
+            optional = TRUE
+        )
     }
 
-    roots <- unique(roots)
-    missing_roots <- roots[!dir.exists(roots)]
-    existing_roots <- roots[dir.exists(roots)]
+    if (length(root_specs) == 0) {
+        return(list(
+            roots = data.frame(),
+            missing_roots = data.frame(),
+            files = data.frame()
+        ))
+    }
 
-    files <- character()
-    if (length(existing_roots) > 0) {
-        files <- unique(unlist(lapply(existing_roots, function(root) {
-            list.files(root, recursive = TRUE, full.names = TRUE)
-        }), use.names = FALSE))
-        files <- files[file.exists(files) & !dir.exists(files)]
+    roots_df <- unique(dplyr::bind_rows(lapply(root_specs, as.data.frame)))
+    existing_roots <- roots_df[dir.exists(roots_df$root_path), , drop = FALSE]
+    missing_roots <- roots_df[!dir.exists(roots_df$root_path), , drop = FALSE]
+
+    files <- data.frame()
+    if (nrow(existing_roots) > 0) {
+        file_rows <- vector("list", nrow(existing_roots))
+        for (row_index in seq_len(nrow(existing_roots))) {
+            root_path <- existing_roots$root_path[[row_index]]
+            discovered_files <- list.files(root_path, recursive = TRUE, full.names = TRUE)
+            discovered_files <- discovered_files[file.exists(discovered_files) & !dir.exists(discovered_files)]
+
+            if (length(discovered_files) == 0) {
+                file_rows[[row_index]] <- NULL
+                next
+            }
+
+            root_relative_paths <- sub(
+                paste0("^", normalize_publish_path(root_path), "/?"),
+                "",
+                normalize_publish_path(discovered_files)
+            )
+            destination_relative_paths <- if (identical(existing_roots$root_kind[[row_index]], "merged_tables")) {
+                file.path("merged_tables", root_relative_paths)
+            } else {
+                file.path(existing_roots$root_label[[row_index]], root_relative_paths)
+            }
+
+            file_rows[[row_index]] <- data.frame(
+                source_path = discovered_files,
+                root_path = root_path,
+                root_kind = existing_roots$root_kind[[row_index]],
+                root_label = existing_roots$root_label[[row_index]],
+                root_relative_path = root_relative_paths,
+                destination_relative_path = destination_relative_paths,
+                stringsAsFactors = FALSE
+            )
+        }
+        files <- dplyr::bind_rows(file_rows)
     }
 
     list(
         roots = existing_roots,
-        missing_roots = unique(missing_roots),
-        files = unique(files)
+        missing_roots = missing_roots,
+        files = files
     )
 }
 
@@ -129,12 +181,20 @@ publish_outputs <- function(
         include_merged_tables = include_merged_tables
     )
 
-    publishable_files <- candidate_info$files[
-        vapply(candidate_info$files, is_publishable_artifact, logical(1))
-    ]
-    skipped_files <- setdiff(candidate_info$files, publishable_files)
+    file_candidates <- candidate_info$files
+    publishable_mask <- if (nrow(file_candidates) > 0) {
+        vapply(seq_len(nrow(file_candidates)), function(row_index) {
+            is_publishable_relative_artifact(
+                relative_path = file_candidates$root_relative_path[[row_index]],
+                root_kind = file_candidates$root_kind[[row_index]]
+            )
+        }, logical(1))
+    } else {
+        logical()
+    }
+    publishable_files <- file_candidates[publishable_mask, , drop = FALSE]
+    skipped_files <- file_candidates[!publishable_mask, , drop = FALSE]
 
-    output_root_normalized <- normalize_publish_path(OUTPUT_DIR)
     manifest <- data.frame(
         source_path = character(),
         destination_path = character(),
@@ -148,18 +208,9 @@ publish_outputs <- function(
         dir.create(snapshot_dir, recursive = TRUE, showWarnings = FALSE)
     }
 
-    for (source_path in publishable_files) {
-        source_normalized <- normalize_publish_path(source_path)
-        relative_path <- sub(
-            paste0("^", output_root_normalized, "/?"),
-            "",
-            source_normalized
-        )
-        if (identical(relative_path, source_normalized)) {
-            relative_path <- basename(source_path)
-        }
-
-        destination_path <- file.path(snapshot_dir, relative_path)
+    for (row_index in seq_len(nrow(publishable_files))) {
+        source_path <- publishable_files$source_path[[row_index]]
+        destination_path <- file.path(snapshot_dir, publishable_files$destination_relative_path[[row_index]])
 
         if (!file.exists(source_path)) {
             manifest <- rbind(manifest, data.frame(
@@ -205,25 +256,33 @@ publish_outputs <- function(
         ))
     }
 
-    skipped_manifest <- data.frame(
-        source_path = skipped_files,
-        destination_path = rep(NA_character_, length(skipped_files)),
-        status = rep("skipped_not_publishable", length(skipped_files)),
-        bytes = if (length(skipped_files) > 0) file.info(skipped_files)$size else numeric(),
-        message = rep("File extension or directory policy excluded this artifact.", length(skipped_files)),
-        stringsAsFactors = FALSE
-    )
+    skipped_manifest <- if (nrow(skipped_files) > 0) {
+        data.frame(
+            source_path = skipped_files$source_path,
+            destination_path = rep(NA_character_, nrow(skipped_files)),
+            status = rep("skipped_not_publishable", nrow(skipped_files)),
+            bytes = file.info(skipped_files$source_path)$size,
+            message = rep("Artifact registry excluded this file from synced publishing.", nrow(skipped_files)),
+            stringsAsFactors = FALSE
+        )
+    } else {
+        data.frame()
+    }
     if (nrow(skipped_manifest) > 0) {
         manifest <- rbind(manifest, skipped_manifest)
     }
 
-    if (length(candidate_info$missing_roots) > 0) {
+    if (nrow(candidate_info$missing_roots) > 0) {
         missing_manifest <- data.frame(
-            source_path = candidate_info$missing_roots,
+            source_path = candidate_info$missing_roots$root_path,
             destination_path = NA_character_,
-            status = "missing_root",
+            status = ifelse(candidate_info$missing_roots$optional, "optional_root_absent", "missing_root"),
             bytes = NA_real_,
-            message = "Configured publish root is missing.",
+            message = ifelse(
+                candidate_info$missing_roots$optional,
+                "Optional publish root is absent for this run.",
+                "Required publish root is missing."
+            ),
             stringsAsFactors = FALSE
         )
         manifest <- rbind(manifest, missing_manifest)
@@ -235,7 +294,7 @@ publish_outputs <- function(
     }
 
     summary <- list(
-        publishable_files = length(publishable_files),
+        publishable_files = nrow(publishable_files),
         copied = sum(manifest$status == "copied"),
         would_copy = sum(manifest$status == "would_copy"),
         skipped = sum(manifest$status == "skipped_not_publishable"),

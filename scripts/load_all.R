@@ -18,34 +18,21 @@ USE_CLINICAL_BINNING_CONTINUOUS <- TRUE # DEFAULT: Use clinical thresholds for t
 ######################################################################
 ############### LOAD / INSTALL REQUIRED LIBRARIES ####################
 ######################################################################
-#' Ensure package is installed and loaded via pak
+#' Require an Installed Package and Load It
 #'
-#' Installs a package via pak (CRAN first, then Bioconductor) if missing and
-#' loads it with startup messages suppressed.
+#' Fails fast with a clear bootstrap instruction when a required package is
+#' missing, and otherwise loads it with startup messages suppressed.
 #'
 #' @param pkg Character package name
 #' @return Invisibly loads the package into the session
 use <- function(pkg) {
-    # Bootstrap pak if needed
-    if (!requireNamespace("pak", quietly = TRUE)) {
-        install.packages("pak")
-    }
-
-    # Install if missing using pak; try CRAN first, then Bioconductor via bioc::
     if (!requireNamespace(pkg, quietly = TRUE)) {
-        tryCatch(
-            {
-                pak::pkg_install(pkg, ask = FALSE)
-            },
-            error = function(e1) {
-                # Attempt Bioconductor namespace via pak
-                tryCatch(
-                    pak::pkg_install(paste0("bioc::", pkg), ask = FALSE),
-                    error = function(e2) {
-                        stop(sprintf("Failed to install package '%s' via pak (CRAN and Bioconductor attempts). Original errors: %s | %s", pkg, conditionMessage(e1), conditionMessage(e2)))
-                    }
-                )
-            }
+        stop(
+            sprintf(
+                "Required package '%s' is not installed. Run `Rscript scripts/bootstrap_packages.R` before sourcing load_all.R.",
+                pkg
+            ),
+            call. = FALSE
         )
     }
 
@@ -205,15 +192,8 @@ source(here("scripts", "workflow", "objective_2_safety_toxicity.R"))
 source(here("scripts", "workflow", "objective_3_repeat_radiation.R"))
 source(here("scripts", "workflow", "objective_4_gep_analysis.R"))
 
-######################################################################
-############### CREATE NECESSARY DIRECTORIES ##########################
-######################################################################
-
 # Set seed for reproducibility
 set.seed(123)
-
-# Create runtime directories now that configuration is loaded
-initialize_runtime_dirs()
 
 ######################################################################
 ############### CENTRALIZED OUTPUT DIRECTORY MANAGEMENT ###############

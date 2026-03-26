@@ -153,6 +153,7 @@ prepare_factor_levels <- function(data) {
             biopsy1_gep_text_raw = as.character(biopsy1_gep),
             # Preserve original raw GEP values for accurate untested flag
             biopsy1_gep_original = biopsy1_gep,
+            treatment_group = normalize_treatment_group_values(treatment_group),
             recurrence1 = factor(recurrence1, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
             mets_progression = factor(mets_progression, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
             treatment_group = factor(treatment_group, levels = TREATMENT_FACTOR_LEVELS),

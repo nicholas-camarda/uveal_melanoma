@@ -8,9 +8,9 @@ This audit verifies the flowchart red-box counts against frozen artifacts (no pi
 
 ## Frozen artifacts used
 
-- `final_data/Analytic Dataset/cohort_summary_statistics.json`
-- `final_data/Analytic Dataset/uveal_melanoma_full_cohort.rds`
-- `final_data/Analytic Dataset/uveal_melanoma_restricted_cohort.rds`
+- `~/ProjectsRuntime/uveal_melanoma/Analytic Dataset/cohort_summary_statistics.json`
+- `~/ProjectsRuntime/uveal_melanoma/Analytic Dataset/uveal_melanoma_full_cohort.rds`
+- `~/ProjectsRuntime/uveal_melanoma/Analytic Dataset/uveal_melanoma_restricted_cohort.rds`
 - `scripts/data_helper/cohort_creation.R` (Stage IV exclusion logic)
 - `scripts/utils/cohort_summary_export.R` (alive/dead/lost follow-up definition)
 - `logs/json/run_log_20251125_112559.jsonl` (example run evidence)
@@ -24,7 +24,7 @@ This audit verifies the flowchart red-box counts against frozen artifacts (no pi
 ## Evidence for Stage IV exclusion
 
 - In `scripts/data_helper/cohort_creation.R`, `apply_criteria()` explicitly removes rows where `initial_stage_binary == "Stage IV"`, and logs them as `"Stage IV disease excluded per protocol"` under `removal_step = "stage_iv_exclusion"`.
-- In `final_data/Analytic Dataset/cohort_summary_statistics.json`, exclusions are:
+- In `~/ProjectsRuntime/uveal_melanoma/Analytic Dataset/cohort_summary_statistics.json`, exclusions are:
   - `"Stage IV disease excluded per protocol": 3`
   - `"stage_iv_exclusion": 3`
 - In `logs/json/run_log_20251125_112559.jsonl`, objective-0 processing logs:
@@ -81,8 +81,8 @@ This definition is the current source-of-truth for alive/dead/lost-to-follow-up 
 Rscript -e '
 library(dplyr)
 
-full <- readRDS("final_data/Analytic Dataset/uveal_melanoma_full_cohort.rds")
-rest <- readRDS("final_data/Analytic Dataset/uveal_melanoma_restricted_cohort.rds")
+full <- readRDS(path.expand("~/ProjectsRuntime/uveal_melanoma/Analytic Dataset/uveal_melanoma_full_cohort.rds"))
+rest <- readRDS(path.expand("~/ProjectsRuntime/uveal_melanoma/Analytic Dataset/uveal_melanoma_restricted_cohort.rds"))
 
 count_tx <- function(df, cohort_name) {
   cutoff <- as.Date("2025-03-04")
