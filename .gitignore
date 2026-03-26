@@ -5,7 +5,7 @@ scripts/.DS_Store
 data/
 Original Files/
 Analysis/
-Analytic Dataset
+Analytic Dataset/
 
 # ignore unwanted R output files
 Rplots.pdf
