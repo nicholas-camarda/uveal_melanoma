@@ -9,6 +9,13 @@ test_that("exploratory no-GEP dataset preparation isolates training and predicti
 
     prepared <- prepare_exploratory_no_gep_data(actual_data)
 
+    expect_identical(levels(prepared$full_data$exploratory_gep_group), levels(actual_data$gep_class_simple))
+    expect_identical(levels(prepared$full_data$sex), levels(actual_data$sex))
+    expect_identical(levels(prepared$full_data$location), levels(actual_data$location))
+    expect_identical(levels(prepared$full_data$initial_t_stage_simple), levels(actual_data$initial_t_stage_simple))
+    expect_identical(levels(prepared$full_data$internal_reflectivity), levels(actual_data$internal_reflectivity))
+    expect_identical(levels(prepared$full_data$srf), levels(actual_data$srf))
+
     expect_true(all(prepared$definitive_training$exploratory_gep_group %in% c("Class 1", "Class 2")))
     expect_true(all(prepared$no_gep_prediction$exploratory_gep_group %in% c("GEP Failed/Indeterminate", "GEP Not Tested")))
     expect_true(all(unique(prepared$no_gep_prediction$no_gep_group) %in% c("GEP Failed/Indeterminate", "GEP Not Tested")))

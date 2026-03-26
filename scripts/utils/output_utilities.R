@@ -149,7 +149,7 @@ format_levels_for_display <- function(data) {
         label_maps <- get("STANDARD_LEVEL_LABELS", inherits = TRUE)
         for (var in names(label_maps)) {
             if (var %in% names(formatted) && (is.factor(formatted[[var]]) || is.character(formatted[[var]]))) {
-                current_levels <- levels(factor(formatted[[var]]))
+                current_levels <- get_stable_factor_levels(formatted[[var]])
                 rename_vec <- setNames(current_levels, current_levels)
                 for (lvl in names(label_maps[[var]])) {
                     rename_vec[lvl] <- label_maps[[var]][[lvl]]
@@ -289,7 +289,7 @@ restore_precollapse_variables <- function(data, dataset_name = NULL, variables =
             if (is.factor(precollapse_data[[col]]) || is.factor(restored_values)) {
                 restored_chars <- as.character(restored_values)
                 restored_chars[matched] <- as.character(precollapse_data[[col]][matched_rows[matched]])
-                restored_levels <- unique(c(levels(factor(precollapse_data[[col]])), restored_chars))
+                restored_levels <- unique(c(get_stable_factor_levels(precollapse_data[[col]]), restored_chars))
                 data[[col]] <- factor(restored_chars, levels = restored_levels)
             } else {
                 restored_values[matched] <- precollapse_data[[col]][matched_rows[matched]]

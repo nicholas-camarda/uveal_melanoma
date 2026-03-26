@@ -115,6 +115,7 @@ use("glmnet") # Penalized generalized linear models for exploratory no-GEP model
 
 # Source the split configuration and utility files
 source(here("scripts", "utils", "config_constants.R"))
+source(here("scripts", "tools", "factor_level_audit.R"))
 source(here("scripts", "utils", "output_utilities.R"))
 source(here("scripts", "utils", "logging_utilities.R"))
 source(here("scripts", "utils", "validation_utilities.R"))

@@ -1373,7 +1373,7 @@ assess_competing_risk_feasibility <- function(data, time_var, event_var, group_v
         ))
     }
 
-    filtered_data[[group_var]] <- droplevels(factor(filtered_data[[group_var]]))
+    filtered_data[[group_var]] <- droplevels(coerce_to_factor_preserving_levels(filtered_data[[group_var]]))
     by_group <- filtered_data %>%
         dplyr::group_by(.data[[group_var]]) %>%
         dplyr::summarise(

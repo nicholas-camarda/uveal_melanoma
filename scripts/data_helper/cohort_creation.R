@@ -156,7 +156,7 @@ prepare_factor_levels <- function(data) {
             recurrence1 = factor(recurrence1, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
             mets_progression = factor(mets_progression, levels = YN_RAW_LEVELS, labels = YN_DISPLAY_LABELS),
             treatment_group = factor(treatment_group, levels = TREATMENT_FACTOR_LEVELS),
-            recurrence1_treatment_clean = factor(recurrence1_treatment_clean, ordered = FALSE),
+            recurrence1_treatment_clean = coerce_to_factor_preserving_levels(recurrence1_treatment_clean),
             sex = factor(sex, levels = SEX_FACTOR_LEVELS, labels = SEX_FACTOR_LEVELS),
             location = factor(location,
                 levels = c("Choroidal", "Ciliary_Body", "Cilio_Choroidal", "Conjunctival", "Irido_Ciliary", "Iris"),

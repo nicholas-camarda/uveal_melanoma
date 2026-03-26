@@ -3,6 +3,9 @@ scripts/.DS_Store
 
 # ignore raw data files
 data/
+Original Files/
+Analysis/
+Analytic Dataset
 
 # ignore unwanted R output files
 Rplots.pdf
@@ -43,3 +46,4 @@ docs/GEP_OBJECTIVE4_GOAL_IMPLEMENTATION_MAP.md
 docs/GEP_OBJECTIVE4_MINIMAL_CLEANUP_PLAN.md
 docs/GEP_OBJECTIVE4_ABSTRACT_DRAFT.md
 docs/PRAME*.md
+docs/FACTOR_LEVEL_AUDIT.md

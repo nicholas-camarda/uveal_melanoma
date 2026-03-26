@@ -148,6 +148,23 @@ derive_binary_endpoint <- function(data, event_col, time_col, horizon_months) {
     as.integer(!is.na(outcome_event) & outcome_event == 1 & !is.na(data[[time_col]]) & data[[time_col]] <= horizon_months)
 }
 
+#' Preserve Validated Factor Levels for Exploratory Modeling
+#'
+#' Recasts a factor as an unordered factor without changing the existing level
+#' order. This avoids accidental releveling when validated objective 0 cohort
+#' columns are temporarily normalized inside the exploratory workflow.
+#'
+#' @param values A factor or character vector.
+#'
+#' @return An unordered factor with preserved level order when available.
+preserve_exploratory_factor_levels <- function(values) {
+    if (is.factor(values)) {
+        return(coerce_to_factor_preserving_levels(values))
+    }
+
+    coerce_to_factor_preserving_levels(values)
+}
+
 #' Prepare Data for Exploratory No-GEP Modeling
 #'
 #' Restores GEP display labels, derives the exploratory grouping variables,
@@ -167,21 +184,18 @@ prepare_exploratory_no_gep_data <- function(data, dataset_name = "uveal_melanoma
 
     prepared <- prepared %>%
         dplyr::mutate(
-            exploratory_gep_group = factor(
-                as.character(.data$gep_class_simple),
-                levels = c("Class 1", "Class 2", "GEP Failed/Indeterminate", "GEP Not Tested")
-            ),
+            exploratory_gep_group = preserve_exploratory_factor_levels(.data$gep_class_simple),
             no_gep_group = dplyr::case_when(
                 .data$exploratory_gep_group == "GEP Failed/Indeterminate" ~ "GEP Failed/Indeterminate",
                 .data$exploratory_gep_group == "GEP Not Tested" ~ "GEP Not Tested",
                 TRUE ~ NA_character_
             ),
             ciliary_involvement = as.integer(grepl("cilio|ciliary", as.character(.data$location), ignore.case = TRUE)),
-            sex = factor(as.character(.data$sex)),
-            location = factor(as.character(.data$location)),
-            initial_t_stage_simple = factor(as.character(.data$initial_t_stage_simple)),
-            internal_reflectivity = factor(as.character(.data$internal_reflectivity)),
-            srf = factor(as.character(.data$srf)),
+            sex = preserve_exploratory_factor_levels(.data$sex),
+            location = preserve_exploratory_factor_levels(.data$location),
+            initial_t_stage_simple = preserve_exploratory_factor_levels(.data$initial_t_stage_simple),
+            internal_reflectivity = preserve_exploratory_factor_levels(.data$internal_reflectivity),
+            srf = preserve_exploratory_factor_levels(.data$srf),
             optic_nerve_involvement = dplyr::case_when(
                 as.character(.data$optic_nerve) %in% c("Yes", "Y", "Involved") ~ 1L,
                 as.character(.data$optic_nerve) %in% c("No", "N", "Not Involved") ~ 0L,

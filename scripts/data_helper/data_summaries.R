@@ -211,7 +211,7 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
                 if (var %in% names(data)) {
                     map <- label_maps[[var]]
                     if (is.factor(data[[var]]) || is.character(data[[var]])) {
-                        lv <- levels(factor(data[[var]]))
+                        lv <- get_stable_factor_levels(data[[var]])
                         # Build mapping vector that preserves unmapped levels
                         rename_vec <- setNames(lv, lv)
                         for (k in names(map)) rename_vec[k] <- map[[k]]

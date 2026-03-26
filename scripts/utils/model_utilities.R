@@ -53,6 +53,42 @@ enforce_unordered_factors <- function(data, verbose = FALSE) {
     return(data)
 }
 
+#' Get Stable Factor Levels Without Reordering Existing Factors
+#'
+#' Returns the current level order for factor inputs. For non-factor inputs,
+#' returns a deterministic sorted set of distinct non-missing values so the
+#' caller can coerce explicitly instead of relying on `as.factor()`.
+#'
+#' @param values Vector to inspect.
+#'
+#' @return Character vector of stable factor levels.
+get_stable_factor_levels <- function(values) {
+    if (is.factor(values)) {
+        return(levels(values))
+    }
+
+    unique_values <- unique(stats::na.omit(as.character(values)))
+    sort(unique_values)
+}
+
+#' Coerce a Vector to a Factor While Preserving Existing Level Order
+#'
+#' Reuses the current factor levels when `values` is already a factor. For
+#' non-factor inputs, levels are created deterministically from the distinct
+#' observed values.
+#'
+#' @param values Vector to coerce.
+#' @param ordered Logical flag for ordered factors.
+#'
+#' @return A factor with stable level ordering.
+coerce_to_factor_preserving_levels <- function(values, ordered = FALSE) {
+    factor(
+        as.character(values),
+        levels = get_stable_factor_levels(values),
+        ordered = ordered
+    )
+}
+
 
 
 #' Get Variable Labels for Display

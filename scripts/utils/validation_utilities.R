@@ -181,30 +181,8 @@ validate_factor_level_consistency <- function(cohort_list, phase = "data_process
     logger::log_info("=== STARTING FACTOR LEVEL CONSISTENCY VALIDATION ===")
     validation_passed <- TRUE
 
-    # Define expected factor configurations
-    expected_factors <- list(
-        treatment_group = list(
-            levels = TREATMENT_FACTOR_LEVELS,
-            reference = TREATMENT_REFERENCE_LEVEL,
-            comparison = TREATMENT_COMPARISON_LEVEL,
-            critical = TRUE
-        ),
-        recurrence1 = list(
-            levels = YN_DISPLAY_LABELS,
-            reference = YN_DISPLAY_LABELS[1], # "No"
-            critical = TRUE
-        ),
-        sex = list(
-            levels = SEX_FACTOR_LEVELS,
-            reference = SEX_FACTOR_LEVELS[1],
-            critical = FALSE
-        ),
-        optic_nerve = list(
-            levels = YN_DISPLAY_LABELS, # c("No", "Yes")
-            reference = YN_DISPLAY_LABELS[1], # "No"
-            critical = TRUE
-        )
-    )
+    # Define expected factor configurations from the shared canonical map
+    expected_factors <- get_canonical_factor_level_expectations()
 
     # Check each cohort for factor level consistency
     for (cohort_name in names(cohort_list)) {

@@ -43,7 +43,7 @@ get_observed_level_counts <- function(values, excluded_levels = character()) {
     if (is.factor(values)) {
         values <- droplevels(values)
     } else {
-        values <- factor(as.character(values))
+        values <- coerce_to_factor_preserving_levels(values)
     }
 
     keep_mask <- !is.na(values)
