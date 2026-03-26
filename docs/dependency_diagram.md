@@ -92,10 +92,10 @@ flowchart LR
     end
 
     %% I/O anchors
-    RAW[(final_data/Original Files/*.xlsx)]
-    PDATA[(final_data/Analytic Dataset/*.rds, other_map.rds)]
-    OUT[(final_data/Analysis/...)]
-    LOGS[(logs/run_log_*.txt)]
+    RAW[(OneDrive/uveal_melanoma/Original Files/*.xlsx)]
+    PDATA[(ProjectsRuntime/uveal_melanoma/Analytic Dataset/*.rds, other_map.rds)]
+    OUT[(ProjectsRuntime/uveal_melanoma/Analysis/...)]
+    LOGS[(ProjectsRuntime/uveal_melanoma/logs/run_log_*.txt)]
 
     %% Edges: config and loader
     LOADALL --> CONFIG
@@ -179,4 +179,3 @@ Rendering locally (optional): if you have Mermaid CLI installed, run:
 ```
 mmdc -i docs/dependency_diagram.md -o docs/dependency_diagram.png
 ```
-

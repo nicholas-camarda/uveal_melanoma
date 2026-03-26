@@ -34,7 +34,7 @@ PROJECT_SLUG <- basename(PROJECT_ROOT)
 CODE_ROOT <- PROJECT_ROOT
 DEFAULT_RUNTIME_PARENT_DIR <- "~/ProjectsRuntime"
 DEFAULT_RUNTIME_ROOT <- file.path(DEFAULT_RUNTIME_PARENT_DIR, PROJECT_SLUG)
-DEFAULT_EXPORT_ROOT <- "/Users/ncamarda/Library/CloudStorage/OneDrive-Personal/residency/ophthalmology/research projects/ocular melanoma/uveal_melanoma"
+DEFAULT_EXPORT_ROOT <- "/Users/ncamarda/Library/CloudStorage/OneDrive-Personal/residency/ophthalmology/research projects/uveal_melanoma"
 
 #' Resolve a configured filesystem path with fallback behavior
 #'

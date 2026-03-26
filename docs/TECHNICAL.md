@@ -188,56 +188,56 @@ Patients are classified into three vital status categories for summary reporting
 Analysis outputs follow a **cohort → objective → sub-objective** structure:
 
 ```
-project_working_directory/
-├── data/                           # Raw data files
-├── final_data/
-│   ├── Analytic Dataset/           # Processed RDS files
-│   │   ├── uveal_melanoma_full_cohort.rds
-│   │   ├── uveal_melanoma_restricted_cohort.rds
-│   │   ├── uveal_melanoma_gksrs_only_cohort.rds
-│   │   ├── *_derived_precollapse.rds
-│   │   └── other_map.rds
-│   ├── Original Files/             # Raw input data
-│   └── Analysis/                   # Analysis outputs by cohort
-│       ├── uveal_full/             # Full cohort (n=260)
-│       │   ├── 00_General/
-│       │   │   ├── cohort_summary.tsv
-│       │   │   ├── cohort_summary.txt
-│       │   │   ├── baseline_characteristics/
-│       │   │   ├── treatment_duration/
-│       │   │   └── removed_patients_summary.tsv
-│       │   ├── 01_Efficacy/
-│       │   │   ├── a_recurrence/
-│       │   │   ├── b_metastatic_progression/
-│       │   │   ├── c_overall_survival/
-│       │   │   ├── d_progression_free_survival/
-│       │   │   ├── e_tumor_height_primary/
-│       │   │   ├── f_tumor_height_sensitivity/
-│       │   │   ├── g_subgroup_analysis/
-│       │   │   │   ├── tumor_height_primary/
-│       │   │   │   ├── tumor_height_sensitivity/
-│       │   │   │   └── forest_plots/
-│       │   │   └── h_proportional_hazards_diagnostics/
-│       │   ├── 02_Safety/
-│       │   │   ├── a_vision_changes/
-│       │   │   ├── b_retinopathy/
-│       │   │   ├── c_neovascular_glaucoma/
-│       │   │   └── d_serous_retinal_detachment/
-│       │   ├── 03_Repeat_Radiation/
-│       │   │   ├── a_pfs2/
-│       │   │   └── b_proportional_hazards_diagnostics/
-│       │   └── 04_GEP_Validation/
-│       │       ├── a_metastasis_free_survival/
-│       │       └── b_melanoma_specific_survival/
-│       ├── uveal_restricted/        # Restricted cohort (n=167)
-│       ├── gksrs/                   # GKSRS-only cohort (n=92)
-│       └── merged_tables/           # Cross-cohort comparisons, including a separate all-three-cohort baseline table
-├── logs/                            # Execution logs
+~/ProjectsRuntime/uveal_melanoma/
+├── Analytic Dataset/               # Processed RDS files and runtime metadata
+│   ├── uveal_melanoma_full_cohort.rds
+│   ├── uveal_melanoma_restricted_cohort.rds
+│   ├── uveal_melanoma_gksrs_only_cohort.rds
+│   ├── *_derived_precollapse.rds
+│   └── other_map.rds
+├── Analysis/                       # Runtime analysis outputs by cohort
+│   ├── uveal_full/                 # Full cohort (n=260)
+│   │   ├── 00_General/
+│   │   │   ├── cohort_summary.tsv
+│   │   │   ├── cohort_summary.txt
+│   │   │   ├── baseline_characteristics/
+│   │   │   ├── treatment_duration/
+│   │   │   └── removed_patients_summary.tsv
+│   │   ├── 01_Efficacy/
+│   │   │   ├── a_recurrence/
+│   │   │   ├── b_metastatic_progression/
+│   │   │   ├── c_overall_survival/
+│   │   │   ├── d_progression_free_survival/
+│   │   │   ├── e_tumor_height_primary/
+│   │   │   ├── f_tumor_height_sensitivity/
+│   │   │   ├── g_subgroup_analysis/
+│   │   │   │   ├── tumor_height_primary/
+│   │   │   │   ├── tumor_height_sensitivity/
+│   │   │   │   └── forest_plots/
+│   │   │   └── h_proportional_hazards_diagnostics/
+│   │   ├── 02_Safety/
+│   │   │   ├── a_vision_changes/
+│   │   │   ├── b_retinopathy/
+│   │   │   ├── c_neovascular_glaucoma/
+│   │   │   └── d_serous_retinal_detachment/
+│   │   ├── 03_Repeat_Radiation/
+│   │   │   ├── a_pfs2/
+│   │   │   └── b_proportional_hazards_diagnostics/
+│   │   └── 04_GEP_Validation/
+│   │       ├── a_metastasis_free_survival/
+│   │       └── b_melanoma_specific_survival/
+│   ├── uveal_restricted/           # Restricted cohort (n=167)
+│   ├── gksrs/                      # GKSRS-only cohort (n=92)
+│   └── merged_tables/              # Cross-cohort comparisons
+├── logs/                           # Execution logs
 │   ├── txt/
 │   └── json/
-├── docs/                            # Documentation
-├── scripts/                         # Analysis code
-└── tests/                           # Testing framework
+└── test_output/                    # Testing artifacts
+
+/Users/ncamarda/Library/CloudStorage/OneDrive-Personal/residency/ophthalmology/research projects/uveal_melanoma/
+├── Original Files/                 # Authoritative raw input data
+└── Analysis/
+    └── <YYYY-MM-DD>/               # Published final deliverables only
 ```
 
 ### Script Organization

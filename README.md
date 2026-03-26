@@ -57,7 +57,7 @@ The pipeline works with three intentionally overlapping analytic cohorts created
 | Restricted | `uveal_melanoma_restricted_cohort` | Dual-eligibility cohort for a more balanced treatment comparison |
 | GKSRS-only | `uveal_melanoma_gksrs_only_cohort` | Patients ineligible for PBT, used to characterize GKSRS in challenging cases |
 
-The current cohort counts and summary totals are written to `final_data/Analytic Dataset/cohort_summary_statistics.json` whenever the pipeline is rerun.
+The current cohort counts and summary totals are written to `~/ProjectsRuntime/uveal_melanoma/Analytic Dataset/cohort_summary_statistics.json` whenever the pipeline is rerun.
 
 The analysis is organized into four main research objectives:
 
@@ -70,19 +70,27 @@ The analysis is organized into four main research objectives:
 
 ## Output Map
 
-Pipeline outputs are written under `final_data/`.
+Pipeline outputs are split across runtime storage and synced exports.
 
 ```text
-final_data/
+~/ProjectsRuntime/uveal_melanoma/
 |- Analytic Dataset/
 |  |- cohort_summary_statistics.json
 |  |- *.rds
 |  `- *_derived_precollapse.rds
+|- Analysis/
+|  |- uveal_full/
+|  |- uveal_restricted/
+|  |- gksrs/
+|  `- merged_tables/
+|- logs/
+|- test_output/
+`- tools_output/
+
+/Users/ncamarda/Library/CloudStorage/OneDrive-Personal/residency/ophthalmology/research projects/uveal_melanoma/
+|- Original Files/
 `- Analysis/
-   |- uveal_full/
-   |- uveal_restricted/
-   |- gksrs/
-   `- merged_tables/
+   `- <YYYY-MM-DD>/
 ```
 
 Within each cohort folder, outputs follow a consistent layout:
