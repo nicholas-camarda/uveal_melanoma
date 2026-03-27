@@ -4,7 +4,6 @@
 create_gep_prediction_source_note <- function(extrapolation_assessment = NULL) {
     extrapolation_lines <- if (!is.null(extrapolation_assessment)) {
         c(
-            "The 7-year and 10-year values are therefore assumption-dependent extensions rather than direct imported assay outputs.",
             sprintf(
                 "Current extrapolation support status: %s",
                 extrapolation_assessment$status %||% "Unavailable"
@@ -49,15 +48,7 @@ create_gep_extrapolation_narrative_section <- function(extrapolation_assessment 
     c(
         "EXTRAPOLATION INTERPRETATION",
         "============================",
-        sprintf(
-            "Support status: %s",
-            extrapolation_assessment$status %||% "Unavailable"
-        ),
-        sprintf(
-            "Interpretation: %s",
-            extrapolation_assessment$note %||% "No extrapolation support note available."
-        ),
-        "Reading rule: later-horizon issues usually reflect the 7-year and 10-year extension rule, not the imported 5-year assay output itself."
+        "Later-horizon issues usually reflect the 7-year and 10-year extension rule, not the imported 5-year assay output itself."
     )
 }
 

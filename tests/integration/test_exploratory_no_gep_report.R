@@ -154,6 +154,8 @@ test_that("exploratory no-GEP report writes workbook, summary, and plots", {
     summary_text <- paste(readLines(results$output_paths$summary), collapse = "\n")
     expect_match(summary_text, "descriptive only", fixed = TRUE)
     expect_match(summary_text, "homogeneous intermediate-risk group", fixed = TRUE)
+    expect_match(summary_text, "FOLLOW-UP CONTEXT", fixed = TRUE)
+    expect_match(summary_text, "no-GEP prediction subset", fixed = TRUE)
     expect_match(summary_text, "Key findings at 5 years:", fixed = TRUE)
     expect_match(summary_text, "95% repeated-CV interval", fixed = TRUE)
     expect_match(summary_text, "Parsimonious sensitivity check", fixed = TRUE)

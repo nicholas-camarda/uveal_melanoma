@@ -165,6 +165,139 @@ preserve_exploratory_factor_levels <- function(values) {
     coerce_to_factor_preserving_levels(values)
 }
 
+#' Build a Follow-Up Context Block for Exploratory No-GEP Narratives
+#'
+#' Summarizes the no-GEP prediction subset used by the exploratory baseline-only
+#' models so readers can see the follow-up duration and operational censoring
+#' context before the model-performance sections.
+#'
+#' @param prepared_data List returned by `prepare_exploratory_no_gep_data()`.
+#' @param dataset_name Optional dataset label for contextual wording.
+#'
+#' @return Character vector of narrative lines.
+build_exploratory_no_gep_followup_block <- function(prepared_data, dataset_name = NULL) {
+    if (is.null(prepared_data)) {
+        return(character())
+    }
+
+    analysis_data <- if (is.data.frame(prepared_data)) {
+        prepared_data
+    } else {
+        prepared_data$no_gep_prediction %||% prepared_data$full_data
+    }
+
+    if (is.null(analysis_data) || !is.data.frame(analysis_data) || nrow(analysis_data) == 0) {
+        return(character())
+    }
+
+    if (!"follow_up_years" %in% names(analysis_data)) {
+        if ("follow_up_days" %in% names(analysis_data)) {
+            analysis_data$follow_up_years <- analysis_data$follow_up_days / DAYS_IN_YEAR
+        } else if (all(c("date_diagnosis", "last_known_alive_date") %in% names(analysis_data))) {
+            analysis_data$follow_up_years <- as.numeric(difftime(
+                analysis_data$last_known_alive_date,
+                analysis_data$date_diagnosis,
+                units = "days"
+            )) / DAYS_IN_YEAR
+        } else {
+            analysis_data$follow_up_years <- NA_real_
+        }
+    }
+
+    if (!"no_gep_group" %in% names(analysis_data) && "exploratory_gep_group" %in% names(analysis_data)) {
+        analysis_data$no_gep_group <- as.character(analysis_data$exploratory_gep_group)
+    }
+    if (!"no_gep_group" %in% names(analysis_data)) {
+        analysis_data$no_gep_group <- NA_character_
+    }
+
+    analysis_data <- add_objective4_operational_followup_status(analysis_data)
+
+    valid_followup <- !is.na(analysis_data$follow_up_years) & analysis_data$follow_up_years >= 0
+    followup_values <- analysis_data$follow_up_years[valid_followup]
+    total_n <- nrow(analysis_data)
+    followup_ge_5yr_n <- sum(valid_followup & analysis_data$follow_up_years >= 5, na.rm = TRUE)
+    followup_ge_5yr_prop <- if (total_n > 0) followup_ge_5yr_n / total_n else NA_real_
+
+    followup_mean <- if (length(followup_values) > 0) mean(followup_values) else NA_real_
+    followup_median <- if (length(followup_values) > 0) stats::median(followup_values) else NA_real_
+    followup_max <- if (length(followup_values) > 0) max(followup_values) else NA_real_
+
+    operational_counts <- table(analysis_data$operational_followup_status, useNA = "no")
+    operational_alive <- as.integer(if ("alive" %in% names(operational_counts)) operational_counts[["alive"]] else 0L)
+    operational_dead <- as.integer(if ("dead" %in% names(operational_counts)) operational_counts[["dead"]] else 0L)
+    operational_lost <- as.integer(if ("lost_to_followup" %in% names(operational_counts)) operational_counts[["lost_to_followup"]] else 0L)
+
+    group_summary <- analysis_data %>%
+        dplyr::filter(!is.na(.data$no_gep_group)) %>%
+        dplyr::group_by(.data$no_gep_group) %>%
+        dplyr::summarise(
+            n = dplyr::n(),
+            median_followup_years = if (sum(!is.na(.data$follow_up_years) & .data$follow_up_years >= 0) > 0) {
+                stats::median(.data$follow_up_years[!is.na(.data$follow_up_years) & .data$follow_up_years >= 0])
+            } else {
+                NA_real_
+            },
+            alive = sum(.data$operational_followup_status == "alive", na.rm = TRUE),
+            dead = sum(.data$operational_followup_status == "dead", na.rm = TRUE),
+            lost_to_followup = sum(.data$operational_followup_status == "lost_to_followup", na.rm = TRUE),
+            .groups = "drop"
+        ) %>%
+        dplyr::arrange(factor(.data$no_gep_group, levels = c("GEP Failed/Indeterminate", "GEP Not Tested")))
+
+    group_line <- if (nrow(group_summary) > 0) {
+        paste(
+            vapply(seq_len(nrow(group_summary)), function(i) {
+                sprintf(
+                    "%s median follow-up %.1f years (n=%d)",
+                    group_summary$no_gep_group[i],
+                    group_summary$median_followup_years[i],
+                    group_summary$n[i]
+                )
+            }, character(1)),
+            collapse = "; "
+        )
+    } else {
+        NULL
+    }
+
+    lines <- c(
+        "FOLLOW-UP CONTEXT",
+        "=================",
+        sprintf(
+            "The follow-up summary below uses the no-GEP prediction subset for %s, so the denominator matches the rows entering the direct no-GEP risk outputs.",
+            dataset_name %||% "this cohort"
+        ),
+        sprintf(
+            "- Overall follow-up: median %.1f years; mean %.1f years; max %.1f years; %d/%d (%.1f%%) reached at least 5 years.",
+            followup_median,
+            followup_mean,
+            followup_max,
+            followup_ge_5yr_n,
+            total_n,
+            100 * followup_ge_5yr_prop
+        ),
+        sprintf(
+            "- Operational view: alive %d/%d (%.1f%%); dead %d/%d (%.1f%%); lost_to_followup %d/%d (%.1f%%).",
+            operational_alive,
+            total_n,
+            100 * (operational_alive / total_n),
+            operational_dead,
+            total_n,
+            100 * (operational_dead / total_n),
+            operational_lost,
+            total_n,
+            100 * (operational_lost / total_n)
+        )
+    )
+
+    if (!is.null(group_line) && nzchar(group_line)) {
+        lines <- c(lines, paste0("- By no-GEP group: ", group_line))
+    }
+
+    lines
+}
+
 #' Prepare Data for Exploratory No-GEP Modeling
 #'
 #' Restores GEP display labels, derives the exploratory grouping variables,
@@ -2837,6 +2970,8 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
         "- The surrogate Class 2-like model is descriptive only and should not be used to relabel patients as true Class 1 or Class 2.",
         "- The direct MFS/MSS models are the preferred outputs when a patient has no usable GEP, but they should be described as exploratory prognostic support rather than precise patient-level forecasts.",
         "- The no-GEP population should not be presented as one homogeneous intermediate-risk group: overall it sits between definitive Class 1 and Class 2, but the failed/indeterminate subgroup is higher risk than the larger not-tested subgroup.",
+        "",
+        build_exploratory_no_gep_followup_block(prepared_data = prepared_data, dataset_name = dataset_name),
         "",
         "Key findings at 5 years:",
         sprintf(
