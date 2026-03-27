@@ -870,12 +870,16 @@ test_that("MFS observed expected summaries retain the overall denominator", {
     test_data <- tibble::tibble(
         biopsy1_gep = c("Class 1", "Class 1", "Class 2"),
         expected_mfs_5yr = c(0.90, 0.80, 0.40),
-        mfs_event_5yr = c(0, 1, 1),
+        tt_mets_months = c(12, 60, 72),
+        mets_event = c(0, 1, 0),
+        mfs_event_5yr = c(0, 1, 0),
         mfs_analysis_eligible = c(TRUE, TRUE, TRUE)
     )
 
     oe_results <- calculate_observed_expected_mfs(test_data, timepoint = 5)
     expect_equal(oe_results$overall_n, 3)
+    expect_equal(oe_results$results_by_class[["Class 1"]]$observed, 2)
+    expect_equal(oe_results$overall_observed, 1.5)
 
     fallback_metrics <- extract_overall_oe_metrics(list(
         results_by_class = list(

@@ -1094,6 +1094,45 @@ create_unified_text_summary <- function(mfs_results, mss_results, unified_cal, u
     summary_lines <- c(summary_lines, "Combines MFS and MSS results to eliminate redundancy")
     summary_lines <- c(summary_lines, "")
 
+    followup_lines <- c()
+    if (!is.null(mfs_results) && !is.null(mfs_results$source_data)) {
+        mfs_followup <- collect_objective4_endpoint_followup_summary(
+            data = mfs_results$source_data,
+            dataset_name = mfs_results$dataset_name,
+            eligibility_filter = "mfs_analysis_eligible",
+            event_prefix = "mfs",
+            time_horizon_years = 5
+        )
+        mfs_lines <- build_objective4_followup_limitation_block(mfs_followup, include_heading = FALSE)
+        if (length(mfs_lines) > 0) {
+            mfs_lines[1] <- paste0("MFS: ", mfs_lines[1])
+            if (length(mfs_lines) > 1) {
+                mfs_lines[-1] <- paste0("  ", mfs_lines[-1])
+            }
+            followup_lines <- c(followup_lines, mfs_lines)
+        }
+    }
+    if (!is.null(mss_results) && !is.null(mss_results$source_data)) {
+        mss_followup <- collect_objective4_endpoint_followup_summary(
+            data = mss_results$source_data,
+            dataset_name = mss_results$dataset_name,
+            eligibility_filter = "mss_analysis_eligible",
+            event_prefix = "mss",
+            time_horizon_years = 5
+        )
+        mss_lines <- build_objective4_followup_limitation_block(mss_followup, include_heading = FALSE)
+        if (length(mss_lines) > 0) {
+            mss_lines[1] <- paste0("MSS: ", mss_lines[1])
+            if (length(mss_lines) > 1) {
+                mss_lines[-1] <- paste0("  ", mss_lines[-1])
+            }
+            followup_lines <- c(followup_lines, mss_lines)
+        }
+    }
+    if (length(followup_lines) > 0) {
+        summary_lines <- c(summary_lines, "FOLLOW-UP LIMITATION (5-year):", followup_lines, "")
+    }
+
     # Calibration comparison
     if (nrow(unified_cal) > 0) {
         summary_lines <- c(summary_lines, "CALIBRATION COMPARISON (MFS vs MSS):")

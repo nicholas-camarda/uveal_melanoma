@@ -53,6 +53,94 @@ test_that("Objective 4 MFS sensitivity collector builds follow-up and repeat-rad
     expect_equal(sum(pbt_only$n), 10)
 })
 
+test_that("Shared Objective 4 follow-up helper derives endpoint-specific counts and definition text", {
+    test_data <- create_test_dataset() %>%
+        dplyr::mutate(
+            mss_event_5yr = as.integer(.data$melanoma_death_event == 1 & .data$tt_death_months <= 60),
+            mss_event_7yr = as.integer(.data$melanoma_death_event == 1 & .data$tt_death_months <= 84),
+            mss_event_10yr = as.integer(.data$melanoma_death_event == 1 & .data$tt_death_months <= 120)
+        )
+
+    mfs_followup <- collect_objective4_endpoint_followup_summary(
+        data = test_data,
+        dataset_name = "uveal_melanoma_full_cohort",
+        eligibility_filter = "mfs_analysis_eligible",
+        event_prefix = "mfs",
+        time_horizon_years = 5
+    )
+    mss_followup <- collect_objective4_endpoint_followup_summary(
+        data = test_data,
+        dataset_name = "uveal_melanoma_full_cohort",
+        eligibility_filter = "mss_analysis_eligible",
+        event_prefix = "mss",
+        time_horizon_years = 5
+    )
+
+    prepared <- refresh_gep_analysis_flags(test_data)
+    expected_mfs <- prepared %>%
+        dplyr::filter(.data$mfs_analysis_eligible) %>%
+        dplyr::mutate(
+            expected_view = dplyr::case_when(
+                .data$mfs_event_5yr == 1 ~ "event_by_5yr",
+                .data$tt_mets_months >= 60 ~ "followup_ge_5yr",
+                TRUE ~ "censored_pre_5yr"
+            )
+        ) %>%
+        dplyr::count(.data$expected_view, name = "n") %>%
+        dplyr::arrange(.data$expected_view)
+    expected_mss <- prepared %>%
+        dplyr::filter(.data$mss_analysis_eligible) %>%
+        dplyr::mutate(
+            expected_view = dplyr::case_when(
+                .data$melanoma_death_event == 1 & .data$tt_death_months <= 60 ~ "event_by_5yr",
+                .data$tt_death_months >= 60 ~ "followup_ge_5yr",
+                TRUE ~ "censored_pre_5yr"
+            )
+        ) %>%
+        dplyr::count(.data$expected_view, name = "n") %>%
+        dplyr::arrange(.data$expected_view)
+
+    actual_mfs <- mfs_followup$horizon_overall %>%
+        dplyr::select(expected_view = horizon_followup_view, n) %>%
+        dplyr::arrange(.data$expected_view)
+    actual_mss <- mss_followup$horizon_overall %>%
+        dplyr::select(expected_view = horizon_followup_view, n) %>%
+        dplyr::arrange(.data$expected_view)
+
+    expect_equal(actual_mfs, expected_mfs)
+    expect_equal(actual_mss, expected_mss)
+
+    block_lines <- build_objective4_followup_limitation_block(mfs_followup)
+    expect_true(any(grepl("FOLLOW-UP LIMITATION", block_lines, fixed = TRUE)))
+    expect_true(any(grepl("`followup_ge_5yr` means", block_lines, fixed = TRUE)))
+    expect_true(any(grepl("`censored_pre_5yr` means", block_lines, fixed = TRUE)))
+    expect_true(any(grepl("Among the", block_lines, fixed = TRUE)))
+})
+
+test_that("Shared Objective 4 follow-up helper escalates the impact line for heavy class-imbalanced censoring", {
+    stressed_data <- create_test_dataset() %>%
+        dplyr::mutate(
+            tt_mets_months = c(rep(24, 8), rep(72, 2), rep(24, 10)),
+            mets_event = c(rep(0, 10), rep(1, 10)),
+            mfs_event_5yr = c(rep(0, 10), rep(1, 10)),
+            mfs_event_7yr = .data$mfs_event_5yr,
+            mfs_event_10yr = .data$mfs_event_5yr
+        )
+
+    followup_summary <- collect_objective4_endpoint_followup_summary(
+        data = stressed_data,
+        dataset_name = "uveal_melanoma_full_cohort",
+        eligibility_filter = "mfs_analysis_eligible",
+        event_prefix = "mfs",
+        time_horizon_years = 5
+    )
+    block_lines <- build_objective4_followup_limitation_block(followup_summary)
+
+    expect_identical(followup_summary$impact_level, "high")
+    expect_true(any(grepl("may be unstable", block_lines, fixed = TRUE)))
+    expect_true(any(grepl("Class 1 had more pre-5-year censoring than Class 2", block_lines, fixed = TRUE)))
+})
+
 test_that("Objective 4 MFS sensitivity guardrail reports PBT rows inside gksrs-only cohorts", {
     test_data <- create_test_dataset() %>%
         dplyr::mutate(
@@ -108,6 +196,7 @@ test_that("Simple MFS plot surfaces cohort and class event annotations", {
         cohort_label = "Full Cohort"
     )
     expect_match(plot_obj$labels$subtitle, "Full Cohort")
+    expect_gte(as.numeric(plot_obj$theme$plot.margin[[3]]), 20)
 
     x_scale <- Filter(function(scale) "x" %in% scale$aesthetics, plot_obj$scales$scales)[[1]]
     expect_true(any(grepl("5-year mets:", unname(x_scale$labels), fixed = TRUE)))
@@ -160,6 +249,7 @@ test_that("Objective 4 MFS sensitivity writer saves workbook and summary text", 
     ) %in% workbook_sheets))
 
     summary_text <- paste(readLines(paths$summary, warn = FALSE), collapse = "\n")
+    expect_match(summary_text, "`followup_ge_5yr` means")
     expect_match(summary_text, "EVENT-ROW DIAGNOSTICS")
     expect_match(summary_text, "event row IDs:")
 })

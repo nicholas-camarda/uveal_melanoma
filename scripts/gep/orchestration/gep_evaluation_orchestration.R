@@ -168,6 +168,7 @@ analyze_gep_mfs_validation <- function(data,
         missing_data_analysis = missing_data_analysis,
         prame_analysis = prame_analysis,
         extrapolation_assessment = extrapolation_assessment,
+        source_data = data,
         output_dir = mfs_summary_output_dir,
         prefix = prefix,
         dataset_name = dataset_name
@@ -179,9 +180,14 @@ analyze_gep_mfs_validation <- function(data,
         tryCatch(
             {
                 create_unified_gep_validation_summary(
-                    mfs_results = list(validation_results = validation_results, prame_analysis = prame_analysis),
+                    mfs_results = list(
+                        validation_results = validation_results,
+                        prame_analysis = prame_analysis,
+                        missing_data_analysis = missing_data_analysis,
+                        source_data = data,
+                        dataset_name = dataset_name
+                    ),
                     mss_results = NULL,
-                    dataset_name = dataset_name,
                     output_dir = gep_base_dir,
                     prefix = prefix
                 )
@@ -313,7 +319,9 @@ analyze_gep_mfs_validation <- function(data,
         prame_analysis = prame_analysis,
         missing_data_analysis = missing_data_analysis,
         extrapolation_assessment = extrapolation_assessment,
-        simple_class_summary_5yr = simple_class_summary_5yr
+        simple_class_summary_5yr = simple_class_summary_5yr,
+        source_data = data,
+        dataset_name = dataset_name
         # validation_report removed - now using comprehensive summary system
     ))
 }
@@ -512,6 +520,7 @@ analyze_gep_mss_validation <- function(data,
         missing_data = missing_data_analysis,
         prame_results = prame_results,
         extrapolation_assessment = extrapolation_assessment,
+        source_data = data,
         output_dir = mss_summary_output_dir,
         prefix = prefix,
         group_var = mss_reporting_grouping$var,
@@ -547,8 +556,14 @@ analyze_gep_mss_validation <- function(data,
             {
                 create_unified_gep_validation_summary(
                     mfs_results = NULL,
-                    mss_results = list(standard_validation = standard_results, competing_risk_validation = competing_results, prame_results = prame_results),
-                    dataset_name = dataset_name,
+                    mss_results = list(
+                        standard_validation = standard_results,
+                        competing_risk_validation = competing_results,
+                        prame_results = prame_results,
+                        missing_data_analysis = missing_data_analysis,
+                        source_data = data,
+                        dataset_name = dataset_name
+                    ),
                     output_dir = gep_base_dir,
                     prefix = prefix
                 )
@@ -569,7 +584,9 @@ analyze_gep_mss_validation <- function(data,
         competing_results = competing_results,
         prame_results = prame_results,
         missing_data_analysis = missing_data_analysis,
-        extrapolation_assessment = extrapolation_assessment
+        extrapolation_assessment = extrapolation_assessment,
+        source_data = data,
+        dataset_name = dataset_name
         # validation_report removed - now using comprehensive summary system
     ))
 }

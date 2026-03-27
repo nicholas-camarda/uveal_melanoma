@@ -127,10 +127,13 @@ create_prame_added_value_summary_line <- function(prame_analysis) {
 #'   later horizons.
 #' @param include_prediction_source_note Whether to include the base-prediction
 #'   source note in this summary body.
+#' @param source_data Optional analytic dataset used to derive compact
+#'   follow-up limitation summaries.
 #' @return A comprehensive summary text suitable for saving
 create_comprehensive_gep_summary <- function(validation_results, outcome_type, prame_analysis, missing_data_analysis, dataset_name,
                                              extrapolation_assessment = NULL,
-                                             include_prediction_source_note = TRUE) {
+                                             include_prediction_source_note = TRUE,
+                                             source_data = NULL) {
     logger::log_info(sprintf("Creating comprehensive GEP validation summary for %s", outcome_type))
 
     if (is.null(dataset_name) || !nzchar(dataset_name)) {
@@ -283,6 +286,17 @@ create_comprehensive_gep_summary <- function(validation_results, outcome_type, p
         character()
     }
     extrapolation_narrative <- c("", create_gep_extrapolation_narrative_section(extrapolation_assessment = extrapolation_assessment))
+    followup_narrative <- character()
+    if (!is.null(source_data)) {
+        followup_summary <- collect_objective4_endpoint_followup_summary(
+            data = source_data,
+            dataset_name = dataset_name,
+            eligibility_filter = if (identical(outcome_type, "MFS")) "mfs_analysis_eligible" else "mss_analysis_eligible",
+            event_prefix = tolower(outcome_type),
+            time_horizon_years = 5
+        )
+        followup_narrative <- c("", build_objective4_followup_limitation_block(followup_summary))
+    }
     
     # Build comprehensive report
     report_lines <- c(
@@ -295,6 +309,7 @@ create_comprehensive_gep_summary <- function(validation_results, outcome_type, p
         sprintf("Timepoints analyzed: %s", paste(timepoints, collapse = ", ")),
         prediction_source_note,
         extrapolation_narrative,
+        followup_narrative,
         "",
         "CLINICAL SUMMARY",
         "================",
@@ -402,6 +417,7 @@ create_comprehensive_gep_report <- function(mfs_results, mss_results, comparison
     #' @param prefix Filename prefix retained for interface consistency.
     #' @return Character scalar containing the consolidated summary text.
 create_comprehensive_gep_validation_summary <- function(mfs_results, mss_results, prefix) {
+    dataset_name <- mfs_results$dataset_name %||% mss_results$dataset_name %||% "dataset_not_provided"
     summary_lines <- c(
         "COMPREHENSIVE GEP VALIDATION SUMMARY",
         "====================================",
@@ -423,9 +439,10 @@ create_comprehensive_gep_validation_summary <- function(mfs_results, mss_results
             validation_results = mfs_results$validation_results,
             outcome_type = "MFS",
             prame_analysis = mfs_results$prame_analysis,
-            missing_data_analysis = NULL, # Will be added if available
-            dataset_name = "uveal_melanoma_full_cohort",
-            include_prediction_source_note = FALSE
+            missing_data_analysis = mfs_results$missing_data_analysis,
+            dataset_name = mfs_results$dataset_name %||% dataset_name,
+            include_prediction_source_note = FALSE,
+            source_data = mfs_results$source_data
         )
         summary_lines <- c(summary_lines, "", mfs_summary)
     } else {
@@ -443,10 +460,11 @@ create_comprehensive_gep_validation_summary <- function(mfs_results, mss_results
             mss_summary <- create_comprehensive_gep_summary(
                 validation_results = mss_container,
                 outcome_type = "MSS",
-                prame_analysis = NULL, # Will be added if available
-                missing_data_analysis = NULL, # Will be added if available
-                dataset_name = "uveal_melanoma_full_cohort",
-                include_prediction_source_note = FALSE
+                prame_analysis = mss_results$prame_results,
+                missing_data_analysis = mss_results$missing_data_analysis,
+                dataset_name = mss_results$dataset_name %||% dataset_name,
+                include_prediction_source_note = FALSE,
+                source_data = mss_results$source_data
             )
             summary_lines <- c(summary_lines, "", mss_summary)
         } else {

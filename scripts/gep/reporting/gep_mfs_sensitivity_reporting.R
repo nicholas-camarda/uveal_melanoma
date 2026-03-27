@@ -56,6 +56,458 @@ add_objective4_operational_followup_status <- function(data) {
         )
 }
 
+#' Resolve the Survival Time Variable for an Objective 4 Endpoint
+#'
+#' @param event_prefix Character endpoint prefix, currently `"mfs"` or `"mss"`.
+#'
+#' @return Character scalar naming the time-to-event column.
+resolve_objective4_followup_time_var <- function(event_prefix) {
+    dplyr::case_when(
+        identical(event_prefix, "mfs") ~ "tt_mets_months",
+        identical(event_prefix, "mss") ~ "tt_death_months",
+        TRUE ~ NA_character_
+    )
+}
+
+#' Collect Endpoint-Specific Objective 4 Follow-Up Summaries
+#'
+#' @param data Data frame passed into Objective 4.
+#' @param dataset_name Optional dataset identifier for display restoration.
+#' @param eligibility_filter Character eligibility flag column.
+#' @param event_prefix Character endpoint prefix used in event columns.
+#' @param time_horizon_years Integer horizon in years.
+#'
+#' @return Named list with operational follow-up summaries, horizon follow-up
+#'   summaries, and compact narrative metadata for the requested endpoint.
+collect_objective4_endpoint_followup_summary <- function(data,
+                                                         dataset_name = NULL,
+                                                         eligibility_filter,
+                                                         event_prefix,
+                                                         time_horizon_years = 5) {
+    prepared_data <- refresh_gep_analysis_flags(data)
+    if ("treatment_group" %in% names(prepared_data)) {
+        prepared_data <- normalize_treatment_group_data(prepared_data, columns = "treatment_group")
+    }
+    prepared_data <- restore_gep_display_variables(prepared_data, dataset_name = dataset_name)
+    prepared_data <- add_objective4_operational_followup_status(prepared_data)
+
+    if (!eligibility_filter %in% names(prepared_data)) {
+        prepared_data[[eligibility_filter]] <- FALSE
+    }
+
+    event_col <- paste0(event_prefix, "_event_", time_horizon_years, "yr")
+    time_var <- resolve_objective4_followup_time_var(event_prefix)
+    cohort_label <- format_objective4_gep_cohort_label(dataset_name)
+    followup_ge_label <- paste0("followup_ge_", time_horizon_years, "yr")
+    censored_label <- paste0("censored_pre_", time_horizon_years, "yr")
+    event_label <- paste0("event_by_", time_horizon_years, "yr")
+
+    empty_operational <- data.frame(
+        operational_followup_status = character(),
+        n = integer(),
+        cohort_label = character(),
+        proportion = numeric(),
+        stringsAsFactors = FALSE
+    )
+    empty_operational_by_class <- data.frame(
+        gep_class_simple = character(),
+        operational_followup_status = character(),
+        n = integer(),
+        proportion_within_class = numeric(),
+        stringsAsFactors = FALSE
+    )
+    empty_operational_by_class_treatment <- data.frame(
+        gep_class_simple = character(),
+        treatment_group = character(),
+        operational_followup_status = character(),
+        n = integer(),
+        proportion_within_class_treatment = numeric(),
+        stringsAsFactors = FALSE
+    )
+    empty_horizon <- data.frame(
+        horizon_followup_view = character(),
+        n = integer(),
+        cohort_label = character(),
+        proportion = numeric(),
+        stringsAsFactors = FALSE
+    )
+    empty_horizon_by_class <- data.frame(
+        gep_class_simple = character(),
+        horizon_followup_view = character(),
+        n = integer(),
+        proportion_within_class = numeric(),
+        stringsAsFactors = FALSE
+    )
+    empty_horizon_by_class_treatment <- data.frame(
+        gep_class_simple = character(),
+        treatment_group = character(),
+        horizon_followup_view = character(),
+        n = integer(),
+        proportion_within_class_treatment = numeric(),
+        stringsAsFactors = FALSE
+    )
+    empty_censored_operational_breakdown <- data.frame(
+        operational_followup_status = character(),
+        n = integer(),
+        proportion_within_censored = numeric(),
+        stringsAsFactors = FALSE
+    )
+
+    if (!all(c(event_col, time_var) %in% names(prepared_data))) {
+        return(list(
+            cohort_label = cohort_label,
+            eligibility_n = 0L,
+            event_col = event_col,
+            time_var = time_var,
+            horizon_years = time_horizon_years,
+            event_label = event_label,
+            followup_ge_label = followup_ge_label,
+            censored_label = censored_label,
+            operational_overall = empty_operational,
+            operational_by_class = empty_operational_by_class,
+            operational_by_class_treatment = empty_operational_by_class_treatment,
+            horizon_overall = empty_horizon,
+            horizon_by_class = empty_horizon_by_class,
+            horizon_by_class_treatment = empty_horizon_by_class_treatment,
+            censored_operational_breakdown = empty_censored_operational_breakdown,
+            impact_level = "unavailable",
+            limitation_line = sprintf(
+                "%d-year follow-up limitation data were unavailable for this endpoint.",
+                time_horizon_years
+            )
+        ))
+    }
+
+    eligible_data <- prepared_data %>%
+        dplyr::filter(.data[[eligibility_filter]]) %>%
+        dplyr::mutate(
+            gep_class_simple = if ("gep_class_simple" %in% names(.)) {
+                as.character(.data$gep_class_simple)
+            } else if ("biopsy1_gep" %in% names(.)) {
+                as.character(.data$biopsy1_gep)
+            } else {
+                NA_character_
+            },
+            treatment_group = if ("treatment_group" %in% names(.)) {
+                as.character(.data$treatment_group)
+            } else {
+                NA_character_
+            },
+            horizon_followup_view = dplyr::case_when(
+                !is.na(.data[[event_col]]) & .data[[event_col]] == 1 ~ event_label,
+                !is.na(.data[[time_var]]) & .data[[time_var]] >= (time_horizon_years * 12) ~ followup_ge_label,
+                TRUE ~ censored_label
+            )
+        )
+
+    if (nrow(eligible_data) == 0) {
+        return(list(
+            cohort_label = cohort_label,
+            eligibility_n = 0L,
+            event_col = event_col,
+            time_var = time_var,
+            horizon_years = time_horizon_years,
+            event_label = event_label,
+            followup_ge_label = followup_ge_label,
+            censored_label = censored_label,
+            operational_overall = empty_operational,
+            operational_by_class = empty_operational_by_class,
+            operational_by_class_treatment = empty_operational_by_class_treatment,
+            horizon_overall = empty_horizon,
+            horizon_by_class = empty_horizon_by_class,
+            horizon_by_class_treatment = empty_horizon_by_class_treatment,
+            censored_operational_breakdown = empty_censored_operational_breakdown,
+            impact_level = "unavailable",
+            limitation_line = sprintf(
+                "No %s-eligible rows were available for the %d-year follow-up summary.",
+                event_prefix,
+                time_horizon_years
+            )
+        ))
+    }
+
+    operational_overall <- eligible_data %>%
+        dplyr::count(.data$operational_followup_status, name = "n") %>%
+        dplyr::mutate(
+            cohort_label = cohort_label,
+            proportion = .data$n / sum(.data$n)
+        )
+
+    operational_by_class <- eligible_data %>%
+        dplyr::count(.data$gep_class_simple, .data$operational_followup_status, name = "n") %>%
+        dplyr::group_by(.data$gep_class_simple) %>%
+        dplyr::mutate(proportion_within_class = .data$n / sum(.data$n)) %>%
+        dplyr::ungroup()
+
+    operational_by_class_treatment <- eligible_data %>%
+        dplyr::count(.data$gep_class_simple, .data$treatment_group, .data$operational_followup_status, name = "n") %>%
+        dplyr::group_by(.data$gep_class_simple, .data$treatment_group) %>%
+        dplyr::mutate(proportion_within_class_treatment = .data$n / sum(.data$n)) %>%
+        dplyr::ungroup()
+
+    horizon_overall <- eligible_data %>%
+        dplyr::count(.data$horizon_followup_view, name = "n") %>%
+        dplyr::mutate(
+            cohort_label = cohort_label,
+            proportion = .data$n / sum(.data$n)
+        )
+
+    horizon_by_class <- eligible_data %>%
+        dplyr::count(.data$gep_class_simple, .data$horizon_followup_view, name = "n") %>%
+        dplyr::group_by(.data$gep_class_simple) %>%
+        dplyr::mutate(proportion_within_class = .data$n / sum(.data$n)) %>%
+        dplyr::ungroup()
+
+    horizon_by_class_treatment <- eligible_data %>%
+        dplyr::count(.data$gep_class_simple, .data$treatment_group, .data$horizon_followup_view, name = "n") %>%
+        dplyr::group_by(.data$gep_class_simple, .data$treatment_group) %>%
+        dplyr::mutate(proportion_within_class_treatment = .data$n / sum(.data$n)) %>%
+        dplyr::ungroup()
+
+    censored_operational_breakdown <- eligible_data %>%
+        dplyr::filter(.data$horizon_followup_view == censored_label) %>%
+        dplyr::count(.data$operational_followup_status, name = "n") %>%
+        dplyr::mutate(proportion_within_censored = .data$n / sum(.data$n))
+
+    overall_total <- sum(horizon_overall$n, na.rm = TRUE)
+    censored_n <- horizon_overall$n[horizon_overall$horizon_followup_view == censored_label] %||% 0L
+    followup_ge_n <- horizon_overall$n[horizon_overall$horizon_followup_view == followup_ge_label] %||% 0L
+    censored_prop <- if (overall_total > 0) censored_n / overall_total else NA_real_
+    followup_ge_prop <- if (overall_total > 0) followup_ge_n / overall_total else NA_real_
+
+    class_totals <- horizon_by_class %>%
+        dplyr::group_by(.data$gep_class_simple) %>%
+        dplyr::summarise(class_n = sum(.data$n, na.rm = TRUE), .groups = "drop")
+    class_censored_props <- class_totals %>%
+        dplyr::left_join(
+            horizon_by_class %>%
+                dplyr::filter(.data$horizon_followup_view == censored_label) %>%
+                dplyr::select(
+                    gep_class_simple,
+                    censored_n = n,
+                    proportion_within_class
+                ),
+            by = "gep_class_simple"
+        ) %>%
+        dplyr::mutate(
+            censored_n = dplyr::coalesce(.data$censored_n, 0L),
+            proportion_within_class = dplyr::coalesce(.data$proportion_within_class, 0)
+        ) %>%
+        dplyr::arrange(dplyr::desc(.data$proportion_within_class))
+
+    class_imbalance <- FALSE
+    class_imbalance_clause <- NULL
+    if (nrow(class_censored_props) >= 2) {
+        top_class <- class_censored_props$gep_class_simple[1]
+        top_prop <- class_censored_props$proportion_within_class[1]
+        bottom_class <- class_censored_props$gep_class_simple[nrow(class_censored_props)]
+        bottom_prop <- class_censored_props$proportion_within_class[nrow(class_censored_props)]
+
+        if (is.finite(top_prop) && is.finite(bottom_prop) && (top_prop - bottom_prop) >= 0.20) {
+            class_imbalance <- TRUE
+            class_imbalance_clause <- sprintf(
+                "%s had more pre-%d-year censoring than %s",
+                top_class,
+                time_horizon_years,
+                bottom_class
+            )
+        }
+    }
+
+    impact_level <- dplyr::case_when(
+        is.finite(censored_prop) && censored_prop >= 0.35 && is.finite(followup_ge_prop) && censored_prop > followup_ge_prop ~ "high",
+        is.finite(censored_prop) && censored_prop >= 0.25 ~ "moderate",
+        TRUE ~ "low"
+    )
+
+    limitation_line <- dplyr::case_when(
+        identical(impact_level, "high") && class_imbalance ~ sprintf(
+            "%d-year estimates may be unstable because many patients were censored before %d years; %s.",
+            time_horizon_years,
+            time_horizon_years,
+            class_imbalance_clause
+        ),
+        identical(impact_level, "high") ~ sprintf(
+            "%d-year estimates may be unstable because many patients were censored before %d years.",
+            time_horizon_years,
+            time_horizon_years
+        ),
+        identical(impact_level, "moderate") && class_imbalance ~ sprintf(
+            "%d-year estimates should be interpreted cautiously because follow-up before %d years was limited; %s.",
+            time_horizon_years,
+            time_horizon_years,
+            class_imbalance_clause
+        ),
+        identical(impact_level, "moderate") ~ sprintf(
+            "%d-year estimates should be interpreted cautiously because follow-up before %d years was limited.",
+            time_horizon_years,
+            time_horizon_years
+        ),
+        class_imbalance ~ sprintf(
+            "%d-year estimates should be interpreted with follow-up context because %s.",
+            time_horizon_years,
+            class_imbalance_clause
+        ),
+        TRUE ~ sprintf(
+            "%d-year estimates should be interpreted with routine follow-up context.",
+            time_horizon_years
+        )
+    )
+
+    list(
+        cohort_label = cohort_label,
+        eligibility_n = nrow(eligible_data),
+        event_col = event_col,
+        time_var = time_var,
+        horizon_years = time_horizon_years,
+        event_label = event_label,
+        followup_ge_label = followup_ge_label,
+        censored_label = censored_label,
+        operational_overall = operational_overall,
+        operational_by_class = operational_by_class,
+        operational_by_class_treatment = operational_by_class_treatment,
+        horizon_overall = horizon_overall,
+        horizon_by_class = horizon_by_class,
+        horizon_by_class_treatment = horizon_by_class_treatment,
+        censored_operational_breakdown = censored_operational_breakdown,
+        impact_level = impact_level,
+        limitation_line = limitation_line
+    )
+}
+
+#' Build a Compact Objective 4 Follow-Up Limitation Narrative Block
+#'
+#' @param followup_summary Follow-up summary list from
+#'   `collect_objective4_endpoint_followup_summary()`.
+#' @param include_heading Logical; when `TRUE`, prepend the block heading.
+#'
+#' @return Character vector of narrative lines.
+build_objective4_followup_limitation_block <- function(followup_summary, include_heading = TRUE) {
+    if (is.null(followup_summary)) {
+        return(character())
+    }
+
+    horizon_years <- followup_summary$horizon_years %||% 5L
+    total_n <- followup_summary$eligibility_n %||% 0L
+    followup_ge_label <- followup_summary$followup_ge_label %||% paste0("followup_ge_", horizon_years, "yr")
+    event_label <- followup_summary$event_label %||% paste0("event_by_", horizon_years, "yr")
+    censored_label <- followup_summary$censored_label %||% paste0("censored_pre_", horizon_years, "yr")
+    horizon_overall <- followup_summary$horizon_overall %||% data.frame()
+    horizon_by_class <- followup_summary$horizon_by_class %||% data.frame()
+    operational_overall <- followup_summary$operational_overall %||% data.frame()
+
+    lines <- character()
+    if (isTRUE(include_heading)) {
+        lines <- c(lines, "FOLLOW-UP LIMITATION", "====================")
+    }
+
+    if (total_n == 0 || nrow(horizon_overall) == 0) {
+        return(c(lines, followup_summary$limitation_line %||% "Follow-up limitation data unavailable."))
+    }
+
+    horizon_counts <- stats::setNames(horizon_overall$n, horizon_overall$horizon_followup_view)
+    operational_counts <- stats::setNames(operational_overall$n, operational_overall$operational_followup_status)
+    censored_breakdown <- followup_summary$censored_operational_breakdown %||% data.frame()
+    horizon_censored_n <- if (censored_label %in% names(horizon_counts)) horizon_counts[[censored_label]] else 0L
+    horizon_event_n <- if (event_label %in% names(horizon_counts)) horizon_counts[[event_label]] else 0L
+    horizon_followup_ge_n <- if (followup_ge_label %in% names(horizon_counts)) horizon_counts[[followup_ge_label]] else 0L
+    operational_alive_n <- if ("alive" %in% names(operational_counts)) operational_counts[["alive"]] else 0L
+    operational_dead_n <- if ("dead" %in% names(operational_counts)) operational_counts[["dead"]] else 0L
+    operational_lost_n <- if ("lost_to_followup" %in% names(operational_counts)) operational_counts[["lost_to_followup"]] else 0L
+
+    class_censored <- horizon_by_class %>%
+        dplyr::filter(.data$horizon_followup_view == censored_label) %>%
+        dplyr::arrange(.data$gep_class_simple)
+
+    class_line <- NULL
+    if (nrow(class_censored) > 0) {
+        class_bits <- vapply(seq_len(nrow(class_censored)), function(i) {
+            sprintf(
+                "%s %s %d/%d (%.1f%%)",
+                class_censored$gep_class_simple[i],
+                censored_label,
+                class_censored$n[i],
+                sum(horizon_by_class$n[horizon_by_class$gep_class_simple == class_censored$gep_class_simple[i]], na.rm = TRUE),
+                100 * class_censored$proportion_within_class[i]
+            )
+        }, character(1))
+        class_line <- paste(class_bits, collapse = "; ")
+    }
+
+    lines <- c(
+        lines,
+        followup_summary$limitation_line,
+        sprintf(
+            "`%s` means follow-up reached at least %d years without the endpoint occurring before %d years; `censored_pre_%dyr` means follow-up ended before %d years without an observed endpoint.",
+            followup_ge_label,
+            horizon_years,
+            horizon_years,
+            horizon_years,
+            horizon_years
+        ),
+        sprintf(
+            "- %d-year view: %s %d/%d (%.1f%%); %s %d/%d (%.1f%%); %s %d/%d (%.1f%%)",
+            horizon_years,
+            censored_label,
+            horizon_censored_n,
+            total_n,
+            100 * (horizon_censored_n / total_n),
+            event_label,
+            horizon_event_n,
+            total_n,
+            100 * (horizon_event_n / total_n),
+            followup_ge_label,
+            horizon_followup_ge_n,
+            total_n,
+            100 * (horizon_followup_ge_n / total_n)
+        )
+    )
+
+    if (!is.null(class_line) && nzchar(class_line)) {
+        lines <- c(lines, paste0("- By class: ", class_line))
+    }
+
+    lines <- c(
+        lines,
+        sprintf(
+            "- Operational view: alive %d/%d (%.1f%%); dead %d/%d (%.1f%%); lost_to_followup %d/%d (%.1f%%)",
+            operational_alive_n,
+            total_n,
+            100 * (operational_alive_n / total_n),
+            operational_dead_n,
+            total_n,
+            100 * (operational_dead_n / total_n),
+            operational_lost_n,
+            total_n,
+            100 * (operational_lost_n / total_n)
+        )
+    )
+
+    if (nrow(censored_breakdown) > 0) {
+        censored_counts <- stats::setNames(censored_breakdown$n, censored_breakdown$operational_followup_status)
+        censored_total <- sum(censored_breakdown$n, na.rm = TRUE)
+        censored_alive_n <- if ("alive" %in% names(censored_counts)) censored_counts[["alive"]] else 0L
+        censored_dead_n <- if ("dead" %in% names(censored_counts)) censored_counts[["dead"]] else 0L
+        censored_lost_n <- if ("lost_to_followup" %in% names(censored_counts)) censored_counts[["lost_to_followup"]] else 0L
+        lines <- c(
+            lines,
+            sprintf(
+                "Among the %d patients censored before %d years, alive %d (%.1f%%), dead %d (%.1f%%), and lost_to_followup %d (%.1f%%).",
+                censored_total,
+                horizon_years,
+                censored_alive_n,
+                100 * (censored_alive_n / censored_total),
+                censored_dead_n,
+                100 * (censored_dead_n / censored_total),
+                censored_lost_n,
+                100 * (censored_lost_n / censored_total)
+            )
+        )
+    }
+
+    lines
+}
+
 #' Harmonize 5-year MFS summary inputs across Objective 4 code paths
 #'
 #' @param data Data frame containing at least `gep_class_simple` and the 5-year
@@ -319,6 +771,7 @@ summarize_objective4_mfs_by_class <- function(data, analysis_subset = "All eligi
             gep_class_simple = character(),
             n = integer(),
             observed_events_5yr = integer(),
+            km_observed_events_5yr = numeric(),
             followup_ge_5yr = integer(),
             censored_pre_5yr = integer(),
             expected_survival_5yr = numeric(),
@@ -338,30 +791,38 @@ summarize_objective4_mfs_by_class <- function(data, analysis_subset = "All eligi
 
     data %>%
         dplyr::group_by(.data$gep_class_simple) %>%
-        dplyr::summarise(
-            analysis_subset = analysis_subset,
-            n = dplyr::n(),
-            observed_events_5yr = sum(.data$observed_events_5yr, na.rm = TRUE),
-            followup_ge_5yr = sum(.data$five_year_followup_view == "followup_ge_5yr", na.rm = TRUE),
-            censored_pre_5yr = sum(.data$five_year_followup_view == "censored_pre_5yr", na.rm = TRUE),
-            expected_survival_5yr = mean(.data$expected_mfs_5yr, na.rm = TRUE),
-            expected_risk_5yr = mean(.data$predicted_mfs_risk_5yr, na.rm = TRUE),
-            expected_events_5yr = sum(.data$predicted_mfs_risk_5yr, na.rm = TRUE),
-            actual_mfs_5yr = mean(.data$actual_mfs_5yr, na.rm = TRUE),
-            pbt_n = sum(.data$treatment_group == "PBT", na.rm = TRUE),
-            gksrs_n = sum(.data$treatment_group == "GKSRS", na.rm = TRUE),
-            nonstandard_treatment_n = sum(
-                !is.na(.data$treatment_group) &
-                    !.data$treatment_group %in% c("PBT", "GKSRS"),
-                na.rm = TRUE
-            ),
-            treatment_mix = format_objective4_treatment_mix_label(.data$treatment_group),
-            .groups = "drop"
-        ) %>%
+        dplyr::group_modify(~ {
+            km_metrics <- estimate_mfs_km_at_horizon(
+                data = .x,
+                timepoint_months = 60
+            )
+
+            data.frame(
+                analysis_subset = analysis_subset,
+                n = nrow(.x),
+                observed_events_5yr = sum(.x$observed_events_5yr, na.rm = TRUE),
+                km_observed_events_5yr = km_metrics$observed_events,
+                followup_ge_5yr = sum(.x$five_year_followup_view == "followup_ge_5yr", na.rm = TRUE),
+                censored_pre_5yr = sum(.x$five_year_followup_view == "censored_pre_5yr", na.rm = TRUE),
+                expected_survival_5yr = mean(.x$expected_mfs_5yr, na.rm = TRUE),
+                expected_risk_5yr = mean(.x$predicted_mfs_risk_5yr, na.rm = TRUE),
+                expected_events_5yr = sum(.x$predicted_mfs_risk_5yr, na.rm = TRUE),
+                actual_mfs_5yr = km_metrics$survival,
+                pbt_n = sum(.x$treatment_group == "PBT", na.rm = TRUE),
+                gksrs_n = sum(.x$treatment_group == "GKSRS", na.rm = TRUE),
+                nonstandard_treatment_n = sum(
+                    !is.na(.x$treatment_group) &
+                        !.x$treatment_group %in% c("PBT", "GKSRS"),
+                    na.rm = TRUE
+                ),
+                treatment_mix = format_objective4_treatment_mix_label(.x$treatment_group),
+                stringsAsFactors = FALSE
+            )
+        }) %>%
         dplyr::mutate(
             oe_ratio_5yr = dplyr::if_else(
                 .data$expected_events_5yr > 0,
-                .data$observed_events_5yr / .data$expected_events_5yr,
+                .data$km_observed_events_5yr / .data$expected_events_5yr,
                 NA_real_
             ),
             pbt_prop = dplyr::if_else(.data$n > 0, .data$pbt_n / .data$n, NA_real_),
@@ -372,6 +833,7 @@ summarize_objective4_mfs_by_class <- function(data, analysis_subset = "All eligi
             gep_class_simple,
             n,
             observed_events_5yr,
+            km_observed_events_5yr,
             followup_ge_5yr,
             censored_pre_5yr,
             expected_survival_5yr,
@@ -403,6 +865,7 @@ summarize_objective4_mfs_by_class_treatment <- function(data, analysis_subset = 
             treatment_group = character(),
             n = integer(),
             observed_events_5yr = integer(),
+            km_observed_events_5yr = numeric(),
             followup_ge_5yr = integer(),
             censored_pre_5yr = integer(),
             expected_survival_5yr = numeric(),
@@ -416,22 +879,30 @@ summarize_objective4_mfs_by_class_treatment <- function(data, analysis_subset = 
 
     data %>%
         dplyr::group_by(.data$gep_class_simple, .data$treatment_group) %>%
-        dplyr::summarise(
-            analysis_subset = analysis_subset,
-            n = dplyr::n(),
-            observed_events_5yr = sum(.data$observed_events_5yr, na.rm = TRUE),
-            followup_ge_5yr = sum(.data$five_year_followup_view == "followup_ge_5yr", na.rm = TRUE),
-            censored_pre_5yr = sum(.data$five_year_followup_view == "censored_pre_5yr", na.rm = TRUE),
-            expected_survival_5yr = mean(.data$expected_mfs_5yr, na.rm = TRUE),
-            expected_risk_5yr = mean(.data$predicted_mfs_risk_5yr, na.rm = TRUE),
-            expected_events_5yr = sum(.data$predicted_mfs_risk_5yr, na.rm = TRUE),
-            actual_mfs_5yr = mean(.data$actual_mfs_5yr, na.rm = TRUE),
-            .groups = "drop"
-        ) %>%
+        dplyr::group_modify(~ {
+            km_metrics <- estimate_mfs_km_at_horizon(
+                data = .x,
+                timepoint_months = 60
+            )
+
+            data.frame(
+                analysis_subset = analysis_subset,
+                n = nrow(.x),
+                observed_events_5yr = sum(.x$observed_events_5yr, na.rm = TRUE),
+                km_observed_events_5yr = km_metrics$observed_events,
+                followup_ge_5yr = sum(.x$five_year_followup_view == "followup_ge_5yr", na.rm = TRUE),
+                censored_pre_5yr = sum(.x$five_year_followup_view == "censored_pre_5yr", na.rm = TRUE),
+                expected_survival_5yr = mean(.x$expected_mfs_5yr, na.rm = TRUE),
+                expected_risk_5yr = mean(.x$predicted_mfs_risk_5yr, na.rm = TRUE),
+                expected_events_5yr = sum(.x$predicted_mfs_risk_5yr, na.rm = TRUE),
+                actual_mfs_5yr = km_metrics$survival,
+                stringsAsFactors = FALSE
+            )
+        }) %>%
         dplyr::mutate(
             oe_ratio_5yr = dplyr::if_else(
                 .data$expected_events_5yr > 0,
-                .data$observed_events_5yr / .data$expected_events_5yr,
+                .data$km_observed_events_5yr / .data$expected_events_5yr,
                 NA_real_
             )
         ) %>%
@@ -441,6 +912,7 @@ summarize_objective4_mfs_by_class_treatment <- function(data, analysis_subset = 
             treatment_group,
             n,
             observed_events_5yr,
+            km_observed_events_5yr,
             followup_ge_5yr,
             censored_pre_5yr,
             expected_survival_5yr,
@@ -524,106 +996,23 @@ build_objective4_mfs_calibration_caption <- function(results, dataset_name = NUL
 collect_objective4_mfs_sensitivity_results <- function(data, dataset_name = NULL) {
     mfs_data <- prepare_objective4_mfs_sensitivity_data(data, dataset_name = dataset_name)
     cohort_label <- format_objective4_gep_cohort_label(dataset_name)
+    followup_summary <- collect_objective4_endpoint_followup_summary(
+        data = data,
+        dataset_name = dataset_name,
+        eligibility_filter = "mfs_analysis_eligible",
+        event_prefix = "mfs",
+        time_horizon_years = 5
+    )
 
-    operational_overall <- if (nrow(mfs_data) > 0) {
-        mfs_data %>%
-            dplyr::count(.data$operational_followup_status, name = "n") %>%
-            dplyr::mutate(
-                cohort_label = cohort_label,
-                proportion = .data$n / sum(.data$n)
-            )
-    } else {
-        data.frame(
-            operational_followup_status = character(),
-            n = integer(),
-            cohort_label = character(),
-            proportion = numeric(),
-            stringsAsFactors = FALSE
-        )
-    }
-
-    operational_by_class <- if (nrow(mfs_data) > 0) {
-        mfs_data %>%
-            dplyr::count(.data$gep_class_simple, .data$operational_followup_status, name = "n") %>%
-            dplyr::group_by(.data$gep_class_simple) %>%
-            dplyr::mutate(proportion_within_class = .data$n / sum(.data$n)) %>%
-            dplyr::ungroup()
-    } else {
-        data.frame(
-            gep_class_simple = character(),
-            operational_followup_status = character(),
-            n = integer(),
-            proportion_within_class = numeric(),
-            stringsAsFactors = FALSE
-        )
-    }
-
-    operational_by_class_treatment <- if (nrow(mfs_data) > 0) {
-        mfs_data %>%
-            dplyr::count(.data$gep_class_simple, .data$treatment_group, .data$operational_followup_status, name = "n") %>%
-            dplyr::group_by(.data$gep_class_simple, .data$treatment_group) %>%
-            dplyr::mutate(proportion_within_class_treatment = .data$n / sum(.data$n)) %>%
-            dplyr::ungroup()
-    } else {
-        data.frame(
-            gep_class_simple = character(),
-            treatment_group = character(),
-            operational_followup_status = character(),
-            n = integer(),
-            proportion_within_class_treatment = numeric(),
-            stringsAsFactors = FALSE
-        )
-    }
-
-    horizon_overall <- if (nrow(mfs_data) > 0) {
-        mfs_data %>%
-            dplyr::count(.data$five_year_followup_view, name = "n") %>%
-            dplyr::mutate(
-                cohort_label = cohort_label,
-                proportion = .data$n / sum(.data$n)
-            )
-    } else {
-        data.frame(
-            five_year_followup_view = character(),
-            n = integer(),
-            cohort_label = character(),
-            proportion = numeric(),
-            stringsAsFactors = FALSE
-        )
-    }
-
-    horizon_by_class <- if (nrow(mfs_data) > 0) {
-        mfs_data %>%
-            dplyr::count(.data$gep_class_simple, .data$five_year_followup_view, name = "n") %>%
-            dplyr::group_by(.data$gep_class_simple) %>%
-            dplyr::mutate(proportion_within_class = .data$n / sum(.data$n)) %>%
-            dplyr::ungroup()
-    } else {
-        data.frame(
-            gep_class_simple = character(),
-            five_year_followup_view = character(),
-            n = integer(),
-            proportion_within_class = numeric(),
-            stringsAsFactors = FALSE
-        )
-    }
-
-    horizon_by_class_treatment <- if (nrow(mfs_data) > 0) {
-        mfs_data %>%
-            dplyr::count(.data$gep_class_simple, .data$treatment_group, .data$five_year_followup_view, name = "n") %>%
-            dplyr::group_by(.data$gep_class_simple, .data$treatment_group) %>%
-            dplyr::mutate(proportion_within_class_treatment = .data$n / sum(.data$n)) %>%
-            dplyr::ungroup()
-    } else {
-        data.frame(
-            gep_class_simple = character(),
-            treatment_group = character(),
-            five_year_followup_view = character(),
-            n = integer(),
-            proportion_within_class_treatment = numeric(),
-            stringsAsFactors = FALSE
-        )
-    }
+    operational_overall <- followup_summary$operational_overall
+    operational_by_class <- followup_summary$operational_by_class
+    operational_by_class_treatment <- followup_summary$operational_by_class_treatment
+    horizon_overall <- followup_summary$horizon_overall %>%
+        dplyr::rename(five_year_followup_view = horizon_followup_view)
+    horizon_by_class <- followup_summary$horizon_by_class %>%
+        dplyr::rename(five_year_followup_view = horizon_followup_view)
+    horizon_by_class_treatment <- followup_summary$horizon_by_class_treatment %>%
+        dplyr::rename(five_year_followup_view = horizon_followup_view)
 
     class_summary <- summarize_objective4_mfs_by_class(mfs_data, analysis_subset = "All eligible")
     class_treatment_summary <- summarize_objective4_mfs_by_class_treatment(mfs_data, analysis_subset = "All eligible")
@@ -777,6 +1166,7 @@ write_objective4_mfs_sensitivity_outputs <- function(sensitivity_results, output
         "",
         sprintf("Cohort: %s", sensitivity_results$cohort_label),
         sprintf("5-year censoring view evaluated at %d months.", 60),
+        "`followup_ge_5yr` means follow-up reached at least 5 years without metastasis before 5 years.",
         sprintf(
             "Operational lost-to-follow-up uses cutoff date %s and threshold %d days.",
             format(VITAL_STATUS_DATA_CUTOFF_DATE, "%Y-%m-%d"),
@@ -823,12 +1213,12 @@ write_objective4_mfs_sensitivity_outputs <- function(sensitivity_results, output
             narrative_lines <- c(
                 narrative_lines,
                 sprintf(
-                    "  - %s: events %d/%d, expected survival %.1f%%, actual MFS %.1f%%, O/E %.2f, tx mix %s",
+                    "  - %s: raw events %d/%d, KM-observed MFS %.1f%%, expected survival %.1f%%, O/E %.2f, tx mix %s",
                     class_summary$gep_class_simple[i],
                     class_summary$observed_events_5yr[i],
                     class_summary$n[i],
-                    100 * class_summary$expected_survival_5yr[i],
                     100 * class_summary$actual_mfs_5yr[i],
+                    100 * class_summary$expected_survival_5yr[i],
                     class_summary$oe_ratio_5yr[i],
                     class_summary$treatment_mix[i]
                 )

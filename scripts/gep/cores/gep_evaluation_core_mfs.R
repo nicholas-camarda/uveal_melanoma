@@ -1,10 +1,84 @@
 # GEP MFS Evaluation Core
 # Contains metastasis-free survival evaluation algorithms (no plotting or I/O)
 
+#' Estimate Kaplan-Meier MFS at a Horizon
+#'
+#' Calculates a censoring-aware Kaplan-Meier estimate for metastasis-free
+#' survival at a requested month horizon and converts that estimate to an
+#' observed risk and pseudo-event count on the original sample size scale.
+#'
+#' @param data Data frame containing the time and event columns.
+#' @param timepoint_months Numeric horizon in months.
+#' @param time_var Character name of the MFS follow-up column.
+#' @param event_var Character name of the metastasis event column.
+#'
+#' @return Named list with Kaplan-Meier survival, risk, confidence bounds,
+#'   pseudo-event counts, and raw event bookkeeping.
+estimate_mfs_km_at_horizon <- function(data,
+                                       timepoint_months,
+                                       time_var = "tt_mets_months",
+                                       event_var = "mets_event") {
+    valid_data <- data %>%
+        dplyr::filter(
+            !is.na(.data[[time_var]]),
+            !is.na(.data[[event_var]])
+        )
+
+    raw_events_by_horizon <- sum(
+        valid_data[[event_var]] == 1 & valid_data[[time_var]] <= timepoint_months,
+        na.rm = TRUE
+    )
+
+    if (nrow(valid_data) == 0) {
+        return(list(
+            n = 0L,
+            survival = NA_real_,
+            survival_ci_lower = NA_real_,
+            survival_ci_upper = NA_real_,
+            risk = NA_real_,
+            risk_ci_lower = NA_real_,
+            risk_ci_upper = NA_real_,
+            observed_events = NA_real_,
+            observed_events_ci_lower = NA_real_,
+            observed_events_ci_upper = NA_real_,
+            raw_events_by_horizon = raw_events_by_horizon
+        ))
+    }
+
+    km_fit <- survival::survfit(
+        survival::Surv(valid_data[[time_var]], valid_data[[event_var]]) ~ 1,
+        data = valid_data
+    )
+    km_summary <- summary(km_fit, times = timepoint_months, extend = TRUE)
+
+    km_survival <- km_summary$surv[1] %||% NA_real_
+    km_survival_lower <- km_summary$lower[1] %||% NA_real_
+    km_survival_upper <- km_summary$upper[1] %||% NA_real_
+
+    km_risk <- if (!is.na(km_survival)) 1 - km_survival else NA_real_
+    km_risk_lower <- if (!is.na(km_survival_upper)) max(0, 1 - km_survival_upper) else NA_real_
+    km_risk_upper <- if (!is.na(km_survival_lower)) min(1, 1 - km_survival_lower) else NA_real_
+
+    list(
+        n = nrow(valid_data),
+        survival = km_survival,
+        survival_ci_lower = km_survival_lower,
+        survival_ci_upper = km_survival_upper,
+        risk = km_risk,
+        risk_ci_lower = km_risk_lower,
+        risk_ci_upper = km_risk_upper,
+        observed_events = if (!is.na(km_risk)) nrow(valid_data) * km_risk else NA_real_,
+        observed_events_ci_lower = if (!is.na(km_risk_lower)) nrow(valid_data) * km_risk_lower else NA_real_,
+        observed_events_ci_upper = if (!is.na(km_risk_upper)) nrow(valid_data) * km_risk_upper else NA_real_,
+        raw_events_by_horizon = raw_events_by_horizon
+    )
+}
+
 #' Calculate Observed vs Expected MFS Rates
 #'
 #' Calculates observed vs expected metastasis-free survival rates by GEP class
-#' with exact Poisson confidence intervals and chi-square goodness of fit test.
+#' using censoring-aware Kaplan-Meier estimates at the requested horizon and a
+#' Pearson goodness-of-fit comparison against summed expected risks.
 #'
 #' @param data Data frame with GEP predictions and survival outcomes
 #' @param timepoint Numeric. Time point in years for analysis
@@ -36,54 +110,69 @@ calculate_observed_expected_mfs <- function(data, timepoint, group_var = "biopsy
         # Get expected survival probability for this timepoint
         expected_var <- paste0("expected_mfs_", timepoint, "yr")
 
-        # Use pre-processed time-specific event indicators for consistency
-        observed_events <- sum(class_data[[paste0("mfs_event_", timepoint, "yr")]])
+        km_metrics <- estimate_mfs_km_at_horizon(
+            data = class_data,
+            timepoint_months = timepoint_months
+        )
+        observed_events <- km_metrics$observed_events
 
         # Calculate expected events based on GEP predictions
-        # Expected events = n * (1 - mean_expected_survival_probability)
+        # Expected events are the summed patient-level predicted risks.
         mean_expected_survival <- mean(class_data[[expected_var]], na.rm = TRUE)
-        expected_events <- nrow(class_data) * (1 - mean_expected_survival)
+        expected_events <- sum(1 - class_data[[expected_var]], na.rm = TRUE)
 
         # Calculate O/E ratio
         oe_ratio <- if (expected_events > 0) observed_events / expected_events else NA
 
-        # Calculate exact Poisson confidence intervals for observed events
-        poisson_test <- poisson.test(observed_events)
-        poisson_ci_lower <- if (expected_events > 0) poisson_test$conf.int[1] / expected_events else NA
-        poisson_ci_upper <- if (expected_events > 0) poisson_test$conf.int[2] / expected_events else NA
+        # Transform Greenwood confidence bounds for KM risk onto the O/E scale.
+        poisson_ci_lower <- if (expected_events > 0) {
+            km_metrics$observed_events_ci_lower / expected_events
+        } else {
+            NA_real_
+        }
+        poisson_ci_upper <- if (expected_events > 0) {
+            km_metrics$observed_events_ci_upper / expected_events
+        } else {
+            NA_real_
+        }
 
         results_by_class[[gep_class]] <- list(
             n = nrow(class_data),
-            observed = observed_events,
+            observed = round(observed_events, 2),
             expected = round(expected_events, 2),
             oe_ratio = round(oe_ratio, 3),
             poisson_ci_lower = round(poisson_ci_lower, 3),
             poisson_ci_upper = round(poisson_ci_upper, 3),
-            mean_expected_survival = round(mean_expected_survival, 3)
+            mean_expected_survival = round(mean_expected_survival, 3),
+            observed_survival = round(km_metrics$survival, 3),
+            observed_survival_ci_lower = round(km_metrics$survival_ci_lower, 3),
+            observed_survival_ci_upper = round(km_metrics$survival_ci_upper, 3),
+            observed_risk = round(km_metrics$risk, 3),
+            raw_events_by_horizon = km_metrics$raw_events_by_horizon
         )
 
         logger::log_info(formatted(sprintf(
-            "%s: O=%d, E=%.1f, O/E=%.3f (95%% CI: %.3f-%.3f)",
-            gep_class, observed_events, expected_events, oe_ratio,
+            "%s: KM MFS=%.3f, O=%.2f, E=%.2f, O/E=%.3f (95%% CI: %.3f-%.3f)",
+            gep_class, km_metrics$survival, observed_events, expected_events, oe_ratio,
             poisson_ci_lower, poisson_ci_upper
         ), indent = 3))
     }
 
-    # Overall chi-square goodness of fit test
-    observed_total <- sum(sapply(results_by_class, function(x) x$observed))
-    expected_total <- sum(sapply(results_by_class, function(x) x$expected))
-
     # Use pre-processed analysis eligibility for consistency
     expected_var <- paste0("expected_mfs_", timepoint, "yr")
     analysis_data <- data %>% filter(mfs_analysis_eligible)
-    expected_total_raw <- nrow(analysis_data) * (1 - mean(analysis_data[[expected_var]], na.rm = TRUE))
+    overall_km_metrics <- estimate_mfs_km_at_horizon(
+        data = analysis_data,
+        timepoint_months = timepoint_months
+    )
+    observed_total <- overall_km_metrics$observed_events
+    expected_total <- sum(1 - analysis_data[[expected_var]], na.rm = TRUE)
 
     overall_ci_lower <- NA
     overall_ci_upper <- NA
-    if (!is.na(expected_total_raw) && expected_total_raw > 0) {
-        overall_poisson <- poisson.test(observed_total)
-        overall_ci_lower <- overall_poisson$conf.int[1] / expected_total_raw
-        overall_ci_upper <- overall_poisson$conf.int[2] / expected_total_raw
+    if (!is.na(expected_total) && expected_total > 0) {
+        overall_ci_lower <- overall_km_metrics$observed_events_ci_lower / expected_total
+        overall_ci_upper <- overall_km_metrics$observed_events_ci_upper / expected_total
     }
 
     # Chi-square test comparing observed vs expected across all classes
@@ -91,11 +180,18 @@ calculate_observed_expected_mfs <- function(data, timepoint, group_var = "biopsy
     expected_vec <- sapply(results_by_class, function(x) x$expected)
 
     # Only perform test if we have valid expected values
-    if (all(expected_vec > 0) && sum(expected_vec) > 0) {
-        chisq_test <- chisq.test(x = observed_vec, p = expected_vec / sum(expected_vec))
-        chisq_p <- chisq_test$p.value
-        chisq_log_p <- calculate_chisq_log_p_value(as.numeric(chisq_test$statistic), df = length(expected_vec) - 1)
-        chisq_stat <- chisq_test$statistic
+    valid_class_rows <- is.finite(observed_vec) & is.finite(expected_vec) & expected_vec > 0
+    if (sum(valid_class_rows) >= 2) {
+        chisq_stat <- sum(
+            (observed_vec[valid_class_rows] - expected_vec[valid_class_rows])^2 / expected_vec[valid_class_rows],
+            na.rm = TRUE
+        )
+        chisq_p <- stats::pchisq(
+            chisq_stat,
+            df = sum(valid_class_rows) - 1,
+            lower.tail = FALSE
+        )
+        chisq_log_p <- calculate_chisq_log_p_value(chisq_stat, df = sum(valid_class_rows) - 1)
     } else {
         chisq_p <- NA
         chisq_log_p <- NA
@@ -106,11 +202,14 @@ calculate_observed_expected_mfs <- function(data, timepoint, group_var = "biopsy
         timepoint = timepoint,
         results_by_class = results_by_class,
         overall_n = nrow(analysis_data),
-        overall_observed = observed_total,
+        overall_observed = round(observed_total, 2),
         overall_expected = round(expected_total, 2),
         overall_oe_ratio = if (expected_total > 0) round(observed_total / expected_total, 3) else NA,
         overall_poisson_ci_lower = round(overall_ci_lower, 3),
         overall_poisson_ci_upper = round(overall_ci_upper, 3),
+        overall_observed_survival = round(overall_km_metrics$survival, 3),
+        overall_observed_survival_ci_lower = round(overall_km_metrics$survival_ci_lower, 3),
+        overall_observed_survival_ci_upper = round(overall_km_metrics$survival_ci_upper, 3),
         chisq_statistic = round(chisq_stat, 3),
         chisq_p_value = chisq_p,
         chisq_log_p_value = chisq_log_p

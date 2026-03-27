@@ -559,6 +559,8 @@ This behavior is permissible because the preprocessing contract is defined at th
 
 For a workbook-first overview written for non-statistical readers, see [Understanding GEP Analysis](INTERPRETATION_GUIDE.md#understanding-gep-analysis) and [GEP Quick Read](INTERPRETATION_GUIDE.md#gep-quick-read).
 
+For the project-specific decision record describing why the Objective 4 MFS 5-year observed value moved from a naive `1 - mfs_event_5yr` summary to Kaplan-Meier at 60 months, see [OBJECTIVE4_MFS_5YR_DECISION_NOTE.md](OBJECTIVE4_MFS_5YR_DECISION_NOTE.md).
+
 ### Calibration Assessment
 
 **Purpose:** Do GEP-predicted event probabilities, derived from lab-reported survival probabilities, match observed event rates?
@@ -567,7 +569,7 @@ For a workbook-first overview written for non-statistical readers, see [Understa
 
 **Metrics:**
 - **Overall O/E ratio:** Total observed events divided by total expected events across GEP classes
-- **Exact Poisson CI for overall O/E:** Quantifies uncertainty around the overall observed-to-expected ratio
+- **MFS O/E confidence interval:** For MFS, the interval is derived from the Kaplan-Meier estimate at the horizon using Greenwood-based survival bounds transformed onto the O/E scale
 - **Pearson goodness-of-fit p-value:** Tests whether grouped observed counts depart materially from grouped expected counts across GEP classes
 - **Nam-D'Agostino statistic:** Grouped calibration test reported in the consolidated workbook
 - **Integrated Calibration Index (ICI):** Average absolute difference between predicted and observed risk
@@ -634,34 +636,41 @@ This is the quantity reported as `Expected` in the `Observed_Expected_Summary` s
 
 Implementation notes:
 - In the shared MSS calculator, expected counts are computed directly as `sum(1 - expected_survival)` within each GEP class.
-- In the MFS helper, the same quantity is computed algebraically as $N \times (1 - \bar{S}(t))$, which is equivalent to summing $1 - S_i(t)$ across patients.
+- In the MFS helper, expected counts are also computed directly as `sum(1 - expected_survival)` within each GEP class so the observed and expected sides both live on the same horizon-specific count scale.
 
 ### How Observed Counts Are Calculated
 
-The current pipeline uses timepoint-specific binary event indicators created during preprocessing. For a given landmark year, the observed count is the sum of patients with the corresponding event indicator equal to 1.
+For MFS, the observed side of the O/E calculation is censoring-aware:
 
-Examples:
+- the pipeline estimates metastasis-free survival at the requested horizon with Kaplan-Meier,
+- converts that survival estimate to observed risk as $1 - \hat{S}_{KM}(t)$,
+- and rescales that risk to the cohort count scale as $O(t) = N \times (1 - \hat{S}_{KM}(t))$.
+
+Accordingly, for MFS:
+
+$$
+O_{MFS}(t) = N \times \left(1 - \hat{S}_{KM}(t)\right)
+$$
+
+This is a pseudo-event count on the original denominator scale. It is not the same as the raw number of events recorded by time $t$ when pre-horizon censoring is present.
+
+Raw horizon event indicators are still created during preprocessing:
+
 - MFS uses `mfs_event_5yr`, `mfs_event_7yr`, and `mfs_event_10yr`
 - MSS uses `mss_event_5yr`, `mss_event_7yr`, and `mss_event_10yr`
 
-Accordingly,
-
-$$
-O(t) = \sum_{i=1}^{N} I\{\text{event by time } t\}
-$$
-
-where $I\{\cdot\}$ is the indicator function.
+Those binary indicators remain useful for descriptive sensitivity summaries, but they are no longer the primary observed side of the MFS O/E calculation.
 
 Sheet distinction:
-- The `Observed_Expected_Summary` sheet still reflects the direct timepoint event-count calculation described above.
-- The `Observed_Expected_Summary` sheet reports its count-based goodness-of-fit p-value as `OE_Chi_Square_p`.
+- For MFS, the `Observed_Expected_Summary` sheet reflects the Kaplan-Meier-derived observed count scale described above.
+- The `Observed_Expected_Summary` sheet reports its overall goodness-of-fit p-value as `OE_Chi_Square_p`.
 - The `Calibration_Summary` sheet reports its grouped survival-calibration p-value as `Nam_D_Agostino_p` and uses grouped Kaplan-Meier estimates with Greenwood variance for that field.
 
 These are not interchangeable quantities:
 - `OE_Chi_Square_p` is the overall observed-versus-expected count-comparison p-value attached to the calibration-in-the-large summary.
 - `Nam_D_Agostino_p` is the grouped Greenwood/Nam-D'Agostino survival-calibration p-value attached to the grouped calibration summary.
 
-### Overall O/E Ratio and Exact Poisson Confidence Interval
+### Overall O/E Ratio and MFS Confidence Interval
 
 The overall calibration-in-the-large metric is the observed-to-expected ratio:
 
@@ -669,11 +678,11 @@ $$
 \text{O/E} = \frac{O}{E}
 $$
 
-where $O$ is the total observed event count and $E$ is the total expected event count across GEP classes.
+where $O$ is the total observed event count scale and $E$ is the total expected event count across GEP classes.
 
-The workbook reports an exact Poisson confidence interval for this ratio by treating the observed count as Poisson and scaling the resulting interval by the fixed expected count. In practice, the pipeline uses `stats::poisson.test()` on $O$ and then divides the lower and upper confidence limits by $E$.
+For MFS, the workbook now derives the confidence interval from the Kaplan-Meier estimate at the requested horizon. Greenwood survival bounds are transformed to the risk scale, multiplied by the cohort denominator to form the observed-event count scale, and then divided by $E$ to obtain the lower and upper O/E limits.
 
-The same `Observed_Expected_Summary` sheet also reports `OE_Chi_Square_p`, which is the count-based goodness-of-fit p-value for the overall O/E comparison rather than the grouped Greenwood/Nam-D'Agostino statistic.
+The same `Observed_Expected_Summary` sheet also reports `OE_Chi_Square_p`, which is the overall O/E goodness-of-fit p-value rather than the grouped Greenwood/Nam-D'Agostino statistic.
 
 #### A Note About Denominator Retention and Summary Contracts
 
@@ -1000,7 +1009,7 @@ For a plain-English reading order for PRAME outputs, see [Understanding PRAME In
 
 **Step 2: Calibration Analysis**
 - Compute grouped observed and expected events by GEP class
-- Derive overall O/E ratios with exact Poisson confidence intervals
+- Derive overall O/E ratios with censoring-aware observed MFS pseudo-counts and Greenwood-derived MFS confidence intervals
 - Compute Pearson goodness-of-fit p-values across GEP classes
 - Compute Nam–D’Agostino χ², Integrated Calibration Index (ICI), and calibration slope
 - Record results in the consolidated workbook
@@ -1022,7 +1031,7 @@ For a plain-English reading order for PRAME outputs, see [Understanding PRAME In
 - Export the root-level cross-outcome workbook `*unified_gep_validation_summary.xlsx`
 - Export the simple QC workbook `unified_summary/*simple_gep_validation.xlsx`
 - For the full cohort only, append compact exploratory no-GEP summary sheets to the root unified workbook so the main Objective 4 file also summarizes baseline-only risk support for `GEP Failed/Indeterminate` and `GEP Not Tested`
-- Ensure narrative summaries preserve the cohort label used for the run and print the overall O/E ratio with its Poisson CI and Pearson goodness-of-fit p-value
+- Ensure narrative summaries preserve the cohort label used for the run and print the overall O/E ratio with its horizon-appropriate confidence interval and Pearson goodness-of-fit p-value
 - Provide KM (MFS) or CIF (MSS) curves plus full-spectrum calibration curves; remaining calibration/decision/discrimination visuals live in tables
 
 ### Expected Outputs
@@ -1036,7 +1045,7 @@ For a plain-English reading order for PRAME outputs, see [Understanding PRAME In
 - `a_metastasis_free_survival/*mfs_validation_narrative_summary.txt` and `b_melanoma_specific_survival/*mss_validation_narrative_summary.txt` — narrative summaries
 - `*unified_gep_validation_summary.xlsx` at the root of `04_GEP_Validation/` — comparison-only cross-outcome workbook
 - For the full cohort, the unified workbook also includes `No_GEP_Overview`, `No_GEP_Model_Comparison`, and `No_GEP_Risk_Strata`
-- `unified_summary/*simple_gep_validation.*` — optional actual-vs-expected QC output from the simple checker
+- `unified_summary/*simple_gep_validation.*` — optional QC output from the simple checker; for MFS, the observed 5-year value is KM at 60 months rather than a naive event-free proportion
 - Limited PNGs: KM for MFS, CIF for MSS, full-spectrum calibration curves (`*mfs_calibration_full.png`, `*mss_calibration_full.png`), and optional outcome-specific PRAME delta-C plots (`*mfs_prame_delta_c.png`, `*mss_prame_delta_c.png`)
 
 **Schema note:** `PRAME_Summary` is always written in consolidated workbooks, and `PRAME_Comparison` is always written in unified workbooks. Sparse cohorts may receive explanatory placeholder rows instead of full PRAME incremental-comparison results. The full-cohort unified workbook may additionally append `No_GEP_*` tabs, but restricted and GKSRS cohorts do not currently receive those exploratory sheets.

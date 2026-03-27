@@ -32,3 +32,61 @@ test_that("Comprehensive GEP summary displays current robust discrimination metr
     expect_false(grepl("Uno's C", summary_text))
     expect_false(grepl("AUC=0.780[^\\n]*Uno", summary_text))
 })
+
+test_that("Comprehensive GEP summary includes the compact follow-up limitation block for MFS and MSS", {
+    mock_validation_results <- list(
+        "5yr" = list(
+            calibration = list(
+                n = 100,
+                nam_dagostino_p = 0.05,
+                ici = 0.10,
+                slope = 0.95
+            ),
+            discrimination = list(
+                n = 100,
+                events = 25,
+                harrell_c = 0.75,
+                integrated_auc = 0.78,
+                cumulative_discrimination = 0.81,
+                time_averaged_discrimination = 0.79
+            )
+        )
+    )
+
+    shared_missing <- list(
+        missing_patterns = data.frame(pattern = character(), stringsAsFactors = FALSE)
+    )
+    source_data <- create_test_dataset() %>%
+        dplyr::mutate(
+            mss_event_5yr = as.integer(.data$melanoma_death_event == 1 & .data$tt_death_months <= 60),
+            mss_event_7yr = as.integer(.data$melanoma_death_event == 1 & .data$tt_death_months <= 84),
+            mss_event_10yr = as.integer(.data$melanoma_death_event == 1 & .data$tt_death_months <= 120)
+        )
+
+    mfs_summary <- create_comprehensive_gep_summary(
+        validation_results = mock_validation_results,
+        outcome_type = "MFS",
+        prame_analysis = NULL,
+        missing_data_analysis = shared_missing,
+        dataset_name = "uveal_melanoma_full_cohort",
+        source_data = source_data
+    )
+    mss_summary <- create_comprehensive_gep_summary(
+        validation_results = mock_validation_results,
+        outcome_type = "MSS",
+        prame_analysis = NULL,
+        missing_data_analysis = shared_missing,
+        dataset_name = "uveal_melanoma_full_cohort",
+        source_data = source_data
+    )
+
+    expect_true(grepl("FOLLOW-UP LIMITATION", mfs_summary, fixed = TRUE))
+    expect_true(grepl("`followup_ge_5yr` means", mfs_summary, fixed = TRUE))
+    expect_true(grepl("`censored_pre_5yr` means", mfs_summary, fixed = TRUE))
+    expect_true(grepl("Among the", mfs_summary, fixed = TRUE))
+    expect_true(grepl("- 5-year view:", mfs_summary, fixed = TRUE))
+
+    expect_true(grepl("FOLLOW-UP LIMITATION", mss_summary, fixed = TRUE))
+    expect_true(grepl("`followup_ge_5yr` means", mss_summary, fixed = TRUE))
+    expect_true(grepl("- Operational view:", mss_summary, fixed = TRUE))
+})

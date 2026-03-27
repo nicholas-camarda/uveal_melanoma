@@ -1,18 +1,15 @@
 # Simple GEP Validation (Project Goals)
 # Computes expected vs actual 5-year MFS/MSS by GEP class and saves outputs
 
-#' Create simple GEP validation plots
+#' Build a reader-facing simple GEP validation plot
 #'
-#' Create side-by-side expected vs actual 5-year survival point plots for MFS
-#' and MSS by GEP class, saving PNGs to disk.
+#' Build a side-by-side expected vs actual 5-year survival point plot for a
+#' simple GEP class comparison.
 #'
-#' @param mfs_results Data frame of MFS class-level expected/actual rates
-#' @param mss_results Data frame of MSS class-level expected/actual rates
-#' @param mfs_output_dir Directory path to save the MFS image
-#' @param mss_output_dir Directory path to save the MSS image
-#' @param prefix Filename prefix for saved files
-#' @param dataset_name Optional dataset identifier used for cohort labeling
-#' @return Invisibly returns NULL after writing files
+#' @param results_df Data frame of class-level expected and actual rates.
+#' @param title_text Plot title.
+#' @param cohort_label Optional subtitle identifying the cohort.
+#' @return A `ggplot` object.
 build_simple_gep_plot <- function(results_df, title_text, cohort_label = NULL) {
     x_label_map <- if ("plot_x_label" %in% names(results_df)) {
         stats::setNames(results_df$plot_x_label, results_df$gep_class_simple)
@@ -51,7 +48,7 @@ build_simple_gep_plot <- function(results_df, title_text, cohort_label = NULL) {
         ) +
         scale_x_discrete(
             labels = x_label_map,
-            expand = expansion(mult = c(0.15, 0.15))
+            expand = expansion(mult = c(0.2, 0.25))
         ) +
         scale_color_manual(
             values = {
@@ -77,17 +74,30 @@ build_simple_gep_plot <- function(results_df, title_text, cohort_label = NULL) {
             legend.text = element_text(size = 15),
             legend.margin = margin(),
             legend.box.margin = margin(b = 2),
-            plot.margin = margin(8, 12, 8, 8),
+            plot.margin = margin(8, 18, 26, 8),
             axis.line = element_line(linewidth = 0.9),
             axis.ticks = element_line(linewidth = 0.9)
-        )
+        ) +
+        coord_cartesian(clip = "off")
 }
 
+#' Save simple GEP validation plots
+#'
+#' Write the expected-vs-actual MFS and MSS validation plots to disk with
+#' enough vertical space for the multi-line x-axis labels.
+#'
+#' @param mfs_results Data frame of MFS class-level expected/actual rates.
+#' @param mss_results Data frame of MSS class-level expected/actual rates.
+#' @param mfs_output_dir Directory path to save the MFS image.
+#' @param mss_output_dir Directory path to save the MSS image.
+#' @param prefix Filename prefix for saved files.
+#' @param dataset_name Optional dataset identifier used for cohort labeling.
+#' @return Invisibly returns `NULL` after writing files.
 create_simple_gep_plots <- function(mfs_results, mss_results, mfs_output_dir, mss_output_dir, prefix, dataset_name = NULL) {
     cohort_label <- format_objective4_gep_cohort_label(dataset_name)
 
-    simple_plot_width <- 6.75
-    simple_plot_height <- 6
+    simple_plot_width <- 10
+    simple_plot_height <- 7
 
     validation_mfs_dir <- ensure_output_dir(mfs_output_dir)
     validation_mss_dir <- ensure_output_dir(mss_output_dir)
@@ -218,7 +228,6 @@ simple_gep_validation <- function(data, output_dirs, prefix, dataset_name = NULL
 
     expected_mfs_col <- if ("expected_mfs_5yr" %in% names(data)) "expected_mfs_5yr" else "biopsy1_gep_mfs"
     expected_mss_col <- if ("expected_mss_5yr" %in% names(data)) "expected_mss_5yr" else "biopsy1_gep_mss"
-    mfs_event_col <- if ("mfs_event_5yr" %in% names(data)) "mfs_event_5yr" else NULL
     mss_event_col <- if ("mss_event_5yr" %in% names(data)) "mss_event_5yr" else NULL
     mss_time_col <- dplyr::case_when(
         "tt_death_months" %in% names(data) ~ "tt_death_months",
@@ -239,17 +248,38 @@ simple_gep_validation <- function(data, output_dirs, prefix, dataset_name = NULL
         ) %>%
         mutate(
             expected_mfs_5yr = .data[[expected_mfs_col]],
-            actual_mfs_5yr = if (!is.null(mfs_event_col)) 1 - .data[[mfs_event_col]] else ifelse(tt_mets_months > 60 | (tt_mets_months <= 60 & mets_event == 0), 1, 0),
             time_to_5yr = pmin(tt_mets_months, 60)
         )
 
-    mfs_results <- mfs_data %>%
+    mfs_expected_by_class <- mfs_data %>%
         group_by(gep_class_simple) %>%
         summarise(
             n = n(),
             expected_rate = mean(expected_mfs_5yr, na.rm = TRUE),
-            actual_rate = mean(actual_mfs_5yr, na.rm = TRUE),
             .groups = "drop"
+        ) %>%
+        dplyr::mutate(gep_class_simple = as.character(.data$gep_class_simple))
+
+    mfs_observed_by_class <- split(mfs_data, as.character(mfs_data$gep_class_simple)) %>%
+        lapply(function(class_data) {
+            km_metrics <- estimate_mfs_km_at_horizon(
+                data = class_data,
+                timepoint_months = 60
+            )
+            data.frame(
+                gep_class_simple = as.character(class_data$gep_class_simple[[1]]),
+                actual_rate = km_metrics$survival,
+                actual_rate_ci_lower = km_metrics$survival_ci_lower,
+                actual_rate_ci_upper = km_metrics$survival_ci_upper,
+                stringsAsFactors = FALSE
+            )
+        }) %>%
+        dplyr::bind_rows()
+
+    mfs_results <- mfs_expected_by_class %>%
+        dplyr::left_join(
+            mfs_observed_by_class,
+            by = "gep_class_simple"
         ) %>%
         mutate(
             difference = actual_rate - expected_rate,
@@ -305,6 +335,10 @@ simple_gep_validation <- function(data, output_dirs, prefix, dataset_name = NULL
     ))
 
     logger::log_info("Creating simple validation summary")
+    overall_mfs_km <- estimate_mfs_km_at_horizon(
+        data = mfs_data,
+        timepoint_months = 60
+    )
     overall_summary <- data.frame(
         outcome = c("MFS", "MSS"),
         total_patients = c(nrow(mfs_data), nrow(mss_data)),
@@ -313,11 +347,11 @@ simple_gep_validation <- function(data, output_dirs, prefix, dataset_name = NULL
             mean(mss_data$expected_mss_5yr, na.rm = TRUE)
         ),
         overall_actual = c(
-            mean(mfs_data$actual_mfs_5yr, na.rm = TRUE),
+            overall_mfs_km$survival,
             mean(mss_data$actual_mss_5yr, na.rm = TRUE)
         ),
         overall_difference = c(
-            mean(mfs_data$actual_mfs_5yr, na.rm = TRUE) - mean(mfs_data$expected_mfs_5yr, na.rm = TRUE),
+            overall_mfs_km$survival - mean(mfs_data$expected_mfs_5yr, na.rm = TRUE),
             mean(mss_data$actual_mss_5yr, na.rm = TRUE) - mean(mss_data$expected_mss_5yr, na.rm = TRUE)
         ),
         stringsAsFactors = FALSE

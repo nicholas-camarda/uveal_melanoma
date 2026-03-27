@@ -597,6 +597,8 @@ The main Objective 4 denominator is deliberately stricter than “any row with a
 - Unified cross-outcome summaries live at the root of `04_GEP_Validation/` as `<prefix>unified_gep_validation_summary.xlsx`. This workbook is comparison-only rather than a second outcome-summary workbook.
 - For the full cohort, that unified workbook now also includes compact no-GEP tabs: `No_GEP_Overview`, `No_GEP_Model_Comparison`, and `No_GEP_Risk_Strata`.
 - Simple actual-vs-expected QC outputs live in `04_GEP_Validation/unified_summary/` as `<prefix>simple_gep_validation.xlsx`.
+- For MFS, treat the observed 5-year value in that QC workbook as Kaplan-Meier MFS at 60 months. It is censoring-aware and should match the 5-year KM summary, not the raw count of patients with `mfs_event_5yr == 0`.
+- If you need the full explanation for why this changed and how to interpret old slide numbers, see [OBJECTIVE4_MFS_5YR_DECISION_NOTE.md](OBJECTIVE4_MFS_5YR_DECISION_NOTE.md).
 
 ### Workbook Layout at a Glance
 
@@ -619,7 +621,7 @@ The main Objective 4 denominator is deliberately stricter than “any row with a
 | Narrative summaries | `<prefix>mfs_validation_narrative_summary.txt` and `<prefix>mss_validation_narrative_summary.txt`. |
 | Calibration curve PNGs | `<prefix>mfs_calibration_full.png` and `<prefix>mss_calibration_full.png` (one per outcome; faceted by timepoint). |
 | Unified workbook | `<prefix>unified_gep_validation_summary.xlsx` at the root of `04_GEP_Validation/`; this workbook uses comparison-only sheet names such as `Calibration_Comparison`, `Discrimination_Comparison`, `PRAME_Comparison`, and `Missing_Data_Comparison`. The full cohort additionally appends `No_GEP_Overview`, `No_GEP_Model_Comparison`, and `No_GEP_Risk_Strata`. |
-| Simple QC workbook | `unified_summary/<prefix>simple_gep_validation.xlsx`. |
+| Simple QC workbook | `unified_summary/<prefix>simple_gep_validation.xlsx`. For MFS, the observed 5-year value is KM at 60 months. |
 | Default directory | `~/ProjectsRuntime/uveal_melanoma/Analysis/<cohort>/04_GEP_Validation/` with `a_metastasis_free_survival/`, `b_melanoma_specific_survival/`, and `unified_summary/`. |
 | Outcomes covered | MFS and MSS; unified workbooks stack both. Full-cohort unified workbooks may also append no-GEP comparison sheets. |
 | Timepoints | Driven by `GEP_VALIDATION_TIMEPOINTS` (defaults: 5, 7, 10 years). Every sheet carries one row per timepoint requested. |
@@ -816,7 +818,7 @@ Metric formulas remain in `STATISTICAL_METHODS.md`; the notes below clarify what
 #### `Observed_Expected_Summary`
 
 - `Timepoint`, `N`: context columns described above.
-- `Observed`, `Expected`, `OE_Ratio`, `CI_Lower`, `CI_Upper`: overall observed-versus-expected counts, ratio, and exact Poisson confidence interval for calibration-in-the-large.
+- `Observed`, `Expected`, `OE_Ratio`, `CI_Lower`, `CI_Upper`: overall observed-versus-expected counts and ratio for calibration-in-the-large. For MFS, `Observed` is a KM-derived pseudo-count on the cohort denominator scale and the interval is Greenwood-derived rather than Poisson.
 - `OE_Chi_Square_p`: p-value for the overall O/E goodness-of-fit comparison across the class-level observed and expected event counts. This is not the grouped Greenwood Nam-D'Agostino calibration p-value.
 
 Important distinction:

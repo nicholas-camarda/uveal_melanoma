@@ -171,7 +171,9 @@ test_that("Unified GEP validation summary eliminates redundancy across outcomes"
                 calibration = list(n = 95, nam_dagostino_p = 0.08, ici = 0.12, slope = 0.92),
                 discrimination = list(n = 95, events = 30, harrell_c = 0.78, uno_c = 0.76, auc_timepoint = 0.81)
             )
-        )
+        ),
+        source_data = create_test_dataset(),
+        dataset_name = "uveal_melanoma_full_cohort"
     )
     
     mock_mss_results <- list(
@@ -184,7 +186,9 @@ test_that("Unified GEP validation summary eliminates redundancy across outcomes"
                 calibration = list(n = 93, nam_dagostino_p = 0.09, ici = 0.13, slope = 0.91),
                 discrimination = list(n = 93, events = 31, harrell_c = 0.79, uno_c = 0.77, auc_timepoint = 0.82)
             )
-        )
+        ),
+        source_data = create_test_dataset(),
+        dataset_name = "uveal_melanoma_full_cohort"
     )
     
     # Test unified summary creation
@@ -229,6 +233,10 @@ test_that("Unified GEP validation summary eliminates redundancy across outcomes"
     # Verify text summary contains unified information
     text_summary <- unified_summary$text_summary
     expect_true(grepl("Unified GEP Validation Summary", text_summary))
+    expect_true(grepl("FOLLOW-UP LIMITATION \\(5-year\\)", text_summary))
+    expect_true(grepl("MFS: ", text_summary, fixed = TRUE))
+    expect_true(grepl("MSS: ", text_summary, fixed = TRUE))
+    expect_true(grepl("`followup_ge_5yr` means", text_summary, fixed = TRUE))
     expect_true(grepl("CALIBRATION COMPARISON \\(MFS vs MSS\\)", text_summary))
     expect_true(grepl("DISCRIMINATION COMPARISON \\(MFS vs MSS\\)", text_summary))
     # Performance comparison intentionally removed to eliminate redundancy

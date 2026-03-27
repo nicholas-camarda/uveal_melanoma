@@ -61,6 +61,52 @@ test_that("Simple GEP validation keeps endpoint-specific eligible patients", {
     expect_equal(mss_total, nrow(test_data) - 4)
 })
 
+test_that("Simple GEP validation uses KM-adjusted MFS at 5 years", {
+    test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective4_mfs_km_actual")
+    output_dirs <- build_objective4_output_dirs(test_output_dir)
+    dir.create(test_output_dir, recursive = TRUE, showWarnings = FALSE)
+    for (dir_path in output_dirs) {
+        dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
+    }
+    withr::defer(unlink(test_output_dir, recursive = TRUE), envir = parent.frame())
+
+    test_data <- tibble::tibble(
+        biopsy1_gep = c("Class 1", "Class 1", "Class 2", "Class 2"),
+        gep_class_simple = c("Class 1", "Class 1", "Class 2", "Class 2"),
+        biopsy1_gep_mfs = c(0.80, 0.80, 0.20, 0.20),
+        biopsy1_gep_mss = c(0.85, 0.85, 0.15, 0.15),
+        expected_mfs_5yr = c(0.80, 0.80, 0.20, 0.20),
+        expected_mss_5yr = c(0.85, 0.85, 0.15, 0.15),
+        tt_mets_months = c(12, 60, 72, 72),
+        mets_event = c(0, 1, 0, 0),
+        mfs_event_5yr = c(0, 1, 0, 0),
+        tt_death_months = c(72, 72, 72, 72),
+        tt_death_years = c(6, 6, 6, 6),
+        death_event = c(0, 0, 0, 0),
+        melanoma_death_event = c(0, 0, 0, 0),
+        competing_death_event = c(0, 0, 0, 0),
+        mss_event_5yr = c(0, 0, 0, 0),
+        mfs_analysis_eligible = c(TRUE, TRUE, TRUE, TRUE),
+        mss_analysis_eligible = c(TRUE, TRUE, TRUE, TRUE)
+    )
+
+    results <- simple_gep_validation(test_data, output_dirs, "km_")
+
+    class1_mfs <- results$mfs_results %>%
+        dplyr::filter(gep_class_simple == "Class 1") %>%
+        dplyr::pull(actual_rate)
+    class2_mfs <- results$mfs_results %>%
+        dplyr::filter(gep_class_simple == "Class 2") %>%
+        dplyr::pull(actual_rate)
+    overall_mfs <- results$overall_summary %>%
+        dplyr::filter(outcome == "MFS") %>%
+        dplyr::pull(overall_actual)
+
+    expect_equal(class1_mfs, 0)
+    expect_equal(class2_mfs, 1)
+    expect_equal(overall_mfs, 2 / 3)
+})
+
 test_that("MSS decision curve analysis respects month-based horizons", {
     dca_data <- tibble::tibble(
         time_to_event = c(6, 24, 66, 90, 72, 120, 48, 30, 80, 110, 55, 95, 12, 18, 45, 75, 85, 100, 58, 62),
