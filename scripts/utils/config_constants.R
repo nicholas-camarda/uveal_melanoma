@@ -31,12 +31,14 @@ options(contrasts = c("contr.treatment", "contr.poly"))
 # - Export parent (synced): EXPORT_PARENT_DIR
 # - Project export root (synced): EXPORT_ROOT = EXPORT_PARENT_DIR / PROJECT_SLUG
 # - Published analysis root (synced): EXPORT_ANALYSIS_DIR = EXPORT_ROOT / Analysis
+# This repository's synced research home follows:
+# ~/Library/CloudStorage/OneDrive-Personal/Research/<slug>
 PROJECT_ROOT <- here::here()
 PROJECT_SLUG <- basename(PROJECT_ROOT)
 CODE_ROOT <- PROJECT_ROOT
 DEFAULT_RUNTIME_PARENT_DIR <- "~/ProjectsRuntime"
 DEFAULT_RUNTIME_ROOT <- file.path(DEFAULT_RUNTIME_PARENT_DIR, PROJECT_SLUG)
-DEFAULT_EXPORT_PARENT_DIR <- "/Users/ncamarda/Library/CloudStorage/OneDrive-Personal/residency/ophthalmology/research projects"
+DEFAULT_EXPORT_PARENT_DIR <- "~/Library/CloudStorage/OneDrive-Personal/Research"
 DEFAULT_EXPORT_ROOT <- file.path(DEFAULT_EXPORT_PARENT_DIR, PROJECT_SLUG)
 
 #' Resolve a configured filesystem path with fallback behavior

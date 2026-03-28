@@ -89,7 +89,7 @@ Pipeline outputs are split across runtime storage and synced exports.
 |- test_output/
 `- tools_output/
 
-/Users/ncamarda/Library/CloudStorage/OneDrive-Personal/residency/ophthalmology/research projects/uveal_melanoma/
+~/Library/CloudStorage/OneDrive-Personal/Research/uveal_melanoma/
 |- Original Files/
 `- Analysis/
    `- <YYYY-MM-DD>/

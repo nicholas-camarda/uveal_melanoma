@@ -1042,7 +1042,7 @@ For a plain-English reading order for PRAME outputs, see [Understanding PRAME In
 - `a_metastasis_free_survival/*_MFS_consolidated_summary.xlsx` — primary MFS review workbook, including `Observed_Expected_Summary`
 - `b_melanoma_specific_survival/*_MSS_consolidated_summary.xlsx` — primary MSS review workbook, including `Observed_Expected_Summary`
 - `a_metastasis_free_survival/*mfs_validation_technical_details.xlsx` and `b_melanoma_specific_survival/*mss_validation_technical_details.xlsx` — technical-detail workbooks without duplicated high-level calibration/discrimination summary sheets
-- `a_metastasis_free_survival/*mfs_validation_narrative_summary.txt` and `b_melanoma_specific_survival/*mss_validation_narrative_summary.txt` — narrative summaries
+- `a_metastasis_free_survival/*mfs_validation_narrative_summary.md` and `b_melanoma_specific_survival/*mss_validation_narrative_summary.md` — narrative summaries
 - `*unified_gep_validation_summary.xlsx` at the root of `04_GEP_Validation/` — comparison-only cross-outcome workbook
 - For the full cohort, the unified workbook also includes `No_GEP_Overview`, `No_GEP_Model_Comparison`, and `No_GEP_Risk_Strata`
 - `unified_summary/*simple_gep_validation.*` — optional QC output from the simple checker; for MFS, the observed 5-year value is KM at 60 months rather than a naive event-free proportion

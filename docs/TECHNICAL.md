@@ -234,7 +234,7 @@ Analysis outputs follow a **cohort → objective → sub-objective** structure:
 │   └── json/
 └── test_output/                    # Testing artifacts
 
-/Users/ncamarda/Library/CloudStorage/OneDrive-Personal/residency/ophthalmology/research projects/uveal_melanoma/
+~/Library/CloudStorage/OneDrive-Personal/Research/uveal_melanoma/
 ├── Original Files/                 # Authoritative raw input data
 └── Analysis/
     └── <YYYY-MM-DD>/               # Published final deliverables only
@@ -514,8 +514,8 @@ Effect-summary workbooks follow model-family-specific inference conventions and 
    - `a_metastasis_free_survival/*mfs_validation_technical_details.xlsx`
    - `b_melanoma_specific_survival/*mss_validation_technical_details.xlsx`
 - Outcome-specific narrative summaries:
-   - `a_metastasis_free_survival/*mfs_validation_narrative_summary.txt`
-   - `b_melanoma_specific_survival/*mss_validation_narrative_summary.txt`
+   - `a_metastasis_free_survival/*mfs_validation_narrative_summary.md`
+   - `b_melanoma_specific_survival/*mss_validation_narrative_summary.md`
 - Cross-outcome workbook at the root of `04_GEP_Validation/`:
    - `*unified_gep_validation_summary.xlsx`
    - For the full cohort, this workbook now also includes `No_GEP_Overview`, `No_GEP_Model_Comparison`, and `No_GEP_Risk_Strata`

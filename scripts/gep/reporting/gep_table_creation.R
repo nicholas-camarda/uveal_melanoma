@@ -115,79 +115,104 @@ extract_overall_oe_metrics <- function(observed_expected) {
 
 #' Create Detailed Metrics Table
 #'
-#' Render a plain-text summary of calibration, discrimination, and overall O/E
+#' Render a Markdown table of calibration, discrimination, and overall O/E
 #' metrics for each available validation timepoint.
 #'
 #' @param validation_results Named list of timepoint-specific validation result
 #'   objects.
-#' @return Character scalar containing a newline-delimited report.
+#' @return Character vector containing Markdown table lines.
 create_detailed_metrics_table <- function(validation_results) {
-    table_lines <- c()
-    
-    for (tp in names(validation_results)) {
-        result <- validation_results[[tp]]
-        table_lines <- c(table_lines, sprintf("Timepoint: %s", tp))
-        
-        # Calibration - with defensive programming
-        if (!is.null(result$calibration)) {
-            cal <- result$calibration
-            slope_val <- ifelse(is.null(cal$slope), NA_real_, cal$slope)
-            ici_val <- ifelse(is.null(cal$ici), NA_real_, cal$ici)
-            nam_dagostino_val <- ifelse(is.null(cal$nam_dagostino_p), NA_real_, cal$nam_dagostino_p)
-            slope_method <- ifelse(is.null(cal$slope_method), "NA", cal$slope_method)
-            ici_method <- ifelse(is.null(cal$ici_method), "NA", cal$ici_method)
-            slope_text <- format_gep_calibration_slope_text(
-                slope = slope_val,
-                slope_method = slope_method,
-                status = ifelse(is.null(cal$status), NA_character_, cal$status),
-                fit_n = ifelse(is.null(cal$fit_n), NA_real_, cal$fit_n),
-                events = ifelse(is.null(cal$events), NA_real_, cal$events),
-                non_events = ifelse(is.null(cal$non_events), NA_real_, cal$non_events),
-                unique_risk_count = ifelse(is.null(cal$unique_risk_count), NA_real_, cal$unique_risk_count),
-                slope_se = ifelse(is.null(cal$slope_se), NA_real_, cal$slope_se)
-            )
-            ici_text <- ifelse(is.na(ici_val), "NA", sprintf("%.3f", ici_val))
-            nam_dagostino_text <- format_gep_p_value(
-                nam_dagostino_val,
-                log_p_value = ifelse(is.null(cal$nam_dagostino_log_p), NA_real_, cal$nam_dagostino_log_p)
-            )
-            
-            table_lines <- c(table_lines, 
-                sprintf(
-                    "  Calibration: %s, ICI=%s [%s], Nam-D'Agostino p=%s",
-                    slope_text, ici_text, ici_method, nam_dagostino_text
-                ))
-        }
-        
-        # Discrimination - with defensive programming
-        if (!is.null(result$discrimination)) {
-            disc <- result$discrimination
-            harrell_val <- ifelse(is.null(disc$harrell_c), NA_real_, disc$harrell_c)
-            integrated_auc_val <- ifelse(is.null(disc$integrated_auc), NA_real_, disc$integrated_auc)
-            cumulative_disc_val <- ifelse(is.null(disc$cumulative_discrimination), NA_real_, disc$cumulative_discrimination)
-            
-            table_lines <- c(table_lines,
-                sprintf("  Discrimination: Harrell's C=%.3f, Integrated AUC=%.3f, Cumulative Disc=%.3f",
-                    harrell_val, integrated_auc_val, cumulative_disc_val))
-        }
-        
-        # Observed/Expected - support both nested and tibble-based result shapes
-        oe <- extract_overall_oe_metrics(result$observed_expected)
-        if (!is.null(oe)) {
-            oe_ratio_val <- oe$oe_ratio %||% NA_real_
-            ci_lower_val <- oe$poisson_ci_lower %||% NA_real_
-            ci_upper_val <- oe$poisson_ci_upper %||% NA_real_
-            chi_square_val <- oe$chi_square_p %||% NA_real_
-
-            table_lines <- c(table_lines,
-                sprintf("  Overall O/E: %.2f (%.2f-%.2f); Chi-square p=%s",
-                    oe_ratio_val, ci_lower_val, ci_upper_val, format_gep_p_value(chi_square_val, log_p_value = oe$chi_square_log_p)))
-        }
-        
-        table_lines <- c(table_lines, "")
+    if (is.null(validation_results) || length(validation_results) == 0) {
+        return(md_bullet("No detailed timepoint metrics were available."))
     }
-    
-    return(paste(table_lines, collapse = "\n"))
+
+    format_scalar <- function(value, digits = 3) {
+        value <- suppressWarnings(as.numeric(value))
+        if (length(value) == 0 || is.na(value[[1]]) || !is.finite(value[[1]])) {
+            return("NA")
+        }
+
+        sprintf(paste0("%.", digits, "f"), value[[1]])
+    }
+
+    format_calibration_cell <- function(result) {
+        if (is.null(result$calibration)) {
+            return("Unavailable")
+        }
+
+        cal <- result$calibration
+        slope_val <- cal$slope %||% cal$calibration_slope %||% NA_real_
+        ici_val <- cal$ici %||% NA_real_
+        slope_method <- cal$slope_method %||% NA_character_
+        ici_method <- cal$ici_method %||% NA_character_
+        status <- cal$status %||% NA_character_
+        p_value <- format_gep_p_value(
+            cal$nam_dagostino_p %||% NA_real_,
+            log_p_value = cal$nam_dagostino_log_p %||% NA_real_
+        )
+        slope_method_text <- if (length(slope_method) > 0 && !is.na(slope_method[[1]])) as.character(slope_method[[1]]) else NULL
+        ici_method_text <- if (length(ici_method) > 0 && !is.na(ici_method[[1]])) as.character(ici_method[[1]]) else "NA"
+        status_text <- if (length(status) > 0 && !is.na(status[[1]])) as.character(status[[1]]) else NULL
+
+        pieces <- c(
+            sprintf("Slope %s", format_scalar(slope_val)),
+            sprintf("ICI %s [%s]", format_scalar(ici_val), ici_method_text),
+            sprintf("Nam-D'Agostino p=%s", p_value)
+        )
+
+        if (!is.null(slope_method_text)) {
+            pieces <- c(pieces, sprintf("Slope method %s", slope_method_text))
+        }
+        if (!is.null(status_text)) {
+            pieces <- c(pieces, sprintf("Status %s", status_text))
+        }
+
+        paste(pieces, collapse = "; ")
+    }
+
+    format_discrimination_cell <- function(result) {
+        if (is.null(result$discrimination)) {
+            return("Unavailable")
+        }
+
+        disc <- result$discrimination
+        pieces <- c(
+            sprintf("Harrell's C %s", format_scalar(disc$harrell_c)),
+            sprintf("Integrated AUC %s", format_scalar(disc$integrated_auc)),
+            sprintf("Cumulative Disc %s", format_scalar(disc$cumulative_discrimination))
+        )
+
+        paste(pieces, collapse = "; ")
+    }
+
+    format_oe_cell <- function(result) {
+        oe <- extract_overall_oe_metrics(result$observed_expected)
+        if (is.null(oe)) {
+            return("Unavailable")
+        }
+
+        sprintf(
+            "Overall O/E %s (%s-%s); Chi-square p=%s",
+            format_scalar(oe$oe_ratio),
+            format_scalar(oe$poisson_ci_lower),
+            format_scalar(oe$poisson_ci_upper),
+            format_gep_p_value(oe$chi_square_p, log_p_value = oe$chi_square_log_p)
+        )
+    }
+
+    table_rows <- lapply(names(validation_results), function(tp) {
+        result <- validation_results[[tp]]
+        data.frame(
+            Timepoint = tp,
+            Calibration = format_calibration_cell(result),
+            Discrimination = format_discrimination_cell(result),
+            `Observed vs Expected` = format_oe_cell(result),
+            stringsAsFactors = FALSE,
+            check.names = FALSE
+        )
+    })
+
+    md_table(do.call(rbind, table_rows))
 }
 
 #' Create GEP comparison table

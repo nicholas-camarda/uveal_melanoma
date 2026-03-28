@@ -538,7 +538,8 @@ test_that("MSS comprehensive summary accepts tibble observed_expected results", 
         )
     })
 
-    expect_match(summary_text, "OBSERVED VS EXPECTED ANALYSIS")
+    expect_match(summary_text, "^# GEP MSS Validation - Comprehensive Clinical Summary", perl = TRUE)
+    expect_match(summary_text, "## Observed vs Expected Analysis", fixed = TRUE)
     expect_match(summary_text, "Overall O/E")
     expect_false(grepl("NA-NA", summary_text, fixed = TRUE))
     expect_false(grepl("Chi-square p=NA", summary_text, fixed = TRUE))
@@ -576,6 +577,7 @@ test_that("GEP text summaries format tiny p-values in scientific notation", {
 
     summary_text <- create_detailed_metrics_table(validation_results)
 
+    expect_match(summary_text, "^\\| Timepoint \\| Calibration \\| Discrimination \\| Observed vs Expected \\|", perl = TRUE)
     expect_match(summary_text, "Nam-D'Agostino p=2\\.340e-05")
     expect_match(summary_text, "Chi-square p=5\\.670e-08")
     expect_false(grepl("Nam-D'Agostino p=0\\.0000", summary_text))
@@ -629,10 +631,11 @@ test_that("Saved MSS summary text preserves dataset name", {
         dataset_name = "uveal_melanoma_restricted_cohort"
     )
 
-    summary_path <- file.path(test_output_dir, "dataset_mss_validation_narrative_summary.txt")
+    summary_path <- file.path(test_output_dir, "dataset_mss_validation_narrative_summary.md")
     expect_true(file.exists(summary_path))
 
     summary_text <- paste(readLines(summary_path, warn = FALSE), collapse = "\n")
+    expect_match(summary_text, "^# GEP MSS Validation - Comprehensive Clinical Summary", perl = TRUE)
     expect_match(summary_text, "Dataset: uveal_melanoma_restricted_cohort")
 
     unlink(test_output_dir, recursive = TRUE)
@@ -1265,6 +1268,9 @@ test_that("Comprehensive GEP summary states why slope is NA in plain language", 
         dataset_name = "test_dataset"
     )
 
+    expect_match(summary_text, "^# GEP MFS Validation - Comprehensive Clinical Summary", perl = TRUE)
+    expect_match(summary_text, "## Calibration Analysis", fixed = TRUE)
+    expect_match(summary_text, "## Detailed Metrics by Timepoint", fixed = TRUE)
     expect_match(summary_text, "too few patients had usable data")
     expect_match(summary_text, "events=3")
     expect_match(summary_text, "non-events=15")
@@ -1462,23 +1468,24 @@ test_that("run_objective_4 creates current canonical Objective 4 artifacts", {
 
     expect_true(file.exists(file.path(output_dirs$obj4_mfs, "test_mfs_validation_technical_details.xlsx")))
     expect_true(file.exists(file.path(output_dirs$obj4_mfs, "test_MFS_consolidated_summary.xlsx")))
-    expect_true(file.exists(file.path(output_dirs$obj4_mfs, "test_mfs_validation_narrative_summary.txt")))
-    expect_true(file.exists(file.path(output_dirs$obj4_mfs, "test_mfs_extrapolation_assumption_summary.txt")))
+    expect_true(file.exists(file.path(output_dirs$obj4_mfs, "test_mfs_validation_narrative_summary.md")))
+    expect_true(file.exists(file.path(output_dirs$obj4_mfs, "test_mfs_extrapolation_assumption_summary.md")))
     expect_true(file.exists(file.path(output_dirs$obj4_mfs, "test_mfs_extrapolation_cumhaz_diagnostic.png")))
     expect_true(file.exists(file.path(output_dirs$obj4_mfs, "test_mfs_calibration_full.png")))
     expect_true(file.exists(file.path(output_dirs$obj4_mss, "test_MSS_consolidated_summary.xlsx")))
     expect_true(file.exists(file.path(output_dirs$obj4_mss, "test_mss_validation_technical_details.xlsx")))
-    expect_true(file.exists(file.path(output_dirs$obj4_mss, "test_mss_validation_narrative_summary.txt")))
-    expect_true(file.exists(file.path(output_dirs$obj4_mss, "test_mss_extrapolation_assumption_summary.txt")))
+    expect_true(file.exists(file.path(output_dirs$obj4_mss, "test_mss_validation_narrative_summary.md")))
+    expect_true(file.exists(file.path(output_dirs$obj4_mss, "test_mss_extrapolation_assumption_summary.md")))
     expect_true(file.exists(file.path(output_dirs$obj4_mss, "test_mss_extrapolation_cumhaz_diagnostic.png")))
     expect_true(file.exists(file.path(output_dirs$obj4_mfs, "test_mfs_prame_delta_c.png")))
     expect_true(file.exists(file.path(output_dirs$obj4_mss, "test_mss_prame_delta_c.png")))
     expect_true(file.exists(file.path(dirname(output_dirs$obj4_mfs), "test_unified_gep_validation_summary.xlsx")))
     expect_true(file.exists(file.path(dirname(output_dirs$obj4_mfs), "unified_summary", "test_simple_gep_validation.xlsx")))
     expect_true(file.exists(file.path(dirname(output_dirs$obj4_mfs), "unified_summary", "test_mfs_sensitivity_summary.xlsx")))
-    expect_true(file.exists(file.path(dirname(output_dirs$obj4_mfs), "unified_summary", "test_mfs_sensitivity_summary.txt")))
+    expect_true(file.exists(file.path(dirname(output_dirs$obj4_mfs), "unified_summary", "test_mfs_sensitivity_summary.md")))
+    expect_true(file.exists(file.path(dirname(output_dirs$obj4_mfs), "unified_summary", "test_simple_gep_validation_report.md")))
     expect_true(file.exists(file.path(dirname(output_dirs$obj4_mfs), "d_exploratory_no_gep", "full_cohort_exploratory_no_gep_report.xlsx")))
-    expect_true(file.exists(file.path(dirname(output_dirs$obj4_mfs), "d_exploratory_no_gep", "full_cohort_exploratory_no_gep_summary.txt")))
+    expect_true(file.exists(file.path(dirname(output_dirs$obj4_mfs), "d_exploratory_no_gep", "full_cohort_exploratory_no_gep_summary.md")))
     expect_false(file.exists(file.path(dirname(output_dirs$obj4_mfs), "test_prame_delta_c.png")))
 
     mfs_technical_sheets <- readxl::excel_sheets(file.path(output_dirs$obj4_mfs, "test_mfs_validation_technical_details.xlsx"))
@@ -1623,8 +1630,13 @@ test_that("4e: Existing Objective 4 cohort artifacts follow current placement co
             info = sprintf("Simple validation workbook should exist in unified_summary for %s cohort", cfg$name))
         expect_true(file.exists(file.path(unified_dir, paste0(cfg$prefix, "mfs_sensitivity_summary.xlsx"))),
             info = sprintf("MFS sensitivity workbook should exist in unified_summary for %s cohort", cfg$name))
-        expect_true(file.exists(file.path(unified_dir, paste0(cfg$prefix, "mfs_sensitivity_summary.txt"))),
+        expect_true(file.exists(file.path(unified_dir, paste0(cfg$prefix, "mfs_sensitivity_summary.md"))),
             info = sprintf("MFS sensitivity summary text should exist in unified_summary for %s cohort", cfg$name))
+
+        if (identical(cfg$name, "full")) {
+            expect_true(file.exists(file.path(cfg$base_dir, "d_exploratory_no_gep", "full_cohort_exploratory_no_gep_summary.md")),
+                info = "Full cohort should retain the exploratory no-GEP markdown summary")
+        }
 
         if (identical(cfg$name, "gksrs")) {
             expect_true(file.exists(file.path(mfs_dir, paste0(cfg$prefix, "metastasis_free_survival_probability_cox_NO_CONTENT_DIAGNOSTIC.html"))),

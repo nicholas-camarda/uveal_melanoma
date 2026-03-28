@@ -4,26 +4,25 @@
 create_gep_prediction_source_note <- function(extrapolation_assessment = NULL) {
     extrapolation_lines <- if (!is.null(extrapolation_assessment)) {
         c(
-            sprintf(
+            md_bullet(sprintf(
                 "Current extrapolation support status: %s",
                 extrapolation_assessment$status %||% "Unavailable"
-            ),
-            sprintf(
+            )),
+            md_bullet(sprintf(
                 "Current extrapolation support note: %s",
                 extrapolation_assessment$note %||% "No extrapolation support note available."
-            )
+            ))
         )
     } else {
-        "The 7-year and 10-year values should be interpreted as assumption-dependent extensions."
+        md_bullet("The 7-year and 10-year values should be interpreted as assumption-dependent extensions.")
     }
 
     c(
-        "PREDICTION SOURCE NOTE",
-        "----------------------",
-        "The base GEP predictions are imported lab-reported 5-year survival probabilities, not newly fit model outputs.",
-        "At 5 years the pipeline uses the supplied lab value directly; at 7 and 10 years it derives survival from that same 5-year value using exponential-decay extrapolation:",
-        "  - 7-year survival = (5-year survival)^(7/5)",
-        "  - 10-year survival = (5-year survival)^(10/5)",
+        md_heading("Prediction Source Note", 2L),
+        md_bullet("The base GEP predictions are imported lab-reported 5-year survival probabilities, not newly fit model outputs."),
+        md_bullet("At 5 years the pipeline uses the supplied lab value directly; at 7 and 10 years it derives survival from that same 5-year value using exponential-decay extrapolation."),
+        md_bullet("7-year survival = (5-year survival)^(7/5)", indent = 1L),
+        md_bullet("10-year survival = (5-year survival)^(10/5)", indent = 1L),
         extrapolation_lines
     )
 }
@@ -39,16 +38,22 @@ create_gep_prediction_source_note <- function(extrapolation_assessment = NULL) {
 create_gep_extrapolation_narrative_section <- function(extrapolation_assessment = NULL) {
     if (is.null(extrapolation_assessment)) {
         return(c(
-            "EXTRAPOLATION INTERPRETATION",
-            "============================",
-            "No later-horizon extrapolation-support assessment was supplied."
+            md_heading("Extrapolation Interpretation", 2L),
+            md_bullet("No later-horizon extrapolation-support assessment was supplied.")
         ))
     }
 
     c(
-        "EXTRAPOLATION INTERPRETATION",
-        "============================",
-        "Later-horizon issues usually reflect the 7-year and 10-year extension rule, not the imported 5-year assay output itself."
+        md_heading("Extrapolation Interpretation", 2L),
+        md_bullet(sprintf(
+            "Current extrapolation support status: %s",
+            extrapolation_assessment$status %||% "Unavailable"
+        )),
+        md_bullet(sprintf(
+            "Current extrapolation support note: %s",
+            extrapolation_assessment$note %||% "No extrapolation support note available."
+        )),
+        md_bullet("Later-horizon issues usually reflect the 7-year and 10-year extension rule, not the imported 5-year assay output itself.")
     )
 }
 
@@ -289,59 +294,62 @@ create_comprehensive_gep_summary <- function(validation_results, outcome_type, p
         followup_narrative <- c("", build_objective4_followup_limitation_block(followup_summary))
     }
     
-    # Build comprehensive report
+    detailed_metrics_block <- tryCatch({
+        create_detailed_metrics_table(validation_results)
+    }, error = function(e) {
+        logger::log_warn(sprintf("Detailed metrics table creation failed: %s", e$message))
+        c("Detailed metrics table could not be generated due to data structure issues")
+    })
+
+    missing_data_count <- if (!is.null(missing_data_analysis) && !is.null(missing_data_analysis$missing_patterns)) {
+        nrow(missing_data_analysis$missing_patterns)
+    } else {
+        0L
+    }
+
     report_lines <- c(
-        sprintf("GEP %s Validation - Comprehensive Clinical Summary", outcome_type),
-        paste(rep("=", 60), collapse = ""),
+        md_heading(sprintf("GEP %s Validation - Comprehensive Clinical Summary", outcome_type), 1L),
+        "",
         sprintf("Analysis completed: %s", Sys.time()),
         "",
-        sprintf("Dataset: %s", dataset_name),
-        sprintf("Outcome: %s", outcome_type),
-        sprintf("Timepoints analyzed: %s", paste(timepoints, collapse = ", ")),
+        md_bullet(sprintf("Dataset: %s", dataset_name)),
+        md_bullet(sprintf("Outcome: %s", outcome_type)),
+        md_bullet(sprintf("Timepoints analyzed: %s", paste(timepoints, collapse = ", "))),
+        "",
         prediction_source_note,
+        "",
         extrapolation_narrative,
+        "",
         followup_narrative,
         "",
-        "CLINICAL SUMMARY",
-        "================",
+        md_heading("Clinical Summary", 2L),
         clinical_summary$overall_assessment,
         "",
-        "CALIBRATION ANALYSIS",
-        "===================",
+        md_heading("Calibration Analysis", 2L),
         clinical_summary$calibration_interpretation,
         "",
-        "DISCRIMINATION ANALYSIS", 
-        "=====================",
+        md_heading("Discrimination Analysis", 2L),
         clinical_summary$discrimination_interpretation,
         "",
-        "OBSERVED VS EXPECTED ANALYSIS",
-        "============================",
+        md_heading("Observed vs Expected Analysis", 2L),
         clinical_summary$oe_interpretation,
         "",
-        "TIME-DEPENDENT PATTERNS",
-        "=======================",
+        md_heading("Time-Dependent Patterns", 2L),
         clinical_summary$temporal_patterns,
         "",
-        "CLINICAL IMPLICATIONS",
-        "=====================",
+        md_heading("Clinical Implications", 2L),
         clinical_summary$clinical_implications,
         "",
-        "DETAILED METRICS BY TIMEPOINT",
-        "=============================",
-        tryCatch({
-            create_detailed_metrics_table(validation_results)
-        }, error = function(e) {
-            logger::log_warn(sprintf("Detailed metrics table creation failed: %s", e$message))
-            "Detailed metrics table could not be generated due to data structure issues"
-        }),
+        md_heading("Detailed Metrics by Timepoint", 2L),
+        detailed_metrics_block,
         "",
-        create_prame_added_value_summary_line(prame_analysis),
+        md_heading("PRAME Added Value", 2L),
+        md_bullet(create_prame_added_value_summary_line(prame_analysis)),
         "",
-        sprintf("Missing data patterns: %d", ifelse(is.null(missing_data_analysis$missing_patterns), 0, nrow(missing_data_analysis$missing_patterns))),
+        md_bullet(sprintf("Missing data patterns: %d", missing_data_count)),
         "",
-        "NOTE: This comprehensive summary consolidates information from multiple timepoints",
-        "to provide clinical interpretation and pattern analysis. All detailed statistical",
-        "outputs remain available in the accompanying Excel files and visualizations."
+        md_bullet("This comprehensive summary consolidates information from multiple timepoints to provide clinical interpretation and pattern analysis."),
+        md_bullet("All detailed statistical outputs remain available in the accompanying Excel files and visualizations.")
     )
     
     return(paste(report_lines, collapse = "\n"))
@@ -349,7 +357,7 @@ create_comprehensive_gep_summary <- function(validation_results, outcome_type, p
 
 #' Create Comprehensive GEP Report
 #'
-#' Write a human-readable text summary and optional Excel comparison table to
+#' Write a human-readable Markdown summary and optional Excel comparison table to
 #' describe overall GEP validation performance across outcomes and timepoints.
 #'
 #' @param mfs_results MFS validation results (may be NULL)
@@ -361,35 +369,34 @@ create_comprehensive_gep_summary <- function(validation_results, outcome_type, p
 create_comprehensive_gep_report <- function(mfs_results, mss_results, comparison_table, output_dir, prefix) {
     logger::log_info(formatted("Creating comprehensive GEP report"))
     summary_lines <- c(
-        "GEP Validation Comprehensive Report",
-        "===================================",
+        md_heading("GEP Validation Comprehensive Report", 1L),
         sprintf("Analysis completed: %s", Sys.time()),
         "",
-        "SUMMARY OF VALIDATION ANALYSES:",
+        md_heading("Summary of Validation Analyses", 2L),
         "",
-        "MFS Validation:",
-        sprintf("  - Status: %s", ifelse(!is.null(mfs_results), "Completed", "Not performed")),
-        sprintf("  - Timepoints: %s", ifelse(!is.null(mfs_results), paste(names(mfs_results$validation_results), collapse = ", "), "N/A")),
+        md_heading("MFS Validation", 3L),
+        md_bullet(sprintf("Status: %s", ifelse(!is.null(mfs_results), "Completed", "Not performed"))),
+        md_bullet(sprintf("Timepoints: %s", ifelse(!is.null(mfs_results), paste(names(mfs_results$validation_results), collapse = ", "), "N/A"))),
         "",
-        "MSS Validation:",
-        sprintf("  - Status: %s", ifelse(!is.null(mss_results), "Completed", "Not performed")),
-        sprintf("  - Timepoints: %s", ifelse(!is.null(mss_results), paste(if (!is.null(mss_results$standard_validation)) names(mss_results$standard_validation) else names(mss_results$standard_results), collapse = ", "), "N/A")),
-        sprintf("  - Competing Risk Analysis: %s", ifelse(!is.null(mss_results) && (!is.null(mss_results$competing_risk_validation) || !is.null(mss_results$competing_results)), "Yes", "No")),
+        md_heading("MSS Validation", 3L),
+        md_bullet(sprintf("Status: %s", ifelse(!is.null(mss_results), "Completed", "Not performed"))),
+        md_bullet(sprintf("Timepoints: %s", ifelse(!is.null(mss_results), paste(if (!is.null(mss_results$standard_validation)) names(mss_results$standard_validation) else names(mss_results$standard_results), collapse = ", "), "N/A"))),
+        md_bullet(sprintf("Competing risk analysis: %s", ifelse(!is.null(mss_results) && (!is.null(mss_results$competing_risk_validation) || !is.null(mss_results$competing_results)), "Yes", "No"))),
         "",
-        "PERFORMANCE SUMMARY:",
+        md_heading("Performance Summary", 2L),
         "",
-        "Calibration Performance:",
-        "  - Calibration slope close to 1.0 indicates good calibration",
-        "  - Integrated Calibration Index (ICI) measures overall calibration",
+        md_heading("Calibration Performance", 3L),
+        md_bullet("Calibration slope close to 1.0 indicates good calibration."),
+        md_bullet("Integrated Calibration Index (ICI) measures overall calibration."),
         "",
-        "Discrimination Performance:",
-        "  - Harrell's C-index > 0.7 indicates good discrimination",
-        "  - Integrated AUC provides robust discrimination over time periods",
+        md_heading("Discrimination Performance", 3L),
+        md_bullet("Harrell's C-index > 0.7 indicates good discrimination."),
+        md_bullet("Integrated AUC provides robust discrimination over time periods."),
         "",
-        "All detailed results saved as Excel tables and visualizations.",
-        "See individual files for complete statistical outputs."
+        md_bullet("All detailed results are saved as Excel tables and visualizations."),
+        md_bullet("See individual files for complete statistical outputs.")
     )
-    summary_path <- file.path(output_dir, paste0(prefix, "gep_comprehensive_report.txt"))
+    summary_path <- file.path(output_dir, paste0(prefix, "gep_comprehensive_report.md"))
     writeLines(summary_lines, summary_path)
     if (nrow(comparison_table) > 0) {
         excel_path <- file.path(output_dir, paste0(prefix, "gep_comparison_table.xlsx"))
@@ -410,19 +417,16 @@ create_comprehensive_gep_report <- function(mfs_results, mss_results, comparison
 create_comprehensive_gep_validation_summary <- function(mfs_results, mss_results, prefix) {
     dataset_name <- mfs_results$dataset_name %||% mss_results$dataset_name %||% "dataset_not_provided"
     summary_lines <- c(
-        "COMPREHENSIVE GEP VALIDATION SUMMARY",
-        "====================================",
+        md_heading("Comprehensive GEP Validation Summary", 1L),
         sprintf("Analysis completed: %s", Sys.time()),
         "",
-        "OVERVIEW",
-        "--------",
-        "This consolidated summary replaces multiple separate reports and eliminates",
-        "redundant information across timepoints while maintaining all statistical details.",
+        md_heading("Overview", 2L),
+        md_bullet(sprintf("Dataset: %s", dataset_name)),
+        md_bullet("This consolidated summary replaces multiple separate reports and eliminates redundant information across timepoints while maintaining all statistical details."),
         "",
         create_gep_prediction_source_note(),
         "",
-        "METASTASIS-FREE SURVIVAL (MFS) ANALYSIS",
-        "----------------------------------------"
+        md_heading("Metastasis-Free Survival (MFS) Analysis", 2L)
     )
     
     if (!is.null(mfs_results) && !is.null(mfs_results$validation_results)) {
@@ -439,11 +443,8 @@ create_comprehensive_gep_validation_summary <- function(mfs_results, mss_results
     } else {
         summary_lines <- c(summary_lines, "MFS analysis results not available")
     }
-    
-    summary_lines <- c(summary_lines, "", 
-        "MELANOMA-SPECIFIC SURVIVAL (MSS) ANALYSIS",
-        "------------------------------------------"
-    )
+
+    summary_lines <- c(summary_lines, "", md_heading("Melanoma-Specific Survival (MSS) Analysis", 2L))
     
     if (!is.null(mss_results)) {
         mss_container <- if (!is.null(mss_results$standard_validation)) mss_results$standard_validation else mss_results$standard_results
@@ -466,17 +467,15 @@ create_comprehensive_gep_validation_summary <- function(mfs_results, mss_results
     }
     
     summary_lines <- c(summary_lines, "",
-        "CONSOLIDATION BENEFITS",
-        "---------------------",
-        "✓ Calibration summarized as 1 full-spectrum curve per outcome (faceted by timepoint)",
-        "✓ Eliminated redundant decision curve plots (6 plots → 1 comprehensive table)",
-        "✓ Eliminated redundant performance plots (4 plots → 1 comprehensive table)",
-        "✓ Eliminated unnecessary subfolder structure",
-        "✓ Consolidated all information into interpretable, clinical summaries",
-        "✓ Maintained all statistical information while improving readability",
+        md_heading("Consolidation Benefits", 2L),
+        md_bullet("Calibration is summarized as one full-spectrum curve per outcome, faceted by timepoint."),
+        md_bullet("Redundant decision curve plots are eliminated in favor of one comprehensive table."),
+        md_bullet("Redundant performance plots are eliminated in favor of one comprehensive table."),
+        md_bullet("Unnecessary subfolder structure is removed."),
+        md_bullet("All information is consolidated into interpretable clinical summaries."),
+        md_bullet("All statistical information is retained while readability improves."),
         "",
-        "NOTE: This consolidated approach provides the same information as the",
-        "previous scattered outputs but in a more organized, interpretable format."
+        md_bullet("This consolidated approach provides the same information as the previous scattered outputs but in a more organized, interpretable format.")
     )
     
     return(paste(summary_lines, collapse = "\n"))
@@ -493,49 +492,44 @@ create_comprehensive_gep_validation_summary <- function(mfs_results, mss_results
 #' @return Character scalar containing the interpretation summary.
 create_clinical_interpretation_summary <- function(mfs_results, mss_results, prefix) {
     clinical_lines <- c(
-        "GEP VALIDATION - CLINICAL INTERPRETATION SUMMARY",
-        "================================================",
+        md_heading("GEP Validation - Clinical Interpretation Summary", 1L),
         sprintf("Generated: %s", Sys.time()),
         "",
-        "PURPOSE",
-        "-------",
-        "This summary provides clinical interpretation of GEP validation results",
-        "to guide clinical decision-making and patient counseling.",
+        md_heading("Purpose", 2L),
+        md_bullet("This summary provides clinical interpretation of GEP validation results to guide clinical decision-making and patient counseling."),
         "",
         create_gep_prediction_source_note(),
         "",
-        "KEY CLINICAL INSIGHTS",
-        "---------------------",
+        md_heading("Key Clinical Insights", 2L),
         "",
-        "1. MODEL PERFORMANCE ASSESSMENT",
-        "   • Discrimination: How well the model separates high and low-risk patients",
-        "   • Calibration: How accurate the model's risk predictions are",
-        "   • Clinical utility: Whether the model provides actionable information",
+        md_heading("Model Performance Assessment", 3L),
+        md_bullet("Discrimination: How well the model separates high and low-risk patients", indent = 1L),
+        md_bullet("Calibration: How accurate the model's risk predictions are", indent = 1L),
+        md_bullet("Clinical utility: Whether the model provides actionable information", indent = 1L),
         "",
-        "2. TIMEPOINT ANALYSIS",
-        "   • Short-term (5yr): Immediate risk assessment and treatment planning",
-        "   • Medium-term (7yr): Intermediate surveillance and intervention decisions",
-        "   • Long-term (10yr): Long-term prognosis and patient counseling",
+        md_heading("Timepoint Analysis", 3L),
+        md_bullet("Short-term (5yr): Immediate risk assessment and treatment planning", indent = 1L),
+        md_bullet("Medium-term (7yr): Intermediate surveillance and intervention decisions", indent = 1L),
+        md_bullet("Long-term (10yr): Long-term prognosis and patient counseling", indent = 1L),
         "",
-        "3. CLINICAL APPLICATIONS",
-        "   • Risk stratification: Identifying patients for different surveillance intensities",
-        "   • Treatment decisions: Guiding adjuvant therapy and follow-up protocols",
-        "   • Patient counseling: Providing accurate prognostic information",
-        "   • Research applications: Supporting clinical trial design and analysis",
+        md_heading("Clinical Applications", 3L),
+        md_bullet("Risk stratification: Identifying patients for different surveillance intensities", indent = 1L),
+        md_bullet("Treatment decisions: Guiding adjuvant therapy and follow-up protocols", indent = 1L),
+        md_bullet("Patient counseling: Providing accurate prognostic information", indent = 1L),
+        md_bullet("Research applications: Supporting clinical trial design and analysis", indent = 1L),
         "",
-        "4. INTERPRETATION GUIDELINES",
-        "   • Excellent discrimination (C-index >= 0.9): Model provides strong prognostic information",
-        "   • Good discrimination (C-index >= 0.8): Model provides reliable prognostic information",
-        "   • Good calibration (slope ≈ 1.0): Risk estimates can be used directly",
-        "   • Moderate calibration: Risk estimates should be interpreted with caution",
+        md_heading("Interpretation Guidelines", 3L),
+        md_bullet("Excellent discrimination (C-index >= 0.9): Model provides strong prognostic information", indent = 1L),
+        md_bullet("Good discrimination (C-index >= 0.8): Model provides reliable prognostic information", indent = 1L),
+        md_bullet("Good calibration (slope approximately 1.0): Risk estimates can be used directly", indent = 1L),
+        md_bullet("Moderate calibration: Risk estimates should be interpreted with caution", indent = 1L),
         "",
-        "5. LIMITATIONS AND CONSIDERATIONS",
-        "   • Model performance may vary across different patient populations",
-        "   • Clinical context should always be considered alongside model predictions",
-        "   • Regular model validation is recommended as practice patterns evolve",
+        md_heading("Limitations and Considerations", 3L),
+        md_bullet("Model performance may vary across different patient populations", indent = 1L),
+        md_bullet("Clinical context should always be considered alongside model predictions", indent = 1L),
+        md_bullet("Regular model validation is recommended as practice patterns evolve", indent = 1L),
         "",
-        "For detailed statistical results, refer to the comprehensive validation summary",
-        "and consolidated Excel workbook in this directory."
+        md_bullet("For detailed statistical results, refer to the comprehensive validation summary and consolidated Excel workbook in this directory.")
     )
     
     return(paste(clinical_lines, collapse = "\n"))
@@ -563,7 +557,7 @@ create_consolidated_gep_excel_workbook_unified <- function(mfs_results, mss_resu
         prefix = prefix
     )
     
-    summary_path <- file.path(unified_dir, paste0(prefix, "comprehensive_gep_validation_summary.txt"))
+    summary_path <- file.path(unified_dir, paste0(prefix, "comprehensive_gep_validation_summary.md"))
     writeLines(comprehensive_summary, summary_path)
     consolidated_files$comprehensive_summary <- summary_path
     
@@ -585,7 +579,7 @@ create_consolidated_gep_excel_workbook_unified <- function(mfs_results, mss_resu
         prefix = prefix
     )
     
-    clinical_path <- file.path(unified_dir, paste0(prefix, "clinical_interpretation_summary.txt"))
+    clinical_path <- file.path(unified_dir, paste0(prefix, "clinical_interpretation_summary.md"))
     writeLines(clinical_summary, clinical_path)
     consolidated_files$clinical_summary <- clinical_path
     

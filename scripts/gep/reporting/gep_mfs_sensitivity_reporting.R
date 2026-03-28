@@ -398,7 +398,7 @@ build_objective4_followup_limitation_block <- function(followup_summary, include
 
     lines <- character()
     if (isTRUE(include_heading)) {
-        lines <- c(lines, "FOLLOW-UP LIMITATION", "====================")
+        lines <- c(lines, md_heading(sprintf("Follow-Up Limitation (%d-year)", horizon_years), 2L))
     }
 
     if (total_n == 0 || nrow(horizon_overall) == 0) {
@@ -437,16 +437,16 @@ build_objective4_followup_limitation_block <- function(followup_summary, include
     lines <- c(
         lines,
         followup_summary$limitation_line,
-        sprintf(
+        md_bullet(sprintf(
             "`%s` means follow-up reached at least %d years without the endpoint occurring before %d years; `censored_pre_%dyr` means follow-up ended before %d years without an observed endpoint.",
             followup_ge_label,
             horizon_years,
             horizon_years,
             horizon_years,
             horizon_years
-        ),
-        sprintf(
-            "- %d-year view: %s %d/%d (%.1f%%); %s %d/%d (%.1f%%); %s %d/%d (%.1f%%)",
+        )),
+        md_bullet(sprintf(
+            "%d-year view: %s %d/%d (%.1f%%); %s %d/%d (%.1f%%); %s %d/%d (%.1f%%)",
             horizon_years,
             censored_label,
             horizon_censored_n,
@@ -460,17 +460,17 @@ build_objective4_followup_limitation_block <- function(followup_summary, include
             horizon_followup_ge_n,
             total_n,
             100 * (horizon_followup_ge_n / total_n)
-        )
+        ))
     )
 
     if (!is.null(class_line) && nzchar(class_line)) {
-        lines <- c(lines, paste0("- By class: ", class_line))
+        lines <- c(lines, md_bullet(paste0("By class: ", class_line)))
     }
 
     lines <- c(
         lines,
-        sprintf(
-            "- Operational view: alive %d/%d (%.1f%%); dead %d/%d (%.1f%%); lost_to_followup %d/%d (%.1f%%)",
+        md_bullet(sprintf(
+            "Operational view: alive %d/%d (%.1f%%); dead %d/%d (%.1f%%); lost_to_followup %d/%d (%.1f%%)",
             operational_alive_n,
             total_n,
             100 * (operational_alive_n / total_n),
@@ -480,7 +480,7 @@ build_objective4_followup_limitation_block <- function(followup_summary, include
             operational_lost_n,
             total_n,
             100 * (operational_lost_n / total_n)
-        )
+        ))
     )
 
     if (nrow(censored_breakdown) > 0) {
@@ -491,7 +491,7 @@ build_objective4_followup_limitation_block <- function(followup_summary, include
         censored_lost_n <- if ("lost_to_followup" %in% names(censored_counts)) censored_counts[["lost_to_followup"]] else 0L
         lines <- c(
             lines,
-            sprintf(
+            md_bullet(sprintf(
                 "Among the %d patients censored before %d years, alive %d (%.1f%%), dead %d (%.1f%%), and lost_to_followup %d (%.1f%%).",
                 censored_total,
                 horizon_years,
@@ -501,7 +501,7 @@ build_objective4_followup_limitation_block <- function(followup_summary, include
                 100 * (censored_dead_n / censored_total),
                 censored_lost_n,
                 100 * (censored_lost_n / censored_total)
-            )
+            ))
         )
     }
 
@@ -1136,7 +1136,7 @@ write_objective4_mfs_sensitivity_outputs <- function(sensitivity_results, output
     }
 
     workbook_path <- file.path(output_dir, paste0(prefix, "mfs_sensitivity_summary.xlsx"))
-    summary_path <- file.path(output_dir, paste0(prefix, "mfs_sensitivity_summary.txt"))
+    summary_path <- file.path(output_dir, paste0(prefix, "mfs_sensitivity_summary.md"))
 
     workbook_data <- list(
         Followup_Operational = sensitivity_results$mfs_followup_sensitivity$operational_overall,
@@ -1160,13 +1160,46 @@ write_objective4_mfs_sensitivity_outputs <- function(sensitivity_results, output
     followup_horizon <- sensitivity_results$mfs_followup_sensitivity$horizon_overall
     followup_operational <- sensitivity_results$mfs_followup_sensitivity$operational_overall
 
+    followup_horizon_table <- if (nrow(followup_horizon) > 0) {
+        data.frame(
+            View = followup_horizon$five_year_followup_view,
+            Count = sprintf("%d (%.1f%%)", followup_horizon$n, 100 * followup_horizon$proportion),
+            stringsAsFactors = FALSE
+        )
+    } else {
+        data.frame()
+    }
+
+    followup_operational_table <- if (nrow(followup_operational) > 0) {
+        data.frame(
+            Status = followup_operational$operational_followup_status,
+            Count = sprintf("%d (%.1f%%)", followup_operational$n, 100 * followup_operational$proportion),
+            stringsAsFactors = FALSE
+        )
+    } else {
+        data.frame()
+    }
+
+    class_summary_table <- if (nrow(class_summary) > 0) {
+        data.frame(
+            Class = class_summary$gep_class_simple,
+            `Raw events` = sprintf("%d/%d", class_summary$observed_events_5yr, class_summary$n),
+            `KM-observed MFS` = sprintf("%.1f%%", 100 * class_summary$actual_mfs_5yr),
+            `Expected survival` = sprintf("%.1f%%", 100 * class_summary$expected_survival_5yr),
+            `O/E` = sprintf("%.2f", class_summary$oe_ratio_5yr),
+            `Tx mix` = class_summary$treatment_mix,
+            stringsAsFactors = FALSE
+        )
+    } else {
+        data.frame()
+    }
+
     narrative_lines <- c(
-        "OBJECTIVE 4 MFS SENSITIVITY SUMMARY",
-        "===================================",
+        md_heading("Objective 4 MFS Sensitivity Summary", 1L),
         "",
         sprintf("Cohort: %s", sensitivity_results$cohort_label),
         sprintf("5-year censoring view evaluated at %d months.", 60),
-        "`followup_ge_5yr` means follow-up reached at least 5 years without metastasis before 5 years.",
+        md_bullet("`followup_ge_5yr` means follow-up reached at least 5 years without metastasis before 5 years."),
         sprintf(
             "Operational lost-to-follow-up uses cutoff date %s and threshold %d days.",
             format(VITAL_STATUS_DATA_CUTOFF_DATE, "%Y-%m-%d"),
@@ -1176,79 +1209,54 @@ write_objective4_mfs_sensitivity_outputs <- function(sensitivity_results, output
     )
 
     if (nrow(followup_horizon) > 0) {
-        narrative_lines <- c(narrative_lines, "5-YEAR FOLLOW-UP VIEW:")
-        for (i in seq_len(nrow(followup_horizon))) {
-            narrative_lines <- c(
-                narrative_lines,
-                sprintf(
-                    "  - %s: %d (%.1f%%)",
-                    followup_horizon$five_year_followup_view[i],
-                    followup_horizon$n[i],
-                    100 * followup_horizon$proportion[i]
-                )
-            )
-        }
-        narrative_lines <- c(narrative_lines, "")
+        narrative_lines <- c(
+            narrative_lines,
+            md_heading("5-Year Follow-Up View", 2L),
+            md_table(followup_horizon_table),
+            ""
+        )
     }
 
     if (nrow(followup_operational) > 0) {
-        narrative_lines <- c(narrative_lines, "OPERATIONAL FOLLOW-UP VIEW:")
-        for (i in seq_len(nrow(followup_operational))) {
-            narrative_lines <- c(
-                narrative_lines,
-                sprintf(
-                    "  - %s: %d (%.1f%%)",
-                    followup_operational$operational_followup_status[i],
-                    followup_operational$n[i],
-                    100 * followup_operational$proportion[i]
-                )
-            )
-        }
-        narrative_lines <- c(narrative_lines, "")
+        narrative_lines <- c(
+            narrative_lines,
+            md_heading("Operational Follow-Up View", 2L),
+            md_table(followup_operational_table),
+            ""
+        )
     }
 
     if (nrow(class_summary) > 0) {
-        narrative_lines <- c(narrative_lines, "CLASS-LEVEL 5-YEAR MFS SUMMARY:")
-        for (i in seq_len(nrow(class_summary))) {
-            narrative_lines <- c(
-                narrative_lines,
-                sprintf(
-                    "  - %s: raw events %d/%d, KM-observed MFS %.1f%%, expected survival %.1f%%, O/E %.2f, tx mix %s",
-                    class_summary$gep_class_simple[i],
-                    class_summary$observed_events_5yr[i],
-                    class_summary$n[i],
-                    100 * class_summary$actual_mfs_5yr[i],
-                    100 * class_summary$expected_survival_5yr[i],
-                    class_summary$oe_ratio_5yr[i],
-                    class_summary$treatment_mix[i]
-                )
-            )
-        }
-        narrative_lines <- c(narrative_lines, "")
+        narrative_lines <- c(
+            narrative_lines,
+            md_heading("Class-Level 5-Year MFS Summary", 2L),
+            md_table(class_summary_table),
+            ""
+        )
     }
 
     narrative_lines <- c(
         narrative_lines,
-        "REPEAT/MULTIPLE RADIATION CHECK:",
-        sprintf(
-            "  - Repeat/multiple radiation exposure rows in MFS-eligible cohort: %d",
+        md_heading("Repeat/Multiple Radiation Check", 2L),
+        md_bullet(sprintf(
+            "Repeat/multiple radiation exposure rows in MFS-eligible cohort: %d",
             repeat_quality$repeat_radiation_exposure_n[1] %||% 0
-        ),
-        sprintf(
-            "  - Rows with both initial modalities flagged: %d",
+        )),
+        md_bullet(sprintf(
+            "Rows with both initial modalities flagged: %d",
             repeat_quality$both_initial_modalities_n[1] %||% 0
-        ),
+        )),
         "",
-        "GUARDRAIL NOTES:"
+        md_heading("Guardrail Notes", 2L)
     )
     narrative_lines <- c(
         narrative_lines,
-        paste0("  - ", sensitivity_results$guardrail_notes$note)
+        md_bullet(sensitivity_results$guardrail_notes$note)
     )
 
     event_diagnostics <- sensitivity_results$mfs_event_diagnostics %||% data.frame()
     if (nrow(event_diagnostics) > 0) {
-        narrative_lines <- c(narrative_lines, "", "EVENT-ROW DIAGNOSTICS:")
+        narrative_lines <- c(narrative_lines, "", md_heading("Event-Row Diagnostics", 2L))
         for (gep_class in unique(event_diagnostics$gep_class_simple)) {
             class_rows <- event_diagnostics %>%
                 dplyr::filter(.data$gep_class_simple == gep_class)
@@ -1256,7 +1264,7 @@ write_objective4_mfs_sensitivity_outputs <- function(sensitivity_results, output
             row_id_text <- if (length(row_ids) > 0) paste(row_ids, collapse = ", ") else "none"
             narrative_lines <- c(
                 narrative_lines,
-                sprintf("  - %s event row IDs: %s", gep_class, row_id_text)
+                md_bullet(sprintf("%s event row IDs: %s", gep_class, row_id_text))
             )
         }
     }

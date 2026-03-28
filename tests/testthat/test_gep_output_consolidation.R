@@ -132,11 +132,12 @@ test_that("GEP output consolidation creates comprehensive summary tables", {
     
     # Verify text summary contains all information
     text_summary <- mfs_consolidated$text_summary
-    expect_true(grepl("CALIBRATION SUMMARY", text_summary))
-    expect_true(grepl("DISCRIMINATION SUMMARY", text_summary))
+    expect_match(text_summary, "^# MFS Validation - Consolidated Summary", perl = TRUE)
+    expect_true(grepl("## Calibration Summary", text_summary, fixed = TRUE))
+    expect_true(grepl("## Discrimination Summary", text_summary, fixed = TRUE))
     # Performance summary intentionally removed to eliminate redundancy
-    expect_true(grepl("DECISION CURVE SUMMARY", text_summary))
-    expect_true(grepl("KEY FINDINGS", text_summary))
+    expect_true(grepl("## Decision Curve Summary", text_summary, fixed = TRUE))
+    expect_true(grepl("## Key Findings", text_summary, fixed = TRUE))
     
     # Test MSS consolidation
     mss_consolidated <- create_consolidated_gep_tables(
@@ -232,15 +233,15 @@ test_that("Unified GEP validation summary eliminates redundancy across outcomes"
     
     # Verify text summary contains unified information
     text_summary <- unified_summary$text_summary
-    expect_true(grepl("Unified GEP Validation Summary", text_summary))
-    expect_true(grepl("FOLLOW-UP LIMITATION \\(5-year\\)", text_summary))
-    expect_true(grepl("MFS: ", text_summary, fixed = TRUE))
-    expect_true(grepl("MSS: ", text_summary, fixed = TRUE))
+    expect_match(text_summary, "^# Unified GEP Validation Summary", perl = TRUE)
+    expect_true(grepl("## Follow-Up Limitation (5-year)", text_summary, fixed = TRUE))
+    expect_true(grepl("### MFS", text_summary, fixed = TRUE))
+    expect_true(grepl("### MSS", text_summary, fixed = TRUE))
     expect_true(grepl("`followup_ge_5yr` means", text_summary, fixed = TRUE))
-    expect_true(grepl("CALIBRATION COMPARISON \\(MFS vs MSS\\)", text_summary))
-    expect_true(grepl("DISCRIMINATION COMPARISON \\(MFS vs MSS\\)", text_summary))
+    expect_true(grepl("## Calibration Comparison (MFS vs MSS)", text_summary, fixed = TRUE))
+    expect_true(grepl("## Discrimination Comparison (MFS vs MSS)", text_summary, fixed = TRUE))
     # Performance comparison intentionally removed to eliminate redundancy
-    expect_true(grepl("KEY FINDINGS", text_summary))
+    expect_true(grepl("## Key Findings", text_summary, fixed = TRUE))
     
     # Clean up test output
     unlink(test_output_dir, recursive = TRUE)

@@ -262,23 +262,22 @@ build_exploratory_no_gep_followup_block <- function(prepared_data, dataset_name 
     }
 
     lines <- c(
-        "FOLLOW-UP CONTEXT",
-        "=================",
+        md_heading("Follow-Up Context", 2L),
         sprintf(
             "The follow-up summary below uses the no-GEP prediction subset for %s, so the denominator matches the rows entering the direct no-GEP risk outputs.",
             dataset_name %||% "this cohort"
         ),
-        sprintf(
-            "- Overall follow-up: median %.1f years; mean %.1f years; max %.1f years; %d/%d (%.1f%%) reached at least 5 years.",
+        md_bullet(sprintf(
+            "Overall follow-up: median %.1f years; mean %.1f years; max %.1f years; %d/%d (%.1f%%) reached at least 5 years.",
             followup_median,
             followup_mean,
             followup_max,
             followup_ge_5yr_n,
             total_n,
             100 * followup_ge_5yr_prop
-        ),
-        sprintf(
-            "- Operational view: alive %d/%d (%.1f%%); dead %d/%d (%.1f%%); lost_to_followup %d/%d (%.1f%%).",
+        )),
+        md_bullet(sprintf(
+            "Operational view: alive %d/%d (%.1f%%); dead %d/%d (%.1f%%); lost_to_followup %d/%d (%.1f%%).",
             operational_alive,
             total_n,
             100 * (operational_alive / total_n),
@@ -288,11 +287,11 @@ build_exploratory_no_gep_followup_block <- function(prepared_data, dataset_name 
             operational_lost,
             total_n,
             100 * (operational_lost / total_n)
-        )
+        ))
     )
 
     if (!is.null(group_line) && nzchar(group_line)) {
-        lines <- c(lines, paste0("- By no-GEP group: ", group_line))
+        lines <- c(lines, md_bullet(paste0("By no-GEP group: ", group_line)))
     }
 
     lines
@@ -2908,7 +2907,7 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
         dplyr::slice_min(.data$p_value, n = 1, with_ties = FALSE)
 
     top_predictor_block <- c(
-        "Model overview:",
+        md_heading("Model Overview", 3L),
         "| Model                    | Purpose                          | Apparent AUC | 5-fold CV AUC | Observed pooled risk-bin rates      |",
         "| ------------------------ | -------------------------------- | ------------ | ------------- | ----------------------------------- |",
         create_exploratory_model_overview_row(
@@ -2936,7 +2935,7 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
             event_col = "observed_mss_5yr_event_rate"
         ),
         "",
-        "Top predictors with data-backed context:",
+        md_heading("Top Predictors with Data-Backed Context", 3L),
         create_exploratory_top_predictor_table(
             model_label = "Surrogate Class 2-like",
             model_results = surrogate_model,
@@ -2960,104 +2959,107 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
     )
 
     summary_lines <- c(
-        "EXPLORATORY NO-GEP RISK REPORT",
-        "==============================",
+        md_heading("Exploratory No-GEP Risk Report", 1L),
         "",
         sprintf("Dataset: %s", dataset_name),
         "",
-        "Bottom line:",
-        "- Baseline clinical features provided moderate prognostic discrimination for 5-year MFS/MSS when GEP was unusable, but the same baseline features only weakly approximated definitive molecular class.",
-        "- The surrogate Class 2-like model is descriptive only and should not be used to relabel patients as true Class 1 or Class 2.",
-        "- The direct MFS/MSS models are the preferred outputs when a patient has no usable GEP, but they should be described as exploratory prognostic support rather than precise patient-level forecasts.",
-        "- The no-GEP population should not be presented as one homogeneous intermediate-risk group: overall it sits between definitive Class 1 and Class 2, but the failed/indeterminate subgroup is higher risk than the larger not-tested subgroup.",
+        md_heading("Bottom Line", 2L),
+        md_bullet("Baseline clinical features provided moderate prognostic discrimination for 5-year MFS/MSS when GEP was unusable, but the same baseline features only weakly approximated definitive molecular class."),
+        md_bullet("The surrogate Class 2-like model is descriptive only and should not be used to relabel patients as true Class 1 or Class 2."),
+        md_bullet("The direct MFS/MSS models are the preferred outputs when a patient has no usable GEP, but they should be described as exploratory prognostic support rather than precise patient-level forecasts."),
+        md_bullet("The no-GEP population should not be presented as one homogeneous intermediate-risk group: overall it sits between definitive Class 1 and Class 2, but the failed/indeterminate subgroup is higher risk than the larger not-tested subgroup."),
         "",
         build_exploratory_no_gep_followup_block(prepared_data = prepared_data, dataset_name = dataset_name),
         "",
-        "Key findings at 5 years:",
-        sprintf(
-            "- Group counts: %s",
+        md_heading("Key Findings at 5 Years", 2L),
+        md_bullet(sprintf(
+            "Group counts: %s",
             paste(sprintf("%s=%d", data_audit$group[seq_len(4)], data_audit$n[seq_len(4)]), collapse = ", ")
-        ),
-        sprintf(
-            "- Observed 5-year MFS events: Class 1 %.1f%%, GEP Not Tested %.1f%%, GEP Failed/Indeterminate %.1f%%, Class 2 %.1f%%.",
+        )),
+        md_bullet(sprintf(
+            "Observed 5-year MFS events: Class 1 %.1f%%, GEP Not Tested %.1f%%, GEP Failed/Indeterminate %.1f%%, Class 2 %.1f%%.",
             100 * class1_ladder$observed_5yr_mfs_event_rate[[1]],
             100 * not_tested_ladder$observed_5yr_mfs_event_rate[[1]],
             100 * failed_ladder$observed_5yr_mfs_event_rate[[1]],
             100 * class2_ladder$observed_5yr_mfs_event_rate[[1]]
-        ),
-        sprintf(
-            "- Median predicted 5-year MFS risk from the direct clinical model: Class 1 %.3f, GEP Not Tested %.3f, GEP Failed/Indeterminate %.3f, Class 2 %.3f.",
+        )),
+        md_bullet(sprintf(
+            "Median predicted 5-year MFS risk from the direct clinical model: Class 1 %.3f, GEP Not Tested %.3f, GEP Failed/Indeterminate %.3f, Class 2 %.3f.",
             class1_ladder$median_predicted_5yr_mfs_risk[[1]],
             not_tested_ladder$median_predicted_5yr_mfs_risk[[1]],
             failed_ladder$median_predicted_5yr_mfs_risk[[1]],
             class2_ladder$median_predicted_5yr_mfs_risk[[1]]
-        ),
-        sprintf(
-            "- Median predicted 5-year MSS risk from the direct clinical model: Class 1 %.3f, GEP Not Tested %.3f, GEP Failed/Indeterminate %.3f, Class 2 %.3f.",
+        )),
+        md_bullet(sprintf(
+            "Median predicted 5-year MSS risk from the direct clinical model: Class 1 %.3f, GEP Not Tested %.3f, GEP Failed/Indeterminate %.3f, Class 2 %.3f.",
             class1_ladder$median_predicted_5yr_mss_risk[[1]],
             not_tested_ladder$median_predicted_5yr_mss_risk[[1]],
             failed_ladder$median_predicted_5yr_mss_risk[[1]],
             class2_ladder$median_predicted_5yr_mss_risk[[1]]
-        ),
+        )),
         "",
-        "No-GEP subgroup summary:",
-        sprintf(
-            "- Failed/Indeterminate: median Class 2-like probability %.3f, median predicted 5-year MFS risk %.3f, median predicted 5-year MSS risk %.3f",
+        md_heading("No-GEP Subgroup Summary", 2L),
+        md_bullet(sprintf(
+            "Failed/Indeterminate: median Class 2-like probability %.3f, median predicted 5-year MFS risk %.3f, median predicted 5-year MSS risk %.3f",
             failed_row$median_surrogate_class2_probability[[1]],
             failed_row$median_predicted_mfs_5yr_risk[[1]],
             failed_row$median_predicted_mss_5yr_risk[[1]]
-        ),
-        sprintf(
-            "- Not Tested: median Class 2-like probability %.3f, median predicted 5-year MFS risk %.3f, median predicted 5-year MSS risk %.3f",
+        )),
+        md_bullet(sprintf(
+            "Not Tested: median Class 2-like probability %.3f, median predicted 5-year MFS risk %.3f, median predicted 5-year MSS risk %.3f",
             not_tested_row$median_surrogate_class2_probability[[1]],
             not_tested_row$median_predicted_mfs_5yr_risk[[1]],
             not_tested_row$median_predicted_mss_5yr_risk[[1]]
-        ),
+        )),
         "",
-        "Technical notes:",
-        "- A ridge-penalized surrogate model was trained only on patients with definitive Class 1 or Class 2 GEP results.",
-        "- That surrogate stores P(Class 2-like | baseline features); it is a clinical resemblance score, not a recovered molecular class label.",
-        "- Direct MFS and MSS models estimate baseline-only 5-year risk when GEP is unavailable or unusable.",
-        "- Apparent AUC is the in-sample fit; cross-validated AUC is the better estimate of expected performance on new patients.",
-        "- 95% repeated-CV intervals show how much AUC, Brier score, and calibration slope change across different fold assignments.",
+        md_heading("Technical Notes", 2L),
+        md_bullet("A ridge-penalized surrogate model was trained only on patients with definitive Class 1 or Class 2 GEP results."),
+        md_bullet("That surrogate stores P(Class 2-like | baseline features); it is a clinical resemblance score, not a recovered molecular class label."),
+        md_bullet("Direct MFS and MSS models estimate baseline-only 5-year risk when GEP is unavailable or unusable."),
+        md_bullet("Apparent AUC is the in-sample fit; cross-validated AUC is the better estimate of expected performance on new patients."),
+        md_bullet("95% repeated-CV intervals show how much AUC, Brier score, and calibration slope change across different fold assignments."),
         "",
-        "Parsimonious sensitivity check:",
-        sprintf(
-            "- Parsimonious direct MFS model using %s retained a CV AUC of %.3f (95%% repeated-CV interval %.3f to %.3f).",
+        md_heading("Parsimonious Sensitivity Check", 2L),
+        md_bullet(sprintf(
+            "Parsimonious direct MFS model using %s retained a CV AUC of %.3f (95%% repeated-CV interval %.3f to %.3f).",
             paste(unique(strsplit(parsimonious_mfs$predictors[[1]], ", ")[[1]]), collapse = ", "),
             parsimonious_mfs$cv_auc[[1]],
             parsimonious_mfs$cv_auc_ci_lower[[1]],
             parsimonious_mfs$cv_auc_ci_upper[[1]]
-        ),
-        sprintf(
-            "- Parsimonious direct MSS model retained a CV AUC of %.3f (95%% repeated-CV interval %.3f to %.3f).",
+        )),
+        md_bullet(sprintf(
+            "Parsimonious direct MSS model retained a CV AUC of %.3f (95%% repeated-CV interval %.3f to %.3f).",
             parsimonious_mss$cv_auc[[1]],
             parsimonious_mss$cv_auc_ci_lower[[1]],
             parsimonious_mss$cv_auc_ci_upper[[1]]
-        ),
-        "- Similar performance under the parsimonious specification supports the subgroup ordering without requiring a larger baseline feature set.",
+        )),
+        md_bullet("Similar performance under the parsimonious specification supports the subgroup ordering without requiring a larger baseline feature set."),
         "",
-        "Retained baseline predictors used in all exploratory models:",
-        paste0("- ", retained_predictors),
+        md_heading("Retained Baseline Predictors", 2L),
+        if (length(retained_predictors) > 0) {
+            vapply(retained_predictors, md_bullet, character(1))
+        } else {
+            md_bullet("None")
+        },
         "",
-        "Dropped candidate predictors:",
-        if (length(dropped_predictors) > 0) paste0("- ", dropped_predictors) else "- None",
+        md_heading("Dropped Candidate Predictors", 2L),
+        if (length(dropped_predictors) > 0) {
+            vapply(dropped_predictors, md_bullet, character(1))
+        } else {
+            md_bullet("None")
+        },
         "",
         top_predictor_block,
         "",
-        "Baseline separation note:",
-        sprintf(
-            "- The strongest 4-group separation among candidate baseline predictors was %s (p=%s).",
+        md_heading("Baseline Separation Note", 2L),
+        md_bullet(sprintf(
+            "The strongest 4-group separation among candidate baseline predictors was %s (p=%s).",
             best_baseline_row$variable[[1]],
             format_gep_p_value(best_baseline_row$p_value[[1]])
-        )
-    )
-
-    summary_lines <- c(
-        summary_lines,
+        )),
         "",
-        "Ciliary coding note:",
-        "- Ciliary involvement is now derived from location values containing 'Cilio' or 'Ciliary'. The earlier all-zero derivation was incorrect because the source data encode this location as 'Cilio-Choroidal'."
+        md_heading("Ciliary Coding Note", 2L),
+        md_bullet("Ciliary involvement is now derived from location values containing 'Cilio' or 'Ciliary'. The earlier all-zero derivation was incorrect because the source data encode this location as 'Cilio-Choroidal'.")
     )
 
     writeLines(summary_lines, output_path)
@@ -3163,7 +3165,7 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
     )
 
     workbook_path <- file.path(output_dir, "full_cohort_exploratory_no_gep_report.xlsx")
-    summary_path <- file.path(output_dir, "full_cohort_exploratory_no_gep_summary.txt")
+    summary_path <- file.path(output_dir, "full_cohort_exploratory_no_gep_summary.md")
 
     write_gep_workbook(workbook_data, workbook_path)
     create_exploratory_no_gep_summary_text(

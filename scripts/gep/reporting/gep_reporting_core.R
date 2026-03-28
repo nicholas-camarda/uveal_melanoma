@@ -94,7 +94,7 @@ save_mfs_validation_results <- function(validation_results,
         source_data = source_data
     )
     
-    summary_path <- file.path(output_dir, paste0(prefix, "mfs_validation_narrative_summary.txt"))
+    summary_path <- file.path(output_dir, paste0(prefix, "mfs_validation_narrative_summary.md"))
     writeLines(comprehensive_summary, summary_path)
     
     # Create consolidated tables to replace redundant visualizations
@@ -317,7 +317,7 @@ create_mss_validation_excel_files <- function(standard_results, competing_result
     logger::log_info(sprintf("MSS validation Excel file saved: %s", excel_path))
 }
 
-#' Create MSS validation summary text
+#' Create MSS validation summary markdown
 #'
 #' Render the narrative and consolidated workbook outputs for MSS validation.
 #'
@@ -338,7 +338,7 @@ create_mss_validation_excel_files <- function(standard_results, competing_result
 create_mss_validation_summary_text <- function(standard_results, competing_results,
                                                missing_data, prame_results, extrapolation_assessment, source_data = NULL, output_dir, prefix,
                                                group_var = get_gep_grouping_for_context("mss", "reporting")$var, dataset_name = NULL) {
-    logger::log_info("Creating MSS validation summary text file")
+    logger::log_info("Creating MSS validation summary markdown file")
     
     # Create comprehensive, interpretable summary instead of repetitive per-timepoint approach
     # Convert standard_results to the format expected by create_comprehensive_gep_summary
@@ -355,7 +355,7 @@ create_mss_validation_summary_text <- function(standard_results, competing_resul
     )
     
     # Save comprehensive summary
-    summary_path <- file.path(output_dir, paste0(prefix, "mss_validation_narrative_summary.txt"))
+    summary_path <- file.path(output_dir, paste0(prefix, "mss_validation_narrative_summary.md"))
     writeLines(comprehensive_summary, summary_path)
     
     # Create consolidated tables to replace redundant visualizations

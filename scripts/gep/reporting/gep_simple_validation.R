@@ -137,67 +137,50 @@ create_simple_gep_plots <- function(mfs_results, mss_results, mfs_output_dir, ms
 #' @param prefix Filename prefix for saved files
 #' @return Invisibly returns NULL after writing files
 create_simple_gep_report <- function(mfs_results, mss_results, overall_summary, output_dir, prefix) {
-    report_content <- c(
-        "SIMPLE GEP VALIDATION REPORT",
-        "===========================",
-        "",
-        "Goal:",
-        "Compare actual rates vs expected reported rates of 5-year MFS and MSS",
-        "",
-        "METASTASIS-FREE SURVIVAL (MFS) - 5 YEAR:",
-        "----------------------------------------"
+    mfs_table <- data.frame(
+        Class = mfs_results$gep_class_simple,
+        n = as.character(mfs_results$n),
+        Expected = sprintf("%.3f (%.1f%%)", mfs_results$expected_rate, mfs_results$expected_rate * 100),
+        Actual = sprintf("%.3f (%.1f%%)", mfs_results$actual_rate, mfs_results$actual_rate * 100),
+        Difference = sprintf("%.3f (%.1f%%)", mfs_results$difference, mfs_results$percent_difference),
+        stringsAsFactors = FALSE
     )
-    for (i in seq_len(nrow(mfs_results))) {
-        row <- mfs_results[i, ]
-        report_content <- c(
-            report_content,
-            sprintf("  %s (n=%d):", row$gep_class_simple, row$n),
-            sprintf("    Expected: %.3f (%.1f%%)", row$expected_rate, row$expected_rate * 100),
-            sprintf("    Actual:   %.3f (%.1f%%)", row$actual_rate, row$actual_rate * 100),
-            sprintf("    Difference: %.3f (%.1f%%)", row$difference, row$percent_difference),
-            ""
-        )
-    }
-    report_content <- c(
-        report_content,
-        "MELANOMA-SPECIFIC SURVIVAL (MSS) - 5 YEAR:",
-        "------------------------------------------"
+    mss_table <- data.frame(
+        Class = mss_results$gep_class_simple,
+        n = as.character(mss_results$n),
+        Expected = sprintf("%.3f (%.1f%%)", mss_results$expected_rate, mss_results$expected_rate * 100),
+        Actual = sprintf("%.3f (%.1f%%)", mss_results$actual_rate, mss_results$actual_rate * 100),
+        Difference = sprintf("%.3f (%.1f%%)", mss_results$difference, mss_results$percent_difference),
+        stringsAsFactors = FALSE
     )
-    for (i in seq_len(nrow(mss_results))) {
-        row <- mss_results[i, ]
-        report_content <- c(
-            report_content,
-            sprintf("  %s (n=%d):", row$gep_class_simple, row$n),
-            sprintf("    Expected: %.3f (%.1f%%)", row$expected_rate, row$expected_rate * 100),
-            sprintf("    Actual:   %.3f (%.1f%%)", row$actual_rate, row$actual_rate * 100),
-            sprintf("    Difference: %.3f (%.1f%%)", row$difference, row$percent_difference),
-            ""
-        )
-    }
+    overall_table <- data.frame(
+        Outcome = c("MFS", "MSS"),
+        Expected = sprintf("%.1f%%", overall_summary$overall_expected * 100),
+        Actual = sprintf("%.1f%%", overall_summary$overall_actual * 100),
+        Difference = sprintf("%.1f%%", overall_summary$overall_percent_difference),
+        stringsAsFactors = FALSE
+    )
     report_content <- c(
-        report_content,
-        "OVERALL SUMMARY:",
-        "---------------",
-        sprintf(
-            "MFS - Overall: Expected %.1f%%, Actual %.1f%%, Difference %.1f%%",
-            overall_summary$overall_expected[1] * 100,
-            overall_summary$overall_actual[1] * 100,
-            overall_summary$overall_percent_difference[1]
-        ),
-        sprintf(
-            "MSS - Overall: Expected %.1f%%, Actual %.1f%%, Difference %.1f%%",
-            overall_summary$overall_expected[2] * 100,
-            overall_summary$overall_actual[2] * 100,
-            overall_summary$overall_percent_difference[2]
-        ),
+        md_heading("Simple GEP Validation Report", 1L),
         "",
-        "INTERPRETATION:",
-        "--------------",
-        "Positive differences indicate GEP predictions were conservative (actual survival better than predicted)",
-        "Negative differences indicate GEP predictions were optimistic (actual survival worse than predicted)",
-        "Values close to 0 indicate good predictive accuracy"
+        md_heading("Goal", 2L),
+        md_bullet("Compare actual rates vs expected reported rates of 5-year MFS and MSS."),
+        "",
+        md_heading("Metastasis-Free Survival (MFS) - 5 Year", 2L),
+        md_table(mfs_table),
+        "",
+        md_heading("Melanoma-Specific Survival (MSS) - 5 Year", 2L),
+        md_table(mss_table),
+        "",
+        md_heading("Overall Summary", 2L),
+        md_table(overall_table),
+        "",
+        md_heading("Interpretation", 2L),
+        md_bullet("Positive differences indicate GEP predictions were conservative (actual survival better than predicted)."),
+        md_bullet("Negative differences indicate GEP predictions were optimistic (actual survival worse than predicted)."),
+        md_bullet("Values close to 0 indicate good predictive accuracy.")
     )
-    writeLines(report_content, file.path(output_dir, paste0(prefix, "simple_gep_validation_report.txt")))
+    writeLines(report_content, file.path(output_dir, paste0(prefix, "simple_gep_validation_report.md")))
 }
 
 #' Simple GEP validation - Actual vs Expected rates

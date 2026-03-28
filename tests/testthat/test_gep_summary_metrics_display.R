@@ -26,9 +26,9 @@ test_that("Comprehensive GEP summary displays current robust discrimination metr
         dataset_name = "unit_test_dataset"
     )
 
-    expect_true(grepl("Harrell's C=0.750", summary_text))
-    expect_true(grepl("Integrated AUC=0.780", summary_text))
-    expect_true(grepl("Cumulative Disc=0.810", summary_text))
+    expect_true(grepl("Harrell's C 0.750", summary_text, fixed = TRUE))
+    expect_true(grepl("Integrated AUC 0.780", summary_text, fixed = TRUE))
+    expect_true(grepl("Cumulative Disc 0.810", summary_text, fixed = TRUE))
     expect_false(grepl("Uno's C", summary_text))
     expect_false(grepl("AUC=0.780[^\\n]*Uno", summary_text))
 })
@@ -80,13 +80,13 @@ test_that("Comprehensive GEP summary includes the compact follow-up limitation b
         source_data = source_data
     )
 
-    expect_true(grepl("FOLLOW-UP LIMITATION", mfs_summary, fixed = TRUE))
+    expect_true(grepl("## Follow-Up Limitation (5-year)", mfs_summary, fixed = TRUE))
     expect_true(grepl("`followup_ge_5yr` means", mfs_summary, fixed = TRUE))
     expect_true(grepl("`censored_pre_5yr` means", mfs_summary, fixed = TRUE))
     expect_true(grepl("Among the", mfs_summary, fixed = TRUE))
     expect_true(grepl("- 5-year view:", mfs_summary, fixed = TRUE))
 
-    expect_true(grepl("FOLLOW-UP LIMITATION", mss_summary, fixed = TRUE))
+    expect_true(grepl("## Follow-Up Limitation (5-year)", mss_summary, fixed = TRUE))
     expect_true(grepl("`followup_ge_5yr` means", mss_summary, fixed = TRUE))
     expect_true(grepl("- Operational view:", mss_summary, fixed = TRUE))
 })

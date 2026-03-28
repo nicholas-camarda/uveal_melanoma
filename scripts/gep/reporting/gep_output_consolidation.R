@@ -577,7 +577,7 @@ create_consolidated_decision_curve_table <- function(validation_results, outcome
     append_gep_extrapolation_metadata(dca_data, extrapolation_assessment = extrapolation_assessment)
 }
 
-#' Create comprehensive text summary from consolidated tables
+#' Create comprehensive Markdown summary from consolidated tables
 #'
 #' Render a plain-text summary of calibration, discrimination, and decision-curve
 #' results from the consolidated workbook tables.
@@ -592,61 +592,41 @@ create_consolidated_decision_curve_table <- function(validation_results, outcome
 create_comprehensive_text_summary <- function(validation_results, outcome_type,
                                               cal_consolidated, disc_consolidated,
                                               dca_consolidated, extrapolation_consolidated = data.frame()) {
-    summary_lines <- c()
-    summary_lines <- c(summary_lines, paste("=", outcome_type, "Validation - Consolidated Summary", "="))
-    summary_lines <- c(summary_lines, "")
+    summary_lines <- c(md_heading(sprintf("%s Validation - Consolidated Summary", outcome_type), 1L), "")
 
     # Calibration summary
     if (nrow(cal_consolidated) > 0) {
-        summary_lines <- c(summary_lines, "CALIBRATION SUMMARY:")
-        summary_lines <- c(summary_lines, "")
-        summary_lines <- c(summary_lines, sprintf("%-10s %-8s %-20s %-12s %-18s %-10s %-18s", "Timepoint", "N", "Nam-D'Agostino p", "ICI", "ICI Method", "Slope", "Slope Method"))
-        summary_lines <- c(summary_lines, paste(rep("-", 110), collapse = ""))
-        for (i in seq_len(nrow(cal_consolidated))) {
-            row <- cal_consolidated[i, ]
-            summary_lines <- c(
-                summary_lines,
-                sprintf(
-                    "%-10s %-8s %-20s %-12s %-18s %-10s %-18s",
-                    row$Timepoint,
-                    ifelse(is.na(row$N), "NA", as.character(row$N)),
-                    format_gep_p_value(
-                        row$Nam_D_Agostino_p,
-                        log_p_value = row$Nam_D_Agostino_log_p,
-                        decimal_places = 3
-                    ),
-                    ifelse(is.na(row$ICI), "NA", sprintf("%.3f", row$ICI)),
-                    ifelse(is.na(row$ICI_Method), "NA", as.character(row$ICI_Method)),
-                    ifelse(is.na(row$Slope), "NA", sprintf("%.3f", row$Slope)),
-                    ifelse(is.na(row$Slope_Method), "NA", as.character(row$Slope_Method))
+        calibration_table <- data.frame(
+            Timepoint = cal_consolidated$Timepoint,
+            N = ifelse(is.na(cal_consolidated$N), "NA", as.character(cal_consolidated$N)),
+            `Nam-D'Agostino p` = vapply(seq_len(nrow(cal_consolidated)), function(i) {
+                format_gep_p_value(
+                    cal_consolidated$Nam_D_Agostino_p[i],
+                    log_p_value = cal_consolidated$Nam_D_Agostino_log_p[i],
+                    decimal_places = 3
                 )
-            )
-        }
-        summary_lines <- c(summary_lines, "")
+            }, character(1)),
+            ICI = ifelse(is.na(cal_consolidated$ICI), "NA", sprintf("%.3f", cal_consolidated$ICI)),
+            `ICI Method` = ifelse(is.na(cal_consolidated$ICI_Method), "NA", as.character(cal_consolidated$ICI_Method)),
+            Slope = ifelse(is.na(cal_consolidated$Slope), "NA", sprintf("%.3f", cal_consolidated$Slope)),
+            `Slope Method` = ifelse(is.na(cal_consolidated$Slope_Method), "NA", as.character(cal_consolidated$Slope_Method)),
+            stringsAsFactors = FALSE
+        )
+        summary_lines <- c(summary_lines, md_heading("Calibration Summary", 2L), md_table(calibration_table), "")
     }
 
     # Discrimination summary
     if (nrow(disc_consolidated) > 0) {
-        summary_lines <- c(summary_lines, "DISCRIMINATION SUMMARY:")
-        summary_lines <- c(summary_lines, "")
-        summary_lines <- c(summary_lines, sprintf("%-10s %-8s %-10s %-15s %-15s %-15s", "Timepoint", "N", "Events", "Harrell's C", "Integrated_AUC", "Cumulative_Disc"))
-        summary_lines <- c(summary_lines, paste(rep("-", 80), collapse = ""))
-        for (i in seq_len(nrow(disc_consolidated))) {
-            row <- disc_consolidated[i, ]
-            summary_lines <- c(
-                summary_lines,
-                sprintf(
-                    "%-10s %-8s %-10s %-15s %-15s %-15s",
-                    row$Timepoint,
-                    ifelse(is.na(row$N), "NA", as.character(row$N)),
-                    ifelse(is.na(row$Events), "NA", as.character(row$Events)),
-                    ifelse(is.na(row$Harrell_C), "NA", sprintf("%.3f", row$Harrell_C)),
-                    ifelse(is.na(row$Integrated_AUC), "NA", sprintf("%.3f", row$Integrated_AUC)),
-                    ifelse(is.na(row$Cumulative_Discrimination), "NA", sprintf("%.3f", row$Cumulative_Discrimination))
-                )
-            )
-        }
-        summary_lines <- c(summary_lines, "")
+        discrimination_table <- data.frame(
+            Timepoint = disc_consolidated$Timepoint,
+            N = ifelse(is.na(disc_consolidated$N), "NA", as.character(disc_consolidated$N)),
+            Events = ifelse(is.na(disc_consolidated$Events), "NA", as.character(disc_consolidated$Events)),
+            `Harrell's C` = ifelse(is.na(disc_consolidated$Harrell_C), "NA", sprintf("%.3f", disc_consolidated$Harrell_C)),
+            `Integrated AUC` = ifelse(is.na(disc_consolidated$Integrated_AUC), "NA", sprintf("%.3f", disc_consolidated$Integrated_AUC)),
+            `Cumulative Disc` = ifelse(is.na(disc_consolidated$Cumulative_Discrimination), "NA", sprintf("%.3f", disc_consolidated$Cumulative_Discrimination)),
+            stringsAsFactors = FALSE
+        )
+        summary_lines <- c(summary_lines, md_heading("Discrimination Summary", 2L), md_table(discrimination_table), "")
     }
 
     # REMOVED: Performance summary section that duplicated discrimination metrics
@@ -655,46 +635,28 @@ create_comprehensive_text_summary <- function(validation_results, outcome_type,
 
     # Decision curve summary
     if (nrow(dca_consolidated) > 0) {
-        summary_lines <- c(summary_lines, "DECISION CURVE SUMMARY:")
-        summary_lines <- c(summary_lines, "")
-        summary_lines <- c(summary_lines, sprintf("%-10s %-8s %-12s %-10s", "Timepoint", "N", "Opt_Threshold", "Opt_Net_Ben"))
-        summary_lines <- c(summary_lines, paste(rep("-", 50), collapse = ""))
-        for (i in seq_len(nrow(dca_consolidated))) {
-            row <- dca_consolidated[i, ]
-            summary_lines <- c(
-                summary_lines,
-                sprintf(
-                    "%-10s %-8s %-12s %-10s",
-                    row$Timepoint,
-                    ifelse(is.na(row$N), "NA", as.character(row$N)),
-                    ifelse(is.na(row$Optimal_Threshold), "NA", sprintf("%.3f", row$Optimal_Threshold)),
-                    ifelse(is.na(row$Optimal_Net_Benefit), "NA", sprintf("%.4f", row$Optimal_Net_Benefit))
-                )
-            )
-        }
-        summary_lines <- c(summary_lines, "")
+        dca_table <- data.frame(
+            Timepoint = dca_consolidated$Timepoint,
+            N = ifelse(is.na(dca_consolidated$N), "NA", as.character(dca_consolidated$N)),
+            `Optimal Threshold` = ifelse(is.na(dca_consolidated$Optimal_Threshold), "NA", sprintf("%.3f", dca_consolidated$Optimal_Threshold)),
+            `Optimal Net Benefit` = ifelse(is.na(dca_consolidated$Optimal_Net_Benefit), "NA", sprintf("%.4f", dca_consolidated$Optimal_Net_Benefit)),
+            stringsAsFactors = FALSE
+        )
+        summary_lines <- c(summary_lines, md_heading("Decision Curve Summary", 2L), md_table(dca_table), "")
     }
 
     if (nrow(extrapolation_consolidated) > 0) {
-        summary_lines <- c(summary_lines, "EXTRAPOLATION ASSUMPTION CHECK:")
-        summary_lines <- c(summary_lines, "")
-        for (i in seq_len(nrow(extrapolation_consolidated))) {
-            row <- extrapolation_consolidated[i, ]
-            summary_lines <- c(summary_lines, sprintf(
-                "%s support: %s",
-                row$Outcome %||% outcome_type,
-                row$Support_Status %||% "Unavailable"
-            ))
-            summary_lines <- c(summary_lines, sprintf(
-                "Note: %s",
-                row$Support_Note %||% "No extrapolation support note available."
-            ))
-        }
-        summary_lines <- c(summary_lines, "")
+        extrapolation_table <- data.frame(
+            Outcome = ifelse(is.na(extrapolation_consolidated$Outcome), outcome_type, as.character(extrapolation_consolidated$Outcome)),
+            `Support Status` = ifelse(is.na(extrapolation_consolidated$Support_Status), "Unavailable", as.character(extrapolation_consolidated$Support_Status)),
+            `Support Note` = ifelse(is.na(extrapolation_consolidated$Support_Note), "No extrapolation support note available.", as.character(extrapolation_consolidated$Support_Note)),
+            stringsAsFactors = FALSE
+        )
+        summary_lines <- c(summary_lines, md_heading("Extrapolation Assumption Check", 2L), md_table(extrapolation_table), "")
     }
 
     # Key findings summary
-    summary_lines <- c(summary_lines, "KEY FINDINGS:")
+    summary_lines <- c(summary_lines, md_heading("Key Findings", 2L))
     if (nrow(cal_consolidated) > 0) {
         valid_cal_idx <- which(!is.na(cal_consolidated$Slope))
         if (length(valid_cal_idx) > 0) {
@@ -703,16 +665,16 @@ create_comprehensive_text_summary <- function(validation_results, outcome_type,
             best_slope <- cal_consolidated$Slope[best_cal_idx]
             summary_lines <- c(
                 summary_lines,
-                sprintf("- Best calibration at %s (slope: %.3f)", best_tp, best_slope)
+                md_bullet(sprintf("Best calibration at %s (slope: %.3f)", best_tp, best_slope))
             )
         } else {
             slope_issue_summary <- summarize_gep_slope_issue_pattern(cal_consolidated)
             summary_lines <- c(
                 summary_lines,
                 if (nzchar(slope_issue_summary)) {
-                    paste0("- ", slope_issue_summary)
+                    md_bullet(slope_issue_summary)
                 } else {
-                    "- The calibration slope could not be estimated across timepoints"
+                    md_bullet("The calibration slope could not be estimated across timepoints")
                 }
             )
         }
@@ -726,20 +688,19 @@ create_comprehensive_text_summary <- function(validation_results, outcome_type,
             best_c <- disc_consolidated$Harrell_C[best_disc_idx]
             summary_lines <- c(
                 summary_lines,
-                sprintf("- Best discrimination at %s (Harrell's C: %.3f)", best_tp, best_c)
+                md_bullet(sprintf("Best discrimination at %s (Harrell's C: %.3f)", best_tp, best_c))
             )
         } else {
             summary_lines <- c(
                 summary_lines,
-                "- No finite discrimination estimate was available across timepoints"
+                md_bullet("No finite discrimination estimate was available across timepoints")
             )
         }
     }
 
     summary_lines <- c(summary_lines, "")
-    summary_lines <- c(summary_lines, "Note: This consolidated summary replaces multiple redundant plots")
-    summary_lines <- c(summary_lines, "while maintaining all statistical information.")
-    summary_lines <- c(summary_lines, "Performance Summary removed to eliminate redundancy with Discrimination Summary.")
+    summary_lines <- c(summary_lines, md_bullet("This consolidated summary replaces multiple redundant plots while maintaining all statistical information."))
+    summary_lines <- c(summary_lines, md_bullet("Performance Summary removed to eliminate redundancy with Discrimination Summary."))
 
     return(paste(summary_lines, collapse = "\n"))
 }
@@ -1078,7 +1039,7 @@ create_unified_discrimination_summary <- function(mfs_results, mss_results) {
 # This function was removed to eliminate redundancy with discrimination metrics
 # Performance metrics (C-Index, AUC) are the same as discrimination metrics (Harrell's C, Integrated AUC)
 
-#' Create unified text summary
+#' Create unified Markdown summary
 #'
 #' Render a plain-text comparison of unified calibration and discrimination
 #' results across outcomes.
@@ -1089,12 +1050,32 @@ create_unified_discrimination_summary <- function(mfs_results, mss_results) {
 #' @param unified_disc Unified discrimination summary table.
 #' @return Character scalar containing a newline-delimited summary.
 create_unified_text_summary <- function(mfs_results, mss_results, unified_cal, unified_disc) {
-    summary_lines <- c()
-    summary_lines <- c(summary_lines, "=", "Unified GEP Validation Summary", "=")
-    summary_lines <- c(summary_lines, "Combines MFS and MSS results to eliminate redundancy")
-    summary_lines <- c(summary_lines, "")
+    format_scalar <- function(value, digits = 3) {
+        value <- suppressWarnings(as.numeric(value))
+        if (length(value) == 0 || is.na(value[[1]]) || !is.finite(value[[1]])) {
+            return("NA")
+        }
 
-    followup_lines <- c()
+        sprintf(paste0("%.", digits, "f"), value[[1]])
+    }
+
+    best_valid_index <- function(values) {
+        values <- suppressWarnings(as.numeric(values))
+        valid_idx <- which(is.finite(values))
+        if (length(valid_idx) == 0) {
+            return(integer(0))
+        }
+
+        valid_idx[[which.max(values[valid_idx])]]
+    }
+
+    summary_lines <- c(
+        md_heading("Unified GEP Validation Summary", 1L),
+        md_bullet("Combines MFS and MSS results to eliminate redundancy."),
+        ""
+    )
+
+    followup_lines <- character()
     if (!is.null(mfs_results) && !is.null(mfs_results$source_data)) {
         mfs_followup <- collect_objective4_endpoint_followup_summary(
             data = mfs_results$source_data,
@@ -1105,11 +1086,13 @@ create_unified_text_summary <- function(mfs_results, mss_results, unified_cal, u
         )
         mfs_lines <- build_objective4_followup_limitation_block(mfs_followup, include_heading = FALSE)
         if (length(mfs_lines) > 0) {
-            mfs_lines[1] <- paste0("MFS: ", mfs_lines[1])
-            if (length(mfs_lines) > 1) {
-                mfs_lines[-1] <- paste0("  ", mfs_lines[-1])
-            }
-            followup_lines <- c(followup_lines, mfs_lines)
+            followup_lines <- c(
+                followup_lines,
+                md_heading("MFS", 3L),
+                md_bullet(mfs_lines[[1]]),
+                mfs_lines[-1],
+                ""
+            )
         }
     }
     if (!is.null(mss_results) && !is.null(mss_results$source_data)) {
@@ -1122,72 +1105,67 @@ create_unified_text_summary <- function(mfs_results, mss_results, unified_cal, u
         )
         mss_lines <- build_objective4_followup_limitation_block(mss_followup, include_heading = FALSE)
         if (length(mss_lines) > 0) {
-            mss_lines[1] <- paste0("MSS: ", mss_lines[1])
-            if (length(mss_lines) > 1) {
-                mss_lines[-1] <- paste0("  ", mss_lines[-1])
-            }
-            followup_lines <- c(followup_lines, mss_lines)
+            followup_lines <- c(
+                followup_lines,
+                md_heading("MSS", 3L),
+                md_bullet(mss_lines[[1]]),
+                mss_lines[-1],
+                ""
+            )
         }
     }
     if (length(followup_lines) > 0) {
-        summary_lines <- c(summary_lines, "FOLLOW-UP LIMITATION (5-year):", followup_lines, "")
+        summary_lines <- c(summary_lines, md_heading("Follow-Up Limitation (5-year)", 2L), followup_lines)
     }
 
-    # Calibration comparison
     if (nrow(unified_cal) > 0) {
-        summary_lines <- c(summary_lines, "CALIBRATION COMPARISON (MFS vs MSS):")
-        summary_lines <- c(summary_lines, "Outcome | Timepoint | N | Nam-D'Agostino p | ICI | ICI Method | Slope | Slope Method")
-        summary_lines <- c(summary_lines, "---------|-----------|----|------------------|-----|------------|-------|-------------")
-        for (i in seq_len(nrow(unified_cal))) {
-            row <- unified_cal[i, ]
-            summary_lines <- c(
-                summary_lines,
-                sprintf(
-                    "%s | %s | %s | %s | %s | %s | %s | %s",
-                    row$Outcome,
-                    row$Timepoint,
-                    ifelse(is.na(row$N), "NA", as.character(row$N)),
-                    format_gep_p_value(row$Nam_D_Agostino_p, decimal_places = 3),
-                    ifelse(is.na(row$ICI), "NA", sprintf("%.3f", row$ICI)),
-                    ifelse(is.na(row$ICI_Method), "NA", as.character(row$ICI_Method)),
-                    ifelse(is.na(row$Slope), "NA", sprintf("%.3f", row$Slope)),
-                    ifelse(is.na(row$Slope_Method), "NA", as.character(row$Slope_Method))
-                )
-            )
-        }
-        summary_lines <- c(summary_lines, "")
+        calibration_table <- data.frame(
+            Outcome = unified_cal$Outcome,
+            Timepoint = unified_cal$Timepoint,
+            N = ifelse(is.na(unified_cal$N), "NA", as.character(unified_cal$N)),
+            `Nam-D'Agostino p` = vapply(seq_len(nrow(unified_cal)), function(i) {
+                format_gep_p_value(unified_cal$Nam_D_Agostino_p[i], decimal_places = 3)
+            }, character(1)),
+            ICI = ifelse(is.na(unified_cal$ICI), "NA", sprintf("%.3f", unified_cal$ICI)),
+            `ICI Method` = ifelse(is.na(unified_cal$ICI_Method), "NA", as.character(unified_cal$ICI_Method)),
+            Slope = ifelse(is.na(unified_cal$Slope), "NA", sprintf("%.3f", unified_cal$Slope)),
+            `Slope Method` = ifelse(is.na(unified_cal$Slope_Method), "NA", as.character(unified_cal$Slope_Method)),
+            stringsAsFactors = FALSE,
+            check.names = FALSE
+        )
+        summary_lines <- c(
+            summary_lines,
+            "",
+            md_heading("Calibration Comparison (MFS vs MSS)", 2L),
+            md_table(calibration_table),
+            ""
+        )
     }
 
-    # Discrimination comparison
     if (nrow(unified_disc) > 0) {
-        summary_lines <- c(summary_lines, "DISCRIMINATION COMPARISON (MFS vs MSS):")
-        summary_lines <- c(summary_lines, "Outcome | Timepoint | N | Events | Harrell's C | Integrated_AUC | Cumulative_Disc | Time_Avg_Disc")
-        summary_lines <- c(summary_lines, "---------|-----------|----|--------|-------------|---------------|----------------|-------------")
-        for (i in seq_len(nrow(unified_disc))) {
-            row <- unified_disc[i, ]
-            summary_lines <- c(
-                summary_lines,
-                sprintf(
-                    "%s | %s | %s | %s | %s | %s | %s | %s",
-                    row$Outcome,
-                    row$Timepoint,
-                    ifelse(is.na(row$N), "NA", as.character(row$N)),
-                    ifelse(is.na(row$Events), "NA", as.character(row$Events)),
-                    ifelse(is.na(row$Harrell_C), "NA", sprintf("%.3f", row$Harrell_C)),
-                    ifelse(is.na(row$Integrated_AUC), "NA", sprintf("%.3f", row$Integrated_AUC)),
-                    ifelse(is.na(row$Cumulative_Discrimination), "NA", sprintf("%.3f", row$Cumulative_Discrimination)),
-                    ifelse(is.na(row$Time_averaged_Discrimination), "NA", sprintf("%.3f", row$Time_averaged_Discrimination))
-                )
-            )
-        }
-        summary_lines <- c(summary_lines, "")
+        discrimination_table <- data.frame(
+            Outcome = unified_disc$Outcome,
+            Timepoint = unified_disc$Timepoint,
+            N = ifelse(is.na(unified_disc$N), "NA", as.character(unified_disc$N)),
+            Events = ifelse(is.na(unified_disc$Events), "NA", as.character(unified_disc$Events)),
+            `Harrell's C` = ifelse(is.na(unified_disc$Harrell_C), "NA", sprintf("%.3f", unified_disc$Harrell_C)),
+            `Integrated AUC` = ifelse(is.na(unified_disc$Integrated_AUC), "NA", sprintf("%.3f", unified_disc$Integrated_AUC)),
+            `Cumulative Disc` = ifelse(is.na(unified_disc$Cumulative_Discrimination), "NA", sprintf("%.3f", unified_disc$Cumulative_Discrimination)),
+            `Time-averaged Disc` = ifelse(is.na(unified_disc$Time_averaged_Discrimination), "NA", sprintf("%.3f", unified_disc$Time_averaged_Discrimination)),
+            stringsAsFactors = FALSE,
+            check.names = FALSE
+        )
+        summary_lines <- c(
+            summary_lines,
+            md_heading("Discrimination Comparison (MFS vs MSS)", 2L),
+            md_table(discrimination_table),
+            ""
+        )
     }
 
     # REMOVED: Performance comparison to eliminate redundancy with discrimination metrics
     # Performance comparison was redundant because C-Index = Harrell's C (same metric, different name)
 
-    # Brief PRAME / Missing Data summaries
-    # PRAME
     try(
         {
             pr_lines <- c()
@@ -1210,12 +1188,17 @@ create_unified_text_summary <- function(mfs_results, mss_results, unified_cal, u
                 }
             }
             if (length(pr_lines) > 0) {
-                summary_lines <- c(summary_lines, "PRAME SUMMARY:", pr_lines, "")
+                summary_lines <- c(
+                    summary_lines,
+                    md_heading("PRAME Summary", 2L),
+                    vapply(pr_lines, md_bullet, character(1)),
+                    ""
+                )
             }
         },
         silent = TRUE
     )
-    # Missing Data
+
     try(
         {
             md_lines <- c()
@@ -1242,77 +1225,90 @@ create_unified_text_summary <- function(mfs_results, mss_results, unified_cal, u
                 ))
             }
             if (length(md_lines) > 0) {
-                summary_lines <- c(summary_lines, "MISSING DATA SUMMARY:", md_lines, "")
+                summary_lines <- c(
+                    summary_lines,
+                    md_heading("Missing Data Summary", 2L),
+                    vapply(md_lines, md_bullet, character(1)),
+                    ""
+                )
             }
         },
         silent = TRUE
     )
 
-    # Key findings
-    summary_lines <- c(summary_lines, "KEY FINDINGS:")
+    summary_lines <- c(summary_lines, md_heading("Key Findings", 2L))
     if (nrow(unified_cal) > 0) {
-        # Find best calibration by outcome
-        mfs_cal <- unified_cal[unified_cal$Outcome == "MFS", ]
-        mss_cal <- unified_cal[unified_cal$Outcome == "MSS", ]
+        mfs_cal <- unified_cal[unified_cal$Outcome == "MFS", , drop = FALSE]
+        mss_cal <- unified_cal[unified_cal$Outcome == "MSS", , drop = FALSE]
 
         if (nrow(mfs_cal) > 0) {
-            best_mfs_idx <- which.max(mfs_cal$Slope %||% 0)
-            if (best_mfs_idx > 0) {
-                best_tp <- mfs_cal$Timepoint[best_mfs_idx]
-                best_slope <- mfs_cal$Slope[best_mfs_idx]
+            best_mfs_idx <- best_valid_index(mfs_cal$Slope)
+            if (length(best_mfs_idx) > 0) {
                 summary_lines <- c(
                     summary_lines,
-                    sprintf("- MFS: Best calibration at %s (slope: %.3f)", best_tp, best_slope)
+                    md_bullet(sprintf(
+                        "MFS: Best calibration at %s (slope: %.3f)",
+                        mfs_cal$Timepoint[best_mfs_idx],
+                        mfs_cal$Slope[best_mfs_idx]
+                    ))
                 )
             }
         }
 
         if (nrow(mss_cal) > 0) {
-            best_mss_idx <- which.max(mss_cal$Slope %||% 0)
-            if (best_mss_idx > 0) {
-                best_tp <- mss_cal$Timepoint[best_mss_idx]
-                best_slope <- mss_cal$Slope[best_mss_idx]
+            best_mss_idx <- best_valid_index(mss_cal$Slope)
+            if (length(best_mss_idx) > 0) {
                 summary_lines <- c(
                     summary_lines,
-                    sprintf("- MSS: Best calibration at %s (slope: %.3f)", best_tp, best_slope)
+                    md_bullet(sprintf(
+                        "MSS: Best calibration at %s (slope: %.3f)",
+                        mss_cal$Timepoint[best_mss_idx],
+                        mss_cal$Slope[best_mss_idx]
+                    ))
                 )
             }
         }
     }
 
     if (nrow(unified_disc) > 0) {
-        # Find best discrimination by outcome
-        mfs_disc <- unified_disc[unified_disc$Outcome == "MFS", ]
-        mss_disc <- unified_disc[unified_disc$Outcome == "MSS", ]
+        mfs_disc <- unified_disc[unified_disc$Outcome == "MFS", , drop = FALSE]
+        mss_disc <- unified_disc[unified_disc$Outcome == "MSS", , drop = FALSE]
 
         if (nrow(mfs_disc) > 0) {
-            best_mfs_idx <- which.max(mfs_disc$Harrell_C %||% 0)
-            if (best_mfs_idx > 0) {
-                best_tp <- mfs_disc$Timepoint[best_mfs_idx]
-                best_c <- mfs_disc$Harrell_C[best_mfs_idx]
+            best_mfs_idx <- best_valid_index(mfs_disc$Harrell_C)
+            if (length(best_mfs_idx) > 0) {
                 summary_lines <- c(
                     summary_lines,
-                    sprintf("- MFS: Best discrimination at %s (Harrell's C: %.3f)", best_tp, best_c)
+                    md_bullet(sprintf(
+                        "MFS: Best discrimination at %s (Harrell's C: %.3f)",
+                        mfs_disc$Timepoint[best_mfs_idx],
+                        mfs_disc$Harrell_C[best_mfs_idx]
+                    ))
                 )
             }
         }
 
         if (nrow(mss_disc) > 0) {
-            best_mss_idx <- which.max(mss_disc$Harrell_C %||% 0)
-            if (best_mss_idx > 0) {
-                best_tp <- mss_disc$Timepoint[best_mss_idx]
-                best_c <- mss_disc$Harrell_C[best_mss_idx]
+            best_mss_idx <- best_valid_index(mss_disc$Harrell_C)
+            if (length(best_mss_idx) > 0) {
                 summary_lines <- c(
                     summary_lines,
-                    sprintf("- MSS: Best discrimination at %s (Harrell's C: %.3f)", best_tp, best_c)
+                    md_bullet(sprintf(
+                        "MSS: Best discrimination at %s (Harrell's C: %.3f)",
+                        mss_disc$Timepoint[best_mss_idx],
+                        mss_disc$Harrell_C[best_mss_idx]
+                    ))
                 )
             }
         }
     }
 
-    summary_lines <- c(summary_lines, "")
-    summary_lines <- c(summary_lines, "Note: This unified summary eliminates redundant outputs")
-    summary_lines <- c(summary_lines, "while maintaining all statistical information across outcomes.")
+    summary_lines <- c(
+        summary_lines,
+        "",
+        md_bullet("This unified summary eliminates redundant outputs while maintaining all statistical information across outcomes."),
+        md_bullet("Performance comparison remains omitted because it duplicates discrimination metrics.")
+    )
 
     return(paste(summary_lines, collapse = "\n"))
 }

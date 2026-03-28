@@ -48,3 +48,4 @@ docs/GEP_OBJECTIVE4_ABSTRACT_DRAFT.md
 docs/PRAME*.md
 docs/FACTOR_LEVEL_AUDIT.md
 docs/OBJECTIVE4_MFS_5YR_DECISION_NOTE.md
+scripts/tools/export_gep_objective4_to_downloads.R

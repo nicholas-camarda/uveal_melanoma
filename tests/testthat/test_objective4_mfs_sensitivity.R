@@ -111,7 +111,7 @@ test_that("Shared Objective 4 follow-up helper derives endpoint-specific counts 
     expect_equal(actual_mss, expected_mss)
 
     block_lines <- build_objective4_followup_limitation_block(mfs_followup)
-    expect_true(any(grepl("FOLLOW-UP LIMITATION", block_lines, fixed = TRUE)))
+    expect_true(any(grepl("Follow-Up Limitation", block_lines, fixed = TRUE)))
     expect_true(any(grepl("`followup_ge_5yr` means", block_lines, fixed = TRUE)))
     expect_true(any(grepl("`censored_pre_5yr` means", block_lines, fixed = TRUE)))
     expect_true(any(grepl("Among the", block_lines, fixed = TRUE)))
@@ -249,7 +249,9 @@ test_that("Objective 4 MFS sensitivity writer saves workbook and summary text", 
     ) %in% workbook_sheets))
 
     summary_text <- paste(readLines(paths$summary, warn = FALSE), collapse = "\n")
+    expect_match(summary_text, "^# Objective 4 MFS Sensitivity Summary", perl = TRUE)
     expect_match(summary_text, "`followup_ge_5yr` means")
-    expect_match(summary_text, "EVENT-ROW DIAGNOSTICS")
+    expect_match(summary_text, "## Event-Row Diagnostics", fixed = TRUE)
+    expect_match(summary_text, "\\| View \\| Count \\|", perl = TRUE)
     expect_match(summary_text, "event row IDs:")
 })

@@ -589,17 +589,17 @@ evaluate_gep_extrapolation_assumption <- function(analysis_data,
         }
 
         summary_lines <- c(
-            sprintf("%s extrapolation assumption check", endpoint_config$title),
+            md_heading(sprintf("%s Extrapolation Assumption Check", endpoint_config$title), 1L),
             if (!is.null(dataset_name) && nzchar(dataset_name)) sprintf("Dataset: %s", dataset_name) else NULL,
-            sprintf("Analyzable patients: %d", nrow(cleaned_data)),
-            sprintf("Observed %s events: %d", endpoint_config$event_label, event_count),
-            sprintf("Patients with follow-up beyond 5 years: %d", follow_up_beyond_5yr),
-            sprintf("Support status: %s", model_results$support$status),
-            sprintf("Interpretation: %s", model_results$support$note)
+            md_bullet(sprintf("Analyzable patients: %d", nrow(cleaned_data))),
+            md_bullet(sprintf("Observed %s events: %d", endpoint_config$event_label, event_count)),
+            md_bullet(sprintf("Patients with follow-up beyond 5 years: %d", follow_up_beyond_5yr)),
+            md_bullet(sprintf("Support status: %s", model_results$support$status)),
+            md_bullet(sprintf("Interpretation: %s", model_results$support$note))
         )
         writeLines(
             summary_lines,
-            file.path(output_dir, paste0(prefix, endpoint_config$file_stub, "_extrapolation_assumption_summary.txt"))
+            file.path(output_dir, paste0(prefix, endpoint_config$file_stub, "_extrapolation_assumption_summary.md"))
         )
     }
 
