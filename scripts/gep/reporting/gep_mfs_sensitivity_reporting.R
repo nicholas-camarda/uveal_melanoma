@@ -69,6 +69,60 @@ resolve_objective4_followup_time_var <- function(event_prefix) {
     )
 }
 
+#' Summarize median follow-up for Objective 4 narrative text
+#'
+#' @param data Data frame used for the reader-facing validation narrative.
+#'
+#' @return Named list with overall and GKSRS-only median follow-up years.
+summarize_objective4_followup_medians <- function(data) {
+    if (is.null(data) || nrow(data) == 0) {
+        return(list(
+            median_followup_overall = NA_real_,
+            median_followup_gksrs_only = NA_real_
+        ))
+    }
+
+    followup_years <- if ("follow_up_years" %in% names(data)) {
+        as.numeric(data$follow_up_years)
+    } else if ("follow_up_days" %in% names(data)) {
+        as.numeric(data$follow_up_days) / 365.25
+    } else if (all(c("date_diagnosis", "last_known_alive_date") %in% names(data))) {
+        as.numeric(difftime(
+            as.Date(data$last_known_alive_date),
+            as.Date(data$date_diagnosis),
+            units = "days"
+        )) / 365.25
+    } else {
+        rep(NA_real_, nrow(data))
+    }
+
+    valid_followup <- is.finite(followup_years) & followup_years >= 0
+
+    overall_median <- if (any(valid_followup)) {
+        stats::median(followup_years[valid_followup])
+    } else {
+        NA_real_
+    }
+
+    gksrs_only_followup <- if ("consort_group" %in% names(data)) {
+        tolower(as.character(data$consort_group)) == "gksrs_only"
+    } else {
+        rep(FALSE, nrow(data))
+    }
+    gksrs_valid_followup <- valid_followup & gksrs_only_followup
+
+    gksrs_median <- if (any(gksrs_valid_followup)) {
+        stats::median(followup_years[gksrs_valid_followup])
+    } else {
+        NA_real_
+    }
+
+    list(
+        median_followup_overall = overall_median,
+        median_followup_gksrs_only = gksrs_median
+    )
+}
+
 #' Collect Endpoint-Specific Objective 4 Follow-Up Summaries
 #'
 #' @param data Data frame passed into Objective 4.
@@ -90,6 +144,7 @@ collect_objective4_endpoint_followup_summary <- function(data,
     }
     prepared_data <- restore_gep_display_variables(prepared_data, dataset_name = dataset_name)
     prepared_data <- add_objective4_operational_followup_status(prepared_data)
+    followup_medians <- summarize_objective4_followup_medians(prepared_data)
 
     if (!eligibility_filter %in% names(prepared_data)) {
         prepared_data[[eligibility_filter]] <- FALSE
@@ -171,6 +226,8 @@ collect_objective4_endpoint_followup_summary <- function(data,
             horizon_by_class_treatment = empty_horizon_by_class_treatment,
             censored_operational_breakdown = empty_censored_operational_breakdown,
             impact_level = "unavailable",
+            median_followup_overall = followup_medians$median_followup_overall,
+            median_followup_gksrs_only = followup_medians$median_followup_gksrs_only,
             limitation_line = sprintf(
                 "%d-year follow-up limitation data were unavailable for this endpoint.",
                 time_horizon_years
@@ -199,6 +256,7 @@ collect_objective4_endpoint_followup_summary <- function(data,
                 TRUE ~ censored_label
             )
         )
+    followup_medians <- summarize_objective4_followup_medians(eligible_data)
 
     if (nrow(eligible_data) == 0) {
         return(list(
@@ -218,6 +276,8 @@ collect_objective4_endpoint_followup_summary <- function(data,
             horizon_by_class_treatment = empty_horizon_by_class_treatment,
             censored_operational_breakdown = empty_censored_operational_breakdown,
             impact_level = "unavailable",
+            median_followup_overall = followup_medians$median_followup_overall,
+            median_followup_gksrs_only = followup_medians$median_followup_gksrs_only,
             limitation_line = sprintf(
                 "No %s-eligible rows were available for the %d-year follow-up summary.",
                 event_prefix,
@@ -371,6 +431,8 @@ collect_objective4_endpoint_followup_summary <- function(data,
         horizon_by_class_treatment = horizon_by_class_treatment,
         censored_operational_breakdown = censored_operational_breakdown,
         impact_level = impact_level,
+        median_followup_overall = followup_medians$median_followup_overall,
+        median_followup_gksrs_only = followup_medians$median_followup_gksrs_only,
         limitation_line = limitation_line
     )
 }
@@ -437,6 +499,16 @@ build_objective4_followup_limitation_block <- function(followup_summary, include
     lines <- c(
         lines,
         followup_summary$limitation_line,
+        if (is.finite(followup_summary$median_followup_overall %||% NA_real_)) {
+            md_bullet(sprintf(
+                "Median follow-up among the %d-patient %s GEP validation subset: %.1f years.",
+                total_n,
+                followup_summary$cohort_label %||% "validation cohort",
+                followup_summary$median_followup_overall
+            ))
+        } else {
+            character()
+        },
         md_bullet(sprintf(
             "`%s` means follow-up reached at least %d years without the endpoint occurring before %d years; `censored_pre_%dyr` means follow-up ended before %d years without an observed endpoint.",
             followup_ge_label,

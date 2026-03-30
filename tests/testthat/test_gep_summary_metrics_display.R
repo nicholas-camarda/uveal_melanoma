@@ -56,12 +56,16 @@ test_that("Comprehensive GEP summary includes the compact follow-up limitation b
     shared_missing <- list(
         missing_patterns = data.frame(pattern = character(), stringsAsFactors = FALSE)
     )
-    source_data <- create_test_dataset() %>%
+    full_source_data <- create_test_dataset() %>%
         dplyr::mutate(
+            follow_up_years = as.numeric(1:20),
+            consort_group = rep(c("eligible_both", "gksrs_only"), each = 10),
             mss_event_5yr = as.integer(.data$melanoma_death_event == 1 & .data$tt_death_months <= 60),
             mss_event_7yr = as.integer(.data$melanoma_death_event == 1 & .data$tt_death_months <= 84),
             mss_event_10yr = as.integer(.data$melanoma_death_event == 1 & .data$tt_death_months <= 120)
         )
+    gksrs_source_data <- full_source_data %>%
+        dplyr::filter(.data$consort_group == "gksrs_only")
 
     mfs_summary <- create_comprehensive_gep_summary(
         validation_results = mock_validation_results,
@@ -69,7 +73,7 @@ test_that("Comprehensive GEP summary includes the compact follow-up limitation b
         prame_analysis = NULL,
         missing_data_analysis = shared_missing,
         dataset_name = "uveal_melanoma_full_cohort",
-        source_data = source_data
+        source_data = full_source_data
     )
     mss_summary <- create_comprehensive_gep_summary(
         validation_results = mock_validation_results,
@@ -77,16 +81,31 @@ test_that("Comprehensive GEP summary includes the compact follow-up limitation b
         prame_analysis = NULL,
         missing_data_analysis = shared_missing,
         dataset_name = "uveal_melanoma_full_cohort",
-        source_data = source_data
+        source_data = full_source_data
+    )
+    gksrs_summary <- create_comprehensive_gep_summary(
+        validation_results = mock_validation_results,
+        outcome_type = "MFS",
+        prame_analysis = NULL,
+        missing_data_analysis = shared_missing,
+        dataset_name = "uveal_melanoma_gksrs_only_cohort",
+        source_data = gksrs_source_data
     )
 
     expect_true(grepl("## Follow-Up Limitation (5-year)", mfs_summary, fixed = TRUE))
+    expect_true(grepl("Median follow-up among the 20-patient Full Cohort GEP validation subset: 10.5 years.", mfs_summary, fixed = TRUE))
+    expect_false(grepl("GKSRS-Only Cohort GEP validation subset", mfs_summary, fixed = TRUE))
     expect_true(grepl("`followup_ge_5yr` means", mfs_summary, fixed = TRUE))
     expect_true(grepl("`censored_pre_5yr` means", mfs_summary, fixed = TRUE))
     expect_true(grepl("Among the", mfs_summary, fixed = TRUE))
     expect_true(grepl("- 5-year view:", mfs_summary, fixed = TRUE))
 
     expect_true(grepl("## Follow-Up Limitation (5-year)", mss_summary, fixed = TRUE))
+    expect_true(grepl("Median follow-up among the 20-patient Full Cohort GEP validation subset: 10.5 years.", mss_summary, fixed = TRUE))
+    expect_false(grepl("GKSRS-Only Cohort GEP validation subset", mss_summary, fixed = TRUE))
     expect_true(grepl("`followup_ge_5yr` means", mss_summary, fixed = TRUE))
     expect_true(grepl("- Operational view:", mss_summary, fixed = TRUE))
+
+    expect_true(grepl("Median follow-up among the 10-patient GKSRS-Only Cohort GEP validation subset: 15.5 years.", gksrs_summary, fixed = TRUE))
+    expect_false(grepl("Full Cohort GEP validation subset", gksrs_summary, fixed = TRUE))
 })
