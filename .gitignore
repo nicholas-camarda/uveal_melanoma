@@ -24,6 +24,7 @@ scripts/old/*
 .*
 .lintr
 .gitignore
+tmp/
 
 # Ignore original files
 final_data/*
@@ -41,6 +42,7 @@ tests/.DS_Store
 
 # Ignore agentic helper files
 AGENTS.md
+CLAUDE.md
 docs/METHODS_SECTION_PAPER.md
 docs/GEP_OBJECTIVE4_PAPER_OUTLINE.local.md
 docs/GEP_OBJECTIVE4_GOAL_IMPLEMENTATION_MAP.md
