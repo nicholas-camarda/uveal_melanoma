@@ -11,7 +11,7 @@ This repository does not include the clinical source spreadsheet. To reproduce t
 1. Clone the repository and enter it.
 
 ```sh
-git clone <repo-url>
+git clone https://github.com/nicholas-camarda/uveal_melanoma.git
 cd uveal_melanoma
 ```
 
