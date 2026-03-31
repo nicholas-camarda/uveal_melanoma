@@ -14,16 +14,17 @@ Rplots.pdf
 scripts/poster_scripts/
 scripts/old/*
 
-# Ignore history and .* files
+# Ignore local history and workspace metadata
 .Rhistory
 .history
 .github/
 .cursor/
 .agent-os/
+.claude/
 .vscode/
-.*
 .lintr
-.gitignore
+.RData
+.Ruserdata
 tmp/
 
 # Ignore original files

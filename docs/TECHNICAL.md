@@ -7,6 +7,7 @@ For other documentation roles:
 - Use [CALCULATIONS.md](CALCULATIONS.md) for derived-variable definitions and endpoint construction.
 - Use [STATISTICAL_METHODS.md](STATISTICAL_METHODS.md) for the canonical statistical methodology.
 - Use [INTERPRETATION_GUIDE.md](INTERPRETATION_GUIDE.md) for workbook, table, and figure interpretation.
+- Use [README.md](../README.md) for the GitHub-facing quick start and top-level path map.
 
 ---
 
@@ -72,15 +73,15 @@ Each research objective has a dedicated workflow script:
 
 The analysis employs three patient cohorts to address different clinical questions and minimize treatment selection bias.
 
-### Full Cohort (n=260)
+### Full Cohort
 
-**Definition:** All patients who received either GKSRS or PBT brachytherapy
+**Definition:** All patients who received either GKSRS or PBT
 
 **Purpose:** Real-world effectiveness comparison across the complete spectrum of tumor characteristics
 
 **Clinical Value:** Provides comprehensive treatment effectiveness data for real-world decision making
 
-### Restricted Cohort (n=167)
+### Restricted Cohort
 
 **Definition:** Patients eligible for **both** treatment modalities
 
@@ -94,9 +95,9 @@ The analysis employs three patient cohorts to address different clinical questio
 
 **Clinical Value:** Direct treatment comparison in patients where both options are clinically appropriate
 
-### GKSRS-Only Cohort (n=92)
+### GKSRS-Only Cohort
 
-**Definition:** Patients **ineligible** for PBT brachytherapy
+**Definition:** Patients **ineligible** for PBT
 
 **Exclusion Criteria:**
 - Tumor diameter >20mm, OR
@@ -196,7 +197,7 @@ Analysis outputs follow a **cohort → objective → sub-objective** structure:
 │   ├── *_derived_precollapse.rds
 │   └── other_map.rds
 ├── Analysis/                       # Runtime analysis outputs by cohort
-│   ├── uveal_full/                 # Full cohort (n=260)
+│   ├── uveal_full/                 # Full cohort runtime outputs
 │   │   ├── 00_General/
 │   │   │   ├── cohort_summary.tsv
 │   │   │   ├── cohort_summary.txt
@@ -226,13 +227,14 @@ Analysis outputs follow a **cohort → objective → sub-objective** structure:
 │   │   └── 04_GEP_Validation/
 │   │       ├── a_metastasis_free_survival/
 │   │       └── b_melanoma_specific_survival/
-│   ├── uveal_restricted/           # Restricted cohort (n=167)
-│   ├── gksrs/                      # GKSRS-only cohort (n=92)
+│   ├── uveal_restricted/           # Restricted cohort runtime outputs
+│   ├── gksrs/                      # GKSRS-only cohort runtime outputs
 │   └── merged_tables/              # Cross-cohort comparisons
 ├── logs/                           # Execution logs
 │   ├── txt/
 │   └── json/
-└── test_output/                    # Testing artifacts
+├── test_output/                    # Testing artifacts
+└── tools_output/                   # Documentation/audit tool artifacts
 
 ~/Library/CloudStorage/OneDrive-Personal/Research/uveal_melanoma/
 ├── Original Files/                 # Authoritative raw input data
@@ -242,45 +244,49 @@ Analysis outputs follow a **cohort → objective → sub-objective** structure:
 
 ### Script Organization
 
+The current script tree is modularized by responsibility. `scripts/load_all.R` is the canonical loader; `scripts/main.R` is a convenience wrapper rather than the primary documentation entry point.
+
 ```
 scripts/
-├── main.R                          # Main execution entrypoint
-├── load_all.R                      # Source installed dependencies and project code
 ├── bootstrap_packages.R            # Explicit dependency bootstrap/install step
-├── analysis/                       # Statistical analysis functions
+├── load_all.R                      # Load packages, config, and project modules
+├── main.R                          # Optional convenience wrapper for interactive use
+├── analysis/                       # Objective 1-3 modeling and summary engines
 │   ├── binary_outcomes.R
-│   ├── survival_analysis.R
+│   ├── rmst_visualization.R
+│   ├── survival_outcomes.R
 │   ├── tumor_height_analysis.R
 │   └── vision_safety_analysis.R
-├── subgroup/                       # Subgroup analysis
-│   ├── subgroup_analysis.R
-│   └── subgroup_data_prep.R
-├── tables/                         # Table generation
-│   ├── regression_tables.R
-│   └── summary_tables.R
-├── visualization/                  # Plot generation
-│   ├── forest_plot_core.R
-│   ├── forest_plot_formatting.R
-│   ├── survival_plots.R
-│   └── rmst_plots.R
-├── utils/                          # Core utilities
-│   ├── config_constants.R
-│   ├── data_utilities.R
-│   ├── forest_plot_diagnostics.R
-│   ├── logging_utilities.R
-│   └── output_utilities.R
-├── data_helper/                    # Data processing
+├── data_helper/                    # Raw-data loading, derivation, cohort creation
 │   ├── cohort_creation.R
+│   ├── cohort_orchestration.R
 │   ├── data_derivation.R
 │   ├── data_loading.R
-│   └── data_summaries.R
-├── workflow/                       # Objective workflows
-│   ├── objective_0_data_processing.R
-│   ├── objective_1_primary_outcomes.R
-│   ├── objective_2_safety_toxicity.R
-│   ├── objective_3_repeat_radiation.R
-│   └── objective_4_gep_analysis.R
-└── tools/                          # Diagnostic tools
+│   ├── data_summaries.R
+│   ├── data_utilities.R
+│   └── gep_missing_data_analysis.R
+├── gep/                            # Objective 4 evaluation, reporting, visuals
+│   ├── cores/
+│   ├── orchestration/
+│   ├── reporting/
+│   ├── utils/
+│   └── visualization/
+├── subgroup/                       # Subgroup data prep, modeling, formatting
+│   ├── subgroup_binary.R
+│   ├── subgroup_data_prep.R
+│   ├── subgroup_formatting.R
+│   ├── subgroup_height.R
+│   └── subgroup_survival.R
+├── tables/                         # Regression-table generation pipeline
+│   ├── table_diagnostics.R
+│   ├── table_formatting.R
+│   ├── table_generation_core.R
+│   ├── table_io.R
+│   └── table_model_fitting.R
+├── tools/                          # Documentation and diagnostic utilities
+├── utils/                          # Shared config, logging, output, validation helpers
+├── visualization/                  # Forest-plot generation helpers
+└── workflow/                       # Objective orchestration and publishing
 ```
 
 ---
@@ -318,7 +324,6 @@ scripts/
    - Execute objective-specific workflows
    - Generate outputs
 
-### Data Flow Summary
 ### Tool Refresh Outputs
 
 Documentation-oriented utilities under [scripts/tools](../scripts/tools) write their canonical runtime artifacts to `~/ProjectsRuntime/uveal_melanoma/tools_output/`, which is the path behind `TOOLS_OUTPUT_DIR` in [scripts/utils/config_constants.R](../scripts/utils/config_constants.R).
@@ -394,22 +399,20 @@ The analysis pipeline includes robust error handling for situations where data l
 
 ### Cohort-Specific Limitations
 
-#### GKSRS-Only Cohort (n=92)
+#### GKSRS-Only Cohort
 
-**Objective 3 (PFS-2 Analysis):** Insufficient events for survival analysis
-- Only 13 patients with valid PFS-2 data
-- Only 3 total second recurrence events (minimum required: 5)
-- Events concentrated in only 2 treatment groups (GKSRS: 1, TTT: 2)
-- Summary tables generated, but survival curves and Cox models skipped
-- PFS-2 modeling also requires at least 10 analyzable patients before fitting begins
+**Objective 3 (PFS-2 Analysis):** This cohort can fail the PFS-2 guardrails because valid second-recurrence follow-up and events are sparse.
+- Summary tables are still generated.
+- Survival curves and Cox models are skipped when fewer than 10 analyzable patients or fewer than 5 total events remain.
+- Skip artifacts are written intentionally so the absence of a model is explicit rather than silent.
 
-#### Restricted Cohort (n=167)
+#### Restricted Cohort
 
 - Generally sufficient sample size for most analyses
 - Occasional rare category handling in subgroup analyses due to smaller size than full cohort
 - Optic nerve abutment excluded from baseline tables (all patients have optic_nerve="N" by eligibility)
 
-#### Full Cohort (n=260)
+#### Full Cohort
 
 - Generally sufficient sample size for most analyses
 - Occasional rare category handling in subgroup analyses
@@ -449,6 +452,8 @@ The analysis pipeline includes robust error handling for situations where data l
 ---
 
 ## Research Objectives
+
+For a collaborator-facing overview of the study aims, subgroup scope, and cohort eligibility logic, use [OBJECTIVES.md](OBJECTIVES.md). This section remains the implementation-facing contract for how those objectives are executed in the current pipeline.
 
 ### Objective 1: Efficacy Analysis (COMPLETE)
 
@@ -627,15 +632,17 @@ Different confounder sets available:
 
 ## Testing
 
-Test framework located in `tests/testthat/`:
-- `test_objective2_safety_toxicity.R`
-- `test_objective3_repeat_radiation.R`
-- Helper files and fixtures as `helper-*.R`
+The repository uses two test lanes with separate bootstrap helpers:
 
-Run tests:
-```r
-testthat::test_dir("tests/testthat")
-testthat::test_file("tests/testthat/test_objective2_safety_toxicity.R")
+- `tests/testthat/`: portable regression tests loaded through `tests/testthat/helper-bootstrap.R`
+- `tests/integration/`: opt-in local integration tests loaded through `tests/integration/helper-bootstrap.R`
+
+Run tests with the shell entry points used elsewhere in the repository:
+
+```sh
+Rscript -e "testthat::test_dir('tests/testthat')"
+Rscript -e "testthat::test_file('tests/testthat/test_objective2_safety_toxicity.R')"
+Rscript -e "Sys.setenv(OCULAR_RUN_INTEGRATION_TESTS='true'); testthat::test_dir('tests/integration')"
 ```
 
-See [AGENTS.md](../AGENTS.md) for testing guidelines and development conventions.
+Integration tests are intentionally gated by `OCULAR_RUN_INTEGRATION_TESTS` so routine regression runs do not assume local cohort data are available.

@@ -559,7 +559,7 @@ This behavior is permissible because the preprocessing contract is defined at th
 
 For a workbook-first overview written for non-statistical readers, see [Understanding GEP Analysis](INTERPRETATION_GUIDE.md#understanding-gep-analysis) and [GEP Quick Read](INTERPRETATION_GUIDE.md#gep-quick-read).
 
-For the project-specific decision record describing why the Objective 4 MFS 5-year observed value moved from a naive `1 - mfs_event_5yr` summary to Kaplan-Meier at 60 months, see [OBJECTIVE4_MFS_5YR_DECISION_NOTE.md](OBJECTIVE4_MFS_5YR_DECISION_NOTE.md).
+The canonical repository interpretation is that the Objective 4 MFS 5-year observed value should be read as Kaplan-Meier MFS at 60 months rather than a naive `1 - mfs_event_5yr` count, because the KM estimate remains censoring-aware and aligned with the workbook summaries.
 
 ### Calibration Assessment
 

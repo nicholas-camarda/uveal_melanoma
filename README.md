@@ -2,46 +2,108 @@
 
 This repository contains the analysis pipeline for comparing clinical outcomes after Gamma Knife stereotactic radiosurgery (GKSRS) and proton beam therapy (PBT) in uveal melanoma. It produces cohort-specific tables, figures, workbooks, and validation outputs for efficacy, safety, repeat-radiation, and biomarker-validation workflows.
 
-## Documentation Map
-
-Use the documentation set by purpose rather than reading every file linearly.
-
-| Document | Primary use |
-|----------|-------------|
-| `README.md` | First-stop overview, setup, execution, output map, and links outward |
-| `docs/TECHNICAL.md` | Workflow orchestration, directory structure, configuration, artifact contracts, and QA |
-| `docs/CALCULATIONS.md` | Derived-variable definitions, endpoint construction, and sign conventions |
-| `docs/STATISTICAL_METHODS.md` | Canonical statistical methodology, assumptions, thresholds, and validation metrics |
-| `docs/INTERPRETATION_GUIDE.md` | How to read tables, plots, workbooks, and Objective 4 deliverables |
-| `docs/METHODS_SECTION_PAPER.md` | Manuscript-facing methods draft derived from the canonical docs |
-
 ## Quick Start
+
+This repository does not include the clinical source spreadsheet. To reproduce the analysis, you need a copy of the repository plus the shared project data file.
+
+### Reproduce From Scratch
+
+1. Clone the repository and enter it.
+
+```sh
+git clone <repo-url>
+cd uveal_melanoma
+```
+
+2. Install R package dependencies.
+
+```sh
+Rscript scripts/bootstrap_packages.R
+```
+
+3. Place the shared input spreadsheet in the expected raw-data folder.
+
+The repository is set up to read the source spreadsheet from the path configured in `scripts/utils/config_constants.R`.
+
+In the maintainer's environment, the default raw-data folder is:
+
+```text
+~/Library/CloudStorage/OneDrive-Personal/Research/uveal_melanoma/Original Files/
+```
+
+The expected filename is the value of `INPUT_FILENAME` in `scripts/utils/config_constants.R`.
+
+If you are reproducing this analysis in a different environment, update the path settings in `scripts/utils/config_constants.R` to match your local or shared storage layout before running the pipeline.
+
+4. Run the full pipeline.
+
+```sh
+Rscript -e "source('scripts/load_all.R'); main_execution()"
+```
+
+5. Review outputs.
+
+Runtime outputs are written to:
+
+```text
+~/ProjectsRuntime/uveal_melanoma/
+```
 
 ### Prerequisites
 
 - R 4.4 or newer
-- Access to the project input spreadsheet referenced in `scripts/utils/config_constants.R`
-- Installed packages from `scripts/bootstrap_packages.R`
+- Access to the project input spreadsheet
+- A local clone of this repository
 
-### Run the pipeline
+### Run the full pipeline
+
+From the repository root:
+
+```sh
+Rscript -e "source('scripts/load_all.R'); main_execution()"
+```
+
+### Run a single cohort or objective
+
+```sh
+Rscript -e "source('scripts/load_all.R'); run_my_analysis('uveal_melanoma_full_cohort')"
+Rscript -e "source('scripts/load_all.R'); run_specific_objective('uveal_melanoma_full_cohort', 4)"
+```
+
+Available runtime dataset IDs:
+
+- `uveal_melanoma_full_cohort`
+- `uveal_melanoma_restricted_cohort`
+- `uveal_melanoma_gksrs_only_cohort`
+
+### Customize local runs with `scripts/main.R`
+
+For repeated local use, you can also edit `scripts/main.R`.
+
+- Set `cohorts_to_run` to choose which cohorts to analyze
+- Set `objectives_to_run` to choose which objectives to run
+- Uncomment `main_execution()` if you want that script to launch the full pipeline instead
+
+Then run:
+
+```sh
+Rscript scripts/main.R
+```
+
+This is best treated as a local convenience entrypoint for custom runs. For reproducible documentation and shared instructions, prefer the explicit `Rscript -e "source('scripts/load_all.R'); ..."` commands above.
+
+### Interactive use
+
+If you prefer to work inside an R session:
 
 ```r
-source("scripts/bootstrap_packages.R") # one-time bootstrap on a new machine
 source("scripts/load_all.R")
-
-# All cohorts, all objectives
 main_execution()
-
-# One cohort, all objectives
-run_my_analysis("uveal_melanoma_full_cohort")
-
-# One cohort, one objective
-run_specific_objective("uveal_melanoma_full_cohort", 4)
 ```
 
 ### Run tests
 
-```r
+```sh
 # Portable regression suite
 Rscript -e "testthat::test_dir('tests/testthat')"
 
@@ -70,9 +132,11 @@ The analysis is organized into four main research objectives:
 | 3 | Repeat radiation | PFS-2 summaries, survival outputs, skip artifacts when data are sparse |
 | 4 | GEP validation | Consolidated workbooks, technical workbooks, narrative summaries, KM/CIF displays |
 
+For a collaborator-facing overview of the study aims and eligibility logic, see [docs/OBJECTIVES.md](docs/OBJECTIVES.md).
+
 ## Output Map
 
-Pipeline outputs are split across runtime storage and synced exports.
+Pipeline outputs are primarily written to the runtime analysis tree:
 
 ```text
 ~/ProjectsRuntime/uveal_melanoma/
@@ -88,11 +152,6 @@ Pipeline outputs are split across runtime storage and synced exports.
 |- logs/
 |- test_output/
 `- tools_output/
-
-~/Library/CloudStorage/OneDrive-Personal/Research/uveal_melanoma/
-|- Original Files/
-`- Analysis/
-   `- <YYYY-MM-DD>/
 ```
 
 Within each cohort folder, outputs follow a consistent layout:
@@ -112,7 +171,7 @@ Objective 4 has a deliberate reading path:
 
 ## Publish Workflow
 
-Publishing is a manual step. Runtime artifacts stay in `~/ProjectsRuntime/uveal_melanoma/...`; synced exports only receive selected final deliverables under `<EXPORT_ROOT>/Analysis/<YYYY-MM-DD>/`.
+Publishing is an optional manual step used in the maintainer's environment to copy selected deliverables from runtime output into a dated export snapshot. If you are reproducing the analysis locally, you can usually ignore this section and work directly from the runtime outputs under `~/ProjectsRuntime/uveal_melanoma/`.
 
 ```r
 source("scripts/load_all.R")
@@ -136,12 +195,16 @@ RECREATE_ANALYTIC_DATASETS <- TRUE
 USE_LOGS <- TRUE
 ```
 
+If you receive a shared spreadsheet with a different filename than `INPUT_FILENAME`, update that constant before running the pipeline.
+
 Objective 4 grouping and display settings are also centralized there through `GEP_GROUPING_SPECS` and `GEP_OBJECTIVE4_GROUPING`.
 
-## Where To Go Next
+## Documentation
 
-- Derivations and sign conventions: [docs/CALCULATIONS.md](docs/CALCULATIONS.md)
-- Statistical methods and thresholds: [docs/STATISTICAL_METHODS.md](docs/STATISTICAL_METHODS.md)
-- Workflow internals and artifact contracts: [docs/TECHNICAL.md](docs/TECHNICAL.md)
-- Output interpretation: [docs/INTERPRETATION_GUIDE.md](docs/INTERPRETATION_GUIDE.md)
-- Manuscript-facing methods draft: [docs/METHODS_SECTION_PAPER.md](docs/METHODS_SECTION_PAPER.md)
+- [docs/OBJECTIVES.md](docs/OBJECTIVES.md): study aims, objective definitions, subgroup scope, and cohort eligibility logic
+- [docs/TECHNICAL.md](docs/TECHNICAL.md): workflow orchestration, directory structure, configuration, artifact contracts, and QA
+- [docs/CALCULATIONS.md](docs/CALCULATIONS.md): derived-variable definitions, endpoint construction, and sign conventions
+- [docs/STATISTICAL_METHODS.md](docs/STATISTICAL_METHODS.md): statistical methodology, assumptions, thresholds, and validation metrics
+- [docs/INTERPRETATION_GUIDE.md](docs/INTERPRETATION_GUIDE.md): how to read tables, plots, workbooks, and Objective 4 deliverables
+- [docs/FIGURE_COUNTS_AUDIT.md](docs/FIGURE_COUNTS_AUDIT.md): figure-level count consistency checks
+- [docs/dependency_diagram.md](docs/dependency_diagram.md): high-level module dependency map

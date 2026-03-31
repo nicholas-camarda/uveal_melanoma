@@ -72,13 +72,20 @@ flowchart LR
     %% GEP validation
     subgraph GEP[GEP Validation]
         GMET[gep/utils/gep_model_evaluation_metrics.R]
+        GXL[gep/utils/gep_excel_output.R]
+        GEXT[gep/utils/gep_extrapolation_assumptions.R]
         GMFS[gep/cores/gep_evaluation_core_mfs.R]
         GMSS[gep/cores/gep_evaluation_core_mss.R]
-        GDIAG[gep/diagnostics/gep_data_diagnostics.R]
         GVIS[gep/visualization/gep_visuals.R]
-        GREP[gep/reporting/gep_reporting.R]
-        GSIMP[gep/simple/gep_simple_validation.R]
+        GRC[gep/reporting/gep_reporting_core.R]
+        GTBL[gep/reporting/gep_table_creation.R]
+        GSUM[gep/reporting/gep_summary_generation.R]
+        GCLI[gep/reporting/gep_clinical_interpretation.R]
+        GOUT[gep/reporting/gep_output_consolidation.R]
+        GSENS[gep/reporting/gep_mfs_sensitivity_reporting.R]
+        GSIMP[gep/reporting/gep_simple_validation.R]
         GORCH[gep/orchestration/gep_evaluation_orchestration.R]
+        GNOGEP[gep/orchestration/gep_exploratory_no_gep_report.R]
     end
 
     %% Workflow / orchestration and objectives
@@ -92,10 +99,10 @@ flowchart LR
     end
 
     %% I/O anchors
-    RAW[(OneDrive/research projects/uveal_melanoma/Original Files/*.xlsx)]
-    PDATA[(ProjectsRuntime/uveal_melanoma/Analytic Dataset/*.rds, other_map.rds)]
-    OUT[(ProjectsRuntime/uveal_melanoma/Analysis/...)]
-    LOGS[(ProjectsRuntime/uveal_melanoma/logs/run_log_*.txt)]
+    RAW[(~/Library/CloudStorage/OneDrive-Personal/Research/uveal_melanoma/Original Files/*.xlsx)]
+    PDATA[(~/ProjectsRuntime/uveal_melanoma/Analytic Dataset/*.rds, other_map.rds)]
+    OUT[(~/ProjectsRuntime/uveal_melanoma/Analysis/...)]
+    LOGS[(~/ProjectsRuntime/uveal_melanoma/logs/...)]
 
     %% Edges: config and loader
     LOADALL --> CONFIG
@@ -130,13 +137,20 @@ flowchart LR
     LOADALL --> FPDRAW
     LOADALL --> FPFMT
     LOADALL --> GMET
+    LOADALL --> GXL
+    LOADALL --> GEXT
     LOADALL --> GMFS
     LOADALL --> GMSS
-    LOADALL --> GDIAG
     LOADALL --> GVIS
-    LOADALL --> GREP
+    LOADALL --> GRC
+    LOADALL --> GTBL
+    LOADALL --> GSUM
+    LOADALL --> GCLI
+    LOADALL --> GOUT
+    LOADALL --> GSENS
     LOADALL --> GSIMP
     LOADALL --> GORCH
+    LOADALL --> GNOGEP
     LOADALL --> AORCH
 
     %% Objective dependencies
@@ -163,7 +177,7 @@ flowchart LR
     OBJ3 --> TCORE & TMOD & TFRM & TDIAG & TIO
 
     %% Objective 4 (GEP validation)
-    OBJ4 --> GMET & GMFS & GMSS & GDIAG & GVIS & GREP & GSIMP & GORCH
+    OBJ4 --> GMET & GXL & GEXT & GMFS & GMSS & GVIS & GRC & GTBL & GSUM & GCLI & GOUT & GSENS & GSIMP & GORCH & GNOGEP
     OBJ4 --> TCORE & TMOD & TFRM & TDIAG & TIO
 
     %% Outputs

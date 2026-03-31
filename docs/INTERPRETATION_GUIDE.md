@@ -40,9 +40,11 @@ If you only need the shortest route:
 ### Finding Your Analysis
 
 **Step 1:** Identify your cohort
-- Full cohort (n=260): `~/ProjectsRuntime/uveal_melanoma/Analysis/uveal_full/`
-- Restricted cohort (n=167): `~/ProjectsRuntime/uveal_melanoma/Analysis/uveal_restricted/`
-- GKSRS-only cohort (n=92): `~/ProjectsRuntime/uveal_melanoma/Analysis/gksrs/`
+- Full cohort: `~/ProjectsRuntime/uveal_melanoma/Analysis/uveal_full/`
+- Restricted cohort: `~/ProjectsRuntime/uveal_melanoma/Analysis/uveal_restricted/`
+- GKSRS-only cohort: `~/ProjectsRuntime/uveal_melanoma/Analysis/gksrs/`
+
+Current cohort totals are exported with each run to `~/ProjectsRuntime/uveal_melanoma/Analytic Dataset/cohort_summary_statistics.json`.
 
 **Step 2:** Navigate to objective folder
 - Objective 0: `00_General/` (baseline characteristics, patient flow)
@@ -598,7 +600,7 @@ The main Objective 4 denominator is deliberately stricter than “any row with a
 - For the full cohort, that unified workbook now also includes compact no-GEP tabs: `No_GEP_Overview`, `No_GEP_Model_Comparison`, and `No_GEP_Risk_Strata`.
 - Simple actual-vs-expected QC outputs live in `04_GEP_Validation/unified_summary/` as `<prefix>simple_gep_validation.xlsx`.
 - For MFS, treat the observed 5-year value in that QC workbook as Kaplan-Meier MFS at 60 months. It is censoring-aware and should match the 5-year KM summary, not the raw count of patients with `mfs_event_5yr == 0`.
-- If you need the full explanation for why this changed and how to interpret old slide numbers, see [OBJECTIVE4_MFS_5YR_DECISION_NOTE.md](OBJECTIVE4_MFS_5YR_DECISION_NOTE.md).
+- Treat older slide numbers based on raw `mfs_event_5yr` counts as non-canonical if they disagree with the current workbook. The repository-standard interpretation is the Kaplan-Meier estimate at 60 months.
 
 ### Workbook Layout at a Glance
 
