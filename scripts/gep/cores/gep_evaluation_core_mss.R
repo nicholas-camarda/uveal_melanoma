@@ -1,6 +1,215 @@
 # GEP MSS Evaluation Core
 # Contains MSS model evaluation algorithms (no plotting or I/O)
 
+#' Estimate MSS Cumulative Incidence at a Horizon
+#'
+#' Calculates a censoring-aware Aalen-Johansen cumulative incidence estimate for
+#' melanoma-specific death at a requested month horizon and converts that
+#' estimate to an observed pseudo-event count on the original sample size scale.
+#'
+#' @param data Data frame containing the time and event columns.
+#' @param timepoint_months Numeric horizon in months.
+#' @param time_var Character name of the MSS follow-up column.
+#' @param melanoma_event_var Character name of the melanoma-death indicator.
+#' @param competing_event_var Character name of the competing-death indicator.
+#'
+#' @return Named list with cumulative incidence, pseudo-event counts, and raw
+#'   event bookkeeping.
+estimate_mss_cif_at_horizon <- function(data,
+                                        timepoint_months,
+                                        time_var = "tt_death_months",
+                                        melanoma_event_var = "melanoma_death_event",
+                                        competing_event_var = "competing_death_event") {
+    valid_data <- data %>%
+        dplyr::mutate(
+            .time_value = suppressWarnings(as.numeric(.data[[time_var]])),
+            .melanoma_value = suppressWarnings(as.integer(.data[[melanoma_event_var]])),
+            .competing_value = suppressWarnings(as.integer(.data[[competing_event_var]]))
+        ) %>%
+        dplyr::filter(
+            is.finite(.data$.time_value),
+            !is.na(.data$.melanoma_value),
+            !is.na(.data$.competing_value)
+        )
+
+    raw_events_by_horizon <- sum(
+        valid_data$.melanoma_value == 1 & valid_data$.time_value <= timepoint_months,
+        na.rm = TRUE
+    )
+
+    if (nrow(valid_data) == 0) {
+        return(list(
+            n = 0L,
+            cif = NA_real_,
+            observed_events = NA_real_,
+            raw_events_by_horizon = raw_events_by_horizon,
+            observed_method = "aalen_johansen_cif_at_horizon"
+        ))
+    }
+
+    event_status <- dplyr::case_when(
+        valid_data$.melanoma_value == 1 ~ 1L,
+        valid_data$.competing_value == 1 ~ 2L,
+        TRUE ~ 0L
+    )
+
+    if (!any(event_status == 1L)) {
+        return(list(
+            n = nrow(valid_data),
+            cif = 0,
+            observed_events = 0,
+            raw_events_by_horizon = raw_events_by_horizon,
+            observed_method = "aalen_johansen_cif_at_horizon"
+        ))
+    }
+
+    cif_fit <- cmprsk::cuminc(
+        ftime = valid_data$.time_value,
+        fstatus = event_status,
+        cencode = 0
+    )
+
+    curve_names <- names(cif_fit)
+    melanoma_curve_name <- curve_names[grepl("(^1$| 1$)", curve_names)][1]
+    cif_curve <- if (!is.na(melanoma_curve_name)) cif_fit[[melanoma_curve_name]] else NULL
+    cif_value <- if (!is.null(cif_curve) && length(cif_curve$time) > 0) {
+        eligible_idx <- which(cif_curve$time <= timepoint_months)
+        if (length(eligible_idx) == 0) {
+            0
+        } else {
+            as.numeric(cif_curve$est[max(eligible_idx)])
+        }
+    } else {
+        NA_real_
+    }
+
+    list(
+        n = nrow(valid_data),
+        cif = cif_value,
+        observed_events = if (!is.na(cif_value)) nrow(valid_data) * cif_value else NA_real_,
+        raw_events_by_horizon = raw_events_by_horizon,
+        observed_method = "aalen_johansen_cif_at_horizon"
+    )
+}
+
+#' Calculate Observed vs Expected MSS Rates
+#'
+#' Calculates observed vs expected melanoma-specific death rates by GEP class
+#' using censoring-aware cumulative incidence estimates at the requested horizon
+#' and a Pearson goodness-of-fit comparison against summed expected risks.
+#'
+#' @param data Data frame with GEP predictions and survival outcomes.
+#' @param timepoint Numeric time point in years for analysis.
+#' @param group_var Character grouping variable.
+#' @param time_var Character follow-up column.
+#' @param melanoma_event_var Character melanoma-death indicator column.
+#' @param competing_event_var Character competing-death indicator column.
+#' @param eligibility_filter Character eligibility flag column.
+#'
+#' @return Data frame with grouped observed/expected summaries plus overall
+#'   attributes matching the legacy MSS shape.
+calculate_observed_expected_mss <- function(data,
+                                            timepoint,
+                                            group_var = "biopsy1_gep",
+                                            time_var = "tt_death_months",
+                                            melanoma_event_var = "melanoma_death_event",
+                                            competing_event_var = "competing_death_event",
+                                            eligibility_filter = "mss_analysis_eligible") {
+    logger::log_info(formatted(sprintf("Calculating O/E ratios for %d-year MSS", timepoint), indent = 2))
+
+    timepoint_months <- timepoint * 12
+    expected_var <- paste0("expected_mss_", timepoint, "yr")
+
+    required_vars <- c(group_var, expected_var, time_var, melanoma_event_var, competing_event_var)
+    missing_vars <- setdiff(required_vars, names(data))
+    if (length(missing_vars) > 0) {
+        stop(sprintf(
+            "calculate_observed_expected_mss() requires columns: %s",
+            paste(missing_vars, collapse = ", ")
+        ))
+    }
+
+    grouped_results <- data %>%
+        dplyr::filter(!is.na(.data[[group_var]])) %>%
+        dplyr::group_by(.data[[group_var]]) %>%
+        dplyr::group_modify(function(.x, .y) {
+            cif_metrics <- estimate_mss_cif_at_horizon(
+                data = .x,
+                timepoint_months = timepoint_months,
+                time_var = time_var,
+                melanoma_event_var = melanoma_event_var,
+                competing_event_var = competing_event_var
+            )
+            expected_events <- sum(1 - .x[[expected_var]], na.rm = TRUE)
+
+            tibble::tibble(
+                n = nrow(.x),
+                observed = round(cif_metrics$observed_events, 2),
+                expected = round(expected_events, 2),
+                oe_ratio = ifelse(expected_events > 0, round(cif_metrics$observed_events / expected_events, 3), NA_real_),
+                expected_rate = ifelse(nrow(.x) > 0, expected_events / nrow(.x), NA_real_),
+                observed_rate = cif_metrics$cif,
+                poisson_ci_lower = NA_real_,
+                poisson_ci_upper = NA_real_,
+                observed_method = cif_metrics$observed_method,
+                raw_events_by_horizon = cif_metrics$raw_events_by_horizon
+            )
+        }) %>%
+        dplyr::ungroup()
+
+    analysis_data <- if (eligibility_filter %in% names(data)) {
+        data %>% dplyr::filter(.data[[eligibility_filter]])
+    } else {
+        data
+    }
+
+    overall_cif <- estimate_mss_cif_at_horizon(
+        data = analysis_data,
+        timepoint_months = timepoint_months,
+        time_var = time_var,
+        melanoma_event_var = melanoma_event_var,
+        competing_event_var = competing_event_var
+    )
+    overall_expected <- sum(1 - analysis_data[[expected_var]], na.rm = TRUE)
+
+    observed_vec <- grouped_results$observed
+    expected_vec <- grouped_results$expected
+    valid_rows <- is.finite(observed_vec) & is.finite(expected_vec) & expected_vec > 0
+
+    chisq_statistic <- NA_real_
+    chisq_p_value <- NA_real_
+    chisq_log_p_value <- NA_real_
+    if (sum(valid_rows) >= 2) {
+        chisq_statistic <- sum(
+            (observed_vec[valid_rows] - expected_vec[valid_rows])^2 / expected_vec[valid_rows],
+            na.rm = TRUE
+        )
+        chisq_p_value <- stats::pchisq(
+            chisq_statistic,
+            df = sum(valid_rows) - 1,
+            lower.tail = FALSE
+        )
+        chisq_log_p_value <- calculate_chisq_log_p_value(chisq_statistic, df = sum(valid_rows) - 1)
+    }
+
+    attr(grouped_results, "overall_n") <- nrow(analysis_data)
+    attr(grouped_results, "overall_observed") <- round(overall_cif$observed_events, 2)
+    attr(grouped_results, "overall_expected") <- round(overall_expected, 2)
+    attr(grouped_results, "overall_oe_ratio") <- ifelse(
+        overall_expected > 0,
+        round(overall_cif$observed_events / overall_expected, 3),
+        NA_real_
+    )
+    attr(grouped_results, "overall_poisson_ci_lower") <- NA_real_
+    attr(grouped_results, "overall_poisson_ci_upper") <- NA_real_
+    attr(grouped_results, "overall_observed_method") <- overall_cif$observed_method
+    attr(grouped_results, "chisq_p_value") <- chisq_p_value
+    attr(grouped_results, "chisq_log_p_value") <- chisq_log_p_value
+    attr(grouped_results, "chisq_statistic") <- round(chisq_statistic, 3)
+
+    grouped_results
+}
+
 #' Perform standard MSS validation
 #'
 #' Validate melanoma-specific survival (MSS) predictions at a given timepoint
@@ -27,19 +236,11 @@ perform_standard_mss_validation <- function(data, timepoint, bootstrap_iteration
             event_occurred = .data[[paste0("mss_event_", timepoint, "yr")]]
         )
 
-    oe_source_data <- if (is.null(oe_data)) data else oe_data
-    oe_analysis_data <- oe_source_data %>%
-        mutate(
-            time_to_event = .data[[time_var]],
-            event_occurred = .data[[paste0("mss_event_", timepoint, "yr")]]
-        )
-
     # Calculate observed vs expected rates
-    observed_expected <- calculate_observed_expected_rates(
-        data = oe_analysis_data,
-        expected_var = paste0("expected_mss_", timepoint, "yr"),
-        event_var = "event_occurred",
-        time_var = "time_to_event",
+    observed_expected <- calculate_observed_expected_mss(
+        data = if (is.null(oe_data)) data else oe_data,
+        timepoint = timepoint,
+        time_var = time_var,
         group_var = group_var
     )
 
@@ -364,8 +565,11 @@ perform_discrimination_mss <- function(data, timepoint) {
 
     # 2. INTEGRATED AUC (iAUC) - Robust discrimination metric over time periods
     # This is more robust than point estimates as it integrates over time ranges
-    integrated_auc <- NA
+    integrated_auc <- NA_real_
     integrated_auc_method <- NA_character_
+    integrated_auc_status <- "not_attempted"
+    integrated_auc_na_reason <- NA_character_
+    integrated_auc_time_periods <- 0L
     
     tryCatch({
         # Use riskRegression::Score for integrated AUC over time periods
@@ -386,22 +590,27 @@ perform_discrimination_mss <- function(data, timepoint) {
         auc_data <- NULL
         if (!is.null(roc_result$AUC)) {
             auc_data <- roc_result$AUC$score
-            if (nrow(auc_data) > 0) {
+            if (nrow(auc_data) > 0 && any(is.finite(auc_data$AUC))) {
                 # Calculate integrated AUC as mean across time periods
                 integrated_auc <- mean(auc_data$AUC, na.rm = TRUE)
+                integrated_auc_status <- "ok"
+            } else {
+                integrated_auc_status <- "not_estimable"
+                integrated_auc_na_reason <- "riskRegression::Score returned no finite AUC estimates"
             }
         }
         integrated_auc_method <- "riskRegression::Score_integrated"
-        
-        num_periods <- ifelse(!is.null(auc_data) && nrow(auc_data) > 0, nrow(auc_data), 0)
+        integrated_auc_time_periods <- ifelse(!is.null(auc_data) && nrow(auc_data) > 0, nrow(auc_data), 0)
         logger::log_info(formatted(sprintf(
             "Integrated AUC calculated successfully (MSS): %.3f over %d time periods",
-            integrated_auc, num_periods
+            integrated_auc, integrated_auc_time_periods
         ), indent = 3))
         
     }, error = function(e) {
         logger::log_warn(formatted(sprintf("Integrated AUC calculation failed (MSS): %s", e$message), indent = 3))
-        integrated_auc_method <- "calculation_failed"
+        integrated_auc_method <- "riskRegression::Score_integrated"
+        integrated_auc_status <- "not_estimable"
+        integrated_auc_na_reason <- e$message
     })
 
     # 3. CUMULATIVE DISCRIMINATION - Discrimination ability over time ranges
@@ -550,6 +759,9 @@ perform_discrimination_mss <- function(data, timepoint) {
         # ROBUST DISCRIMINATION METRICS (replacing fragile timepoint-dependent metrics)
         integrated_auc = round(integrated_auc, 3),
         integrated_auc_method = integrated_auc_method,
+        integrated_auc_status = integrated_auc_status,
+        integrated_auc_na_reason = integrated_auc_na_reason,
+        integrated_auc_time_periods = integrated_auc_time_periods,
         cumulative_discrimination = round(cumulative_discrimination, 3),
         cumulative_discrimination_method = cumulative_discrimination_method,
         time_averaged_discrimination = round(time_averaged_discrimination, 3),

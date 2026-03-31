@@ -495,6 +495,13 @@ create_consolidated_discrimination_table <- function(validation_results, outcome
                 Harrell_C = disc$harrell_c %||% NA,
                 # ROBUST DISCRIMINATION METRICS (replacing fragile timepoint-dependent metrics)
                 Integrated_AUC = disc$integrated_auc %||% NA,
+                Integrated_AUC_Status = disc$integrated_auc_status %||% ifelse(
+                    is.finite(disc$integrated_auc %||% NA_real_),
+                    "ok",
+                    "not_estimable"
+                ),
+                Integrated_AUC_Method = disc$integrated_auc_method %||% NA,
+                Integrated_AUC_Unavailable_Reason = disc$integrated_auc_na_reason %||% NA,
                 Cumulative_Discrimination = disc$cumulative_discrimination %||% NA,
                 Time_averaged_Discrimination = disc$time_averaged_discrimination %||% NA,
                 # CLINICAL VALUE ASSESSMENT
@@ -568,6 +575,7 @@ create_consolidated_decision_curve_table <- function(validation_results, outcome
                 Optimal_Net_Benefit = dca$optimal_net_benefit %||% NA,
                 Threshold_Range_Min = dca$threshold_range_min %||% NA,
                 Threshold_Range_Max = dca$threshold_range_max %||% NA,
+                Threshold_Scale = "probability_0_to_1",
                 Area_Between_Curves = dca$area_between_curves %||% NA,
                 stringsAsFactors = FALSE
             ))
@@ -623,6 +631,9 @@ create_comprehensive_text_summary <- function(validation_results, outcome_type,
             Events = ifelse(is.na(disc_consolidated$Events), "NA", as.character(disc_consolidated$Events)),
             `Harrell's C` = ifelse(is.na(disc_consolidated$Harrell_C), "NA", sprintf("%.3f", disc_consolidated$Harrell_C)),
             `Integrated AUC` = ifelse(is.na(disc_consolidated$Integrated_AUC), "NA", sprintf("%.3f", disc_consolidated$Integrated_AUC)),
+            `iAUC Status` = ifelse(is.na(disc_consolidated$Integrated_AUC_Status), "NA", as.character(disc_consolidated$Integrated_AUC_Status)),
+            `iAUC Method` = ifelse(is.na(disc_consolidated$Integrated_AUC_Method), "NA", as.character(disc_consolidated$Integrated_AUC_Method)),
+            `iAUC NA Reason` = ifelse(is.na(disc_consolidated$Integrated_AUC_Unavailable_Reason), "", as.character(disc_consolidated$Integrated_AUC_Unavailable_Reason)),
             `Cumulative Disc` = ifelse(is.na(disc_consolidated$Cumulative_Discrimination), "NA", sprintf("%.3f", disc_consolidated$Cumulative_Discrimination)),
             stringsAsFactors = FALSE
         )
@@ -639,10 +650,12 @@ create_comprehensive_text_summary <- function(validation_results, outcome_type,
             Timepoint = dca_consolidated$Timepoint,
             N = ifelse(is.na(dca_consolidated$N), "NA", as.character(dca_consolidated$N)),
             `Optimal Threshold` = ifelse(is.na(dca_consolidated$Optimal_Threshold), "NA", sprintf("%.3f", dca_consolidated$Optimal_Threshold)),
+            `Threshold Scale` = ifelse(is.na(dca_consolidated$Threshold_Scale), "NA", as.character(dca_consolidated$Threshold_Scale)),
             `Optimal Net Benefit` = ifelse(is.na(dca_consolidated$Optimal_Net_Benefit), "NA", sprintf("%.4f", dca_consolidated$Optimal_Net_Benefit)),
             stringsAsFactors = FALSE
         )
         summary_lines <- c(summary_lines, md_heading("Decision Curve Summary", 2L), md_table(dca_table), "")
+        summary_lines <- c(summary_lines, md_bullet("Decision thresholds are reported on the 0-1 probability scale (for example, 0.20 = 20%)."), "")
     }
 
     if (nrow(extrapolation_consolidated) > 0) {
@@ -985,6 +998,13 @@ create_unified_discrimination_summary <- function(mfs_results, mss_results) {
                     Harrell_C = disc$harrell_c %||% NA,
                     # ROBUST DISCRIMINATION METRICS (replacing fragile timepoint-dependent metrics)
                     Integrated_AUC = disc$integrated_auc %||% NA,
+                    Integrated_AUC_Status = disc$integrated_auc_status %||% ifelse(
+                        is.finite(disc$integrated_auc %||% NA_real_),
+                        "ok",
+                        "not_estimable"
+                    ),
+                    Integrated_AUC_Method = disc$integrated_auc_method %||% NA,
+                    Integrated_AUC_Unavailable_Reason = disc$integrated_auc_na_reason %||% NA,
                     Cumulative_Discrimination = disc$cumulative_discrimination %||% NA,
                     Time_averaged_Discrimination = disc$time_averaged_discrimination %||% NA,
                     stringsAsFactors = FALSE
@@ -1009,6 +1029,13 @@ create_unified_discrimination_summary <- function(mfs_results, mss_results) {
                     Harrell_C = disc$harrell_c %||% NA,
                     # ROBUST DISCRIMINATION METRICS (replacing fragile timepoint-dependent metrics)
                     Integrated_AUC = disc$integrated_auc %||% NA,
+                    Integrated_AUC_Status = disc$integrated_auc_status %||% ifelse(
+                        is.finite(disc$integrated_auc %||% NA_real_),
+                        "ok",
+                        "not_estimable"
+                    ),
+                    Integrated_AUC_Method = disc$integrated_auc_method %||% NA,
+                    Integrated_AUC_Unavailable_Reason = disc$integrated_auc_na_reason %||% NA,
                     Cumulative_Discrimination = disc$cumulative_discrimination %||% NA,
                     Time_averaged_Discrimination = disc$time_averaged_discrimination %||% NA,
                     stringsAsFactors = FALSE
@@ -1150,6 +1177,9 @@ create_unified_text_summary <- function(mfs_results, mss_results, unified_cal, u
             Events = ifelse(is.na(unified_disc$Events), "NA", as.character(unified_disc$Events)),
             `Harrell's C` = ifelse(is.na(unified_disc$Harrell_C), "NA", sprintf("%.3f", unified_disc$Harrell_C)),
             `Integrated AUC` = ifelse(is.na(unified_disc$Integrated_AUC), "NA", sprintf("%.3f", unified_disc$Integrated_AUC)),
+            `iAUC Status` = ifelse(is.na(unified_disc$Integrated_AUC_Status), "NA", as.character(unified_disc$Integrated_AUC_Status)),
+            `iAUC Method` = ifelse(is.na(unified_disc$Integrated_AUC_Method), "NA", as.character(unified_disc$Integrated_AUC_Method)),
+            `iAUC NA Reason` = ifelse(is.na(unified_disc$Integrated_AUC_Unavailable_Reason), "", as.character(unified_disc$Integrated_AUC_Unavailable_Reason)),
             `Cumulative Disc` = ifelse(is.na(unified_disc$Cumulative_Discrimination), "NA", sprintf("%.3f", unified_disc$Cumulative_Discrimination)),
             `Time-averaged Disc` = ifelse(is.na(unified_disc$Time_averaged_Discrimination), "NA", sprintf("%.3f", unified_disc$Time_averaged_Discrimination)),
             stringsAsFactors = FALSE,

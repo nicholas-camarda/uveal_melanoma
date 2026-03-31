@@ -176,9 +176,22 @@ create_detailed_metrics_table <- function(validation_results) {
         }
 
         disc <- result$discrimination
+        iauc_status <- disc$integrated_auc_status %||% ifelse(
+            is.finite(disc$integrated_auc %||% NA_real_),
+            "ok",
+            "not_estimable"
+        )
+        iauc_method <- disc$integrated_auc_method %||% "NA"
+        iauc_reason <- disc$integrated_auc_na_reason %||% NA_character_
         pieces <- c(
             sprintf("Harrell's C %s", format_scalar(disc$harrell_c)),
-            sprintf("Integrated AUC %s", format_scalar(disc$integrated_auc)),
+            sprintf(
+                "Integrated AUC %s [%s; %s%s]",
+                format_scalar(disc$integrated_auc),
+                iauc_status,
+                iauc_method,
+                if (!is.na(iauc_reason) && nzchar(iauc_reason)) sprintf("; %s", iauc_reason) else ""
+            ),
             sprintf("Cumulative Disc %s", format_scalar(disc$cumulative_discrimination))
         )
 
@@ -242,6 +255,8 @@ create_gep_comparison_table <- function(mfs_results, mss_results) {
                 calibration_ici_method = if (!is.null(tp_results$calibration) && !is.null(tp_results$calibration$ici_method)) tp_results$calibration$ici_method else NA,
                 harrell_c = harrell_c,
                 integrated_auc = integrated_auc,
+                integrated_auc_status = if (!is.null(tp_results$discrimination)) tp_results$discrimination$integrated_auc_status %||% NA else NA,
+                integrated_auc_method = if (!is.null(tp_results$discrimination)) tp_results$discrimination$integrated_auc_method %||% NA else NA,
                 stringsAsFactors = FALSE
             ))
         }
@@ -264,6 +279,8 @@ create_gep_comparison_table <- function(mfs_results, mss_results) {
                     calibration_ici_method = if (!is.null(tp_results$calibration) && !is.null(tp_results$calibration$ici_method)) tp_results$calibration$ici_method else NA,
                     harrell_c = harrell_c,
                     integrated_auc = integrated_auc,
+                    integrated_auc_status = if (!is.null(tp_results$discrimination)) tp_results$discrimination$integrated_auc_status %||% NA else NA,
+                    integrated_auc_method = if (!is.null(tp_results$discrimination)) tp_results$discrimination$integrated_auc_method %||% NA else NA,
                     stringsAsFactors = FALSE
                 ))
             }

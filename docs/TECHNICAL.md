@@ -505,17 +505,20 @@ Effect-summary workbooks follow model-family-specific inference conventions and 
 - Primary validation denominators are restricted to definitive raw DecisionDx labels with valid endpoint-specific prediction fields.
 - Main endpoints are metastasis events (MFS) and melanoma-specific death (MSS); companion MSS competing-risk analyses handle non-melanoma death explicitly.
 - Reader-facing 5-year MFS "actual" values are now censoring-aware Kaplan-Meier estimates at 60 months; raw by-60-month event counts remain available only as descriptive sensitivity outputs.
+- MSS observed-versus-expected summaries use censoring-aware Aalen-Johansen CIF pseudo-event counts at the horizon (melanoma death with non-melanoma death treated as a competing event).
+- Integrated AUC is no longer silently replaced when not estimable; status, method, and NA-reason fields are carried into the consolidated and unified workbooks.
+- The full-cohort exploratory no-GEP workflow now reuses the Objective 0-prepared cohort contract, derives expected group counts from the prepared snapshot, and prefers IPCW horizon direct-risk models with censoring-aware observed summaries.
 
 **Artifact hierarchy:**
 - Outcome-specific consolidated workbooks:
-   - `a_metastasis_free_survival/*_MFS_consolidated_summary.xlsx`
-   - `b_melanoma_specific_survival/*_MSS_consolidated_summary.xlsx`
+   - `a_metastasis_free_survival/05_summary_tables/*_MFS_consolidated_summary.xlsx`
+   - `b_melanoma_specific_survival/03_summary_tables/*_MSS_consolidated_summary.xlsx`
 - Outcome-specific technical detail workbooks:
-   - `a_metastasis_free_survival/*mfs_validation_technical_details.xlsx`
-   - `b_melanoma_specific_survival/*mss_validation_technical_details.xlsx`
+   - `a_metastasis_free_survival/05_summary_tables/*mfs_validation_technical_details.xlsx`
+   - `b_melanoma_specific_survival/03_summary_tables/*mss_validation_technical_details.xlsx`
 - Outcome-specific narrative summaries:
-   - `a_metastasis_free_survival/*mfs_validation_narrative_summary.md`
-   - `b_melanoma_specific_survival/*mss_validation_narrative_summary.md`
+   - `a_metastasis_free_survival/05_summary_tables/*mfs_validation_narrative_summary.md`
+   - `b_melanoma_specific_survival/03_summary_tables/*mss_validation_narrative_summary.md`
 - Cross-outcome workbook at the root of `04_GEP_Validation/`:
    - `*unified_gep_validation_summary.xlsx`
    - For the full cohort, this workbook now also includes `No_GEP_Overview`, `No_GEP_Model_Comparison`, and `No_GEP_Risk_Strata`
@@ -525,6 +528,8 @@ Effect-summary workbooks follow model-family-specific inference conventions and 
 - Limited visuals: KM curves for MFS, CIF curves for MSS, and optional outcome-specific PRAME delta-C PNGs (`*mfs_prame_delta_c.png`, `*mss_prame_delta_c.png`)
 
 **Workbook contract:** the consolidated outcome workbook is the primary review artifact. Technical workbooks retain lower-level detail, and the root unified workbook is comparison-only (`*_Comparison` sheet naming). For full cohort runs, the unified workbook may append compact `No_GEP_*` summary tabs.
+
+**No-GEP reporting contract:** the no-GEP appendix and compact unified-workbook tabs use a documented 0-to-1 probability scale for threshold fields and now include overlap diagnostics comparing `GEP Failed/Indeterminate` with `GEP Not Tested`.
 
 **Display contract:** reader-facing outputs restore canonical labels from matching `*_derived_precollapse.rds` artifacts (for `biopsy1_gep`, `gep_class_simple`, `prame_status`, and `gep12_prame_status`) when available. Objective 4 entry points refresh eligibility flags from stored raw labels before analysis, preventing stale cohort artifacts from leaking nondefinitive rows into definitive Class 1 / Class 2 denominators.
 

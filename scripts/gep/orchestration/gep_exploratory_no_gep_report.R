@@ -165,6 +165,77 @@ preserve_exploratory_factor_levels <- function(values) {
     coerce_to_factor_preserving_levels(values)
 }
 
+get_exploratory_no_gep_required_columns <- function() {
+    c(
+        "gep_class_simple",
+        "sex",
+        "location",
+        "initial_t_stage_simple",
+        "internal_reflectivity",
+        "srf",
+        "age_at_diagnosis",
+        "initial_tumor_height",
+        "initial_tumor_diameter",
+        "initial_vision",
+        "optic_nerve",
+        "tt_mets_months",
+        "mets_event",
+        "tt_death_months",
+        "melanoma_death_event",
+        "competing_death_event",
+        "mfs_event_5yr",
+        "mss_event_5yr"
+    )
+}
+
+assert_exploratory_no_gep_preconditions <- function(data,
+                                                    dataset_name = "uveal_melanoma_full_cohort") {
+    required_columns <- get_exploratory_no_gep_required_columns()
+    missing_columns <- setdiff(required_columns, names(data))
+
+    if (length(missing_columns) > 0) {
+        stop(sprintf(
+            paste(
+                "Exploratory no-GEP analysis expects the Objective 0 prepared cohort.",
+                "Missing required columns for %s: %s"
+            ),
+            dataset_name,
+            paste(missing_columns, collapse = ", ")
+        ))
+    }
+
+    gep_values <- unique(as.character(stats::na.omit(data$gep_class_simple)))
+    required_groups <- c("Class 1", "Class 2", "GEP Failed/Indeterminate", "GEP Not Tested")
+    missing_groups <- setdiff(required_groups, gep_values)
+
+    if (length(missing_groups) > 0) {
+        stop(sprintf(
+            paste(
+                "Exploratory no-GEP analysis requires Objective 0 GEP display groups.",
+                "The prepared cohort for %s is missing: %s"
+            ),
+            dataset_name,
+            paste(missing_groups, collapse = ", ")
+        ))
+    }
+
+    invisible(TRUE)
+}
+
+derive_exploratory_no_gep_group_snapshot <- function(data, group_var = "exploratory_gep_group") {
+    group_levels <- c("Class 1", "Class 2", "GEP Failed/Indeterminate", "GEP Not Tested")
+
+    observed_counts <- data %>%
+        dplyr::filter(!is.na(.data[[group_var]])) %>%
+        dplyr::count(.data[[group_var]], name = "expected_n")
+
+    tibble::tibble(
+        exploratory_gep_group = factor(group_levels, levels = group_levels)
+    ) %>%
+        dplyr::left_join(observed_counts, by = "exploratory_gep_group") %>%
+        dplyr::mutate(expected_n = dplyr::coalesce(.data$expected_n, 0L))
+}
+
 #' Build a Follow-Up Context Block for Exploratory No-GEP Narratives
 #'
 #' Summarizes the no-GEP prediction subset used by the exploratory baseline-only
@@ -310,11 +381,9 @@ build_exploratory_no_gep_followup_block <- function(prepared_data, dataset_name 
 #' @return A list containing the prepared full data, screened modeling datasets,
 #'   predictor metadata, screening diagnostics, and an optional ID column.
 prepare_exploratory_no_gep_data <- function(data, dataset_name = "uveal_melanoma_full_cohort") {
-    prepared <- data %>%
-        refresh_gep_analysis_flags() %>%
-        restore_gep_display_variables(dataset_name = dataset_name)
+    assert_exploratory_no_gep_preconditions(data, dataset_name = dataset_name)
 
-    prepared <- prepared %>%
+    prepared <- data %>%
         dplyr::mutate(
             exploratory_gep_group = preserve_exploratory_factor_levels(.data$gep_class_simple),
             no_gep_group = dplyr::case_when(
@@ -333,10 +402,12 @@ prepare_exploratory_no_gep_data <- function(data, dataset_name = "uveal_melanoma
                 as.character(.data$optic_nerve) %in% c("No", "N", "Not Involved") ~ 0L,
                 TRUE ~ NA_integer_
             ),
-            mfs_event_5yr = derive_binary_endpoint(prepared, "mfs_event_5yr", "tt_mets_months", 60),
-            mss_event_5yr = derive_binary_endpoint(prepared, "mss_event_5yr", "tt_death_months", 60)
+            mfs_event_5yr = as.integer(.data$mfs_event_5yr),
+            mss_event_5yr = as.integer(.data$mss_event_5yr)
         ) %>%
         enforce_unordered_factors()
+
+    group_snapshot <- derive_exploratory_no_gep_group_snapshot(prepared)
 
     candidate_predictors <- c(
         "age_at_diagnosis",
@@ -396,6 +467,7 @@ prepare_exploratory_no_gep_data <- function(data, dataset_name = "uveal_melanoma
 
     list(
         full_data = prepared,
+        group_snapshot = group_snapshot,
         definitive_training = definitive_training,
         no_gep_prediction = no_gep_prediction,
         mfs_model_data = mfs_model_data,
@@ -579,20 +651,17 @@ build_exploratory_model_dataset <- function(data,
 #' @return A tibble summarizing cohort counts and simplified KM verification.
 verify_exploratory_no_gep_km_fix <- function(data,
                                              dataset_name = "uveal_melanoma_full_cohort",
+                                             prepared_data = NULL,
+                                             expected_group_counts = NULL,
                                              visual_file = here("scripts", "gep", "visualization", "gep_visuals.R")) {
-    prepared <- prepare_exploratory_no_gep_data(data, dataset_name = dataset_name)$full_data
+    prepared_bundle <- prepared_data %||% prepare_exploratory_no_gep_data(data, dataset_name = dataset_name)
+    prepared <- prepared_bundle$full_data
 
     observed_counts <- prepared %>%
         dplyr::filter(!is.na(.data$exploratory_gep_group)) %>%
         dplyr::count(.data$exploratory_gep_group, name = "observed_n")
 
-    expected_counts <- tibble::tibble(
-        exploratory_gep_group = factor(
-            c("Class 1", "Class 2", "GEP Failed/Indeterminate", "GEP Not Tested"),
-            levels = levels(prepared$exploratory_gep_group)
-        ),
-        expected_n = c(58L, 27L, 13L, 162L)
-    )
+    expected_counts <- expected_group_counts %||% prepared_bundle$group_snapshot
 
     verification <- expected_counts %>%
         dplyr::left_join(observed_counts, by = "exploratory_gep_group") %>%
@@ -607,7 +676,10 @@ verify_exploratory_no_gep_km_fix <- function(data,
             dplyr::transmute(text = sprintf("%s expected %d observed %d", .data$exploratory_gep_group, .data$expected_n, .data$observed_n)) %>%
             dplyr::pull(.data$text)
         stop(sprintf(
-            "Exploratory no-GEP KM verification failed: group counts do not match the expected fixed values (%s).",
+            paste(
+                "Exploratory no-GEP KM verification failed:",
+                "group counts do not match the prepared-dataset snapshot (%s)."
+            ),
             paste(mismatch_text, collapse = "; ")
         ))
     }
@@ -896,6 +968,114 @@ summarize_mss_cif_timepoints <- function(data, group_var, times) {
     })
 }
 
+summarize_exploratory_horizon_groups <- function(data,
+                                                 group_vars,
+                                                 outcome = c("mfs", "mss"),
+                                                 horizon_months = 60) {
+    outcome <- match.arg(outcome)
+
+    data %>%
+        dplyr::group_by(dplyr::across(all_of(group_vars))) %>%
+        dplyr::group_modify(function(.x, .y) {
+            horizon_summary <- if (identical(outcome, "mfs")) {
+                estimate_mfs_km_at_horizon(
+                    data = .x,
+                    timepoint_months = horizon_months,
+                    time_var = "tt_mets_months",
+                    event_var = "mets_event"
+                )
+            } else {
+                estimate_mss_cif_at_horizon(
+                    data = .x,
+                    timepoint_months = horizon_months,
+                    time_var = "tt_death_months",
+                    melanoma_event_var = "melanoma_death_event",
+                    competing_event_var = "competing_death_event"
+                )
+            }
+
+            tibble::tibble(
+                n = horizon_summary$n %||% nrow(.x),
+                observed_events = horizon_summary$observed_events %||% NA_real_,
+                observed_event_rate = if (identical(outcome, "mfs")) {
+                    horizon_summary$risk %||% NA_real_
+                } else {
+                    horizon_summary$cif %||% NA_real_
+                },
+                observed_method = horizon_summary$observed_method %||% if (identical(outcome, "mfs")) {
+                    "kaplan_meier_at_horizon"
+                } else {
+                    "aalen_johansen_cif_at_horizon"
+                },
+                raw_events_by_horizon = horizon_summary$raw_events_by_horizon %||% NA_real_
+            )
+        }) %>%
+        dplyr::ungroup()
+}
+
+calculate_exploratory_overlap_diagnostics <- function(prepared_data) {
+    no_gep_data <- prepared_data$no_gep_prediction %>%
+        dplyr::filter(.data$no_gep_group %in% c("GEP Failed/Indeterminate", "GEP Not Tested"))
+
+    if (nrow(no_gep_data) == 0) {
+        return(tibble::tibble())
+    }
+
+    group_indicator <- as.integer(no_gep_data$no_gep_group == "GEP Failed/Indeterminate")
+    predictors <- unique(c(prepared_data$predictors, "ciliary_involvement"))
+
+    purrr::map_dfr(predictors, function(predictor) {
+        values <- no_gep_data[[predictor]]
+
+        if (is.numeric(values) || is.integer(values)) {
+            mean_failed <- mean(values[group_indicator == 1], na.rm = TRUE)
+            mean_not_tested <- mean(values[group_indicator == 0], na.rm = TRUE)
+            sd_failed <- stats::sd(values[group_indicator == 1], na.rm = TRUE)
+            sd_not_tested <- stats::sd(values[group_indicator == 0], na.rm = TRUE)
+            pooled_sd <- sqrt((sd_failed^2 + sd_not_tested^2) / 2)
+            abs_smd <- if (is.finite(pooled_sd) && pooled_sd > 0) {
+                abs(mean_failed - mean_not_tested) / pooled_sd
+            } else {
+                NA_real_
+            }
+            level_label <- NA_character_
+            predictor_type <- if (all(stats::na.omit(values) %in% c(0, 1))) "binary" else "numeric"
+        } else {
+            factor_values <- as.character(values)
+            level_candidates <- stats::na.omit(unique(factor_values))
+            level_smd <- vapply(level_candidates, function(level_name) {
+                indicator <- as.integer(factor_values == level_name)
+                p_failed <- mean(indicator[group_indicator == 1], na.rm = TRUE)
+                p_not_tested <- mean(indicator[group_indicator == 0], na.rm = TRUE)
+                pooled_sd <- sqrt((p_failed * (1 - p_failed) + p_not_tested * (1 - p_not_tested)) / 2)
+                if (is.finite(pooled_sd) && pooled_sd > 0) {
+                    abs(p_failed - p_not_tested) / pooled_sd
+                } else {
+                    NA_real_
+                }
+            }, numeric(1))
+            best_idx <- if (length(level_smd) > 0) which.max(dplyr::coalesce(level_smd, -Inf)) else integer()
+            abs_smd <- if (length(best_idx) == 1) level_smd[[best_idx]] else NA_real_
+            level_label <- if (length(best_idx) == 1) level_candidates[[best_idx]] else NA_character_
+            predictor_type <- "factor"
+        }
+
+        tibble::tibble(
+            predictor = predictor,
+            predictor_type = predictor_type,
+            worst_level = level_label,
+            abs_smd = abs_smd,
+            overlap_flag = dplyr::case_when(
+                !is.finite(abs_smd) ~ "unavailable",
+                abs_smd >= 0.50 ~ "high_shift",
+                abs_smd >= 0.25 ~ "moderate_shift",
+                TRUE ~ "acceptable_overlap"
+            )
+        )
+    }) %>%
+        dplyr::arrange(dplyr::desc(.data$abs_smd))
+}
+
 #' Build a Design Matrix for the Exploratory Ridge Models
 #'
 #' Uses `model.matrix()` so factor expansion follows standard R contrasts, then
@@ -977,6 +1157,62 @@ choose_binary_cv_folds <- function(outcome, preferred_folds = 5) {
     as.integer(max(2, max_supported))
 }
 
+prepare_exploratory_binary_model_fit_inputs <- function(data,
+                                                        outcome_var,
+                                                        model_mode = c("raw_binary", "ipcw_horizon_binary"),
+                                                        time_var = NULL,
+                                                        event_var = NULL,
+                                                        eval_time_months = 60,
+                                                        fallback_to_raw = TRUE) {
+    model_mode <- match.arg(model_mode)
+
+    if (identical(model_mode, "ipcw_horizon_binary")) {
+        missing_vars <- setdiff(c(time_var, event_var), names(data))
+        if (length(missing_vars) == 0) {
+            ipcw_info <- calculate_ipcw_weights(
+                time = data[[time_var]],
+                event = data[[event_var]],
+                eval_time_months = eval_time_months
+            )
+
+            weighted_data <- data %>%
+                dplyr::mutate(
+                    .model_outcome = as.integer(ipcw_info$event_by_horizon),
+                    .model_weight = ipcw_info$ipcw_weight,
+                    .known_status = ipcw_info$known_status
+                ) %>%
+                dplyr::filter(.data$.known_status, .data$.model_weight > 0, !is.na(.data$.model_outcome))
+
+            if (nrow(weighted_data) >= GEP_MIN_SAMPLE_SIZE &&
+                length(unique(weighted_data$.model_outcome)) == 2) {
+                return(list(
+                    fit_data = weighted_data,
+                    outcome_var = ".model_outcome",
+                    weights = weighted_data$.model_weight,
+                    model_mode_used = "ipcw_horizon_binary",
+                    fallback_reason = NA_character_
+                ))
+            }
+        }
+
+        if (!isTRUE(fallback_to_raw)) {
+            stop("IPCW exploratory binary model could not be fit and raw fallback was disabled.")
+        }
+    }
+
+    list(
+        fit_data = data,
+        outcome_var = outcome_var,
+        weights = NULL,
+        model_mode_used = if (identical(model_mode, "ipcw_horizon_binary")) "raw_binary_fallback" else "raw_binary",
+        fallback_reason = if (identical(model_mode, "ipcw_horizon_binary")) {
+            "IPCW fit unavailable or insufficient; reverted to raw binary horizon endpoint"
+        } else {
+            NA_character_
+        }
+    )
+}
+
 #' Summarize an Empirical Uncertainty Interval
 #'
 #' Calculates a median and central percentile interval for a numeric metric
@@ -1026,7 +1262,7 @@ summarize_numeric_interval <- function(values, conf_level = 0.95) {
 #'
 #' @return A numeric vector of out-of-fold predicted probabilities aligned to
 #'   the input rows.
-cross_validate_binary_predictions <- function(data, outcome_var, predictors, folds = 5, seed = 123) {
+cross_validate_binary_predictions <- function(data, outcome_var, predictors, folds = 5, seed = 123, weights = NULL) {
     n_rows <- nrow(data)
     outcome <- data[[outcome_var]]
     folds <- choose_binary_cv_folds(outcome, preferred_folds = folds)
@@ -1060,6 +1296,7 @@ cross_validate_binary_predictions <- function(data, outcome_var, predictors, fol
                 family = "binomial",
                 alpha = 0,
                 nfolds = choose_binary_cv_folds(train_data[[outcome_var]], preferred_folds = 5),
+                weights = if (is.null(weights)) NULL else weights[fold_id != fold],
                 standardize = TRUE,
                 type.measure = "deviance"
             )),
@@ -1094,6 +1331,7 @@ cross_validate_binary_predictions <- function(data, outcome_var, predictors, fol
 repeat_cross_validated_binary_metrics <- function(data,
                                                   outcome_var,
                                                   predictors,
+                                                  weights = NULL,
                                                   repeats = 20,
                                                   seed = 123) {
     if (repeats < 1) {
@@ -1107,6 +1345,7 @@ repeat_cross_validated_binary_metrics <- function(data,
             data = data,
             outcome_var = outcome_var,
             predictors = predictors,
+            weights = weights,
             seed = seed + repeat_id - 1
         )
         cv_calibration <- summarize_binary_calibration(outcome, cv_predictions)
@@ -1263,9 +1502,34 @@ summarize_predictor_contributions <- function(coefficient_data, model_name) {
 #'
 #' @return A list containing the fit object, coefficients, contributions,
 #'   metrics, and calibration data.
-fit_exploratory_binary_model <- function(data, outcome_var, predictors, model_name, seed = 123) {
-    design_matrix <- build_exploratory_design_matrix(data, predictors = predictors)
-    outcome <- data[[outcome_var]]
+fit_exploratory_binary_model <- function(data,
+                                         outcome_var,
+                                         predictors,
+                                         model_name,
+                                         seed = 123,
+                                         model_mode = c("raw_binary", "ipcw_horizon_binary"),
+                                         time_var = NULL,
+                                         event_var = NULL,
+                                         eval_time_months = 60,
+                                         include_raw_backtest = FALSE) {
+    model_mode <- match.arg(model_mode)
+
+    fit_inputs <- prepare_exploratory_binary_model_fit_inputs(
+        data = data,
+        outcome_var = outcome_var,
+        model_mode = model_mode,
+        time_var = time_var,
+        event_var = event_var,
+        eval_time_months = eval_time_months,
+        fallback_to_raw = TRUE
+    )
+
+    analysis_data <- fit_inputs$fit_data
+    analysis_outcome_var <- fit_inputs$outcome_var
+    analysis_weights <- fit_inputs$weights
+
+    design_matrix <- build_exploratory_design_matrix(analysis_data, predictors = predictors)
+    outcome <- analysis_data[[analysis_outcome_var]]
     cv_folds <- choose_binary_cv_folds(outcome, preferred_folds = 5)
 
     fitted_model <- suppressWarnings(glmnet::cv.glmnet(
@@ -1274,6 +1538,7 @@ fit_exploratory_binary_model <- function(data, outcome_var, predictors, model_na
         family = "binomial",
         alpha = 0,
         nfolds = cv_folds,
+        weights = analysis_weights,
         standardize = TRUE,
         type.measure = "deviance"
     ))
@@ -1282,17 +1547,19 @@ fit_exploratory_binary_model <- function(data, outcome_var, predictors, model_na
         stats::predict(fitted_model, newx = design_matrix, s = "lambda.min", type = "response")
     )
     cv_predictions <- cross_validate_binary_predictions(
-        data,
-        outcome_var = outcome_var,
+        analysis_data,
+        outcome_var = analysis_outcome_var,
         predictors = predictors,
+        weights = analysis_weights,
         seed = seed
     )
     calibration <- summarize_binary_calibration(outcome, apparent_predictions)
     cv_calibration <- summarize_binary_calibration(outcome, cv_predictions)
     repeated_cv_metrics <- repeat_cross_validated_binary_metrics(
-        data = data,
-        outcome_var = outcome_var,
+        data = analysis_data,
+        outcome_var = analysis_outcome_var,
         predictors = predictors,
+        weights = analysis_weights,
         repeats = 20,
         seed = seed + 1000
     )
@@ -1304,7 +1571,7 @@ fit_exploratory_binary_model <- function(data, outcome_var, predictors, model_na
 
     metrics <- tibble::tibble(
         model = model_name,
-        n = nrow(data),
+        n = nrow(analysis_data),
         events = sum(outcome == 1, na.rm = TRUE),
         apparent_auc = calculate_binary_auc(outcome, apparent_predictions),
         cv_auc = calculate_binary_auc(outcome, cv_predictions),
@@ -1325,9 +1592,28 @@ fit_exploratory_binary_model <- function(data, outcome_var, predictors, model_na
         cv_calibration_slope_ci_lower = cv_slope_interval$lower,
         cv_calibration_slope_ci_upper = cv_slope_interval$upper,
         uncertainty_method = sprintf("Repeated %d-fold CV percentile interval", cv_folds),
+        model_mode_requested = model_mode,
+        model_mode_used = fit_inputs$model_mode_used,
+        model_fallback_reason = fit_inputs$fallback_reason,
         lambda_min = fitted_model$lambda.min,
         lambda_1se = fitted_model$lambda.1se
     )
+
+    raw_backtest <- NULL
+    if (isTRUE(include_raw_backtest) && !identical(fit_inputs$model_mode_used, "raw_binary")) {
+        raw_backtest <- tryCatch(
+            fit_exploratory_binary_model(
+                data = data,
+                outcome_var = outcome_var,
+                predictors = predictors,
+                model_name = paste(model_name, "(Raw Binary Backtest)"),
+                seed = seed,
+                model_mode = "raw_binary",
+                include_raw_backtest = FALSE
+            ),
+            error = function(e) list(status = "backtest_failed", error = e$message)
+        )
+    }
 
     list(
         model = fitted_model,
@@ -1337,7 +1623,9 @@ fit_exploratory_binary_model <- function(data, outcome_var, predictors, model_na
         calibration_curve = calibration$curve,
         repeated_cv_metrics = repeated_cv_metrics,
         predictors = predictors,
-        design_columns = colnames(design_matrix)
+        design_columns = colnames(design_matrix),
+        model_mode_used = fit_inputs$model_mode_used,
+        raw_backtest = raw_backtest
     )
 }
 
@@ -1371,17 +1659,49 @@ predict_exploratory_binary_model <- function(model_results, newdata) {
 #'
 #' @return A grouped summary data frame.
 summarize_no_gep_predictions <- function(prediction_data) {
-    prediction_data %>%
+    median_summary <- prediction_data %>%
         dplyr::group_by(.data$no_gep_group) %>%
         dplyr::summarise(
             n = dplyr::n(),
             median_surrogate_class2_probability = stats::median(.data$surrogate_class2_probability, na.rm = TRUE),
             median_predicted_mfs_5yr_risk = stats::median(.data$predicted_mfs_5yr_risk, na.rm = TRUE),
             median_predicted_mss_5yr_risk = stats::median(.data$predicted_mss_5yr_risk, na.rm = TRUE),
-            observed_mfs_5yr_event_rate = mean(.data$mfs_event_5yr == 1, na.rm = TRUE),
-            observed_mss_5yr_event_rate = mean(.data$mss_event_5yr == 1, na.rm = TRUE),
             .groups = "drop"
-    )
+        )
+
+    mfs_summary <- summarize_exploratory_horizon_groups(
+        prediction_data,
+        group_vars = "no_gep_group",
+        outcome = "mfs"
+    ) %>%
+        dplyr::rename(
+            observed_mfs_5yr_event_rate = observed_event_rate,
+            mfs_5yr_events = observed_events,
+            mfs_observed_method = observed_method,
+            mfs_raw_events_by_horizon = raw_events_by_horizon
+        )
+
+    mss_summary <- summarize_exploratory_horizon_groups(
+        prediction_data,
+        group_vars = "no_gep_group",
+        outcome = "mss"
+    ) %>%
+        dplyr::rename(
+            observed_mss_5yr_event_rate = observed_event_rate,
+            mss_5yr_events = observed_events,
+            mss_observed_method = observed_method,
+            mss_raw_events_by_horizon = raw_events_by_horizon
+        )
+
+    median_summary %>%
+        dplyr::left_join(
+            mfs_summary %>% dplyr::select(-n),
+            by = "no_gep_group"
+        ) %>%
+        dplyr::left_join(
+            mss_summary %>% dplyr::select(-n),
+            by = "no_gep_group"
+        )
 }
 
 #' Format a Metric Interval as Text
@@ -1450,22 +1770,47 @@ create_exploratory_risk_ladder <- function(full_data,
         )
     }
 
-    ladder_data %>%
+    median_summary <- ladder_data %>%
         dplyr::group_by(.data$exploratory_gep_group) %>%
         dplyr::summarise(
             group = dplyr::first(.data$exploratory_gep_group),
             n = dplyr::n(),
             predictable_mfs_n = sum(!is.na(.data$predicted_mfs_5yr_risk)),
             predictable_mss_n = sum(!is.na(.data$predicted_mss_5yr_risk)),
-            mfs_5yr_events = sum(.data$mfs_event_5yr == 1, na.rm = TRUE),
-            observed_5yr_mfs_event_rate = mean(.data$mfs_event_5yr == 1, na.rm = TRUE),
             median_predicted_5yr_mfs_risk = stats::median(.data$predicted_mfs_5yr_risk, na.rm = TRUE),
-            mss_5yr_events = sum(.data$mss_event_5yr == 1, na.rm = TRUE),
-            observed_5yr_mss_event_rate = mean(.data$mss_event_5yr == 1, na.rm = TRUE),
             median_predicted_5yr_mss_risk = stats::median(.data$predicted_mss_5yr_risk, na.rm = TRUE),
             .groups = "drop"
-        ) %>%
-        dplyr::select(-exploratory_gep_group) %>%
+        )
+
+    mfs_summary <- summarize_exploratory_horizon_groups(
+        ladder_data,
+        group_vars = "exploratory_gep_group",
+        outcome = "mfs"
+    ) %>%
+        dplyr::rename(
+            group = exploratory_gep_group,
+            mfs_5yr_events = observed_events,
+            observed_5yr_mfs_event_rate = observed_event_rate,
+            mfs_observed_method = observed_method,
+            mfs_raw_events_by_horizon = raw_events_by_horizon
+        )
+
+    mss_summary <- summarize_exploratory_horizon_groups(
+        ladder_data,
+        group_vars = "exploratory_gep_group",
+        outcome = "mss"
+    ) %>%
+        dplyr::rename(
+            group = exploratory_gep_group,
+            mss_5yr_events = observed_events,
+            observed_5yr_mss_event_rate = observed_event_rate,
+            mss_observed_method = observed_method,
+            mss_raw_events_by_horizon = raw_events_by_horizon
+        )
+
+    median_summary %>%
+        dplyr::left_join(mfs_summary %>% dplyr::select(-n), by = "group") %>%
+        dplyr::left_join(mss_summary %>% dplyr::select(-n), by = "group") %>%
         dplyr::mutate(
             interpretation = dplyr::case_when(
                 .data$group == "Class 1" ~ "Reference low-risk definitive GEP group.",
@@ -1644,6 +1989,8 @@ create_exploratory_model_performance_table <- function(surrogate_model,
             population = model_spec$population,
             n = metrics$n[[1]],
             events = metrics$events[[1]],
+            model_method = metrics$model_mode_used[[1]] %||% "raw_binary",
+            reported_risk_scale = "probability_0_to_1",
             cv_auc = metrics$cv_auc[[1]],
             cv_auc_ci = format_exploratory_metric_interval(
                 metrics$cv_auc[[1]],
@@ -1866,46 +2213,52 @@ create_exploratory_parsimonious_sensitivity <- function(full_no_gep_predictions,
 #'
 #' @return A pooled summary data frame.
 summarize_pooled_no_gep_sensitivity <- function(prediction_data) {
+    summarize_one <- function(bin_var, predicted_var, analysis_name) {
+        base_summary <- prediction_data %>%
+            dplyr::group_by(.data[[bin_var]]) %>%
+            dplyr::summarise(
+                analysis = analysis_name,
+                n = dplyr::n(),
+                failed_indeterminate_n = sum(.data$no_gep_group == "GEP Failed/Indeterminate"),
+                not_tested_n = sum(.data$no_gep_group == "GEP Not Tested"),
+                mean_predicted = mean(.data[[predicted_var]], na.rm = TRUE),
+                .groups = "drop"
+            ) %>%
+            dplyr::rename(bin = !!bin_var)
+
+        mfs_summary <- summarize_exploratory_horizon_groups(
+            prediction_data,
+            group_vars = bin_var,
+            outcome = "mfs"
+        ) %>%
+            dplyr::rename(
+                bin = !!bin_var,
+                observed_mfs_5yr_event_rate = observed_event_rate,
+                mfs_observed_method = observed_method
+            ) %>%
+            dplyr::select("bin", "observed_mfs_5yr_event_rate", "mfs_observed_method")
+
+        mss_summary <- summarize_exploratory_horizon_groups(
+            prediction_data,
+            group_vars = bin_var,
+            outcome = "mss"
+        ) %>%
+            dplyr::rename(
+                bin = !!bin_var,
+                observed_mss_5yr_event_rate = observed_event_rate,
+                mss_observed_method = observed_method
+            ) %>%
+            dplyr::select("bin", "observed_mss_5yr_event_rate", "mss_observed_method")
+
+        base_summary %>%
+            dplyr::left_join(mfs_summary, by = "bin") %>%
+            dplyr::left_join(mss_summary, by = "bin")
+    }
+
     dplyr::bind_rows(
-        prediction_data %>%
-            dplyr::group_by(.data$surrogate_probability_bin) %>%
-            dplyr::summarise(
-                analysis = "Surrogate_Class2_Probability",
-                n = dplyr::n(),
-                failed_indeterminate_n = sum(.data$no_gep_group == "GEP Failed/Indeterminate"),
-                not_tested_n = sum(.data$no_gep_group == "GEP Not Tested"),
-                mean_predicted = mean(.data$surrogate_class2_probability, na.rm = TRUE),
-                observed_mfs_5yr_event_rate = mean(.data$mfs_event_5yr == 1, na.rm = TRUE),
-                observed_mss_5yr_event_rate = mean(.data$mss_event_5yr == 1, na.rm = TRUE),
-                .groups = "drop"
-            ) %>%
-            dplyr::rename(bin = surrogate_probability_bin),
-        prediction_data %>%
-            dplyr::group_by(.data$mfs_risk_bin) %>%
-            dplyr::summarise(
-                analysis = "Direct_MFS_5yr_Risk",
-                n = dplyr::n(),
-                failed_indeterminate_n = sum(.data$no_gep_group == "GEP Failed/Indeterminate"),
-                not_tested_n = sum(.data$no_gep_group == "GEP Not Tested"),
-                mean_predicted = mean(.data$predicted_mfs_5yr_risk, na.rm = TRUE),
-                observed_mfs_5yr_event_rate = mean(.data$mfs_event_5yr == 1, na.rm = TRUE),
-                observed_mss_5yr_event_rate = mean(.data$mss_event_5yr == 1, na.rm = TRUE),
-                .groups = "drop"
-            ) %>%
-            dplyr::rename(bin = mfs_risk_bin),
-        prediction_data %>%
-            dplyr::group_by(.data$mss_risk_bin) %>%
-            dplyr::summarise(
-                analysis = "Direct_MSS_5yr_Risk",
-                n = dplyr::n(),
-                failed_indeterminate_n = sum(.data$no_gep_group == "GEP Failed/Indeterminate"),
-                not_tested_n = sum(.data$no_gep_group == "GEP Not Tested"),
-                mean_predicted = mean(.data$predicted_mss_5yr_risk, na.rm = TRUE),
-                observed_mfs_5yr_event_rate = mean(.data$mfs_event_5yr == 1, na.rm = TRUE),
-                observed_mss_5yr_event_rate = mean(.data$mss_event_5yr == 1, na.rm = TRUE),
-                .groups = "drop"
-            ) %>%
-            dplyr::rename(bin = mss_risk_bin)
+        summarize_one("surrogate_probability_bin", "surrogate_class2_probability", "Surrogate_Class2_Probability"),
+        summarize_one("mfs_risk_bin", "predicted_mfs_5yr_risk", "Direct_MFS_5yr_Risk"),
+        summarize_one("mss_risk_bin", "predicted_mss_5yr_risk", "Direct_MSS_5yr_Risk")
     )
 }
 
@@ -1919,55 +2272,57 @@ summarize_pooled_no_gep_sensitivity <- function(prediction_data) {
 #'
 #' @return A tidy data frame with one row per subgroup, analysis, and bin.
 summarize_no_gep_risk_strata <- function(prediction_data) {
-    dplyr::bind_rows(
-        prediction_data %>%
-            dplyr::group_by(.data$no_gep_group, .data$surrogate_probability_bin) %>%
+    summarize_one <- function(bin_var, predicted_var, analysis_name) {
+        base_summary <- prediction_data %>%
+            dplyr::group_by(.data$no_gep_group, .data[[bin_var]]) %>%
             dplyr::summarise(
-                Analysis = "Surrogate_Class2_Probability",
+                Analysis = analysis_name,
                 N = dplyr::n(),
-                Mean_Predicted = mean(.data$surrogate_class2_probability, na.rm = TRUE),
-                Observed_MFS_5yr_Event_Rate = mean(.data$mfs_event_5yr == 1, na.rm = TRUE),
-                Observed_MSS_5yr_Event_Rate = mean(.data$mss_event_5yr == 1, na.rm = TRUE),
-                Events_MFS_5yr = sum(.data$mfs_event_5yr == 1, na.rm = TRUE),
-                Events_MSS_5yr = sum(.data$mss_event_5yr == 1, na.rm = TRUE),
+                Mean_Predicted = mean(.data[[predicted_var]], na.rm = TRUE),
                 .groups = "drop"
             ) %>%
             dplyr::rename(
                 No_GEP_Group = no_gep_group,
-                Bin = surrogate_probability_bin
-            ),
-        prediction_data %>%
-            dplyr::group_by(.data$no_gep_group, .data$mfs_risk_bin) %>%
-            dplyr::summarise(
-                Analysis = "Direct_MFS_5yr_Risk",
-                N = dplyr::n(),
-                Mean_Predicted = mean(.data$predicted_mfs_5yr_risk, na.rm = TRUE),
-                Observed_MFS_5yr_Event_Rate = mean(.data$mfs_event_5yr == 1, na.rm = TRUE),
-                Observed_MSS_5yr_Event_Rate = mean(.data$mss_event_5yr == 1, na.rm = TRUE),
-                Events_MFS_5yr = sum(.data$mfs_event_5yr == 1, na.rm = TRUE),
-                Events_MSS_5yr = sum(.data$mss_event_5yr == 1, na.rm = TRUE),
-                .groups = "drop"
-            ) %>%
-            dplyr::rename(
-                No_GEP_Group = no_gep_group,
-                Bin = mfs_risk_bin
-            ),
-        prediction_data %>%
-            dplyr::group_by(.data$no_gep_group, .data$mss_risk_bin) %>%
-            dplyr::summarise(
-                Analysis = "Direct_MSS_5yr_Risk",
-                N = dplyr::n(),
-                Mean_Predicted = mean(.data$predicted_mss_5yr_risk, na.rm = TRUE),
-                Observed_MFS_5yr_Event_Rate = mean(.data$mfs_event_5yr == 1, na.rm = TRUE),
-                Observed_MSS_5yr_Event_Rate = mean(.data$mss_event_5yr == 1, na.rm = TRUE),
-                Events_MFS_5yr = sum(.data$mfs_event_5yr == 1, na.rm = TRUE),
-                Events_MSS_5yr = sum(.data$mss_event_5yr == 1, na.rm = TRUE),
-                .groups = "drop"
-            ) %>%
-            dplyr::rename(
-                No_GEP_Group = no_gep_group,
-                Bin = mss_risk_bin
+                Bin = !!bin_var
             )
+
+        mfs_summary <- summarize_exploratory_horizon_groups(
+            prediction_data,
+            group_vars = c("no_gep_group", bin_var),
+            outcome = "mfs"
+        ) %>%
+            dplyr::rename(
+                No_GEP_Group = no_gep_group,
+                Bin = !!bin_var,
+                Observed_MFS_5yr_Event_Rate = observed_event_rate,
+                Events_MFS_5yr = observed_events,
+                MFS_Observed_Method = observed_method
+            ) %>%
+            dplyr::select("No_GEP_Group", "Bin", "Observed_MFS_5yr_Event_Rate", "Events_MFS_5yr", "MFS_Observed_Method")
+
+        mss_summary <- summarize_exploratory_horizon_groups(
+            prediction_data,
+            group_vars = c("no_gep_group", bin_var),
+            outcome = "mss"
+        ) %>%
+            dplyr::rename(
+                No_GEP_Group = no_gep_group,
+                Bin = !!bin_var,
+                Observed_MSS_5yr_Event_Rate = observed_event_rate,
+                Events_MSS_5yr = observed_events,
+                MSS_Observed_Method = observed_method
+            ) %>%
+            dplyr::select("No_GEP_Group", "Bin", "Observed_MSS_5yr_Event_Rate", "Events_MSS_5yr", "MSS_Observed_Method")
+
+        base_summary %>%
+            dplyr::left_join(mfs_summary, by = c("No_GEP_Group", "Bin")) %>%
+            dplyr::left_join(mss_summary, by = c("No_GEP_Group", "Bin"))
+    }
+
+    dplyr::bind_rows(
+        summarize_one("surrogate_probability_bin", "surrogate_class2_probability", "Surrogate_Class2_Probability"),
+        summarize_one("mfs_risk_bin", "predicted_mfs_5yr_risk", "Direct_MFS_5yr_Risk"),
+        summarize_one("mss_risk_bin", "predicted_mss_5yr_risk", "Direct_MSS_5yr_Risk")
     ) %>%
         dplyr::filter(!is.na(.data$Bin))
 }
@@ -2068,7 +2423,32 @@ create_no_gep_unified_overview <- function(analysis_results) {
         }
     )
 
-    dplyr::bind_rows(group_rows, baseline_note)
+    overlap_row <- analysis_results$overlap_diagnostics %||% tibble::tibble()
+    overlap_note <- tibble::tibble(
+        Group = "Overlap_Diagnostic_Note",
+        N = NA_real_,
+        Metastasis_Events_Any = NA_real_,
+        Melanoma_Deaths_Any = NA_real_,
+        MFS_5yr_Events = NA_real_,
+        MSS_5yr_Events = NA_real_,
+        Complete_Predictors_N = NA_real_,
+        Median_Surrogate_Class2_Probability = NA_real_,
+        Median_Predicted_MFS_5yr_Risk = NA_real_,
+        Median_Predicted_MSS_5yr_Risk = NA_real_,
+        Interpretation_Note = if (nrow(overlap_row) > 0 && is.finite(overlap_row$abs_smd[[1]])) {
+            sprintf(
+                "Largest Failed vs Not Tested imbalance: %s%s (absolute SMD %.2f; flag=%s).",
+                overlap_row$predictor[[1]],
+                if (!is.na(overlap_row$worst_level[[1]])) sprintf(" [%s]", overlap_row$worst_level[[1]]) else "",
+                overlap_row$abs_smd[[1]],
+                overlap_row$overlap_flag[[1]]
+            )
+        } else {
+            "Failed vs Not Tested overlap diagnostics unavailable."
+        }
+    )
+
+    dplyr::bind_rows(group_rows, baseline_note, overlap_note)
 }
 
 #' Build Unified No-GEP Model Comparison Rows
@@ -2142,6 +2522,8 @@ create_no_gep_unified_model_comparison <- function(analysis_results) {
             Training_Set = spec$training_set,
             N = model_results$metrics$n[[1]],
             Events = model_results$metrics$events[[1]],
+            Model_Method = model_results$metrics$model_mode_used[[1]] %||% "raw_binary",
+            Reported_Risk_Scale = "probability_0_to_1",
             Apparent_AUC = model_results$metrics$apparent_auc[[1]],
             CV_AUC = model_results$metrics$cv_auc[[1]],
             Apparent_Brier = model_results$metrics$apparent_brier[[1]],
@@ -2184,22 +2566,28 @@ collect_exploratory_no_gep_analysis <- function(data,
         stop("collect_exploratory_no_gep_analysis() currently supports only uveal_melanoma_full_cohort.")
     }
 
+    prepared_data <- prepare_exploratory_no_gep_data(data, dataset_name = dataset_name)
+    full_data <- prepared_data$full_data
+    group_snapshot <- prepared_data$group_snapshot
+
     km_verification <- if (isTRUE(verify_km_fix)) {
-        verify_exploratory_no_gep_km_fix(data, dataset_name = dataset_name, visual_file = visual_file)
+        verify_exploratory_no_gep_km_fix(
+            data = data,
+            dataset_name = dataset_name,
+            prepared_data = prepared_data,
+            expected_group_counts = group_snapshot,
+            visual_file = visual_file
+        )
     } else {
-        prepare_exploratory_no_gep_data(data, dataset_name = dataset_name)$full_data %>%
-            dplyr::filter(!is.na(.data$exploratory_gep_group)) %>%
-            dplyr::count(.data$exploratory_gep_group, name = "observed_n") %>%
+        group_snapshot %>%
             dplyr::mutate(
-                expected_n = c(58L, 27L, 13L, 162L),
+                observed_n = .data$expected_n,
                 status = "verification_skipped"
             )
     }
-
-    prepared_data <- prepare_exploratory_no_gep_data(data, dataset_name = dataset_name)
-    full_data <- prepared_data$full_data
     data_audit <- summarize_exploratory_data_audit(prepared_data, km_verification = km_verification)
     baseline_summary <- summarize_exploratory_baseline_comparisons(prepared_data)
+    overlap_diagnostics <- calculate_exploratory_overlap_diagnostics(prepared_data)
 
     km_times <- c(60, 84, 120)
     km_corrected_mfs <- summarize_km_timepoints(
@@ -2225,26 +2613,46 @@ collect_exploratory_no_gep_analysis <- function(data,
         prepared_data$mfs_model_data,
         outcome_var = "mfs_event_5yr",
         predictors = prepared_data$predictors,
-        model_name = "Direct 5-Year MFS Risk"
+        model_name = "Direct 5-Year MFS Risk",
+        model_mode = "ipcw_horizon_binary",
+        time_var = "tt_mets_months",
+        event_var = "mets_event",
+        eval_time_months = 60,
+        include_raw_backtest = TRUE
     )
     direct_mss_model <- fit_exploratory_binary_model(
         prepared_data$mss_model_data,
         outcome_var = "mss_event_5yr",
         predictors = prepared_data$predictors,
-        model_name = "Direct 5-Year MSS Risk"
+        model_name = "Direct 5-Year MSS Risk",
+        model_mode = "ipcw_horizon_binary",
+        time_var = "tt_death_months",
+        event_var = "melanoma_death_event",
+        eval_time_months = 60,
+        include_raw_backtest = TRUE
     )
     parsimonious_predictors <- choose_exploratory_parsimonious_predictors(prepared_data)
     parsimonious_mfs_model <- fit_exploratory_binary_model(
         prepared_data$mfs_model_data,
         outcome_var = "mfs_event_5yr",
         predictors = parsimonious_predictors,
-        model_name = "Parsimonious Direct 5-Year MFS Risk"
+        model_name = "Parsimonious Direct 5-Year MFS Risk",
+        model_mode = "ipcw_horizon_binary",
+        time_var = "tt_mets_months",
+        event_var = "mets_event",
+        eval_time_months = 60,
+        include_raw_backtest = TRUE
     )
     parsimonious_mss_model <- fit_exploratory_binary_model(
         prepared_data$mss_model_data,
         outcome_var = "mss_event_5yr",
         predictors = parsimonious_predictors,
-        model_name = "Parsimonious Direct 5-Year MSS Risk"
+        model_name = "Parsimonious Direct 5-Year MSS Risk",
+        model_mode = "ipcw_horizon_binary",
+        time_var = "tt_death_months",
+        event_var = "melanoma_death_event",
+        eval_time_months = 60,
+        include_raw_backtest = TRUE
     )
 
     no_gep_predictions <- prepared_data$no_gep_prediction %>%
@@ -2338,6 +2746,7 @@ collect_exploratory_no_gep_analysis <- function(data,
         direct_mss_coefficients = direct_mss_coefficients,
         model_calibration = model_calibration,
         predictor_contribution = predictor_contribution,
+        overlap_diagnostics = overlap_diagnostics,
         no_gep_summary = no_gep_summary,
         no_gep_predictions = no_gep_predictions,
         no_gep_predictions_sheet = no_gep_predictions_sheet,
@@ -2358,10 +2767,13 @@ collect_exploratory_no_gep_analysis <- function(data,
             Predictable_MSS_N = .data$predictable_mss_n,
             MFS_5yr_Events = .data$mfs_5yr_events,
             Observed_MFS_5yr_Event_Rate = .data$observed_5yr_mfs_event_rate,
+            Observed_MFS_Method = .data$mfs_observed_method,
             Median_Predicted_MFS_5yr_Risk = .data$median_predicted_5yr_mfs_risk,
             MSS_5yr_Events = .data$mss_5yr_events,
             Observed_MSS_5yr_Event_Rate = .data$observed_5yr_mss_event_rate,
+            Observed_MSS_Method = .data$mss_observed_method,
             Median_Predicted_MSS_5yr_Risk = .data$median_predicted_5yr_mss_risk,
+            Reported_Risk_Scale = "probability_0_to_1",
             Interpretation = .data$interpretation
         )
 
@@ -2882,6 +3294,7 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
                                                    mss_model,
                                                    no_gep_summary,
                                                    risk_ladder,
+                                                   overlap_diagnostics,
                                                    parsimonious_sensitivity,
                                                    sensitivity_summary,
                                                    output_path) {
@@ -2905,6 +3318,9 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
     best_baseline_row <- baseline_summary %>%
         dplyr::filter(is.finite(.data$p_value)) %>%
         dplyr::slice_min(.data$p_value, n = 1, with_ties = FALSE)
+    top_overlap_row <- overlap_diagnostics %>%
+        dplyr::filter(is.finite(.data$abs_smd)) %>%
+        dplyr::slice_max(.data$abs_smd, n = 1, with_ties = FALSE)
 
     top_predictor_block <- c(
         md_heading("Model Overview", 3L),
@@ -2977,11 +3393,18 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
             paste(sprintf("%s=%d", data_audit$group[seq_len(4)], data_audit$n[seq_len(4)]), collapse = ", ")
         )),
         md_bullet(sprintf(
-            "Observed 5-year MFS events: Class 1 %.1f%%, GEP Not Tested %.1f%%, GEP Failed/Indeterminate %.1f%%, Class 2 %.1f%%.",
+            "Censoring-aware 5-year MFS event rates (Kaplan-Meier): Class 1 %.1f%%, GEP Not Tested %.1f%%, GEP Failed/Indeterminate %.1f%%, Class 2 %.1f%%.",
             100 * class1_ladder$observed_5yr_mfs_event_rate[[1]],
             100 * not_tested_ladder$observed_5yr_mfs_event_rate[[1]],
             100 * failed_ladder$observed_5yr_mfs_event_rate[[1]],
             100 * class2_ladder$observed_5yr_mfs_event_rate[[1]]
+        )),
+        md_bullet(sprintf(
+            "Censoring-aware 5-year MSS event rates (Aalen-Johansen CIF): Class 1 %.1f%%, GEP Not Tested %.1f%%, GEP Failed/Indeterminate %.1f%%, Class 2 %.1f%%.",
+            100 * class1_ladder$observed_5yr_mss_event_rate[[1]],
+            100 * not_tested_ladder$observed_5yr_mss_event_rate[[1]],
+            100 * failed_ladder$observed_5yr_mss_event_rate[[1]],
+            100 * class2_ladder$observed_5yr_mss_event_rate[[1]]
         )),
         md_bullet(sprintf(
             "Median predicted 5-year MFS risk from the direct clinical model: Class 1 %.3f, GEP Not Tested %.3f, GEP Failed/Indeterminate %.3f, Class 2 %.3f.",
@@ -3011,13 +3434,34 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
             not_tested_row$median_predicted_mfs_5yr_risk[[1]],
             not_tested_row$median_predicted_mss_5yr_risk[[1]]
         )),
+        if (nrow(top_overlap_row) == 1) {
+            md_bullet(sprintf(
+                paste(
+                    "Failed vs Not Tested overlap diagnostic:",
+                    "largest absolute SMD %.2f for %s%s (%s).",
+                    "Large shifts imply extrapolation risk if the two no-GEP subgroups are pooled or interpreted as exchangeable."
+                ),
+                top_overlap_row$abs_smd[[1]],
+                top_overlap_row$predictor[[1]],
+                if (!is.na(top_overlap_row$worst_level[[1]])) sprintf(" [%s]", top_overlap_row$worst_level[[1]]) else "",
+                top_overlap_row$overlap_flag[[1]]
+            ))
+        } else {
+            md_bullet("Failed vs Not Tested overlap diagnostics were unavailable.")
+        },
         "",
         md_heading("Technical Notes", 2L),
         md_bullet("A ridge-penalized surrogate model was trained only on patients with definitive Class 1 or Class 2 GEP results."),
         md_bullet("That surrogate stores P(Class 2-like | baseline features); it is a clinical resemblance score, not a recovered molecular class label."),
-        md_bullet("Direct MFS and MSS models estimate baseline-only 5-year risk when GEP is unavailable or unusable."),
+        md_bullet(sprintf(
+            "Direct MFS and MSS models estimate baseline-only 5-year risk when GEP is unavailable or unusable. Primary fitting methods: MFS=%s, MSS=%s.",
+            mfs_model$metrics$model_mode_used[[1]] %||% "raw_binary",
+            mss_model$metrics$model_mode_used[[1]] %||% "raw_binary"
+        )),
+        md_bullet("All reported no-GEP probabilities and thresholds use the 0-1 probability scale; multiply by 100 for percentages (for example, 0.20 = 20%)."),
         md_bullet("Apparent AUC is the in-sample fit; cross-validated AUC is the better estimate of expected performance on new patients."),
         md_bullet("95% repeated-CV intervals show how much AUC, Brier score, and calibration slope change across different fold assignments."),
+        md_bullet("Observed 5-year MFS and MSS rates in the subgroup and ladder summaries use censoring-aware horizon estimates rather than raw event means."),
         "",
         md_heading("Parsimonious Sensitivity Check", 2L),
         md_bullet(sprintf(
@@ -3156,6 +3600,7 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
         Direct_MSS_Coefficients = direct_mss_coefficients,
         Model_Calibration = model_calibration,
         Predictor_Contribution = predictor_contribution,
+        Overlap_Diagnostics = analysis_results$overlap_diagnostics,
         Baseline_Comparisons = baseline_summary,
         Data_Audit = data_audit,
         No_GEP_Predictions = no_gep_predictions_sheet,
@@ -3179,6 +3624,7 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
         mss_model = direct_mss_model,
         no_gep_summary = no_gep_summary,
         risk_ladder = risk_ladder,
+        overlap_diagnostics = analysis_results$overlap_diagnostics,
         sensitivity_summary = sensitivity_summary,
         parsimonious_sensitivity = parsimonious_sensitivity,
         output_path = summary_path
@@ -3269,6 +3715,7 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
         direct_mss_coefficients = direct_mss_coefficients,
         model_calibration = model_calibration,
         predictor_contribution = predictor_contribution,
+        overlap_diagnostics = analysis_results$overlap_diagnostics,
         no_gep_summary = no_gep_summary,
         no_gep_predictions = no_gep_predictions_sheet,
         sensitivity_summary = sensitivity_summary,

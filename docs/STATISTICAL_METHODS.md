@@ -661,6 +661,20 @@ Raw horizon event indicators are still created during preprocessing:
 
 Those binary indicators remain useful for descriptive sensitivity summaries, but they are no longer the primary observed side of the MFS O/E calculation.
 
+For MSS, the primary observed side of the O/E calculation is now also censoring-aware when the workbook is summarizing melanoma-specific death under competing risks:
+
+- the pipeline estimates melanoma-death cumulative incidence at the requested horizon with Aalen-Johansen / cumulative-incidence machinery,
+- converts that cumulative incidence to observed melanoma-death risk at the horizon,
+- and rescales that risk to the cohort count scale as $O(t) = N \times \hat{F}_{AJ}(t)$.
+
+Accordingly, for MSS:
+
+$$
+O_{MSS}(t) = N \times \hat{F}_{AJ}(t)
+$$
+
+This is again a pseudo-event count on the original denominator scale. It is not the raw count of observed melanoma deaths by time $t$ when censoring or competing non-melanoma deaths occur before the horizon.
+
 Sheet distinction:
 - For MFS, the `Observed_Expected_Summary` sheet reflects the Kaplan-Meier-derived observed count scale described above.
 - The `Observed_Expected_Summary` sheet reports its overall goodness-of-fit p-value as `OE_Chi_Square_p`.
@@ -875,6 +889,8 @@ The pipeline intentionally removed Uno's C and single-timepoint time-dependent A
 - The code fits `coxph(Surv(observed_time, observed_event) ~ predicted_risk)`.
 - It then calls `riskRegression::Score()` with monthly evaluation times: `seq(0, max(observed_time), by = 12)`.
 - The reported integrated AUC is the mean of the returned AUC values across those time periods.
+- If `riskRegression::Score()` does not return a finite integrated AUC, the pipeline now leaves `Integrated_AUC` as missing and carries the explanation in `Integrated_AUC_Status`, `Integrated_AUC_Method`, and `Integrated_AUC_Unavailable_Reason`.
+- The pipeline does not silently substitute Harrell's C or another discrimination metric when integrated AUC is not estimable.
 
 **Cumulative discrimination (`Cumulative_Discrimination`):**
 - The code recomputes truncated Harrell-style concordance across prespecified 5-, 7-, and 10-year windows.
@@ -1039,14 +1055,15 @@ For a plain-English reading order for PRAME outputs, see [Understanding PRAME In
 **Location:** `{cohort}/04_GEP_Validation/` with outcome-specific subfolders for MFS and MSS
 
 **Files:**
-- `a_metastasis_free_survival/*_MFS_consolidated_summary.xlsx` — primary MFS review workbook, including `Observed_Expected_Summary`
-- `b_melanoma_specific_survival/*_MSS_consolidated_summary.xlsx` — primary MSS review workbook, including `Observed_Expected_Summary`
-- `a_metastasis_free_survival/*mfs_validation_technical_details.xlsx` and `b_melanoma_specific_survival/*mss_validation_technical_details.xlsx` — technical-detail workbooks without duplicated high-level calibration/discrimination summary sheets
+- `a_metastasis_free_survival/05_summary_tables/*_MFS_consolidated_summary.xlsx` — primary MFS review workbook, including `Observed_Expected_Summary`
+- `b_melanoma_specific_survival/03_summary_tables/*_MSS_consolidated_summary.xlsx` — primary MSS review workbook, including `Observed_Expected_Summary`
+- `a_metastasis_free_survival/05_summary_tables/*mfs_validation_technical_details.xlsx` and `b_melanoma_specific_survival/03_summary_tables/*mss_validation_technical_details.xlsx` — technical-detail workbooks without duplicated high-level calibration/discrimination summary sheets
 - `a_metastasis_free_survival/*mfs_validation_narrative_summary.md` and `b_melanoma_specific_survival/*mss_validation_narrative_summary.md` — narrative summaries
 - `*unified_gep_validation_summary.xlsx` at the root of `04_GEP_Validation/` — comparison-only cross-outcome workbook
 - For the full cohort, the unified workbook also includes `No_GEP_Overview`, `No_GEP_Model_Comparison`, and `No_GEP_Risk_Strata`
 - `unified_summary/*simple_gep_validation.*` — optional QC output from the simple checker; for MFS, the observed 5-year value is KM at 60 months rather than a naive event-free proportion
 - Limited PNGs: KM for MFS, CIF for MSS, full-spectrum calibration curves (`*mfs_calibration_full.png`, `*mss_calibration_full.png`), and optional outcome-specific PRAME delta-C plots (`*mfs_prame_delta_c.png`, `*mss_prame_delta_c.png`)
+- Sparse-model diagnostics such as `*_NO_CONTENT_DIAGNOSTIC.html` now live under the Cox-model subfolders (for example `a_metastasis_free_survival/02_cox_models/`) rather than beside the summary workbooks.
 
 **Schema note:** `PRAME_Summary` is always written in consolidated workbooks, and `PRAME_Comparison` is always written in unified workbooks. Sparse cohorts may receive explanatory placeholder rows instead of full PRAME incremental-comparison results. The full-cohort unified workbook may additionally append `No_GEP_*` tabs, but restricted and GKSRS cohorts do not currently receive those exploratory sheets.
 
@@ -1064,9 +1081,12 @@ This workflow keeps `GEP Failed/Indeterminate` and `GEP Not Tested` separate in 
 
 Before fitting exploratory models, the workflow:
 
+- reuses the Objective 0-prepared analytic object as the authoritative no-GEP input contract rather than rebuilding a separate preprocessing path
+- fails fast if the required columns or expected report-facing GEP group structure are missing
 - restores the report-facing GEP class variables used for Objective 4 summaries
 - derives `no_gep_group` and the fixed binary baseline indicators (`ciliary_involvement`, `optic_nerve_involvement`)
 - derives 5-year binary endpoints (`mfs_event_5yr`, `mss_event_5yr`) when needed from event/time fields
+- derives the expected exploratory group counts from the prepared-dataset snapshot itself rather than from hardcoded numbers
 - optionally verifies expected cohort counts and simplified KM risk-table row/count alignment for the four exploratory GEP groups
 
 #### Candidate predictor screening and retained set
@@ -1090,11 +1110,15 @@ The derived `ciliary_involvement` field is included in no-GEP prediction outputs
 
 #### Exploratory model definitions
 
-Three ridge-penalized logistic regression models are fit with `glmnet::cv.glmnet(..., family = "binomial", alpha = 0)`:
+Three exploratory models are fit:
 
 1. surrogate `Class 2-like` model fitted only on definitive `Class 1` versus `Class 2` patients, with binary outcome coding `class2_outcome = 1` for `Class 2` and `0` for `Class 1`
 2. direct 5-year MFS risk model fitted on the full eligible cohort with a 5-year metastasis endpoint
 3. direct 5-year MSS risk model fitted on the full eligible cohort with a 5-year melanoma-specific death endpoint
+
+The surrogate remains a ridge-penalized logistic model fit with `glmnet::cv.glmnet(..., family = "binomial", alpha = 0)`.
+
+For the direct 5-year MFS and MSS models, the preferred path is now IPCW-weighted horizon modeling so the binary horizon target remains aligned with censoring-aware estimation. A raw binary `cv.glmnet` path is still retained only as a fallback/backtest when the preferred IPCW path is not supportable.
 
 #### Ridge regression: form and motivation
 
@@ -1150,6 +1174,13 @@ The exploratory workbook includes:
 - a four-group 5-year risk ladder placing `Class 1`, `GEP Not Tested`, `GEP Failed/Indeterminate`, and `Class 2` on the same descriptive event-rate and predicted-risk scale
 - pooled low/intermediate/high-style sensitivity summaries based on quantile bins
 - a parsimonious direct-model sensitivity table comparing the full and lower-complexity direct models
+
+Observed no-GEP outcomes in the risk ladder and pooled summaries are now horizon-specific censoring-aware estimates:
+
+- KM-at-horizon for MFS-style observed risk
+- Aalen-Johansen cumulative incidence at the horizon for MSS-style observed risk
+
+These workbook sections also use a documented 0-to-1 probability scale for threshold and predicted-risk fields, and they append overlap diagnostics comparing `GEP Failed/Indeterminate` with `GEP Not Tested` so extrapolation risk is not hidden behind a single pooled no-GEP summary.
 
 The full-cohort unified Objective 4 workbook adds a compact version of the same material:
 

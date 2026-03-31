@@ -290,7 +290,8 @@ test_that("survival helper can separate KM display groups from Cox model groups"
 
     expect_true(any(grepl("GEP Failed/Indeterminate", names(result$fit$strata))))
     expect_false(any(grepl("Other", names(result$fit$strata))))
-    expect_match(result$diagnostics$raw_model_output, "skipped")
+    expect_match(result$diagnostics$raw_model_output, "After sparse-level exclusions")
+    expect_match(result$diagnostics$raw_model_output, "requires at least two non-missing")
 })
 
 test_that("risk table keeps displayed row labels aligned with their counts when legend order differs from fit order", {
@@ -329,14 +330,7 @@ test_that("risk table keeps displayed row labels aligned with their counts when 
         prefix = NULL
     ))
 
-    observed_baseline <- result$plot$table$data %>%
-        dplyr::filter(.data$time == 0) %>%
-        dplyr::transmute(strata = as.character(.data$strata), n_risk = .data$n.risk)
-
-    observed_lookup <- stats::setNames(observed_baseline$n_risk, observed_baseline$strata)
-
     expect_equal(rev(extract_risk_table_y_limits(result$plot$table)), desired_order)
-    expect_equal(unname(observed_lookup[desired_order]), unname(baseline_counts[desired_order]))
     expect_equal(extract_displayed_risk_counts(result$plot$table, time_point = 0), unname(baseline_counts[desired_order]))
 })
 
@@ -380,14 +374,7 @@ test_that("risk table preserves requested row order for a subset of present stra
         prefix = NULL
     ))
 
-    observed_baseline <- result$plot$table$data %>%
-        dplyr::filter(.data$time == 0) %>%
-        dplyr::transmute(strata = as.character(.data$strata), n_risk = .data$n.risk)
-
-    observed_lookup <- stats::setNames(observed_baseline$n_risk, observed_baseline$strata)
-
     expect_equal(rev(extract_risk_table_y_limits(result$plot$table)), present_order)
-    expect_equal(unname(observed_lookup[present_order]), unname(baseline_counts[present_order]))
     expect_equal(extract_displayed_risk_counts(result$plot$table, time_point = 0), unname(baseline_counts[present_order]))
 })
 
@@ -575,13 +562,13 @@ test_that("GEP text summaries format tiny p-values in scientific notation", {
     attr(validation_results[["5yr"]]$observed_expected, "overall_poisson_ci_lower") <- 0.4
     attr(validation_results[["5yr"]]$observed_expected, "overall_poisson_ci_upper") <- 1.2
 
-    summary_text <- create_detailed_metrics_table(validation_results)
+    summary_text <- paste(create_detailed_metrics_table(validation_results), collapse = "\n")
 
     expect_match(summary_text, "^\\| Timepoint \\| Calibration \\| Discrimination \\| Observed vs Expected \\|", perl = TRUE)
     expect_match(summary_text, "Nam-D'Agostino p=2\\.340e-05")
     expect_match(summary_text, "Chi-square p=5\\.670e-08")
-    expect_false(grepl("Nam-D'Agostino p=0\\.0000", summary_text))
-    expect_false(grepl("Chi-square p=0\\.0000", summary_text))
+    expect_false(any(grepl("Nam-D'Agostino p=0\\.0000", summary_text)))
+    expect_false(any(grepl("Chi-square p=0\\.0000", summary_text)))
 })
 
 test_that("GEP p-value formatter returns 0 when the value is truly underflowed", {
@@ -900,6 +887,25 @@ test_that("MFS observed expected summaries retain the overall denominator", {
     expect_equal(fallback_metrics$n, 22)
 })
 
+test_that("MSS observed expected summaries use censoring-aware cumulative incidence", {
+    test_data <- tibble::tibble(
+        biopsy1_gep = c("Class 1", "Class 1", "Class 1", "Class 2", "Class 2"),
+        expected_mss_5yr = c(0.70, 0.70, 0.70, 0.30, 0.30),
+        tt_death_months = c(48, 24, 24, 72, 72),
+        melanoma_death_event = c(1, 0, 0, 0, 0),
+        competing_death_event = c(0, 0, 0, 0, 0),
+        mss_event_5yr = c(1, 0, 0, 0, 0),
+        mss_analysis_eligible = c(TRUE, TRUE, TRUE, TRUE, TRUE)
+    )
+
+    oe_results <- calculate_observed_expected_mss(test_data, timepoint = 5)
+
+    class1_row <- oe_results %>% dplyr::filter(.data$biopsy1_gep == "Class 1")
+    expect_equal(class1_row$observed_method[[1]], "aalen_johansen_cif_at_horizon")
+    expect_true(class1_row$observed[[1]] > sum(test_data$melanoma_death_event[test_data$biopsy1_gep == "Class 1"]))
+    expect_equal(attr(oe_results, "overall_observed_method"), "aalen_johansen_cif_at_horizon")
+})
+
 test_that("Greenwood Nam-D'Agostino uses KM-adjusted grouped observed events", {
     test_data <- tibble::tibble(
         predicted_risk = c(
@@ -1158,6 +1164,31 @@ test_that("consolidated Objective 4 summaries carry extrapolation metadata", {
         expect_equal(summary_df$Prediction_Source[[2]], "Extrapolated from imported 5-year value")
         expect_equal(summary_df$Assumption_Support_Status[[2]], "Weakly Supported")
     }
+})
+
+test_that("discrimination consolidation preserves iAUC provenance without substitution", {
+    validation_results <- list(
+        `5yr` = list(
+            discrimination = list(
+                n = 30,
+                events = 8,
+                harrell_c = 0.82,
+                integrated_auc = NA_real_,
+                integrated_auc_status = "not_estimable",
+                integrated_auc_method = "riskRegression::Score_integrated",
+                integrated_auc_na_reason = "riskRegression::Score returned no finite AUC estimates",
+                cumulative_discrimination = 0.79,
+                time_averaged_discrimination = 0.78
+            ),
+            decision_curve = list(n = 30, events = 8, event_rate = 8 / 30, optimal_threshold = 0.3, optimal_net_benefit = 0.01)
+        )
+    )
+
+    disc_consolidated <- create_consolidated_discrimination_table(validation_results, outcome_type = "MSS")
+    expect_true(is.na(disc_consolidated$Integrated_AUC[[1]]))
+    expect_equal(disc_consolidated$Integrated_AUC_Status[[1]], "not_estimable")
+    expect_equal(disc_consolidated$Integrated_AUC_Method[[1]], "riskRegression::Score_integrated")
+    expect_match(disc_consolidated$Integrated_AUC_Unavailable_Reason[[1]], "no finite AUC", ignore.case = TRUE)
 })
 
 test_that("Objective 4 extrapolation check classifies sparse data as unsupported", {
@@ -1583,10 +1614,10 @@ test_that("run_objective_4 carries confounders into adjusted GEP MFS effect summ
     }
 
     merged_simple <- adjusted_simple %>%
-        dplyr::select(.data$term, adjusted_estimate = .data$estimate) %>%
+        dplyr::select(term, adjusted_estimate = estimate) %>%
         dplyr::inner_join(
             unadjusted_simple %>%
-                dplyr::select(.data$term, unadjusted_estimate = .data$estimate),
+                dplyr::select(term, unadjusted_estimate = estimate),
             by = "term"
         )
 
@@ -1617,12 +1648,14 @@ test_that("4e: Existing Objective 4 cohort artifacts follow current placement co
         mfs_dir <- file.path(cfg$base_dir, "a_metastasis_free_survival")
         mss_dir <- file.path(cfg$base_dir, "b_melanoma_specific_survival")
         unified_dir <- file.path(cfg$base_dir, "unified_summary")
+        mfs_summary_dir <- file.path(mfs_dir, "05_summary_tables")
+        mss_summary_dir <- file.path(mss_dir, "03_summary_tables")
 
-        expect_true(file.exists(file.path(mfs_dir, paste0(cfg$prefix, "MFS_consolidated_summary.xlsx"))),
+        expect_true(file.exists(file.path(mfs_summary_dir, paste0(cfg$prefix, "MFS_consolidated_summary.xlsx"))),
             info = sprintf("MFS consolidated workbook should exist for %s cohort", cfg$name))
-        expect_true(file.exists(file.path(mss_dir, paste0(cfg$prefix, "MSS_consolidated_summary.xlsx"))),
+        expect_true(file.exists(file.path(mss_summary_dir, paste0(cfg$prefix, "MSS_consolidated_summary.xlsx"))),
             info = sprintf("MSS consolidated workbook should exist for %s cohort", cfg$name))
-        expect_true(file.exists(file.path(mss_dir, paste0(cfg$prefix, "mss_validation_technical_details.xlsx"))),
+        expect_true(file.exists(file.path(mss_summary_dir, paste0(cfg$prefix, "mss_validation_technical_details.xlsx"))),
             info = sprintf("MSS validation workbook should exist for %s cohort", cfg$name))
         expect_true(file.exists(file.path(cfg$base_dir, paste0(cfg$prefix, "unified_gep_validation_summary.xlsx"))),
             info = sprintf("Root-level unified workbook should exist for %s cohort", cfg$name))
@@ -1639,7 +1672,7 @@ test_that("4e: Existing Objective 4 cohort artifacts follow current placement co
         }
 
         if (identical(cfg$name, "gksrs")) {
-            expect_true(file.exists(file.path(mfs_dir, paste0(cfg$prefix, "metastasis_free_survival_probability_cox_NO_CONTENT_DIAGNOSTIC.html"))),
+            expect_true(file.exists(file.path(mfs_dir, "02_cox_models", paste0(cfg$prefix, "simple_gep_binary_metastasis_free_survival_probability_cox_NO_CONTENT_DIAGNOSTIC.html"))),
                 info = "GKSRS cohort should retain the explicit NO_CONTENT diagnostic artifact when PH diagnostics are sparse")
         }
     }

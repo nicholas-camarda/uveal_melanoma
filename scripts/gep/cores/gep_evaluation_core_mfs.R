@@ -371,8 +371,11 @@ perform_discrimination_mfs <- function(data, timepoint) {
 
     # 3. INTEGRATED AUC (iAUC) - Robust discrimination metric over time periods
     # This is more robust than point estimates as it integrates over time ranges
-    integrated_auc <- NA
+    integrated_auc <- NA_real_
     integrated_auc_method <- NA_character_
+    integrated_auc_status <- "not_attempted"
+    integrated_auc_na_reason <- NA_character_
+    integrated_auc_time_periods <- 0L
     
     tryCatch({
         # Use riskRegression::Score for integrated AUC over time periods
@@ -390,23 +393,31 @@ perform_discrimination_mfs <- function(data, timepoint) {
             summary = "risks"
         )
         
+        auc_data <- NULL
         if (!is.null(roc_result$AUC)) {
             auc_data <- roc_result$AUC$score
-            if (nrow(auc_data) > 0) {
+            if (nrow(auc_data) > 0 && any(is.finite(auc_data$AUC))) {
                 # Calculate integrated AUC as mean across time periods
                 integrated_auc <- mean(auc_data$AUC, na.rm = TRUE)
+                integrated_auc_status <- "ok"
+            } else {
+                integrated_auc_status <- "not_estimable"
+                integrated_auc_na_reason <- "riskRegression::Score returned no finite AUC estimates"
             }
         }
         integrated_auc_method <- "riskRegression::Score_integrated"
+        integrated_auc_time_periods <- if (!is.null(auc_data) && nrow(auc_data) > 0) nrow(auc_data) else 0L
         
         logger::log_info(formatted(sprintf(
             "Integrated AUC calculated successfully (MFS): %.3f over %d time periods",
-            integrated_auc, nrow(auc_data)
+            integrated_auc, integrated_auc_time_periods
         ), indent = 3))
         
     }, error = function(e) {
         logger::log_warn(formatted(sprintf("Integrated AUC calculation failed (MFS): %s", e$message), indent = 3))
-        integrated_auc_method <- "calculation_failed"
+        integrated_auc_method <- "riskRegression::Score_integrated"
+        integrated_auc_status <- "not_estimable"
+        integrated_auc_na_reason <- e$message
     })
 
     # 4. CUMULATIVE DISCRIMINATION - Discrimination ability over time ranges
@@ -568,6 +579,9 @@ perform_discrimination_mfs <- function(data, timepoint) {
         # Replaced with robust alternatives below
         integrated_auc = round(integrated_auc, 3),
         integrated_auc_method = integrated_auc_method,
+        integrated_auc_status = integrated_auc_status,
+        integrated_auc_na_reason = integrated_auc_na_reason,
+        integrated_auc_time_periods = integrated_auc_time_periods,
         cumulative_discrimination = round(cumulative_discrimination, 3),
         cumulative_discrimination_method = cumulative_discrimination_method,
         time_averaged_discrimination = round(time_averaged_discrimination, 3),

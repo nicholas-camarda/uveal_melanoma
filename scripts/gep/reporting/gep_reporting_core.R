@@ -20,7 +20,7 @@
 save_mfs_validation_results <- function(validation_results,
                                         missing_data_analysis,
                                         prame_analysis,
-                                        extrapolation_assessment,
+                                        extrapolation_assessment = NULL,
                                         source_data = NULL,
                                         output_dir,
                                         prefix,
@@ -143,7 +143,7 @@ save_mfs_validation_results <- function(validation_results,
 #' @param dataset_name Optional dataset label for saved narrative summaries
 #' @return Invisibly returns NULL after writing files
 save_mss_validation_results <- function(standard_results, competing_results,
-                                        missing_data, prame_results, extrapolation_assessment, source_data = NULL, output_dir, prefix,
+                                        missing_data, prame_results, extrapolation_assessment = NULL, source_data = NULL, output_dir, prefix,
                                         group_var = get_gep_grouping_for_context("mss", "reporting")$var, dataset_name = NULL) {
     logger::log_info("Saving MSS validation results")
     if (GEP_SAVE_RDS) {
@@ -336,7 +336,7 @@ create_mss_validation_excel_files <- function(standard_results, competing_result
 #' @param dataset_name Optional dataset label for narrative reporting.
 #' @return Invisibly returns `NULL` after writing the outputs.
 create_mss_validation_summary_text <- function(standard_results, competing_results,
-                                               missing_data, prame_results, extrapolation_assessment, source_data = NULL, output_dir, prefix,
+                                               missing_data, prame_results, extrapolation_assessment = NULL, source_data = NULL, output_dir, prefix,
                                                group_var = get_gep_grouping_for_context("mss", "reporting")$var, dataset_name = NULL) {
     logger::log_info("Creating MSS validation summary markdown file")
     

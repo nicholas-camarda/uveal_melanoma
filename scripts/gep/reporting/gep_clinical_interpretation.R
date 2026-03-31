@@ -198,7 +198,7 @@ summarize_gep_slope_issue_pattern <- function(calibration_data) {
             non_events = non_events[[i]],
             unique_risk_count = unique_risk_counts[[i]],
             slope_se = slope_ses[[i]],
-            include_counts = FALSE
+            include_counts = TRUE
         )
     }, character(1))
 
@@ -439,6 +439,32 @@ create_discrimination_interpretation <- function(discrimination_data, outcome_ty
         ""
     }
     
+    iauc_note <- NULL
+    if ("Integrated_AUC_Status" %in% names(discrimination_data)) {
+        unavailable_rows <- discrimination_data %>%
+            dplyr::filter(.data$Integrated_AUC_Status != "ok" | !is.finite(.data$Integrated_AUC))
+
+        if (nrow(unavailable_rows) == nrow(discrimination_data)) {
+            reasons <- unavailable_rows$Integrated_AUC_Unavailable_Reason
+            methods <- unavailable_rows$Integrated_AUC_Method
+            iauc_note <- sprintf(
+                " Integrated AUC was unavailable at all reported timepoints (method=%s%s).",
+                unique(stats::na.omit(methods))[1] %||% "not recorded",
+                if (any(nzchar(stats::na.omit(reasons)))) {
+                    sprintf("; first reason: %s", stats::na.omit(reasons)[1])
+                } else {
+                    ""
+                }
+            )
+        } else if (nrow(unavailable_rows) > 0) {
+            iauc_note <- sprintf(
+                " Integrated AUC was unavailable for %d/%d timepoints; the detailed metrics table records the method and failure reason.",
+                nrow(unavailable_rows),
+                nrow(discrimination_data)
+            )
+        }
+    }
+
     interpretation <- sprintf(
         "Discrimination was %s and %s, with mean Harrell's C-index = %.3f%s. The model %s separates higher- and lower-risk patients.",
         discrimination_quality,
@@ -447,6 +473,10 @@ create_discrimination_interpretation <- function(discrimination_data, outcome_ty
         range_text,
         if (discrimination_quality %in% c("excellent", "very good")) "effectively" else "adequately"
     )
+
+    if (!is.null(iauc_note) && nzchar(iauc_note)) {
+        interpretation <- paste0(interpretation, iauc_note)
+    }
     
     return(interpretation)
 }
@@ -664,8 +694,9 @@ get_slope_trend <- function(slopes) {
 #' @return Character description of threshold-specific utility.
 get_decision_curve_interpretation <- function(threshold, net_benefit) {
     if (is.na(threshold) || is.na(net_benefit)) return("Not available")
-    if (threshold < 5) return("Low threshold - model useful for most patients")
-    if (threshold < 20) return("Moderate threshold - model useful for moderate risk")
+    threshold_percent <- threshold * 100
+    if (threshold_percent < 5) return("Low threshold - model useful for most patients")
+    if (threshold_percent < 20) return("Moderate threshold - model useful for moderate risk")
     return("High threshold - model useful for high risk only")
 }
 

@@ -590,9 +590,9 @@ The main Objective 4 denominator is deliberately stricter than “any row with a
 ### Where to Find the Files
 
 - Objective 4 outputs live under `04_GEP_Validation/` inside each cohort directory.
-- Start with the outcome-specific consolidated workbook named `<prefix>MFS_consolidated_summary.xlsx` or `<prefix>MSS_consolidated_summary.xlsx`.
-- Technical-detail workbooks `<prefix>mfs_validation_technical_details.xlsx` and `<prefix>mss_validation_technical_details.xlsx` sit in the matching outcome folders. They are now companion detail files rather than alternate summary workbooks.
-- Narrative Markdown summaries `<prefix>mfs_validation_narrative_summary.md` and `<prefix>mss_validation_narrative_summary.md` sit alongside those technical workbooks.
+- Start with the outcome-specific consolidated workbook in `a_metastasis_free_survival/05_summary_tables/` or `b_melanoma_specific_survival/03_summary_tables/`, named `<prefix>MFS_consolidated_summary.xlsx` or `<prefix>MSS_consolidated_summary.xlsx`.
+- Technical-detail workbooks `<prefix>mfs_validation_technical_details.xlsx` and `<prefix>mss_validation_technical_details.xlsx` sit in those same summary-table subfolders. They are companion detail files rather than alternate summary workbooks.
+- Narrative Markdown summaries `<prefix>mfs_validation_narrative_summary.md` and `<prefix>mss_validation_narrative_summary.md` sit alongside those technical workbooks in the same summary-table subfolders.
 - Full calibration curve figures `<prefix>mfs_calibration_full.png` and `<prefix>mss_calibration_full.png` sit in the outcome validation folders and summarize calibration across the risk spectrum. Each dot is one predicted-risk quantile bin (x = mean predicted risk in bin; y = KM observed risk at the horizon), and the smooth line is an IPCW-weighted spline recalibration curve when feasible.
 - Unified cross-outcome summaries live at the root of `04_GEP_Validation/` as `<prefix>unified_gep_validation_summary.xlsx`. This workbook is comparison-only rather than a second outcome-summary workbook.
 - For the full cohort, that unified workbook now also includes compact no-GEP tabs: `No_GEP_Overview`, `No_GEP_Model_Comparison`, and `No_GEP_Risk_Strata`.
@@ -616,9 +616,9 @@ The main Objective 4 denominator is deliberately stricter than “any row with a
 
 | Item | Details |
 | --- | --- |
-| Primary workbook pattern | `<prefix>MFS_consolidated_summary.xlsx` or `<prefix>MSS_consolidated_summary.xlsx`. |
-| Technical workbooks | `<prefix>mfs_validation_technical_details.xlsx` and `<prefix>mss_validation_technical_details.xlsx` in the outcome folders; these keep lower-level detail and no longer repeat the consolidated summary calibration/discrimination tables. |
-| Narrative summaries | `<prefix>mfs_validation_narrative_summary.md` and `<prefix>mss_validation_narrative_summary.md`. |
+| Primary workbook pattern | `a_metastasis_free_survival/05_summary_tables/<prefix>MFS_consolidated_summary.xlsx` or `b_melanoma_specific_survival/03_summary_tables/<prefix>MSS_consolidated_summary.xlsx`. |
+| Technical workbooks | `<prefix>mfs_validation_technical_details.xlsx` and `<prefix>mss_validation_technical_details.xlsx` in those outcome-specific summary-table subfolders; these keep lower-level detail and no longer repeat the consolidated summary calibration/discrimination tables. |
+| Narrative summaries | `<prefix>mfs_validation_narrative_summary.md` and `<prefix>mss_validation_narrative_summary.md` in those same summary-table subfolders. |
 | Calibration curve PNGs | `<prefix>mfs_calibration_full.png` and `<prefix>mss_calibration_full.png` (one per outcome; faceted by timepoint). |
 | Unified workbook | `<prefix>unified_gep_validation_summary.xlsx` at the root of `04_GEP_Validation/`; this workbook uses comparison-only sheet names such as `Calibration_Comparison`, `Discrimination_Comparison`, `PRAME_Comparison`, and `Missing_Data_Comparison`. The full cohort additionally appends `No_GEP_Overview`, `No_GEP_Model_Comparison`, and `No_GEP_Risk_Strata`. |
 | Simple QC workbook | `unified_summary/<prefix>simple_gep_validation.xlsx`. For MFS, the observed 5-year value is KM at 60 months. |
@@ -638,11 +638,14 @@ If you only need the highest-yield no-GEP summary inside the root Objective 4 wo
 2. `No_GEP_Model_Comparison`
   - Use this next to compare the surrogate, full direct 5-year MFS/MSS models, and parsimonious direct sensitivity models side by side.
   - The `Use_Case` column distinguishes the descriptive surrogate from the clinically preferred direct-risk outputs.
+  - The direct MFS/MSS rows should now usually show IPCW horizon modeling as the primary method; raw binary fitting is a fallback rather than the headline result.
 3. `No_GEP_Risk_Ladder`
   - Use this before the pooled-bin sheet when you need to place `GEP Not Tested` and `GEP Failed/Indeterminate` relative to definitive `Class 1` and `Class 2`.
   - This is the safest place to support an “overall between Class 1 and Class 2, but internally heterogeneous” interpretation.
+  - The observed MFS and MSS quantities in this section are censoring-aware horizon estimates, not raw event fractions.
 4. `No_GEP_Risk_Strata`
   - Use this to confirm whether low/intermediate/high predicted bins actually show increasing observed 5-year MFS or MSS event rates.
+  - Check the overlap diagnostic language before making strong statements about transportability from definitive-GEP patients into the no-GEP groups.
 
 Then open the appendix workbook only if you need the full baseline table, patient-level predictions, or the full predictor-contribution sheets.
 
@@ -878,6 +881,7 @@ If you want the shortest possible version, read [GEP Calibration Made Simple](#g
 - `Events`: Number of outcome events accumulated by that year.
 - `Harrell_C`: Primary concordance field. For MFS, this is a horizon-specific concordance estimate after truncating follow-up at the sheet's timepoint. For MSS, this is computed from the full observed follow-up within the horizon-specific analytic subset rather than the same horizon-truncated estimand used for MFS.
 - `Integrated_AUC`: Mean `riskRegression::Score()` AUC over monthly follow-up intervals rather than a single landmark AUC.
+- `Integrated_AUC_Status`, `Integrated_AUC_Method`, `Integrated_AUC_Unavailable_Reason`: provenance fields telling you whether iAUC was actually estimable, how it was computed, and why it is missing when absent. Missing iAUC should be read as "not estimable," not as implicit fallback to Harrell's C.
 - `Cumulative_Discrimination`: Mean truncated concordance across the prespecified 5-, 7-, and 10-year windows that had enough events to evaluate.
 - `Time_averaged_Discrimination`: Mean truncated concordance across monthly follow-up landmarks.
 - `IPA`, `IPA_Method`, `IPA_Fallback_Used`: Index of Prediction Accuracy at that horizon. The preferred estimator is the Brier-score comparison against the null event-rate benchmark; the method columns tell you when the pipeline had to fall back to the AUC-based or simplified estimator.

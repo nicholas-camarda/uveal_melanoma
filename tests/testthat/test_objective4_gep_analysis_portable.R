@@ -156,6 +156,9 @@ test_that("Unified GEP summary accepts MSS standard_validation containers", {
                 events = 4,
                 harrell_c = 0.81,
                 integrated_auc = 0.77,
+                integrated_auc_status = "ok",
+                integrated_auc_method = "riskRegression::Score_integrated",
+                integrated_auc_na_reason = NA_character_,
                 cumulative_discrimination = 0.79,
                 time_averaged_discrimination = 0.78
             )
@@ -171,6 +174,7 @@ test_that("Unified GEP summary accepts MSS standard_validation containers", {
 
     expect_true(any(summary$calibration$Outcome == "MSS"))
     expect_true(any(summary$discrimination$Outcome == "MSS"))
+    expect_true(all(c("Integrated_AUC_Status", "Integrated_AUC_Method", "Integrated_AUC_Unavailable_Reason") %in% names(summary$discrimination)))
 })
 
 test_that("Objective 4 returns fatal issues and failed run_state when MSS analysis errors", {

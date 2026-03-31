@@ -160,6 +160,9 @@ create_comprehensive_gep_summary <- function(validation_results, outcome_type, p
         Timepoint = character(),
         Harrell_C = numeric(),
         Integrated_AUC = numeric(),
+        Integrated_AUC_Status = character(),
+        Integrated_AUC_Method = character(),
+        Integrated_AUC_Unavailable_Reason = character(),
         Cumulative_Discrimination = numeric(),
         Time_averaged_Discrimination = numeric(),
         stringsAsFactors = FALSE
@@ -219,6 +222,9 @@ create_comprehensive_gep_summary <- function(validation_results, outcome_type, p
                 Timepoint = tp,
                 Harrell_C = ifelse(is.null(disc$harrell_c), NA_real_, disc$harrell_c),
                 Integrated_AUC = ifelse(is.null(disc$integrated_auc), NA_real_, disc$integrated_auc),
+                Integrated_AUC_Status = ifelse(is.null(disc$integrated_auc_status), NA_character_, disc$integrated_auc_status),
+                Integrated_AUC_Method = ifelse(is.null(disc$integrated_auc_method), NA_character_, disc$integrated_auc_method),
+                Integrated_AUC_Unavailable_Reason = ifelse(is.null(disc$integrated_auc_na_reason), NA_character_, disc$integrated_auc_na_reason),
                 Cumulative_Discrimination = ifelse(is.null(disc$cumulative_discrimination), NA_real_, disc$cumulative_discrimination),
                 Time_averaged_Discrimination = ifelse(is.null(disc$time_averaged_discrimination), NA_real_, disc$time_averaged_discrimination),
                 stringsAsFactors = FALSE

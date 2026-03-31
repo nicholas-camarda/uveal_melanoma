@@ -55,7 +55,7 @@ get_observed_level_counts <- function(values, excluded_levels = character()) {
     counts <- table(values, useNA = "no")
 
     tibble::tibble(
-        level = names(counts),
+        level = if (length(counts) == 0) character() else names(counts),
         observed_n = as.integer(counts)
     )
 }

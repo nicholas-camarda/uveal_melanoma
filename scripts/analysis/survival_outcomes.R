@@ -1675,21 +1675,21 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             rmst_has_rows <- nrow(completed_rmst_results) > 0
             if (!rmst_has_rows) {
                 logger::log_info(sprintf("Skipping RMST plot generation - no RMST rows available for %s", ylab))
-                return(NULL)
+                NULL
+            } else {
+                # Get group names for RMST plot - use levels() to match factor order
+                factor_levels <- levels(km_data[[plot_group_var]])
+                
+                # If not a factor or no levels, fall back to unique values in sorted order
+                if (is.null(factor_levels) || length(factor_levels) == 0) {
+                    factor_levels <- sort(unique(km_data[[plot_group_var]]))
+                }
+                
+                group1_name <- as.character(factor_levels[1])
+                group2_name <- as.character(factor_levels[2])
+                
+                plot_rmst_pvalue_progression(completed_rmst_results, ylab, output_dirs, prefix, group1_name, group2_name, plot_group_var)
             }
-
-            # Get group names for RMST plot - use levels() to match factor order
-            factor_levels <- levels(km_data[[plot_group_var]])
-            
-            # If not a factor or no levels, fall back to unique values in sorted order
-            if (is.null(factor_levels) || length(factor_levels) == 0) {
-                factor_levels <- sort(unique(km_data[[plot_group_var]]))
-            }
-            
-            group1_name <- as.character(factor_levels[1])
-            group2_name <- as.character(factor_levels[2])
-            
-            plot_rmst_pvalue_progression(completed_rmst_results, ylab, output_dirs, prefix, group1_name, group2_name, plot_group_var)
         }, error = function(e) {
             logger::log_warn(sprintf("RMST plot generation failed: %s", e$message))
             NULL

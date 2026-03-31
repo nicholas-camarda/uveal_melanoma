@@ -108,7 +108,8 @@ test_that("GEP output consolidation creates comprehensive summary tables", {
     expect_equal(nrow(disc_table), 3)  # 3 timepoints
     expect_true(all(c(
         "Timepoint", "N", "Events", "Harrell_C",
-        "Integrated_AUC", "Cumulative_Discrimination",
+        "Integrated_AUC", "Integrated_AUC_Status", "Integrated_AUC_Method", "Integrated_AUC_Unavailable_Reason",
+        "Cumulative_Discrimination",
         "Time_averaged_Discrimination", "IPA",
         "IPA_Method", "IPA_Fallback_Used"
     ) %in% names(disc_table)))
@@ -124,7 +125,7 @@ test_that("GEP output consolidation creates comprehensive summary tables", {
     expect_true(all(c(
         "Timepoint", "N", "Events", "Event_Rate",
         "Optimal_Threshold", "Optimal_Net_Benefit",
-        "Threshold_Range_Min", "Threshold_Range_Max",
+        "Threshold_Range_Min", "Threshold_Range_Max", "Threshold_Scale",
         "Area_Between_Curves"
     ) %in% names(dca_table)))
     expect_equal(dca_table$Timepoint, c("5yr", "7yr", "10yr"))
@@ -223,7 +224,7 @@ test_that("Unified GEP validation summary eliminates redundancy across outcomes"
     expect_equal(nrow(disc_table), 4)  # 2 timepoints × 2 outcomes
     expect_true(all(c(
         "Outcome", "Timepoint", "N", "Events",
-        "Harrell_C", "Integrated_AUC",
+        "Harrell_C", "Integrated_AUC", "Integrated_AUC_Status", "Integrated_AUC_Method", "Integrated_AUC_Unavailable_Reason",
         "Cumulative_Discrimination", "Time_averaged_Discrimination"
     ) %in% names(disc_table)))
     expect_equal(disc_table$Outcome, c("MFS", "MFS", "MSS", "MSS"))
