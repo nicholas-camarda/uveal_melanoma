@@ -509,7 +509,7 @@ perform_discrimination_mss <- function(data, timepoint) {
     # Our data has events spread across time, not concentrated at arbitrary marks
     # This makes time-dependent AUC clinically nonsensical and unreliable
 
-    events_at_timepoint <- sum(disc_data$observed_event == 1 & disc_data$observed_time <= timepoint)
+    events_at_timepoint <- sum(disc_data$observed_event == 1 & disc_data$observed_time <= timepoint_months)
     total_at_timepoint <- nrow(disc_data)
 
     logger::log_info(formatted(sprintf("MSS %d years: %d events of %d", timepoint, events_at_timepoint, total_at_timepoint), indent = 3))

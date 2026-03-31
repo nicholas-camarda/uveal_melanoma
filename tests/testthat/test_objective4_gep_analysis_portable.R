@@ -130,6 +130,19 @@ test_that("MSS decision curve analysis respects month-based horizons", {
     expect_equal(dca_year_result$events, 0)
 })
 
+test_that("MSS discrimination event counts respect month-based horizons", {
+    disc_data <- tibble::tibble(
+        time_to_event = c(6, 24, 48, 12, 18, 30, 36, 42, 54, 60, 61, 66, 72, 75, 80, 84, 90, 95, 100, 110),
+        event_occurred = c(1, 1, 1, rep(0, 17)),
+        expected_mss_5yr = seq(0.15, 0.95, length.out = 20)
+    )
+
+    disc_result <- suppressWarnings(perform_discrimination_mss(disc_data, timepoint = 5))
+
+    expect_equal(disc_result$events, 3)
+    expect_equal(disc_result$events_by_timepoint, 3)
+})
+
 test_that("Unified GEP summary accepts MSS standard_validation containers", {
     test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective4_unified_standard_validation")
     dir.create(test_output_dir, recursive = TRUE, showWarnings = FALSE)
