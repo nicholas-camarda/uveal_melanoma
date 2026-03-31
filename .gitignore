@@ -40,14 +40,5 @@ tests/**/test_output/*
 tests/**/Rplots.pdf
 tests/.DS_Store
 
-# Ignore agentic helper files
-AGENTS.md
-CLAUDE.md
-docs/METHODS_SECTION_PAPER.md
-docs/GEP_OBJECTIVE4_PAPER_OUTLINE.local.md
-docs/GEP_OBJECTIVE4_GOAL_IMPLEMENTATION_MAP.md
-docs/GEP_OBJECTIVE4_ABSTRACT_DRAFT.md
-docs/PRAME*.md
-docs/FACTOR_LEVEL_AUDIT.md
-docs/OBJECTIVE4_MFS_5YR_DECISION_NOTE.md
+# Ignore helper file
 scripts/tools/export_gep_objective4_to_downloads.R
