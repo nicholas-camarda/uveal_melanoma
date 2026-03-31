@@ -37,6 +37,9 @@ test_that("portable smoke path writes simple GEP outputs and dry-run publish on 
 
     expect_true(publish_result$dry_run)
     expect_gt(publish_result$summary$would_copy, 0)
-    expect_true(grepl("/uveal_melanoma/portable-smoke$", publish_result$snapshot_dir))
+    expect_equal(
+        publish_result$snapshot_dir,
+        file.path(EXPORT_ANALYSIS_DIR, "portable-smoke")
+    )
     expect_true(any(grepl("04_GEP_Validation", publish_result$manifest$source_path)))
 })

@@ -47,15 +47,22 @@ test_that("RMST publication table uses native month estimates", {
 
 
 test_that("RMST, KM, and Cox models share filtered cohort", {
+    old_threshold_rarity <- THRESHOLD_RARITY
+    assign("THRESHOLD_RARITY", 2L, envir = .GlobalEnv)
+    on.exit(
+        assign("THRESHOLD_RARITY", old_threshold_rarity, envir = .GlobalEnv),
+        add = TRUE
+    )
+
     sample_data <- tibble::tibble(
-        time_months = c(12, 11, 9, 8, 7, 6),
-        status = c(1, 1, 0, 1, 0, 0),
+        time_months = c(24, 22, 20, 18, 16, 14, 12),
+        status = c(1, 1, 0, 1, 0, 0, 1),
         treatment_group = factor(
-            c("PBT", "GKSRS", "PBT", "PBT", "GKSRS", "GKSRS"),
+            c("PBT", "GKSRS", "PBT", "PBT", "GKSRS", "GKSRS", "PBT"),
             levels = c("PBT", "GKSRS")
         ),
         grade_clean = factor(
-            c("A", "B", "Other", "A", "Other", "B"),
+            c("A", "A", "A", "B", "B", "B", "Other"),
             levels = c("A", "B", "Other")
         )
     )

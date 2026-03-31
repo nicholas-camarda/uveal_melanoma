@@ -87,7 +87,7 @@ summarize_sparse_factor_levels <- function(values,
         sparse_levels = sparse_levels,
         excluded_levels = excluded_levels,
         retained_levels = retained_counts$level,
-        reference_level = retained_counts$level[[1]] %||% NA_character_,
+        reference_level = if (length(retained_counts$level) > 0) retained_counts$level[[1]] else NA_character_,
         drop_reason = drop_reason
     )
 }
