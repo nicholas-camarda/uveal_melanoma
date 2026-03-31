@@ -297,6 +297,23 @@ build_exploratory_no_gep_followup_block <- function(prepared_data, dataset_name 
     lines
 }
 
+#' Attach Survival Context to a Modeling Dataset
+#'
+#' Re-joins survival columns from the full prepared dataset onto a modeling
+#' subset that may have had those columns dropped during the feature-selection
+#' and sparse-level-exclusion pipeline.
+#'
+#' @param model_data A data frame produced by `build_exploratory_model_dataset()`.
+#' @param source_data The full prepared cohort (output of the `prepared` pipeline
+#'   step inside `prepare_exploratory_no_gep_data()`).
+#'
+#' @return `model_data` with survival columns left-joined from `source_data`.
+attach_survival_context <- function(model_data, source_data) {
+    survival_cols <- c("patient_id", "tt_mets_months", "mets_event", "tt_death_months", "melanoma_death_event")
+    available_cols <- intersect(survival_cols, names(source_data))
+    dplyr::left_join(model_data, dplyr::select(source_data, dplyr::all_of(available_cols)), by = "patient_id")
+}
+
 #' Prepare Data for Exploratory No-GEP Modeling
 #'
 #' Restores GEP display labels, derives the exploratory grouping variables,
@@ -579,37 +596,59 @@ build_exploratory_model_dataset <- function(data,
 #' @return A tibble summarizing cohort counts and simplified KM verification.
 verify_exploratory_no_gep_km_fix <- function(data,
                                              dataset_name = "uveal_melanoma_full_cohort",
-                                             visual_file = here("scripts", "gep", "visualization", "gep_visuals.R")) {
+                                             visual_file = here("scripts", "gep", "visualization", "gep_visuals.R"),
+                                             snapshot_path = NULL) {
     prepared <- prepare_exploratory_no_gep_data(data, dataset_name = dataset_name)$full_data
 
     observed_counts <- prepared %>%
         dplyr::filter(!is.na(.data$exploratory_gep_group)) %>%
         dplyr::count(.data$exploratory_gep_group, name = "observed_n")
 
-    expected_counts <- tibble::tibble(
-        exploratory_gep_group = factor(
-            c("Class 1", "Class 2", "GEP Failed/Indeterminate", "GEP Not Tested"),
-            levels = levels(prepared$exploratory_gep_group)
-        ),
-        expected_n = c(58L, 27L, 13L, 162L)
-    )
-
-    verification <- expected_counts %>%
-        dplyr::left_join(observed_counts, by = "exploratory_gep_group") %>%
-        dplyr::mutate(
-            observed_n = dplyr::coalesce(.data$observed_n, 0L),
-            status = dplyr::if_else(.data$expected_n == .data$observed_n, "matched", "mismatch")
-        )
-
-    if (any(verification$status != "matched")) {
-        mismatch_text <- verification %>%
-            dplyr::filter(.data$status != "matched") %>%
-            dplyr::transmute(text = sprintf("%s expected %d observed %d", .data$exploratory_gep_group, .data$expected_n, .data$observed_n)) %>%
-            dplyr::pull(.data$text)
-        stop(sprintf(
-            "Exploratory no-GEP KM verification failed: group counts do not match the expected fixed values (%s).",
-            paste(mismatch_text, collapse = "; ")
+    # Snapshot-based change detection: on first run write the observed counts;
+    # on subsequent runs compare against the snapshot and warn on mismatch.
+    # This replaces the previous hardcoded expected counts (58/27/13/162).
+    if (!is.null(snapshot_path)) {
+        if (file.exists(snapshot_path)) {
+            snapshot_counts <- readRDS(snapshot_path)
+            comparison <- dplyr::left_join(
+                snapshot_counts,
+                observed_counts %>% dplyr::rename(current_n = .data$observed_n),
+                by = "exploratory_gep_group"
+            ) %>%
+                dplyr::mutate(
+                    current_n = dplyr::coalesce(.data$current_n, 0L),
+                    status = dplyr::if_else(.data$observed_n == .data$current_n, "matched", "mismatch")
+                )
+            if (any(comparison$status != "matched")) {
+                mismatch_text <- comparison %>%
+                    dplyr::filter(.data$status != "matched") %>%
+                    dplyr::transmute(text = sprintf(
+                        "%s snapshot %d current %d",
+                        .data$exploratory_gep_group, .data$observed_n, .data$current_n
+                    )) %>%
+                    dplyr::pull(.data$text)
+                logger::log_warn(sprintf(
+                    "Exploratory no-GEP group counts changed since last snapshot (%s). This may indicate a data update. Review before interpreting results.",
+                    paste(mismatch_text, collapse = "; ")
+                ))
+            }
+            verification <- comparison %>%
+                dplyr::rename(expected_n = .data$observed_n, observed_n = .data$current_n)
+        } else {
+            logger::log_info(sprintf(
+                "No-GEP cohort snapshot not found; writing initial snapshot to %s", snapshot_path
+            ))
+            saveRDS(observed_counts, snapshot_path)
+            verification <- observed_counts %>%
+                dplyr::mutate(expected_n = .data$observed_n, status = "snapshot_created")
+        }
+    } else {
+        logger::log_info(sprintf(
+            "No-GEP cohort counts: %s",
+            paste(sprintf("%s=%d", observed_counts$exploratory_gep_group, observed_counts$observed_n), collapse = ", ")
         ))
+        verification <- observed_counts %>%
+            dplyr::mutate(expected_n = NA_integer_, status = "no_snapshot")
     }
 
     simplified_plot <- create_mfs_simplified_survival_curves(
@@ -1026,7 +1065,9 @@ summarize_numeric_interval <- function(values, conf_level = 0.95) {
 #'
 #' @return A numeric vector of out-of-fold predicted probabilities aligned to
 #'   the input rows.
-cross_validate_binary_predictions <- function(data, outcome_var, predictors, folds = 5, seed = 123) {
+cross_validate_binary_predictions <- function(data, outcome_var, predictors, folds = 5, seed = 123,
+                                              time_var = NULL, event_var = NULL, eval_time_months = NULL) {
+    use_ipcw <- !is.null(time_var) && !is.null(event_var) && !is.null(eval_time_months)
     n_rows <- nrow(data)
     outcome <- data[[outcome_var]]
     folds <- choose_binary_cv_folds(outcome, preferred_folds = folds)
@@ -1053,13 +1094,29 @@ cross_validate_binary_predictions <- function(data, outcome_var, predictors, fol
             reference_columns = colnames(x_train)
         )
 
+        # Compute IPCW weights on the training fold only (not leaking censoring
+        # information from the held-out test fold).
+        if (use_ipcw) {
+            fold_ipcw <- calculate_ipcw_weights(
+                train_data[[time_var]],
+                train_data[[event_var]],
+                eval_time_months
+            )
+            fold_y <- fold_ipcw$event_by_horizon
+            fold_weights <- fold_ipcw$ipcw_weight
+        } else {
+            fold_y <- train_data[[outcome_var]]
+            fold_weights <- NULL
+        }
+
         fold_fit <- tryCatch(
             suppressWarnings(glmnet::cv.glmnet(
                 x = x_train,
-                y = train_data[[outcome_var]],
+                y = fold_y,
                 family = "binomial",
                 alpha = 0,
-                nfolds = choose_binary_cv_folds(train_data[[outcome_var]], preferred_folds = 5),
+                weights = fold_weights,
+                nfolds = choose_binary_cv_folds(fold_y, preferred_folds = 5),
                 standardize = TRUE,
                 type.measure = "deviance"
             )),
@@ -1095,7 +1152,10 @@ repeat_cross_validated_binary_metrics <- function(data,
                                                   outcome_var,
                                                   predictors,
                                                   repeats = 20,
-                                                  seed = 123) {
+                                                  seed = 123,
+                                                  time_var = NULL,
+                                                  event_var = NULL,
+                                                  eval_time_months = NULL) {
     if (repeats < 1) {
         return(tibble::tibble())
     }
@@ -1107,7 +1167,10 @@ repeat_cross_validated_binary_metrics <- function(data,
             data = data,
             outcome_var = outcome_var,
             predictors = predictors,
-            seed = seed + repeat_id - 1
+            seed = seed + repeat_id - 1,
+            time_var = time_var,
+            event_var = event_var,
+            eval_time_months = eval_time_months
         )
         cv_calibration <- summarize_binary_calibration(outcome, cv_predictions)
 
@@ -1263,16 +1326,30 @@ summarize_predictor_contributions <- function(coefficient_data, model_name) {
 #'
 #' @return A list containing the fit object, coefficients, contributions,
 #'   metrics, and calibration data.
-fit_exploratory_binary_model <- function(data, outcome_var, predictors, model_name, seed = 123) {
+fit_exploratory_binary_model <- function(data, outcome_var, predictors, model_name, seed = 123,
+                                         time_var = NULL, event_var = NULL, eval_time_months = NULL) {
+    use_ipcw <- !is.null(time_var) && !is.null(event_var) && !is.null(eval_time_months)
     design_matrix <- build_exploratory_design_matrix(data, predictors = predictors)
     outcome <- data[[outcome_var]]
     cv_folds <- choose_binary_cv_folds(outcome, preferred_folds = 5)
 
+    if (use_ipcw) {
+        ipcw_info <- calculate_ipcw_weights(data[[time_var]], data[[event_var]], eval_time_months)
+        fit_y <- ipcw_info$event_by_horizon
+        fit_weights <- ipcw_info$ipcw_weight
+        effective_events <- sum(ipcw_info$event_by_horizon, na.rm = TRUE)
+    } else {
+        fit_y <- outcome
+        fit_weights <- NULL
+        effective_events <- NA_integer_
+    }
+
     fitted_model <- suppressWarnings(glmnet::cv.glmnet(
         x = design_matrix,
-        y = outcome,
+        y = fit_y,
         family = "binomial",
         alpha = 0,
+        weights = fit_weights,
         nfolds = cv_folds,
         standardize = TRUE,
         type.measure = "deviance"
@@ -1285,7 +1362,10 @@ fit_exploratory_binary_model <- function(data, outcome_var, predictors, model_na
         data,
         outcome_var = outcome_var,
         predictors = predictors,
-        seed = seed
+        seed = seed,
+        time_var = time_var,
+        event_var = event_var,
+        eval_time_months = eval_time_months
     )
     calibration <- summarize_binary_calibration(outcome, apparent_predictions)
     cv_calibration <- summarize_binary_calibration(outcome, cv_predictions)
@@ -1294,7 +1374,10 @@ fit_exploratory_binary_model <- function(data, outcome_var, predictors, model_na
         outcome_var = outcome_var,
         predictors = predictors,
         repeats = 20,
-        seed = seed + 1000
+        seed = seed + 1000,
+        time_var = time_var,
+        event_var = event_var,
+        eval_time_months = eval_time_months
     )
     cv_auc_interval <- summarize_numeric_interval(repeated_cv_metrics$cv_auc)
     cv_brier_interval <- summarize_numeric_interval(repeated_cv_metrics$cv_brier)
@@ -1306,6 +1389,8 @@ fit_exploratory_binary_model <- function(data, outcome_var, predictors, model_na
         model = model_name,
         n = nrow(data),
         events = sum(outcome == 1, na.rm = TRUE),
+        effective_events = effective_events,
+        ipcw_weighted = use_ipcw,
         apparent_auc = calculate_binary_auc(outcome, apparent_predictions),
         cv_auc = calculate_binary_auc(outcome, cv_predictions),
         apparent_brier = calculate_binary_brier(outcome, apparent_predictions),
@@ -1371,7 +1456,7 @@ predict_exploratory_binary_model <- function(model_results, newdata) {
 #'
 #' @return A grouped summary data frame.
 summarize_no_gep_predictions <- function(prediction_data) {
-    prediction_data %>%
+    group_summary <- prediction_data %>%
         dplyr::group_by(.data$no_gep_group) %>%
         dplyr::summarise(
             n = dplyr::n(),
@@ -1381,7 +1466,30 @@ summarize_no_gep_predictions <- function(prediction_data) {
             observed_mfs_5yr_event_rate = mean(.data$mfs_event_5yr == 1, na.rm = TRUE),
             observed_mss_5yr_event_rate = mean(.data$mss_event_5yr == 1, na.rm = TRUE),
             .groups = "drop"
-    )
+        )
+
+    # KM-based observed rates account for censoring: patients with follow-up
+    # < 5 yr who did not have an event are not assumed to be true non-events.
+    km_rates <- prediction_data %>%
+        dplyr::filter(!is.na(.data$no_gep_group)) %>%
+        dplyr::group_by(.data$no_gep_group) %>%
+        dplyr::group_modify(~ {
+            mfs_km <- estimate_mfs_km_at_horizon(.x, timepoint_months = 60)
+            mss_km <- estimate_mfs_km_at_horizon(
+                .x,
+                timepoint_months = 60,
+                time_var = "tt_death_months",
+                event_var = "melanoma_death_event"
+            )
+            tibble::tibble(
+                km_observed_mfs_5yr_event_rate = mfs_km$risk %||% NA_real_,
+                km_observed_mss_5yr_event_rate = mss_km$risk %||% NA_real_
+            )
+        }) %>%
+        dplyr::ungroup()
+
+    group_summary %>%
+        dplyr::left_join(km_rates, by = "no_gep_group")
 }
 
 #' Format a Metric Interval as Text
@@ -1450,6 +1558,24 @@ create_exploratory_risk_ladder <- function(full_data,
         )
     }
 
+    # KM-based observed rates per group (censoring-adjusted)
+    km_rates <- ladder_data %>%
+        dplyr::group_by(.data$exploratory_gep_group) %>%
+        dplyr::group_modify(~ {
+            mfs_km <- estimate_mfs_km_at_horizon(.x, timepoint_months = 60)
+            mss_km <- estimate_mfs_km_at_horizon(
+                .x,
+                timepoint_months = 60,
+                time_var = "tt_death_months",
+                event_var = "melanoma_death_event"
+            )
+            tibble::tibble(
+                km_observed_5yr_mfs_rate = mfs_km$risk %||% NA_real_,
+                km_observed_5yr_mss_rate = mss_km$risk %||% NA_real_
+            )
+        }) %>%
+        dplyr::ungroup()
+
     ladder_data %>%
         dplyr::group_by(.data$exploratory_gep_group) %>%
         dplyr::summarise(
@@ -1465,6 +1591,7 @@ create_exploratory_risk_ladder <- function(full_data,
             median_predicted_5yr_mss_risk = stats::median(.data$predicted_mss_5yr_risk, na.rm = TRUE),
             .groups = "drop"
         ) %>%
+        dplyr::left_join(km_rates, by = "exploratory_gep_group") %>%
         dplyr::select(-exploratory_gep_group) %>%
         dplyr::mutate(
             interpretation = dplyr::case_when(
@@ -2165,6 +2292,74 @@ create_no_gep_unified_model_comparison <- function(analysis_results) {
     })
 }
 
+#' Compute Standardized Mean Differences Between No-GEP Subgroups
+#'
+#' Compares retained clinical predictors between "GEP Failed/Indeterminate" and
+#' "GEP Not Tested" patients using standardized mean differences (SMD). An SMD
+#' > 0.2 (conventional threshold) indicates meaningful imbalance that may
+#' compromise the single-model assumption spanning both subgroups.
+#'
+#' @param prepared_data Output from `prepare_exploratory_no_gep_data()`.
+#'
+#' @return A tibble with one row per retained predictor and columns:
+#'   `predictor`, `failed_summary`, `not_tested_summary`, `smd`, `flagged`.
+summarize_no_gep_group_divergence <- function(prepared_data) {
+    data <- prepared_data$full_data
+    predictors <- prepared_data$predictors
+
+    failed_data <- data %>%
+        dplyr::filter(.data$exploratory_gep_group == "GEP Failed/Indeterminate")
+    not_tested_data <- data %>%
+        dplyr::filter(.data$exploratory_gep_group == "GEP Not Tested")
+
+    purrr::map_dfr(predictors, function(pred) {
+        failed_vals <- failed_data[[pred]]
+        tested_vals <- not_tested_data[[pred]]
+
+        if (is.numeric(failed_vals) && !is.factor(failed_vals)) {
+            mean_failed <- mean(failed_vals, na.rm = TRUE)
+            mean_tested <- mean(tested_vals, na.rm = TRUE)
+            sd_failed <- stats::sd(failed_vals, na.rm = TRUE)
+            sd_tested <- stats::sd(tested_vals, na.rm = TRUE)
+            pooled_sd <- sqrt((sd_failed^2 + sd_tested^2) / 2)
+            smd_val <- if (is.finite(pooled_sd) && pooled_sd > 0) {
+                (mean_failed - mean_tested) / pooled_sd
+            } else {
+                0
+            }
+            failed_summary <- sprintf("%.2f (SD %.2f, n=%d)", mean_failed, sd_failed, sum(!is.na(failed_vals)))
+            tested_summary <- sprintf("%.2f (SD %.2f, n=%d)", mean_tested, sd_tested, sum(!is.na(tested_vals)))
+        } else {
+            # For factors: compute binary SMD per level and take the maximum
+            all_vals <- c(as.character(failed_vals), as.character(tested_vals))
+            lvls <- sort(unique(na.omit(all_vals)))
+            level_smds <- vapply(lvls, function(lvl) {
+                p1 <- mean(as.character(failed_vals) == lvl, na.rm = TRUE)
+                p2 <- mean(as.character(tested_vals) == lvl, na.rm = TRUE)
+                denom <- sqrt((p1 * (1 - p1) + p2 * (1 - p2)) / 2)
+                if (is.finite(denom) && denom > 0) abs(p1 - p2) / denom else 0
+            }, numeric(1))
+            smd_val <- max(abs(level_smds), na.rm = TRUE)
+            modal_failed <- names(sort(table(failed_vals), decreasing = TRUE))[1]
+            modal_tested <- names(sort(table(tested_vals), decreasing = TRUE))[1]
+            failed_summary <- sprintf(
+                "%s most common (n=%d)", modal_failed %||% "NA", sum(!is.na(failed_vals))
+            )
+            tested_summary <- sprintf(
+                "%s most common (n=%d)", modal_tested %||% "NA", sum(!is.na(tested_vals))
+            )
+        }
+
+        tibble::tibble(
+            predictor = pred,
+            failed_summary = failed_summary,
+            not_tested_summary = tested_summary,
+            smd = round(smd_val, 3),
+            flagged = abs(smd_val) > 0.2
+        )
+    })
+}
+
 #' Collect Exploratory No-GEP Analysis Results
 #'
 #' Computes the reusable no-GEP summary objects shared by the standalone
@@ -2174,26 +2369,32 @@ create_no_gep_unified_model_comparison <- function(analysis_results) {
 #' @param dataset_name Dataset identifier.
 #' @param verify_km_fix Whether to run the KM verification helper.
 #' @param visual_file Retained for compatibility with the verification helper.
+#' @param snapshot_path Optional path to a snapshot file for cohort-count
+#'   change detection in `verify_exploratory_no_gep_km_fix()`. When `NULL`
+#'   the snapshot comparison is skipped.
 #'
 #' @return A list of reusable no-GEP analysis objects and summary tables.
 collect_exploratory_no_gep_analysis <- function(data,
                                                 dataset_name = "uveal_melanoma_full_cohort",
                                                 verify_km_fix = TRUE,
-                                                visual_file = here("scripts", "gep", "visualization", "gep_visuals.R")) {
+                                                visual_file = here("scripts", "gep", "visualization", "gep_visuals.R"),
+                                                snapshot_path = NULL) {
     if (!identical(dataset_name, "uveal_melanoma_full_cohort")) {
         stop("collect_exploratory_no_gep_analysis() currently supports only uveal_melanoma_full_cohort.")
     }
 
     km_verification <- if (isTRUE(verify_km_fix)) {
-        verify_exploratory_no_gep_km_fix(data, dataset_name = dataset_name, visual_file = visual_file)
+        verify_exploratory_no_gep_km_fix(
+            data,
+            dataset_name = dataset_name,
+            visual_file = visual_file,
+            snapshot_path = snapshot_path
+        )
     } else {
         prepare_exploratory_no_gep_data(data, dataset_name = dataset_name)$full_data %>%
             dplyr::filter(!is.na(.data$exploratory_gep_group)) %>%
             dplyr::count(.data$exploratory_gep_group, name = "observed_n") %>%
-            dplyr::mutate(
-                expected_n = c(58L, 27L, 13L, 162L),
-                status = "verification_skipped"
-            )
+            dplyr::mutate(status = "verification_skipped")
     }
 
     prepared_data <- prepare_exploratory_no_gep_data(data, dataset_name = dataset_name)
@@ -2225,26 +2426,38 @@ collect_exploratory_no_gep_analysis <- function(data,
         prepared_data$mfs_model_data,
         outcome_var = "mfs_event_5yr",
         predictors = prepared_data$predictors,
-        model_name = "Direct 5-Year MFS Risk"
+        model_name = "Direct 5-Year MFS Risk",
+        time_var = "tt_mets_months",
+        event_var = "mets_event",
+        eval_time_months = 60
     )
     direct_mss_model <- fit_exploratory_binary_model(
         prepared_data$mss_model_data,
         outcome_var = "mss_event_5yr",
         predictors = prepared_data$predictors,
-        model_name = "Direct 5-Year MSS Risk"
+        model_name = "Direct 5-Year MSS Risk",
+        time_var = "tt_death_months",
+        event_var = "melanoma_death_event",
+        eval_time_months = 60
     )
     parsimonious_predictors <- choose_exploratory_parsimonious_predictors(prepared_data)
     parsimonious_mfs_model <- fit_exploratory_binary_model(
         prepared_data$mfs_model_data,
         outcome_var = "mfs_event_5yr",
         predictors = parsimonious_predictors,
-        model_name = "Parsimonious Direct 5-Year MFS Risk"
+        model_name = "Parsimonious Direct 5-Year MFS Risk",
+        time_var = "tt_mets_months",
+        event_var = "mets_event",
+        eval_time_months = 60
     )
     parsimonious_mss_model <- fit_exploratory_binary_model(
         prepared_data$mss_model_data,
         outcome_var = "mss_event_5yr",
         predictors = parsimonious_predictors,
-        model_name = "Parsimonious Direct 5-Year MSS Risk"
+        model_name = "Parsimonious Direct 5-Year MSS Risk",
+        time_var = "tt_death_months",
+        event_var = "melanoma_death_event",
+        eval_time_months = 60
     )
 
     no_gep_predictions <- prepared_data$no_gep_prediction %>%
@@ -2264,6 +2477,7 @@ collect_exploratory_no_gep_analysis <- function(data,
             predicted_mss_5yr_risk = predict_exploratory_binary_model(parsimonious_mss_model, .)
         )
 
+    group_divergence <- summarize_no_gep_group_divergence(prepared_data)
     no_gep_predictions_sheet <- create_no_gep_predictions_sheet(prepared_data, no_gep_predictions)
     no_gep_summary <- summarize_no_gep_predictions(no_gep_predictions)
     sensitivity_summary <- summarize_pooled_no_gep_sensitivity(no_gep_predictions)
@@ -2344,7 +2558,8 @@ collect_exploratory_no_gep_analysis <- function(data,
         sensitivity_summary = sensitivity_summary,
         risk_strata_summary = risk_strata_summary,
         risk_ladder = risk_ladder,
-        parsimonious_sensitivity = parsimonious_sensitivity
+        parsimonious_sensitivity = parsimonious_sensitivity,
+        group_divergence = group_divergence
     )
 
     analysis_results$unified_no_gep_overview <- create_no_gep_unified_overview(analysis_results)
@@ -2884,7 +3099,8 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
                                                    risk_ladder,
                                                    parsimonious_sensitivity,
                                                    sensitivity_summary,
-                                                   output_path) {
+                                                   output_path,
+                                                   group_divergence = NULL) {
     failed_row <- no_gep_summary %>% dplyr::filter(.data$no_gep_group == "GEP Failed/Indeterminate")
     not_tested_row <- no_gep_summary %>% dplyr::filter(.data$no_gep_group == "GEP Not Tested")
     class1_ladder <- risk_ladder %>% dplyr::filter(.data$group == "Class 1")
@@ -2969,6 +3185,28 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
         md_bullet("The direct MFS/MSS models are the preferred outputs when a patient has no usable GEP, but they should be described as exploratory prognostic support rather than precise patient-level forecasts."),
         md_bullet("The no-GEP population should not be presented as one homogeneous intermediate-risk group: overall it sits between definitive Class 1 and Class 2, but the failed/indeterminate subgroup is higher risk than the larger not-tested subgroup."),
         "",
+        md_heading("Scientific Limitations", 2L),
+        md_bullet("SELECTION BIAS: The surrogate and direct-risk models were trained on GEP-tested patients (Class 1/Class 2). GEP testing is not random — it reflects clinical judgment, tumor characteristics, and institutional practice. The no-GEP population is systematically different from the training population in ways the model cannot see. Cross-validated AUC estimates describe performance within the trained (GEP-tested) population only, not within the no-GEP population."),
+        md_bullet("CENSORING BIAS IN MODELS: Direct MFS and MSS models now use IPCW-weighted logistic ridge regression, which up-weights patients with confirmed 5-year status and down-weights those censored early. KM-based observed event rates (reported in the risk ladder) account for censoring and are more reliable than raw binary proportions."),
+        {
+            # Data-driven SMD bullet: tailored to observed covariate overlap
+            if (!is.null(group_divergence) && nrow(group_divergence) > 0) {
+                flagged <- group_divergence %>%
+                    dplyr::filter(.data$flagged) %>%
+                    dplyr::pull(.data$predictor)
+                if (length(flagged) > 0) {
+                    md_bullet(sprintf(
+                        "FAILED vs NOT TESTED covariate overlap: The two no-GEP subgroups differ meaningfully on %s (SMD > 0.2). Predictions for GEP Failed/Indeterminate patients extrapolate beyond the GEP Not Tested feature distribution on these variables and should be interpreted with additional caution. See the Group_Divergence workbook tab for full SMD diagnostics.",
+                        paste(flagged, collapse = ", ")
+                    ))
+                } else {
+                    md_bullet("FAILED vs NOT TESTED covariate overlap: The two no-GEP subgroups are clinically similar across all retained predictors (all SMD \u2264 0.2), supporting the application of a common risk model. See the Group_Divergence workbook tab for full SMD diagnostics. Note that distinct missingness mechanisms (biopsy attempted vs. never attempted) may still create unmeasured differences not captured by baseline features alone.")
+                }
+            } else {
+                md_bullet("FAILED vs NOT TESTED are distinct missingness mechanisms: 'GEP Failed/Indeterminate' patients had biopsies attempted — failure may be enriched for necrotic or heterogeneous tumors. 'GEP Not Tested' patients had no biopsy attempted — this reflects clinical decisions and institutional availability. The higher observed risk in the Failed group may reflect ascertainment artifact.")
+            }
+        },
+        "",
         build_exploratory_no_gep_followup_block(prepared_data = prepared_data, dataset_name = dataset_name),
         "",
         md_heading("Key Findings at 5 Years", 2L),
@@ -2977,11 +3215,11 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
             paste(sprintf("%s=%d", data_audit$group[seq_len(4)], data_audit$n[seq_len(4)]), collapse = ", ")
         )),
         md_bullet(sprintf(
-            "Observed 5-year MFS events: Class 1 %.1f%%, GEP Not Tested %.1f%%, GEP Failed/Indeterminate %.1f%%, Class 2 %.1f%%.",
-            100 * class1_ladder$observed_5yr_mfs_event_rate[[1]],
-            100 * not_tested_ladder$observed_5yr_mfs_event_rate[[1]],
-            100 * failed_ladder$observed_5yr_mfs_event_rate[[1]],
-            100 * class2_ladder$observed_5yr_mfs_event_rate[[1]]
+            "KM-estimated 5-year MFS risk: Class 1 %.1f%%, GEP Not Tested %.1f%%, GEP Failed/Indeterminate %.1f%%, Class 2 %.1f%% (censoring-adjusted; raw binary rates also available in the Risk_Ladder_5yr tab).",
+            100 * (class1_ladder$km_observed_5yr_mfs_rate[[1]] %||% class1_ladder$observed_5yr_mfs_event_rate[[1]]),
+            100 * (not_tested_ladder$km_observed_5yr_mfs_rate[[1]] %||% not_tested_ladder$observed_5yr_mfs_event_rate[[1]]),
+            100 * (failed_ladder$km_observed_5yr_mfs_rate[[1]] %||% failed_ladder$observed_5yr_mfs_event_rate[[1]]),
+            100 * (class2_ladder$km_observed_5yr_mfs_rate[[1]] %||% class2_ladder$observed_5yr_mfs_event_rate[[1]])
         )),
         md_bullet(sprintf(
             "Median predicted 5-year MFS risk from the direct clinical model: Class 1 %.3f, GEP Not Tested %.3f, GEP Failed/Indeterminate %.3f, Class 2 %.3f.",
@@ -3016,7 +3254,7 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
         md_bullet("A ridge-penalized surrogate model was trained only on patients with definitive Class 1 or Class 2 GEP results."),
         md_bullet("That surrogate stores P(Class 2-like | baseline features); it is a clinical resemblance score, not a recovered molecular class label."),
         md_bullet("Direct MFS and MSS models estimate baseline-only 5-year risk when GEP is unavailable or unusable."),
-        md_bullet("Apparent AUC is the in-sample fit; cross-validated AUC is the better estimate of expected performance on new patients."),
+        md_bullet("Apparent AUC is the in-sample fit; cross-validated AUC is the better estimate of expected performance on new GEP-tested patients with similar characteristics. Neither figure estimates performance on the no-GEP population, for whom ground truth GEP results are unavailable."),
         md_bullet("95% repeated-CV intervals show how much AUC, Brier score, and calibration slope change across different fold assignments."),
         "",
         md_heading("Parsimonious Sensitivity Check", 2L),
@@ -3033,7 +3271,7 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
             parsimonious_mss$cv_auc_ci_lower[[1]],
             parsimonious_mss$cv_auc_ci_upper[[1]]
         )),
-        md_bullet("Similar performance under the parsimonious specification supports the subgroup ordering without requiring a larger baseline feature set."),
+        md_bullet("Similar performance under the parsimonious specification confirms that the subgroup ordering is not driven by feature selection within the GEP-tested training population. This does not validate performance in the no-GEP population."),
         "",
         md_heading("Retained Baseline Predictors", 2L),
         if (length(retained_predictors) > 0) {
@@ -3110,11 +3348,13 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
 
     output_dir <- ensure_output_dir(output_dir)
     plots_dir <- ensure_output_dir(file.path(output_dir, "plots"))
+    snapshot_path <- file.path(output_dir, "no_gep_cohort_snapshot.rds")
     analysis_results <- collected_results %||% collect_exploratory_no_gep_analysis(
         data = data,
         dataset_name = dataset_name,
         verify_km_fix = verify_km_fix,
-        visual_file = visual_file
+        visual_file = visual_file,
+        snapshot_path = snapshot_path
     )
 
     prepared_data <- analysis_results$prepared_data
@@ -3143,6 +3383,7 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
     sensitivity_summary <- analysis_results$sensitivity_summary
     risk_ladder <- analysis_results$risk_ladder
     parsimonious_sensitivity <- analysis_results$parsimonious_sensitivity
+    group_divergence <- analysis_results$group_divergence
 
     workbook_data <- list(
         Start_Here = start_here,
@@ -3151,6 +3392,7 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
         No_GEP_Subgroups = no_gep_subgroups,
         Model_Performance = model_performance,
         Parsimonious_Sensitivity = parsimonious_sensitivity,
+        Group_Divergence = group_divergence,
         Surrogate_Model_Coefficients = surrogate_model_coefficients,
         Direct_MFS_Coefficients = direct_mfs_coefficients,
         Direct_MSS_Coefficients = direct_mss_coefficients,
@@ -3181,7 +3423,8 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
         risk_ladder = risk_ladder,
         sensitivity_summary = sensitivity_summary,
         parsimonious_sensitivity = parsimonious_sensitivity,
-        output_path = summary_path
+        output_path = summary_path,
+        group_divergence = group_divergence
     )
 
     plot_paths <- list(

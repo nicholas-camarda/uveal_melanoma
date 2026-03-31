@@ -17,28 +17,61 @@ create_clinical_interpretation <- function(calibration_data, discrimination_data
         nrow(calibration_data) > 0 &&
         all(!is.finite(calibration_data$Slope))
     
-    # Overall assessment
-    overall_assessment <- if (outcome_type == "MFS") {
-        if (all_slopes_unavailable && slope_issue_context$has_issue) {
-            paste(
-                "The GEP model demonstrates strong predictive performance for metastasis-free survival with stable discrimination across timepoints.",
-                slope_issue_context$overall_summary,
-                "The model still appears clinically useful for risk stratification, but absolute risk estimates should be interpreted with caution."
-            )
-        } else {
-            "The GEP model demonstrates strong predictive performance for metastasis-free survival, with consistent discrimination across timepoints and generally good calibration. The model appears to be clinically useful for risk stratification and treatment planning."
-        }
+    # Overall assessment: computed from actual metrics, not predetermined
+    mean_harrell <- if (nrow(discrimination_data) > 0) mean(discrimination_data$Harrell_C, na.rm = TRUE) else NA_real_
+    mean_oe <- if (nrow(oe_data) > 0) mean(oe_data$Overall_OE, na.rm = TRUE) else NA_real_
+    outcome_label <- if (outcome_type == "MFS") "metastasis-free survival" else "melanoma-specific survival"
+
+    disc_phrase <- if (is.na(mean_harrell)) {
+        "discrimination that was not estimable"
+    } else if (mean_harrell >= 0.9) {
+        sprintf("excellent discrimination (mean Harrell's C = %.3f)", mean_harrell)
+    } else if (mean_harrell >= 0.8) {
+        sprintf("good discrimination (mean Harrell's C = %.3f)", mean_harrell)
+    } else if (mean_harrell >= 0.7) {
+        sprintf("moderate discrimination (mean Harrell's C = %.3f)", mean_harrell)
     } else {
-        if (all_slopes_unavailable && slope_issue_context$has_issue) {
-            paste(
-                "The GEP model shows excellent discrimination for melanoma-specific survival.",
-                slope_issue_context$overall_summary,
-                "The model still provides useful prognostic information, but absolute risk estimates should be interpreted with caution."
-            )
-        } else {
-            "The GEP model shows excellent discrimination for melanoma-specific survival, though calibration varies across timepoints. The model provides valuable prognostic information for clinical decision-making and patient counseling."
-        }
+        sprintf("modest discrimination (mean Harrell's C = %.3f)", mean_harrell)
     }
+
+    cal_phrase <- if (all_slopes_unavailable && slope_issue_context$has_issue) {
+        paste0("calibration that could not be fully assessed (", slope_issue_context$overall_summary, ")")
+    } else if (is.na(mean_oe)) {
+        "calibration that was not estimable"
+    } else if (abs(mean_oe - 1) < 0.1) {
+        sprintf("good calibration (mean O/E = %.2f)", mean_oe)
+    } else if (abs(mean_oe - 1) < 0.2) {
+        sprintf("acceptable calibration (mean O/E = %.2f)", mean_oe)
+    } else if (mean_oe > 1.2) {
+        sprintf("calibration showing systematic underestimation of risk (mean O/E = %.2f)", mean_oe)
+    } else {
+        sprintf("calibration showing systematic overestimation of risk (mean O/E = %.2f)", mean_oe)
+    }
+
+    clinical_utility_phrase <- if (is.na(mean_harrell)) {
+        "Clinical utility could not be assessed from available data."
+    } else if (mean_harrell >= 0.8) {
+        "The model appears clinically useful for risk stratification."
+    } else if (mean_harrell >= 0.7) {
+        "The model provides useful prognostic information; clinical decisions should also consider additional factors."
+    } else {
+        "Predictive accuracy was limited; the model should not be used as the sole basis for clinical decisions."
+    }
+
+    caution_note <- if (all_slopes_unavailable && slope_issue_context$has_issue) {
+        "Absolute risk estimates should be interpreted with caution as calibration slope was not estimable across timepoints."
+    } else {
+        ""
+    }
+
+    overall_assessment <- paste(
+        c(
+            sprintf("The GEP model demonstrated %s and %s for %s.", disc_phrase, cal_phrase, outcome_label),
+            clinical_utility_phrase,
+            if (nzchar(caution_note)) caution_note
+        ),
+        collapse = " "
+    )
     
     # Calibration interpretation
     calibration_interpretation <- create_calibration_interpretation(calibration_data, outcome_type)

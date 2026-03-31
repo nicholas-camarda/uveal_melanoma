@@ -124,7 +124,9 @@ calculate_observed_expected_mfs <- function(data, timepoint, group_var = "biopsy
         # Calculate O/E ratio
         oe_ratio <- if (expected_events > 0) observed_events / expected_events else NA
 
-        # Transform Greenwood confidence bounds for KM risk onto the O/E scale.
+        # CI bounds derived from Greenwood KM uncertainty (not Poisson exact test).
+        # Field names retain the "poisson_ci" convention used across the codebase
+        # for interface consistency, but these are KM-Greenwood-based intervals.
         poisson_ci_lower <- if (expected_events > 0) {
             km_metrics$observed_events_ci_lower / expected_events
         } else {
@@ -148,7 +150,8 @@ calculate_observed_expected_mfs <- function(data, timepoint, group_var = "biopsy
             observed_survival_ci_lower = round(km_metrics$survival_ci_lower, 3),
             observed_survival_ci_upper = round(km_metrics$survival_ci_upper, 3),
             observed_risk = round(km_metrics$risk, 3),
-            raw_events_by_horizon = km_metrics$raw_events_by_horizon
+            raw_events_by_horizon = km_metrics$raw_events_by_horizon,
+            ci_method = "greenwood_km"
         )
 
         logger::log_info(formatted(sprintf(
@@ -374,141 +377,20 @@ perform_discrimination_mfs <- function(data, timepoint) {
     integrated_auc <- NA
     integrated_auc_method <- NA_character_
     
-    tryCatch({
-        # Use riskRegression::Score for integrated AUC over time periods
-        # This is more robust than requiring events at exact timepoints
-        cox_model <- coxph(Surv(observed_time, observed_event) ~ predicted_risk, data = disc_data, x = TRUE)
-        
-        # Calculate integrated AUC over the entire follow-up period
-        # This avoids the fragility of exact timepoint requirements
-        roc_result <- riskRegression::Score(
-            list("GEP" = cox_model),
-            formula = Surv(observed_time, observed_event) ~ 1,
-            data = disc_data,
-            times = seq(0, max(disc_data$observed_time, na.rm = TRUE), by = 12), # Monthly intervals
-            metrics = "auc",
-            summary = "risks"
-        )
-        
-        if (!is.null(roc_result$AUC)) {
-            auc_data <- roc_result$AUC$score
-            if (nrow(auc_data) > 0) {
-                # Calculate integrated AUC as mean across time periods
-                integrated_auc <- mean(auc_data$AUC, na.rm = TRUE)
-            }
-        }
-        integrated_auc_method <- "riskRegression::Score_integrated"
-        
-        logger::log_info(formatted(sprintf(
-            "Integrated AUC calculated successfully (MFS): %.3f over %d time periods",
-            integrated_auc, nrow(auc_data)
-        ), indent = 3))
-        
-    }, error = function(e) {
-        logger::log_warn(formatted(sprintf("Integrated AUC calculation failed (MFS): %s", e$message), indent = 3))
-        integrated_auc_method <- "calculation_failed"
-    })
+    # NOTE: Integrated AUC via Cox-refitting was removed. Refitting a Cox model on
+    # predicted_risk and then evaluating AUC of that refitted model inflates apparent
+    # discrimination because the Cox coefficient re-optimizes the score for this sample.
+    # Harrell's C on the original predicted_risk (above) is the honest discrimination estimate.
+    integrated_auc <- NA_real_
+    integrated_auc_method <- "disabled_cox_refitting_inflates_auc"
 
-    # 4. CUMULATIVE DISCRIMINATION - Discrimination ability over time ranges
-    # This provides a more robust view than single timepoint estimates
-    cumulative_discrimination <- NA
-    cumulative_discrimination_method <- NA_character_
-    
-    tryCatch({
-        # Calculate discrimination over different time ranges (0-5yr, 0-7yr, 0-10yr)
-        time_ranges <- c(5, 7, 10) * 12  # Convert to months
-        discrimination_values <- numeric(length(time_ranges))
-        
-        for (i in seq_along(time_ranges)) {
-            time_range <- time_ranges[i]
-            
-            # Create time-range specific outcome
-            range_event <- disc_data$observed_event == 1 & disc_data$observed_time <= time_range
-            range_time <- pmin(disc_data$observed_time, time_range)
-            
-            # Calculate Harrell's C-index for this time range
-            if (sum(range_event) > GEP_MIN_EVENTS_COMPETING_RISK) {
-                range_result <- survcomp::concordance.index(
-                    x = disc_data$predicted_risk,
-                    surv.time = range_time,
-                    surv.event = range_event,
-                    method = "noether"
-                )
-                discrimination_values[i] <- range_result$c.index
-            } else {
-                discrimination_values[i] <- NA
-            }
-        }
-        
-        # Calculate cumulative discrimination as mean across time ranges
-        valid_values <- !is.na(discrimination_values)
-        if (sum(valid_values) > 0) {
-            cumulative_discrimination <- mean(discrimination_values[valid_values], na.rm = TRUE)
-            cumulative_discrimination_method <- "survcomp_cumulative_ranges"
-            
-            logger::log_info(formatted(sprintf(
-                "Cumulative discrimination calculated (MFS): %.3f over %d time ranges",
-                cumulative_discrimination, sum(valid_values)
-            ), indent = 3))
-        } else {
-            cumulative_discrimination_method <- "insufficient_events"
-        }
-        
-    }, error = function(e) {
-        logger::log_warn(formatted(sprintf("Cumulative discrimination calculation failed (MFS): %s", e$message), indent = 3))
-        cumulative_discrimination_method <- "calculation_failed"
-    })
-
-    # 5. TIME-AVERAGED DISCRIMINATION - Average discrimination across follow-up periods
-    # This provides a robust measure of discrimination performance over time
-    time_averaged_discrimination <- NA
-    time_averaged_discrimination_method <- NA_character_
-    
-    tryCatch({
-        # Calculate discrimination at multiple time points and average them
-        # This is more robust than single timepoint estimates
-        time_points <- seq(12, max(disc_data$observed_time, na.rm = TRUE), by = 12)  # Monthly intervals
-        discrimination_at_times <- numeric(length(time_points))
-        
-        for (i in seq_along(time_points)) {
-            time_point <- time_points[i]
-            
-            # Create time-specific outcome
-            time_event <- disc_data$observed_event == 1 & disc_data$observed_time <= time_point
-            time_specific_time <- pmin(disc_data$observed_time, time_point)
-            
-            # Calculate Harrell's C-index for this time point
-            if (sum(time_event) > GEP_MIN_EVENTS_COMPETING_RISK) {
-                time_result <- survcomp::concordance.index(
-                    x = disc_data$predicted_risk,
-                    surv.time = time_specific_time,
-                    surv.event = time_event,
-                    method = "noether"
-                )
-                discrimination_at_times[i] <- time_result$c.index
-            } else {
-                discrimination_at_times[i] <- NA
-            }
-        }
-        
-        # Calculate time-averaged discrimination
-        valid_times <- !is.na(discrimination_at_times)
-        if (sum(valid_times) > 0) {
-            time_averaged_discrimination <- mean(discrimination_at_times[valid_times], na.rm = TRUE)
-            time_averaged_discrimination_method <- "survcomp_time_averaged"
-            
-            logger::log_info(formatted(sprintf(
-                "Time-averaged discrimination calculated (MFS): %.3f over %d time points",
-                time_averaged_discrimination, sum(valid_times)
-            ), indent = 3))
-        } else {
-            time_averaged_discrimination_method <- "insufficient_events"
-        }
-        
-    }, error = function(e) {
-        logger::log_warn(formatted(sprintf("Time-averaged discrimination calculation failed (MFS): %s", e$message), indent = 3))
-        time_averaged_discrimination_method <- "calculation_failed"
-    })
+    # NOTE: cumulative_discrimination and time_averaged_discrimination were removed.
+    # Both computed mean Harrell's C over different time windows, adding redundancy
+    # without additional interpretive value beyond the timepoint-specific Harrell's C.
+    cumulative_discrimination <- NA_real_
+    cumulative_discrimination_method <- "removed_redundant_metric"
+    time_averaged_discrimination <- NA_real_
+    time_averaged_discrimination_method <- "removed_redundant_metric"
 
 
     # 4. Additional discrimination metrics

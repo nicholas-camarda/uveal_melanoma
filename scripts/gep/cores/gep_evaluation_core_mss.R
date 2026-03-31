@@ -1,6 +1,157 @@
 # GEP MSS Evaluation Core
 # Contains MSS model evaluation algorithms (no plotting or I/O)
 
+#' Calculate Observed vs Expected MSS Rates (KM-based)
+#'
+#' Mirrors `calculate_observed_expected_mfs()` for melanoma-specific survival.
+#' Uses Kaplan-Meier estimates (cause-specific, treating competing non-melanoma
+#' deaths as censored) rather than raw binary event sums, making MSS O/E
+#' consistent with the MFS O/E approach.
+#'
+#' Note: KM cause-specific survival is used to match the MFS formulation. If
+#' the GEP expected probabilities are CIF-based (Fine-Gray), the observed
+#' comparator should be switched to Aalen-Johansen; for now KM is used and
+#' is clearly documented via `ci_method = "greenwood_km"`.
+#'
+#' @param data Data frame with GEP predictions and survival outcomes.
+#' @param timepoint Numeric year value for evaluation (e.g., 5, 7, 10).
+#' @param group_var Character grouping variable (default `"biopsy1_gep"`).
+#' @param time_var Character name of the MSS follow-up column.
+#' @param event_var Character name of the melanoma-death event column.
+#'
+#' @return A list with `timepoint`, `results_by_class`, overall summary fields,
+#'   chi-square test statistics, and `ci_method = "greenwood_km"`.
+calculate_observed_expected_mss <- function(data,
+                                            timepoint,
+                                            group_var = "biopsy1_gep",
+                                            time_var = "tt_death_months",
+                                            event_var = "melanoma_death_event") {
+    logger::log_info(formatted(sprintf("Calculating O/E ratios for %d-year MSS (KM-based)", timepoint), indent = 2))
+
+    timepoint_months <- timepoint * 12
+    expected_var <- paste0("expected_mss_", timepoint, "yr")
+
+    if (!group_var %in% names(data)) {
+        stop(sprintf("Group variable '%s' not found in data", group_var))
+    }
+
+    class_levels <- unique(stats::na.omit(data[[group_var]]))
+    results_by_class <- list()
+
+    for (gep_class in class_levels) {
+        class_data <- data %>% dplyr::filter(.data[[group_var]] == gep_class)
+
+        if (nrow(class_data) == 0) {
+            results_by_class[[gep_class]] <- list(
+                n = 0, observed = 0, expected = 0, oe_ratio = NA,
+                poisson_ci_lower = NA, poisson_ci_upper = NA, ci_method = "greenwood_km"
+            )
+            next
+        }
+
+        km_metrics <- estimate_mfs_km_at_horizon(
+            data = class_data,
+            timepoint_months = timepoint_months,
+            time_var = time_var,
+            event_var = event_var
+        )
+        observed_events <- km_metrics$observed_events
+
+        mean_expected_survival <- mean(class_data[[expected_var]], na.rm = TRUE)
+        expected_events <- sum(1 - class_data[[expected_var]], na.rm = TRUE)
+
+        oe_ratio <- if (expected_events > 0) observed_events / expected_events else NA
+
+        poisson_ci_lower <- if (expected_events > 0) {
+            km_metrics$observed_events_ci_lower / expected_events
+        } else {
+            NA_real_
+        }
+        poisson_ci_upper <- if (expected_events > 0) {
+            km_metrics$observed_events_ci_upper / expected_events
+        } else {
+            NA_real_
+        }
+
+        results_by_class[[gep_class]] <- list(
+            n = nrow(class_data),
+            observed = round(observed_events, 2),
+            expected = round(expected_events, 2),
+            oe_ratio = round(oe_ratio, 3),
+            poisson_ci_lower = round(poisson_ci_lower, 3),
+            poisson_ci_upper = round(poisson_ci_upper, 3),
+            mean_expected_survival = round(mean_expected_survival, 3),
+            observed_survival = round(km_metrics$survival, 3),
+            observed_survival_ci_lower = round(km_metrics$survival_ci_lower, 3),
+            observed_survival_ci_upper = round(km_metrics$survival_ci_upper, 3),
+            observed_risk = round(km_metrics$risk, 3),
+            raw_events_by_horizon = km_metrics$raw_events_by_horizon,
+            ci_method = "greenwood_km"
+        )
+
+        logger::log_info(formatted(sprintf(
+            "%s: KM MSS=%.3f, O=%.2f, E=%.2f, O/E=%.3f (95%% CI: %.3f-%.3f)",
+            gep_class, km_metrics$survival, observed_events, expected_events, oe_ratio,
+            poisson_ci_lower, poisson_ci_upper
+        ), indent = 3))
+    }
+
+    overall_km_metrics <- estimate_mfs_km_at_horizon(
+        data = data,
+        timepoint_months = timepoint_months,
+        time_var = time_var,
+        event_var = event_var
+    )
+    observed_total <- overall_km_metrics$observed_events
+    expected_total <- sum(1 - data[[expected_var]], na.rm = TRUE)
+
+    overall_ci_lower <- NA_real_
+    overall_ci_upper <- NA_real_
+    if (!is.na(expected_total) && expected_total > 0) {
+        overall_ci_lower <- overall_km_metrics$observed_events_ci_lower / expected_total
+        overall_ci_upper <- overall_km_metrics$observed_events_ci_upper / expected_total
+    }
+
+    observed_vec <- sapply(results_by_class, function(x) x$observed)
+    expected_vec <- sapply(results_by_class, function(x) x$expected)
+    valid_class_rows <- is.finite(observed_vec) & is.finite(expected_vec) & expected_vec > 0
+
+    if (sum(valid_class_rows) >= 2) {
+        chisq_stat <- sum(
+            (observed_vec[valid_class_rows] - expected_vec[valid_class_rows])^2 / expected_vec[valid_class_rows],
+            na.rm = TRUE
+        )
+        chisq_p <- stats::pchisq(chisq_stat, df = sum(valid_class_rows) - 1, lower.tail = FALSE)
+        chisq_log_p <- calculate_chisq_log_p_value(chisq_stat, df = sum(valid_class_rows) - 1)
+    } else {
+        chisq_p <- NA
+        chisq_log_p <- NA
+        chisq_stat <- NA
+    }
+
+    list(
+        timepoint = timepoint,
+        results_by_class = results_by_class,
+        overall_n = nrow(data),
+        overall_observed = round(observed_total, 2),
+        overall_expected = round(expected_total, 2),
+        overall_oe_ratio = if (!is.na(expected_total) && expected_total > 0) {
+            round(observed_total / expected_total, 3)
+        } else {
+            NA
+        },
+        overall_poisson_ci_lower = round(overall_ci_lower, 3),
+        overall_poisson_ci_upper = round(overall_ci_upper, 3),
+        overall_observed_survival = round(overall_km_metrics$survival, 3),
+        overall_observed_survival_ci_lower = round(overall_km_metrics$survival_ci_lower, 3),
+        overall_observed_survival_ci_upper = round(overall_km_metrics$survival_ci_upper, 3),
+        chisq_statistic = round(chisq_stat, 3),
+        chisq_p_value = chisq_p,
+        chisq_log_p_value = chisq_log_p,
+        ci_method = "greenwood_km"
+    )
+}
+
 #' Perform standard MSS validation
 #'
 #' Validate melanoma-specific survival (MSS) predictions at a given timepoint
@@ -28,19 +179,16 @@ perform_standard_mss_validation <- function(data, timepoint, bootstrap_iteration
         )
 
     oe_source_data <- if (is.null(oe_data)) data else oe_data
-    oe_analysis_data <- oe_source_data %>%
-        mutate(
-            time_to_event = .data[[time_var]],
-            event_occurred = .data[[paste0("mss_event_", timepoint, "yr")]]
-        )
 
-    # Calculate observed vs expected rates
-    observed_expected <- calculate_observed_expected_rates(
-        data = oe_analysis_data,
-        expected_var = paste0("expected_mss_", timepoint, "yr"),
-        event_var = "event_occurred",
-        time_var = "time_to_event",
-        group_var = group_var
+    # Calculate observed vs expected rates using KM-based observed events,
+    # consistent with calculate_observed_expected_mfs(). The oe_source_data
+    # must retain the original tt_death_months and melanoma_death_event columns.
+    observed_expected <- calculate_observed_expected_mss(
+        data = oe_source_data,
+        timepoint = timepoint,
+        group_var = group_var,
+        time_var = time_var,
+        event_var = "melanoma_death_event"
     )
 
     # Calculate calibration metrics

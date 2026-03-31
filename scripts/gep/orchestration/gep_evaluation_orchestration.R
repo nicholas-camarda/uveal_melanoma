@@ -349,7 +349,6 @@ analyze_gep_mss_validation <- function(data,
                                        output_dirs = NULL,
                                        prefix = "") {
     logger::log_info("Starting GEP Melanoma-Specific Survival validation analysis")
-    logger::log_info(formatted("DEBUG: Function entry point reached", indent = 1))
 
     data <- refresh_gep_analysis_flags(data)
 
@@ -360,7 +359,6 @@ analyze_gep_mss_validation <- function(data,
     if (is.null(prefix)) {
         prefix <- ""
     }
-    logger::log_info(formatted("DEBUG: Setting up output directory", indent = 1))
     mss_output_dir <- output_dirs$obj4_mss
     mss_summary_output_dir <- output_dirs$obj4_mss_summary %||% mss_output_dir
     mss_validation_output_dir <- output_dirs$obj4_mss_validation %||% mss_output_dir
@@ -402,7 +400,6 @@ analyze_gep_mss_validation <- function(data,
         ), indent = 1))
     }
     
-    logger::log_info(formatted("DEBUG: Checking required variables", indent = 1))
     logger::log_info(formatted("Filtering data for MSS validation", indent = 1))
     required_vars <- c("biopsy1_gep", "expected_mss_5yr", "expected_mss_7yr", "expected_mss_10yr", "prame_status", "gep_validation_set")
     missing_vars <- setdiff(required_vars, names(data))
@@ -412,7 +409,6 @@ analyze_gep_mss_validation <- function(data,
         stop("GEP validation cannot proceed without required variables")
     }
     
-    logger::log_info(formatted("DEBUG: Filtering data for MSS analysis", indent = 1))
     analysis_data <- data %>%
         filter(mss_analysis_eligible)
     logger::log_info(formatted(sprintf("Analysis dataset: %d patients with valid GEP and MSS data", nrow(analysis_data)), indent = 1))

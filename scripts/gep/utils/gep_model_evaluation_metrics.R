@@ -802,6 +802,13 @@ calculate_observed_expected_rates <- function(data, expected_var, event_var, tim
     chisq_log_p_value <- NA_real_
     chisq_statistic <- NA_real_
     if (length(expected_vec) > 1 && all(expected_vec > 0) && sum(expected_vec) > 0) {
+        sparse_classes <- sum(expected_vec < 5)
+        if (sparse_classes > 0) {
+            logger::log_warn(sprintf(
+                "Chi-square GOF test has %d class(es) with expected events < 5 (minimum: %.1f). Chi-square approximation may be unreliable; interpret p-value cautiously.",
+                sparse_classes, min(expected_vec)
+            ))
+        }
         chisq_statistic <- sum((observed_vec - expected_vec)^2 / expected_vec)
         chisq_p_value <- stats::pchisq(chisq_statistic, df = length(expected_vec) - 1, lower.tail = FALSE)
         chisq_log_p_value <- calculate_chisq_log_p_value(chisq_statistic, df = length(expected_vec) - 1)
