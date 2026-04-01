@@ -13,6 +13,8 @@ create_analytic_dataset <- function(output_dirs = NULL, validate_after_saving = 
     raw_data <- load_and_clean_data(INPUT_FILENAME)
     logger::log_info(sprintf("Loaded %d rows of raw data", nrow(raw_data)))
 
+    reconciliation_audit <- attr(raw_data, "event_date_reconciliation_audit", exact = TRUE)
+
     logger::log_info("Creating derived variables")
     derived_data <- create_derived_variables(raw_data)
 
@@ -97,6 +99,33 @@ create_analytic_dataset <- function(output_dirs = NULL, validate_after_saving = 
             readr::write_tsv(cohort_removal, output_path, na = "")
 
             logger::log_info(formatted(sprintf("Documented removals for %s in %s", cohort_key, output_path), indent = 1))
+        }
+
+        if (!is.null(reconciliation_audit)) {
+            logger::log_info("Publishing event/date reconciliation audit into each cohort's 00_General directory")
+            published_paths <- list()
+            for (cohort_key in names(output_dirs)) {
+                cohort_dirs <- output_dirs[[cohort_key]]
+                if (is.null(cohort_dirs) || !"baseline_characteristics" %in% names(cohort_dirs)) {
+                    next
+                }
+
+                general_dir <- dirname(cohort_dirs$baseline_characteristics)
+                audit_paths <- write_event_date_reconciliation_audit(
+                    audit_rows = reconciliation_audit$audit_rows,
+                    audit_summary = reconciliation_audit$audit_summary,
+                    source_workbook = reconciliation_audit$source_workbook,
+                    id_column = reconciliation_audit$id_column,
+                    output_dir = general_dir,
+                    artifact_filename = sprintf("%s_event_data_reconcilitation.xlsx", cohort_key)
+                )
+                published_paths[[cohort_key]] <- audit_paths
+                logger::log_info(formatted(sprintf(
+                    "Published event/date reconciliation audit for %s in %s",
+                    cohort_key,
+                    general_dir
+                ), indent = 1))
+            }
         }
     }
 

@@ -1,26 +1,167 @@
+#' Pick the preferred identifier column for reconciliation audit artifacts
+#'
+#' @param data Data frame under review
+#' @return Character scalar column name or `NA_character_` when unavailable
+pick_event_date_audit_id_col <- function(data) {
+    id_candidates <- c("study_id", "id", "patient_id", "record_id", "case_id")
+    matching_col <- id_candidates[id_candidates %in% names(data)][1]
+    if (length(matching_col) == 0 || is.na(matching_col)) {
+        return(NA_character_)
+    }
+
+    matching_col
+}
+
+#' Convert an event/date pair into a compact audit string
+#'
+#' @param event_value Event indicator value
+#' @param date_value Date value
+#' @return Character scalar summary of the paired state
+format_event_date_state <- function(event_value, date_value) {
+    event_text <- ifelse(is.na(event_value), "NA", as.character(event_value))
+    date_text <- ifelse(is.na(date_value), "NA", as.character(date_value))
+    sprintf("event=%s | date=%s", event_text, date_text)
+}
+
+#' Create an empty reconciliation-audit table with the canonical columns
+#'
+#' @return Tibble with audit columns and zero rows
+empty_event_date_audit_rows <- function() {
+    tibble::tibble(
+        source_workbook = character(),
+        id_column = character(),
+        study_id = character(),
+        row_index = integer(),
+        event_var = character(),
+        date_var = character(),
+        original_event = character(),
+        original_date = character(),
+        reconciled_event = character(),
+        reconciled_date = character(),
+        original_state = character(),
+        reconciled_state = character(),
+        action_taken = character()
+    )
+}
+
+#' Create an empty reconciliation-audit summary table with canonical columns
+#'
+#' @return Tibble with summary columns and zero rows
+empty_event_date_audit_summary <- function() {
+    tibble::tibble(
+        source_workbook = character(),
+        id_column = character(),
+        event_var = character(),
+        date_var = character(),
+        records_with_present_date = integer(),
+        records_marked_event_yes_after = integer(),
+        n_event_set_to_yes = integer(),
+        n_event_set_to_no_missing_date = integer(),
+        n_rows_reconciled = integer()
+    )
+}
+
+#' Write runtime reconciliation artifacts for loader-side event/date repairs
+#'
+#' @param audit_rows Row-level reconciliation audit rows
+#' @param audit_summary Per-variable summary table
+#' @param source_workbook Source workbook basename
+#' @param id_column Identifier column used for audit rows
+#' @param output_dir Directory where the reviewable artifacts should be written
+#' @param artifact_filename Optional stable workbook filename
+#' @return Named list with workbook path
+write_event_date_reconciliation_audit <- function(audit_rows,
+                                                  audit_summary,
+                                                  source_workbook,
+                                                  id_column = NA_character_,
+                                                  output_dir = NULL,
+                                                  artifact_filename = NULL) {
+    audit_dir <- output_dir %||% file.path(OUTPUT_DIR, "event_date_reconciliation_audit")
+    dir.create(audit_dir, recursive = TRUE, showWarnings = FALSE)
+
+    if (is.null(artifact_filename) || !nzchar(artifact_filename)) {
+        workbook_stub <- gsub("[^A-Za-z0-9]+", "_", tools::file_path_sans_ext(basename(source_workbook)))
+        artifact_filename <- sprintf("event_date_reconciliation_%s.xlsx", workbook_stub)
+    }
+
+    xlsx_path <- file.path(audit_dir, artifact_filename)
+
+    audit_rows_to_write <- audit_rows
+    if (is.null(audit_rows_to_write) || nrow(audit_rows_to_write) == 0) {
+        audit_rows_to_write <- empty_event_date_audit_rows()
+    }
+
+    audit_summary_to_write <- audit_summary
+    if (is.null(audit_summary_to_write) || nrow(audit_summary_to_write) == 0) {
+        audit_summary_to_write <- empty_event_date_audit_summary()
+    }
+
+    audit_metadata <- tibble::tibble(
+        generated_at = format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"),
+        source_workbook = basename(source_workbook),
+        id_column = ifelse(is.na(id_column), NA_character_, id_column),
+        total_reconciled_rows = nrow(audit_rows_to_write)
+    )
+
+    writexl::write_xlsx(
+        list(
+            Audit_Metadata = audit_metadata,
+            Reconciliation_Summary = audit_summary_to_write,
+            Reconciled_Changes = audit_rows_to_write
+        ),
+        xlsx_path
+    )
+
+    logger::log_info(sprintf(
+        "Event/date reconciliation audit written to %s",
+        xlsx_path
+    ))
+
+    list(
+        xlsx_path = xlsx_path
+    )
+}
+
 #' Check and fix consistency between event indicators and dates
 #'
 #' Ensures logical consistency between binary event indicators and their associated dates.
 #' If a date exists but the event is marked as 'N' or NA, updates event to 'Y'.
-#' If an event is marked as 'Y' but has no date, sets date to NA.
+#' If an event is marked as 'Y' but has no date, sets the event to 'N' and records
+#' a row-level reconciliation audit entry.
 #'
 #' @param data Data frame containing event and date variables
 #' @param event_var Name of the event indicator variable (character)
 #' @param date_var Name of the date variable (character)
 #' @param event_yes Value indicating event occurred (default "Y")
 #' @param event_no Value indicating event did not occur (default "N")
+#' @param id_col Optional identifier column used in reconciliation audit rows
+#' @param source_workbook Optional workbook name for audit artifacts
 #'
-#' @return Data frame with consistent event indicators and dates
+#' @return Named list with reconciled `data`, row-level `audit_rows`, and
+#'   per-variable `audit_summary`
 #'
 #' @examples
 #' fix_event_date_consistency(data, "recurrence1", "recurrence1_date")
-fix_event_date_consistency <- function(data, event_var, date_var, event_yes = "Y", event_no = "N") {
+fix_event_date_consistency <- function(data,
+                                       event_var,
+                                       date_var,
+                                       event_yes = "Y",
+                                       event_no = "N",
+                                       id_col = NA_character_,
+                                       source_workbook = NA_character_) {
+    event_var_name <- event_var
+    date_var_name <- date_var
     logger::log_info(sprintf("Checking consistency between %s and %s", event_var, date_var))
 
-    n_event_should_be_yes <- sum(!is.na(data[[date_var]]) & data[[event_var]] != event_yes, na.rm = TRUE)
+    original_event <- data[[event_var]]
+    original_date <- data[[date_var]]
+    set_event_to_yes <- !is.na(original_date) & (is.na(original_event) | original_event != event_yes)
+    set_event_to_no_missing_date <- original_event == event_yes & is.na(original_date)
+
+    n_event_should_be_yes <- sum(set_event_to_yes, na.rm = TRUE)
     n_date_should_be_na <- sum(data[[event_var]] == event_yes & is.na(data[[date_var]]), na.rm = TRUE)
 
-    data <- data %>%
+    reconciled_data <- data %>%
         mutate(
             !!event_var := case_when(
                 !is.na(.data[[date_var]]) ~ event_yes,
@@ -30,17 +171,60 @@ fix_event_date_consistency <- function(data, event_var, date_var, event_yes = "Y
             !!date_var := if_else(.data[[event_var]] == event_yes, .data[[date_var]], as.Date(NA))
         )
 
+    id_values <- if (!is.na(id_col) && id_col %in% names(data)) {
+        as.character(data[[id_col]])
+    } else {
+        rep(NA_character_, nrow(data))
+    }
+
+    reconciled_rows <- set_event_to_yes | set_event_to_no_missing_date
+    audit_rows <- empty_event_date_audit_rows()
+    if (any(reconciled_rows, na.rm = TRUE)) {
+        audit_rows <- tibble::tibble(
+            source_workbook = basename(source_workbook),
+            id_column = ifelse(is.na(id_col), NA_character_, id_col),
+            study_id = id_values,
+            row_index = seq_len(nrow(data)),
+            event_var = event_var_name,
+            date_var = date_var_name,
+            original_event = ifelse(is.na(original_event), NA_character_, as.character(original_event)),
+            original_date = ifelse(is.na(original_date), NA_character_, as.character(original_date)),
+            reconciled_event = ifelse(is.na(reconciled_data[[event_var_name]]), NA_character_, as.character(reconciled_data[[event_var_name]])),
+            reconciled_date = ifelse(is.na(reconciled_data[[date_var_name]]), NA_character_, as.character(reconciled_data[[date_var_name]])),
+            original_state = purrr::map2_chr(original_event, original_date, format_event_date_state),
+            reconciled_state = purrr::map2_chr(reconciled_data[[event_var_name]], reconciled_data[[date_var_name]], format_event_date_state),
+            action_taken = dplyr::case_when(
+                set_event_to_yes ~ "set_event_to_yes_from_present_date",
+                set_event_to_no_missing_date ~ "set_event_to_no_and_clear_missing_date",
+                TRUE ~ NA_character_
+            )
+        ) %>%
+            dplyr::filter(reconciled_rows)
+    }
+
+    audit_summary <- tibble::tibble(
+        source_workbook = basename(source_workbook),
+        id_column = ifelse(is.na(id_col), NA_character_, id_col),
+        event_var = event_var_name,
+        date_var = date_var_name,
+        records_with_present_date = sum(!is.na(reconciled_data[[date_var_name]])),
+        records_marked_event_yes_after = sum(reconciled_data[[event_var_name]] == event_yes, na.rm = TRUE),
+        n_event_set_to_yes = n_event_should_be_yes,
+        n_event_set_to_no_missing_date = sum(set_event_to_no_missing_date, na.rm = TRUE),
+        n_rows_reconciled = nrow(audit_rows)
+    )
+
     if (VERBOSE) {
-        logger::log_info(sprintf("Found %d events with dates", sum(!is.na(data[[date_var]]))))
-        logger::log_info(sprintf("Found %d events marked as '%s'", sum(data[[event_var]] == event_yes, na.rm = TRUE), event_yes))
+        logger::log_info(sprintf("Found %d events with dates", sum(!is.na(reconciled_data[[date_var]]))))
+        logger::log_info(sprintf("Found %d events marked as '%s'", sum(reconciled_data[[event_var]] == event_yes, na.rm = TRUE), event_yes))
         logger::log_info(sprintf(
             "Event/date consistency check for '%s' and '%s':", event_var, date_var
         ))
         logger::log_info(sprintf(
-            "  - Number of records with a non-missing %s: %d", date_var, sum(!is.na(data[[date_var]]))
+            "  - Number of records with a non-missing %s: %d", date_var, sum(!is.na(reconciled_data[[date_var]]))
         ))
         logger::log_info(sprintf(
-            "  - Number of records with %s marked as '%s': %d", event_var, event_yes, sum(data[[event_var]] == event_yes, na.rm = TRUE)
+            "  - Number of records with %s marked as '%s': %d", event_var, event_yes, sum(reconciled_data[[event_var]] == event_yes, na.rm = TRUE)
         ))
         logger::log_info(sprintf(
             "  - Fixed %d records where %s was not '%s' but %s was present (set event to '%s')",
@@ -52,7 +236,11 @@ fix_event_date_consistency <- function(data, event_var, date_var, event_yes = "Y
         ))
     }
 
-    return(data)
+    return(list(
+        data = reconciled_data,
+        audit_rows = audit_rows,
+        audit_summary = audit_summary
+    ))
 }
 
 #' Load and clean raw data
@@ -131,13 +319,35 @@ load_and_clean_data <- function(filename) {
     logger::log_info("NOTE: NOT splitting into cohorts yet!")
     message("\n")
 
-    cleaned_data <- fix_event_date_consistency(cleaned_data, "initial_gk", "initial_gk_date")
-    cleaned_data <- fix_event_date_consistency(cleaned_data, "initial_plaque", "initial_plaque_date")
-    cleaned_data <- fix_event_date_consistency(cleaned_data, "recurrence1", "recurrence1_date")
-    cleaned_data <- fix_event_date_consistency(cleaned_data, "recurrence2", "recurrence2_date")
-    cleaned_data <- fix_event_date_consistency(cleaned_data, "recurrence3", "recurrence3_date")
-    cleaned_data <- fix_event_date_consistency(cleaned_data, "mets_progression", "mets_progression_date")
-    cleaned_data <- fix_event_date_consistency(cleaned_data, "enucleation", "enucleation_date")
+    audit_id_col <- pick_event_date_audit_id_col(cleaned_data)
+    if (is.na(audit_id_col)) {
+        logger::log_warn("No preferred study ID column found for event/date reconciliation audit; row indices will be retained without study IDs.")
+    }
+
+    audit_rows <- list()
+    audit_summaries <- list()
+    event_date_pairs <- list(
+        c("initial_gk", "initial_gk_date"),
+        c("initial_plaque", "initial_plaque_date"),
+        c("recurrence1", "recurrence1_date"),
+        c("recurrence2", "recurrence2_date"),
+        c("recurrence3", "recurrence3_date"),
+        c("mets_progression", "mets_progression_date"),
+        c("enucleation", "enucleation_date")
+    )
+
+    for (pair in event_date_pairs) {
+        reconciliation_result <- fix_event_date_consistency(
+            cleaned_data,
+            event_var = pair[[1]],
+            date_var = pair[[2]],
+            id_col = audit_id_col,
+            source_workbook = filename
+        )
+        cleaned_data <- reconciliation_result$data
+        audit_rows[[length(audit_rows) + 1L]] <- reconciliation_result$audit_rows
+        audit_summaries[[length(audit_summaries) + 1L]] <- reconciliation_result$audit_summary
+    }
 
     cleaned_data <- cleaned_data %>%
         mutate(across(contains("date|dob|dod|last\\_followup", ignore.case = TRUE), as.Date))
@@ -164,6 +374,14 @@ load_and_clean_data <- function(filename) {
                 }
             )
         )
+
+    attr(cleaned_data_final, "event_date_reconciliation_audit") <- list(
+        audit_rows = dplyr::bind_rows(audit_rows),
+        audit_summary = dplyr::bind_rows(audit_summaries),
+        source_workbook = filename,
+        id_column = audit_id_col
+    )
+    logger::log_info("Loader-side event/date reconciliation details staged for Objective 0 publication into cohort 00_General folders.")
 
     logger::log_info(sprintf("Loaded %d rows of raw data", nrow(cleaned_data_final)))
 

@@ -65,6 +65,10 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     logger::log_info(formatted("Local recurrence analysis completed", indent = 1))
 
     # 1a1. Overall survival stratified by local recurrence status
+    logger::log_warn(formatted(
+        "Legacy exploratory one-off analysis: recurrence-stratified OS/PFS uses post-baseline recurrence status, sits outside the original formal objectives, and must not be interpreted as a baseline treatment comparison.",
+        indent = 1
+    ))
     logger::log_info(formatted("1a1: Recurrence-stratified overall survival (KM)", indent = 1))
     recurrence_os <- analyze_os_by_local_recurrence(
         data = data,
@@ -102,6 +106,10 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     logger::log_info(formatted("Metastatic progression analysis completed", indent = 1))
 
     # 2a1. Overall survival stratified by metastatic progression status
+    logger::log_warn(formatted(
+        "Legacy exploratory one-off analysis: metastasis-stratified OS/PFS uses post-baseline metastatic progression status, sits outside the original formal objectives, and must not be interpreted as a baseline treatment comparison.",
+        indent = 1
+    ))
     logger::log_info(formatted("2a1: Metastasis-stratified overall survival (KM)", indent = 1))
     metastasis_os <- analyze_os_by_metastatic_progression(
         data = data,

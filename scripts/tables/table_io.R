@@ -391,7 +391,10 @@ summarize_effect_model <- function(model,
             n_outcome_non_missing <- cox_model_n
         }
     } else if (model_type == "logistic" && !is.null(outcome_values)) {
-        n_events <- sum(as.numeric(outcome_values) == 1, na.rm = TRUE)
+        n_events <- count_binary_outcome_events(
+            outcome_values,
+            warn_context = sprintf("%s effect summary (%s)", analysis_label, outcome_var)
+        )
     }
 
     if (model_type == "cox") {

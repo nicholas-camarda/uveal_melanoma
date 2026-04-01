@@ -1,5 +1,69 @@
 # Table Diagnostics Utilities
 
+#' Count affirmative events for binary outcomes without relying on factor order
+#'
+#' @param outcome_values Vector of observed binary outcomes
+#' @param warn_context Character description used in warnings
+#' @return Numeric scalar event count or `NA_real_` when the affirmative level
+#'   cannot be inferred safely
+count_binary_outcome_events <- function(outcome_values, warn_context = "binary outcome") {
+    if (is.null(outcome_values)) {
+        return(NA_real_)
+    }
+
+    non_missing_values <- outcome_values[!is.na(outcome_values)]
+    if (length(non_missing_values) == 0) {
+        return(0)
+    }
+
+    if (is.logical(non_missing_values)) {
+        return(sum(non_missing_values, na.rm = TRUE))
+    }
+
+    if (is.numeric(non_missing_values) || is.integer(non_missing_values)) {
+        unique_values <- sort(unique(as.numeric(non_missing_values)))
+        if (all(unique_values %in% c(0, 1))) {
+            return(sum(as.numeric(non_missing_values) == 1, na.rm = TRUE))
+        }
+
+        logger::log_warn(sprintf(
+            "Unable to infer affirmative level for %s because numeric outcome values were not binary 0/1: %s",
+            warn_context,
+            paste(unique_values, collapse = ", ")
+        ))
+        return(NA_real_)
+    }
+
+    normalized_values <- trimws(tolower(as.character(non_missing_values)))
+    positive_aliases <- c("1", "y", "yes", "true", "event", "events", "positive", "case", "cases", "occurred")
+    matched_positive_values <- unique(normalized_values[normalized_values %in% positive_aliases])
+
+    if (length(matched_positive_values) == 1) {
+        return(sum(normalized_values == matched_positive_values[[1]], na.rm = TRUE))
+    }
+
+    unique_values <- sort(unique(normalized_values))
+    if (identical(unique_values, c("0", "1"))) {
+        return(sum(normalized_values == "1", na.rm = TRUE))
+    }
+    if (identical(unique_values, c("false", "true"))) {
+        return(sum(normalized_values == "true", na.rm = TRUE))
+    }
+    if (identical(unique_values, c("n", "y"))) {
+        return(sum(normalized_values == "y", na.rm = TRUE))
+    }
+    if (identical(unique_values, c("no", "yes"))) {
+        return(sum(normalized_values == "yes", na.rm = TRUE))
+    }
+
+    logger::log_warn(sprintf(
+        "Unable to infer affirmative level for %s. Observed levels: %s",
+        warn_context,
+        paste(unique_values, collapse = ", ")
+    ))
+    NA_real_
+}
+
 #' Create comprehensive diagnostic information for regression models
 #'
 #' @param model_fit Fitted model object
@@ -205,7 +269,10 @@ create_model_summary_tab <- function(model_fit, data, outcome_var, confounders, 
     if (model_type == "cox" && !is.null(model_fit$y) && is.matrix(model_fit$y)) {
         n_events <- sum(model_fit$y[, 2])
     } else if (model_type == "logistic" && !is.null(outcome_values)) {
-        n_events <- sum(as.numeric(outcome_values) == 1, na.rm = TRUE)
+        n_events <- count_binary_outcome_events(
+            outcome_values,
+            warn_context = sprintf("%s diagnostics (%s)", analysis_name, outcome_var)
+        )
     }
     n_outcome_levels <- if (!is.null(outcome_values)) dplyr::n_distinct(stats::na.omit(outcome_values)) else NA_integer_
 

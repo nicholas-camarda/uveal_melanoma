@@ -93,6 +93,8 @@ For practical reading of hazard ratios and confidence intervals, see [Cox Regres
 
 For practical reading of survival-curve separation and log-rank context, see [Kaplan-Meier Plots](INTERPRETATION_GUIDE.md#kaplan-meier-plots).
 
+Legacy exploratory note: the runtime tree also retains recurrence-stratified and metastasis-stratified OS/PFS summaries built on post-baseline outcome groups. Those one-off outputs are outside the formal objective contract and should not be interpreted as valid baseline treatment comparisons.
+
 ---
 
 ## Restricted Mean Survival Time (RMST)
@@ -317,7 +319,9 @@ outcome ~ treatment + age_at_diagnosis + sex + location + optic_nerve
 | **Metastatic Progression** | Binary (yes/no) | Objective 1b |
 | **Radiation Retinopathy** | Binary (yes/no) | Objective 2b |
 | **Neovascular Glaucoma** | Binary (yes/no) | Objective 2c |
-| **Serous Retinal Detachment** | Binary (yes/no) | Objective 2d |
+| **Serous Retinal Detachment (all recorded causes in the published implementation)** | Binary (yes/no) | Objective 2d |
+
+Objective 2d scope note: earlier repository docs described radiation-induced-only SRD. The current published implementation intentionally includes all recorded SRD causes, including mass-induced SRD when present, and the methods documentation now reflects that broader endpoint.
 
 ### Assumptions
 

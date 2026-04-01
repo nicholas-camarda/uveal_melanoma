@@ -155,3 +155,32 @@ test_that("Objective 1 diagnostics keep factor labels grouped before coefficient
         }
     }
 })
+
+test_that("Objective 1 logs legacy warnings for exploratory post-baseline survival outputs", {
+    test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective1_legacy_warning_test")
+    output_dirs <- build_objective1_output_dirs(test_output_dir)
+    dir.create(test_output_dir, recursive = TRUE, showWarnings = FALSE)
+    for (dir_path in output_dirs) {
+        dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
+    }
+    withr::defer(unlink(test_output_dir, recursive = TRUE), envir = parent.frame())
+
+    log_path <- file.path(LOGS_DIR, "objective1_legacy_warning_test.txt")
+    setup_logging(log_path = log_path, level = "INFO", progress = FALSE, context_in_file = TRUE)
+
+    expect_no_error(
+        run_objective_1(
+            data = create_test_dataset(),
+            dataset_name = "test_cohort",
+            output_dirs = output_dirs,
+            prefix = "test_",
+            confounders = c("age_at_diagnosis", "sex")
+        )
+    )
+
+    text_log_path <- file.path(dirname(log_path), "txt", basename(log_path))
+    log_lines <- readLines(text_log_path, warn = FALSE)
+
+    expect_true(any(grepl("Legacy exploratory one-off analysis", log_lines, fixed = TRUE)))
+    expect_true(any(grepl("post-baseline", log_lines, fixed = TRUE)))
+})

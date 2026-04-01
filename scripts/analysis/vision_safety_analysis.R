@@ -984,8 +984,9 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
             })
     }
 
-    # # For SRD, filter to only radiation-induced cases as per objectives
-    # Per discussion with Tim, we are no longer restricting to radiation-induced SRD only
+    # Historical note: earlier docs described radiation-induced-only SRD, but the
+    # published collaborator-aligned implementation intentionally keeps all recorded
+    # SRD causes. The old filter is retained here commented for provenance only.
     # if (sequela_type == "srd") {
     #     logger::log_info("Filtering SRD to only radiation-induced causes")
     #     original_n <- nrow(data)

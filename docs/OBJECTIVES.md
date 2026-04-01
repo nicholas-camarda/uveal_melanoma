@@ -26,6 +26,11 @@ Key sub-objectives:
 - `1f. Tumor height change (sensitivity)`: retain the same clinical question with the pipeline's sensitivity-model specification
 - `1g. Subgroup analysis`: evaluate whether efficacy patterns differ across baseline subgroups
 
+Legacy exploratory note:
+
+- The runtime tree may also contain recurrence-stratified and metastasis-stratified OS/PFS outputs under `01_Efficacy/a_recurrence/` and `01_Efficacy/b_metastatic_progression/`.
+- Those were added as one-off exploratory post-baseline summaries, are not part of the original formal Objective 1 contract, and should not be interpreted as valid baseline treatment comparisons.
+
 Tumor-height note:
 
 - The source planning document explicitly asks for pretreatment-versus-follow-up tumor-height change.
@@ -58,9 +63,14 @@ Key sub-objectives:
 - retreatment vision context: when local progression occurs and the eye is retreated, the source planning document specifies the corresponding pretreatment-to-retreatment comparison using `initial_vision - recurrence1_pretreatment_vision`
 - `2b. Radiation retinopathy`: compare rates of `retinopathy`
 - `2c. Neovascular glaucoma`: compare rates of `nvg`
-- `2d. Serous retinal detachment`: compare rates of `srg`, restricted to radiation-induced cases where `srd_cause` indicates radiation-induced cause
+- `2d. Serous retinal detachment`: compare rates of `srd` regardless of attributed cause in the current published implementation, including mass-induced cases when present
 
 This objective is about toxicity burden, not just treatment efficacy. The current pipeline documents the implemented model families and output structure in [TECHNICAL.md](TECHNICAL.md#objective-2-safetytoxicity-analysis-complete).
+
+Documentation alignment note:
+
+- Earlier repository docs described Objective 2d as radiation-induced-only SRD.
+- The collaborator-aligned published implementation is broader and intentionally retains all recorded SRD causes; this page now reflects that published scope.
 
 ## Objective 3: Efficacy of Repeat Radiation
 

@@ -467,6 +467,8 @@ For a collaborator-facing overview of the study aims, subgroup scope, and cohort
 | **1f. Tumor Height (Sensitivity)** | Linear regression with baseline adjustment | `analyze_tumor_height_changes()` | Change summaries (.html), regression models (.html) | `{cohort}/01_Efficacy/f_tumor_height_sensitivity/` |
 | **1g. Subgroup Analysis** | Interaction testing across patient subgroups | `analyze_treatment_effect_subgroups_*()` | Subgroup tables (.xlsx), forest plots (.png), diagnostics (.xlsx) | `{cohort}/01_Efficacy/g_subgroup_analysis/` |
 
+Legacy exploratory note: recurrence-stratified and metastasis-stratified OS/PFS subfolders can also appear under `a_recurrence/` and `b_metastatic_progression/`. These are retained historical one-off post-baseline summaries, not part of the formal Objective 1 contract, and should not be interpreted as valid baseline treatment comparisons.
+
 ### Objective 2: Safety/Toxicity Analysis (COMPLETE)
 
 | Sub-objective | Method | Implementation | Outputs | Location |
@@ -474,11 +476,15 @@ For a collaborator-facing overview of the study aims, subgroup scope, and cohort
 | **2a. Vision Changes** | Descriptive logMAR/Snellen reporting plus adjusted linear and ordinal regression | `analyze_visual_acuity_changes()` | `vision_changes.html`, descriptive Snellen summary/distribution workbooks, adjusted LogMAR linear model (.html + diagnostics), adjusted Snellen Line Change linear model (.html + diagnostics), adjusted Snellen Line Change Distribution ordinal model (.html + diagnostics), and `vision_effect_summary.xlsx` | `{cohort}/02_Safety/a_vision_changes/` |
 | **2b. Radiation Retinopathy** | Binary outcome analysis with logistic regression | `analyze_radiation_complications()` | Complication rates (.xlsx), adjusted logistic model (.html + diagnostics), `retinopathy_effect_summary.xlsx`, or explicit skip artifact when model not fit | `{cohort}/02_Safety/b_retinopathy/` |
 | **2c. Neovascular Glaucoma** | Binary outcome analysis with logistic regression | `analyze_radiation_complications()` | Complication rates (.xlsx), adjusted logistic model (.html + diagnostics), `neovascular_glaucoma_effect_summary.xlsx`, or explicit skip artifact when model not fit | `{cohort}/02_Safety/c_neovascular_glaucoma/` |
-| **2d. Serous Retinal Detachment** | Binary outcome analysis (radiation-induced only) | `analyze_radiation_complications()` | Complication rates (.xlsx), adjusted logistic model (.html + diagnostics), `serous_retinal_detachment_effect_summary.xlsx`, or explicit skip artifact when model not fit | `{cohort}/02_Safety/d_serous_retinal_detachment/` |
+| **2d. Serous Retinal Detachment** | Binary outcome analysis (all recorded SRD causes in the published implementation) | `analyze_radiation_complications()` | Complication rates (.xlsx), adjusted logistic model (.html + diagnostics), `serous_retinal_detachment_effect_summary.xlsx`, or explicit skip artifact when model not fit | `{cohort}/02_Safety/d_serous_retinal_detachment/` |
 
 Effect-summary workbooks follow model-family-specific inference conventions and should match the corresponding HTML tables: linear rows report mean differences with Wald CIs/p-values, logistic rows report ORs with model-based Wald CIs and the pipeline's standard term-level p-values, Cox rows report HRs with native Cox CIs/p-values, and ordinal rows report proportional-odds ORs with 95% Wald CIs and likelihood-ratio-test p-values.
 
 **Objective 2 output convention:** adjusted analyses now always live inside their own side-effect subfolder. When an adjusted model is skipped because of insufficient events, no usable variation, or fit failure, the pipeline writes a `_SKIPPED.html` explanation file plus the diagnostics workbook instead of leaving the folder without an adjusted-analysis artifact.
+
+**Objective 2d scope note:** earlier docs used radiation-induced-only wording for SRD. The collaborator-aligned published implementation keeps all recorded SRD causes, including mass-induced SRD when present, and the documentation now follows that published scope.
+
+**Objective 0 audit-trail note:** loader-side event/date reconciliations are published into each cohort's `00_General/` directory as a single stable workbook named `{cohort_name}_event_data_reconcilitation.xlsx`, alongside the cohort summary and removed-patient artifacts.
 
 ### Objective 3: Repeat Radiation Efficacy (COMPLETE)
 
