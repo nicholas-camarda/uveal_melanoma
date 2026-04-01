@@ -90,7 +90,7 @@ flowchart LR
 
     %% Workflow / orchestration and objectives
     subgraph WFL[Workflow]
-        AORCH[workflow/analysis_orchestration.R\n(main_execution, run_my_analysis, run_specific_objective)]
+        AORCH["workflow/analysis_orchestration.R: main_execution, run_my_analysis, run_specific_objective"]
         OBJ0[workflow/objective_0_data_processing.R]
         OBJ1[workflow/objective_1_primary_outcomes.R]
         OBJ2[workflow/objective_2_safety_toxicity.R]
