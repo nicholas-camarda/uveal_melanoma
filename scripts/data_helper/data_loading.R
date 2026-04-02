@@ -61,6 +61,261 @@ empty_event_date_audit_summary <- function() {
     )
 }
 
+#' Create an empty manual-date-correction audit table with canonical columns
+#'
+#' @return Tibble with manual date correction audit columns and zero rows
+empty_manual_date_correction_audit_rows <- function() {
+    tibble::tibble(
+        source_workbook = character(),
+        id_column = character(),
+        study_id = character(),
+        column_name = character(),
+        original_value = character(),
+        corrected_value = character(),
+        correction_reason = character(),
+        confidence_tier = character(),
+        supporting_columns = character(),
+        supporting_values = character(),
+        original_support_gap_days = numeric(),
+        corrected_support_gap_days = numeric(),
+        gap_improvement_days = numeric(),
+        action_taken = character()
+    )
+}
+
+#' Apply versioned manual source-date corrections during data loading
+#'
+#' Uses the configured correction table to overwrite specific raw date values
+#' before event/date reconciliation runs, while recording a row-level audit trail
+#' that can be published with Objective 0 artifacts.
+#'
+#' @param data Data frame containing the raw workbook contents after basic cleaning
+#' @param corrections Tibble of manual corrections, typically `MANUAL_DATE_CORRECTIONS`
+#' @param id_col Identifier column used to match correction rows to data rows
+#' @param source_workbook Source workbook name for audit reporting
+#' @return Named list with corrected `data` and row-level `audit_rows`
+apply_manual_date_corrections <- function(data,
+                                          corrections = MANUAL_DATE_CORRECTIONS,
+                                          id_col = NA_character_,
+                                          source_workbook = NA_character_) {
+    if (is.null(corrections) || nrow(corrections) == 0) {
+        return(list(
+            data = data,
+            audit_rows = empty_manual_date_correction_audit_rows()
+        ))
+    }
+
+    if (is.na(id_col) || !id_col %in% names(data)) {
+        logger::log_warn("Manual date corrections were configured but no usable ID column was available; no corrections were applied.")
+        return(list(
+            data = data,
+            audit_rows = empty_manual_date_correction_audit_rows()
+        ))
+    }
+
+    corrected_data <- data
+    audit_rows <- list()
+
+    coerce_manual_correction_value <- function(template_column, corrected_value) {
+        if (inherits(template_column, c("POSIXct", "POSIXt"))) {
+            tz_value <- attr(template_column, "tzone", exact = TRUE) %||% "UTC"
+            return(as.POSIXct(as.Date(corrected_value), tz = tz_value))
+        }
+
+        if (inherits(template_column, "Date")) {
+            return(as.Date(corrected_value))
+        }
+
+        corrected_value
+    }
+
+    build_supporting_value_summary <- function(data_row, supporting_cols) {
+        if (length(supporting_cols) == 0) {
+            return(NA_character_)
+        }
+
+        pieces <- purrr::map_chr(supporting_cols, function(col_name) {
+            if (!col_name %in% names(data_row)) {
+                return(sprintf("%s=<missing_column>", col_name))
+            }
+
+            value <- data_row[[col_name]][[1]]
+            value_text <- if (is.na(value)) {
+                "NA"
+            } else {
+                as.character(as.Date(value))
+            }
+
+            sprintf("%s=%s", col_name, value_text)
+        })
+
+        paste(pieces, collapse = "; ")
+    }
+
+    compute_support_gap <- function(candidate_value, data_row, supporting_cols) {
+        if (length(supporting_cols) == 0 || is.na(candidate_value)) {
+            return(NA_real_)
+        }
+
+        support_dates <- purrr::map(supporting_cols, function(col_name) {
+            if (!col_name %in% names(data_row)) {
+                return(NA)
+            }
+            data_row[[col_name]][[1]]
+        }) %>%
+            purrr::compact() %>%
+            unlist()
+
+        if (length(support_dates) == 0) {
+            return(NA_real_)
+        }
+
+        support_dates <- as.Date(support_dates)
+        support_dates <- support_dates[!is.na(support_dates)]
+
+        if (length(support_dates) == 0) {
+            return(NA_real_)
+        }
+
+        min(abs(as.numeric(as.Date(candidate_value) - support_dates)))
+    }
+
+    for (row_index in seq_len(nrow(corrections))) {
+        correction_row <- corrections[row_index, , drop = FALSE]
+        target_id <- as.character(correction_row$study_id[[1]])
+        target_col <- correction_row$column_name[[1]]
+        corrected_value <- correction_row$corrected_value[[1]]
+        correction_reason <- correction_row$correction_reason[[1]]
+        confidence_tier <- correction_row$confidence_tier[[1]] %||% NA_character_
+        supporting_columns <- correction_row$supporting_columns[[1]] %||% NA_character_
+        supporting_cols <- trimws(unlist(strsplit(as.character(supporting_columns), ",", fixed = TRUE)))
+        supporting_cols <- supporting_cols[nzchar(supporting_cols)]
+
+        if (!target_col %in% names(corrected_data)) {
+            logger::log_warn(sprintf(
+                "Skipping manual date correction for study_id=%s because column '%s' is not present.",
+                target_id,
+                target_col
+            ))
+            next
+        }
+
+        matching_rows <- which(as.character(corrected_data[[id_col]]) == target_id)
+        if (length(matching_rows) == 0) {
+            logger::log_warn(sprintf(
+                "Skipping manual date correction for study_id=%s because no matching row was found.",
+                target_id
+            ))
+            next
+        }
+
+        for (match_idx in matching_rows) {
+            original_value <- corrected_data[[target_col]][[match_idx]]
+            corrected_value_cast <- coerce_manual_correction_value(corrected_data[[target_col]], corrected_value)
+            corrected_data[[target_col]][[match_idx]] <- corrected_value_cast
+            data_row <- corrected_data[match_idx, , drop = FALSE]
+            original_support_gap <- compute_support_gap(original_value, data_row, supporting_cols)
+            corrected_support_gap <- compute_support_gap(corrected_value_cast, data_row, supporting_cols)
+
+            audit_rows[[length(audit_rows) + 1L]] <- tibble::tibble(
+                source_workbook = basename(source_workbook),
+                id_column = id_col,
+                study_id = target_id,
+                column_name = target_col,
+                original_value = ifelse(is.na(original_value), NA_character_, as.character(as.Date(original_value))),
+                corrected_value = ifelse(is.na(corrected_value_cast), NA_character_, as.character(as.Date(corrected_value_cast))),
+                correction_reason = correction_reason,
+                confidence_tier = as.character(confidence_tier),
+                supporting_columns = ifelse(length(supporting_cols) == 0, NA_character_, paste(supporting_cols, collapse = ", ")),
+                supporting_values = build_supporting_value_summary(data_row, supporting_cols),
+                original_support_gap_days = original_support_gap,
+                corrected_support_gap_days = corrected_support_gap,
+                gap_improvement_days = ifelse(
+                    is.na(original_support_gap) || is.na(corrected_support_gap),
+                    NA_real_,
+                    original_support_gap - corrected_support_gap
+                ),
+                action_taken = "manual_source_date_correction"
+            )
+        }
+    }
+
+    audit_rows <- dplyr::bind_rows(audit_rows)
+
+    if (nrow(audit_rows) > 0) {
+        logger::log_warn(sprintf(
+            "Applied %d versioned manual raw-date correction(s) during Objective 0 loading. Review the 00_General audit workbook for details.",
+            nrow(audit_rows)
+        ))
+    }
+
+    list(
+        data = corrected_data,
+        audit_rows = audit_rows %||% empty_manual_date_correction_audit_rows()
+    )
+}
+
+#' List the raw input columns expected by the loader audit
+#'
+#' @return Character vector of required raw workbook column names
+required_raw_input_columns <- function() {
+    c(
+        "id",
+        "initial_gk",
+        "initial_plaque",
+        "initial_gk_date",
+        "initial_plaque_date",
+        "date_diagnosis",
+        "dob",
+        "initial_tumor_height",
+        "initial_tumor_diameter",
+        "optic_nerve",
+        "recurrence1",
+        "recurrence1_date",
+        "mets_progression",
+        "mets_progression_date",
+        "enucleation",
+        "enucleation_date"
+    )
+}
+
+#' Collect loader-side audit metadata about the raw workbook input
+#'
+#' Summarizes row counts, required-column coverage, and duplicate identifier
+#' patterns so Objective 0 reporting can show what changed between the raw sheet
+#' and the cleaned distinct dataset.
+#'
+#' @param raw_data Raw workbook data before distinct-row cleanup
+#' @param cleaned_data Cleaned workbook data after distinct-row cleanup
+#' @param source_workbook Source workbook name for audit reporting
+#' @return Named list containing row counts, required-column checks, and
+#'   duplicate-ID summaries
+collect_raw_input_audit <- function(raw_data, cleaned_data, source_workbook) {
+    id_col <- pick_event_date_audit_id_col(cleaned_data)
+    required_columns <- required_raw_input_columns()
+    missing_required <- setdiff(required_columns, names(raw_data))
+
+    duplicate_id_rows <- tibble::tibble()
+    if (!is.na(id_col) && id_col %in% names(cleaned_data)) {
+        duplicate_id_rows <- cleaned_data %>%
+            dplyr::filter(!is.na(.data[[id_col]])) %>%
+            dplyr::count(.data[[id_col]], name = "n_records") %>%
+            dplyr::filter(.data$n_records > 1) %>%
+            dplyr::rename(study_id = !!id_col)
+    }
+
+    list(
+        source_workbook = basename(source_workbook),
+        id_column = id_col,
+        raw_row_count = nrow(raw_data),
+        cleaned_row_count = nrow(cleaned_data),
+        required_columns = required_columns,
+        missing_required_columns = missing_required,
+        duplicate_id_rows = duplicate_id_rows,
+        duplicate_row_count = nrow(raw_data) - nrow(cleaned_data)
+    )
+}
+
 #' Write runtime reconciliation artifacts for loader-side event/date repairs
 #'
 #' @param audit_rows Row-level reconciliation audit rows
@@ -69,13 +324,16 @@ empty_event_date_audit_summary <- function() {
 #' @param id_column Identifier column used for audit rows
 #' @param output_dir Directory where the reviewable artifacts should be written
 #' @param artifact_filename Optional stable workbook filename
+#' @param manual_date_corrections Optional row-level manual correction audit
+#'   table to include as a dedicated workbook sheet
 #' @return Named list with workbook path
 write_event_date_reconciliation_audit <- function(audit_rows,
                                                   audit_summary,
                                                   source_workbook,
                                                   id_column = NA_character_,
                                                   output_dir = NULL,
-                                                  artifact_filename = NULL) {
+                                                  artifact_filename = NULL,
+                                                  manual_date_corrections = NULL) {
     audit_dir <- output_dir %||% file.path(OUTPUT_DIR, "event_date_reconciliation_audit")
     dir.create(audit_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -103,11 +361,17 @@ write_event_date_reconciliation_audit <- function(audit_rows,
         total_reconciled_rows = nrow(audit_rows_to_write)
     )
 
+    manual_corrections_to_write <- manual_date_corrections
+    if (is.null(manual_corrections_to_write) || nrow(manual_corrections_to_write) == 0) {
+        manual_corrections_to_write <- empty_manual_date_correction_audit_rows()
+    }
+
     writexl::write_xlsx(
         list(
             Audit_Metadata = audit_metadata,
             Reconciliation_Summary = audit_summary_to_write,
-            Reconciled_Changes = audit_rows_to_write
+            Reconciled_Changes = audit_rows_to_write,
+            Manual_Date_Corrections = manual_corrections_to_write
         ),
         xlsx_path
     )
@@ -269,7 +533,7 @@ load_and_clean_data <- function(filename) {
     ) %>%
         dplyr::select(-contains("..."))
 
-    cleaned_data <- raw_data %>%
+    cleaned_data_pre_distinct <- raw_data %>%
         mutate(across(everything(), ~ {
             if (is.character(.)) {
                 case_when(
@@ -286,7 +550,9 @@ load_and_clean_data <- function(filename) {
                 TRUE ~ location
             )
         ) %>%
-        filter(!if_all(everything(), is.na)) %>%
+        filter(!if_all(everything(), is.na))
+
+    cleaned_data <- cleaned_data_pre_distinct %>%
         distinct() %>%
         mutate(
             consort_group = case_when(
@@ -302,6 +568,12 @@ load_and_clean_data <- function(filename) {
                 TRUE ~ NA_character_
             )
         )
+
+    raw_input_audit <- collect_raw_input_audit(
+        raw_data = raw_data,
+        cleaned_data = cleaned_data,
+        source_workbook = filename
+    )
 
     logger::log_info("eligible_both: initial_tumor_diameter <= 20mm, initial_tumor_height <= 10mm, optic_nerve == 'N'")
     logger::log_info("gksrs_only: initial_tumor_diameter > 20mm, initial_tumor_height > 10mm, optic_nerve == 'Y'")
@@ -335,6 +607,14 @@ load_and_clean_data <- function(filename) {
         c("mets_progression", "mets_progression_date"),
         c("enucleation", "enucleation_date")
     )
+
+    manual_date_correction_result <- apply_manual_date_corrections(
+        cleaned_data,
+        corrections = MANUAL_DATE_CORRECTIONS,
+        id_col = audit_id_col,
+        source_workbook = filename
+    )
+    cleaned_data <- manual_date_correction_result$data
 
     for (pair in event_date_pairs) {
         reconciliation_result <- fix_event_date_consistency(
@@ -379,8 +659,10 @@ load_and_clean_data <- function(filename) {
         audit_rows = dplyr::bind_rows(audit_rows),
         audit_summary = dplyr::bind_rows(audit_summaries),
         source_workbook = filename,
-        id_column = audit_id_col
+        id_column = audit_id_col,
+        manual_date_corrections = manual_date_correction_result$audit_rows
     )
+    attr(cleaned_data_final, "raw_input_audit") <- raw_input_audit
     logger::log_info("Loader-side event/date reconciliation details staged for Objective 0 publication into cohort 00_General folders.")
 
     logger::log_info(sprintf("Loaded %d rows of raw data", nrow(cleaned_data_final)))

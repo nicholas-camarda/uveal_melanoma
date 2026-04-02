@@ -318,6 +318,8 @@ scripts/
    - Save pre-collapsed factor levels
    - Store other_map for reference
    - Write `cohort_summary.tsv` and `cohort_summary.txt` into each cohort's `00_General/` directory
+   - Write `{cohort_name}_validation_summary.txt` and `{cohort_name}_validation_bundle.xlsx` into each cohort's `00_General/` directory
+   - Refresh generated study docs when Objective 0 finishes without hard validation errors
 
 5. **Run Analyses**
    - Load RDS datasets
@@ -337,6 +339,8 @@ Current canonical outputs from the refreshed tool suite include:
 - `comprehensive_variable_census.xlsx`
 - `comprehensive_variable_census.rds`
 - `comprehensive_variable_census.html`
+- `docs/dependency_diagram.md`
+- `docs/FIGURE_COUNTS_AUDIT.md`
 - timestamped `*_run_*_summary.csv` and `*_run_*_summary.txt` files for each tool execution
 
 These files are treated as documentation and audit artifacts, not analysis outputs. They should stay synchronized with the active workflow and be regenerated when the derived-variable catalog, variable census, or tool logic changes.
@@ -361,6 +365,8 @@ See [README.md](../README.md) for the top-level execution entry points and outpu
 - Type validation for all variables
 - Range checks for continuous variables
 - Consistency checks across related fields
+- Structured Objective 0 findings classified as `hard_error`, `warning`, or `info`
+- Cohort-level validation bundles published into `00_General/` for reviewer audit
 
 **Factor Level Management:**
 - Consistent handling of categorical variables
@@ -455,6 +461,15 @@ The analysis pipeline includes robust error handling for situations where data l
 
 For a collaborator-facing overview of the study aims, subgroup scope, and cohort eligibility logic, use [OBJECTIVES.md](OBJECTIVES.md). This section remains the implementation-facing contract for how those objectives are executed in the current pipeline.
 
+### Objective 0: Data Processing and Validation
+
+Objective 0 is the upstream preparation stage for every downstream cohort and analysis. It owns raw-data cleaning, validation, derived-variable creation, cohort construction, and the publication of cohort-level audit artifacts into each cohort's `00_General/` directory.
+
+**Objective 0 audit-trail note:** loader-side event/date reconciliations are published into each cohort's `00_General/` directory as a single stable workbook named `{cohort_name}_event_data_reconcilitation.xlsx`, alongside the cohort summary and removed-patient artifacts. That workbook now carries both the event/date reconciliation sheets and a `Manual_Date_Corrections` sheet for any versioned raw-date corrections applied during loading.
+The manual-correction sheet includes the corrected field, rationale, confidence tier, supporting columns, supporting values, and simple support-gap metrics so reviewers can see whether the corrected value improves local chronology rather than relying on an undocumented override.
+
+**Objective 0 chronology note:** treatment-before-diagnosis gaps larger than `7` days are hard-stop validation failures. Reverse-order gaps of `1-7` days are retained as warnings and published for manual review in the validation bundle instead of being silently rewritten.
+
 ### Objective 1: Efficacy Analysis (COMPLETE)
 
 | Sub-objective | Method | Implementation | Outputs | Location |
@@ -483,8 +498,6 @@ Effect-summary workbooks follow model-family-specific inference conventions and 
 **Objective 2 output convention:** adjusted analyses now always live inside their own side-effect subfolder. When an adjusted model is skipped because of insufficient events, no usable variation, or fit failure, the pipeline writes a `_SKIPPED.html` explanation file plus the diagnostics workbook instead of leaving the folder without an adjusted-analysis artifact.
 
 **Objective 2d scope note:** earlier docs used radiation-induced-only wording for SRD. The collaborator-aligned published implementation keeps all recorded SRD causes, including mass-induced SRD when present, and the documentation now follows that published scope.
-
-**Objective 0 audit-trail note:** loader-side event/date reconciliations are published into each cohort's `00_General/` directory as a single stable workbook named `{cohort_name}_event_data_reconcilitation.xlsx`, alongside the cohort summary and removed-patient artifacts.
 
 ### Objective 3: Repeat Radiation Efficacy (COMPLETE)
 

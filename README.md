@@ -156,7 +156,7 @@ Pipeline outputs are primarily written to the runtime analysis tree:
 
 Within each cohort folder, outputs follow a consistent layout:
 
-- `00_General/`: baseline characteristics, cohort summaries, treatment-duration summaries, exclusion summaries
+- `00_General/`: baseline characteristics, cohort summaries, treatment-duration summaries, exclusion summaries, reconciliation audit workbooks (including manual date-correction audit sheets), and Objective 0 validation bundles
 - `01_Efficacy/`: recurrence, metastasis, survival, tumor-height, subgroup outputs
 - `02_Safety/`: vision and radiation-related adverse-event outputs
 - `03_Repeat_Radiation/`: PFS-2 summaries and survival artifacts
@@ -206,5 +206,5 @@ Objective 4 grouping and display settings are also centralized there through `GE
 - [docs/CALCULATIONS.md](docs/CALCULATIONS.md): derived-variable definitions, endpoint construction, and sign conventions
 - [docs/STATISTICAL_METHODS.md](docs/STATISTICAL_METHODS.md): statistical methodology, assumptions, thresholds, and validation metrics
 - [docs/INTERPRETATION_GUIDE.md](docs/INTERPRETATION_GUIDE.md): how to read tables, plots, workbooks, and Objective 4 deliverables
-- [docs/FIGURE_COUNTS_AUDIT.md](docs/FIGURE_COUNTS_AUDIT.md): figure-level count consistency checks
-- [docs/dependency_diagram.md](docs/dependency_diagram.md): high-level module dependency map
+- [docs/FIGURE_COUNTS_AUDIT.md](docs/FIGURE_COUNTS_AUDIT.md): generated current-state figure/count audit from runtime artifacts
+- [docs/dependency_diagram.md](docs/dependency_diagram.md): generated loader/workflow dependency map with full sourced inventory appendix

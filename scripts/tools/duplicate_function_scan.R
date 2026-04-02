@@ -1,6 +1,6 @@
 # Duplicate Function Scanner (sourced files only)
 # Finds top-level function definitions across files that are actually sourced
-# via scripts/utils/load_all.R and reports cross-file duplicates.
+# via scripts/load_all.R and reports cross-file duplicates.
 
 suppressWarnings(suppressMessages({
     library(dplyr)
@@ -8,7 +8,7 @@ suppressWarnings(suppressMessages({
 
 # Collect sourced files from load_all.R using base regex
 sourced_files <- {
-    txt <- readLines("scripts/utils/load_all.R", warn = FALSE)
+    txt <- readLines("scripts/load_all.R", warn = FALSE)
     matches <- regmatches(txt, gregexpr("source\\(\"([^\"]+)\"\\)", txt, perl = TRUE))
     found <- unique(unlist(matches))
     if (length(found) == 0) {

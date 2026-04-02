@@ -14,6 +14,7 @@ create_analytic_dataset <- function(output_dirs = NULL, validate_after_saving = 
     logger::log_info(sprintf("Loaded %d rows of raw data", nrow(raw_data)))
 
     reconciliation_audit <- attr(raw_data, "event_date_reconciliation_audit", exact = TRUE)
+    raw_input_audit <- attr(raw_data, "raw_input_audit", exact = TRUE)
 
     logger::log_info("Creating derived variables")
     derived_data <- create_derived_variables(raw_data)
@@ -117,7 +118,8 @@ create_analytic_dataset <- function(output_dirs = NULL, validate_after_saving = 
                     source_workbook = reconciliation_audit$source_workbook,
                     id_column = reconciliation_audit$id_column,
                     output_dir = general_dir,
-                    artifact_filename = sprintf("%s_event_data_reconcilitation.xlsx", cohort_key)
+                    artifact_filename = sprintf("%s_event_data_reconcilitation.xlsx", cohort_key),
+                    manual_date_corrections = reconciliation_audit$manual_date_corrections
                 )
                 published_paths[[cohort_key]] <- audit_paths
                 logger::log_info(formatted(sprintf(
@@ -157,7 +159,10 @@ create_analytic_dataset <- function(output_dirs = NULL, validate_after_saving = 
         # Validate after files are saved and that they meet all the criteria for analytic dataset
         validation_result <- validate_processing_pipeline(
             factored_filtered_data,
-            stop_on_failure = stop_on_validation_failure
+            stop_on_failure = stop_on_validation_failure,
+            input_audit = raw_input_audit,
+            removal_log = removal_log,
+            reconciliation_audit = reconciliation_audit
         )
     }
 
@@ -165,6 +170,8 @@ create_analytic_dataset <- function(output_dirs = NULL, validate_after_saving = 
         analytic_data = factored_filtered_data,
         summary_tables = summary_tables,
         removal_log = removal_log,
-        validation = validation_result
+        validation = validation_result,
+        reconciliation_audit = reconciliation_audit,
+        raw_input_audit = raw_input_audit
     ))
 }

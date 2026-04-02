@@ -6,6 +6,7 @@ if (!exists("TOOLS_OUTPUT_DIR", inherits = TRUE)) {
 
 source(here::here("scripts", "tools", "derived_variables_documentation.R"))
 source(here::here("scripts", "tools", "comprehensive_variable_census.R"))
+source(here::here("scripts", "tools", "study_doc_generators.R"))
 
 run_tool_refresh_suite <- function(
     dataset_name = "uveal_melanoma_full_cohort",
@@ -66,6 +67,16 @@ run_tool_refresh_suite <- function(
         )
     )
 
+    dependency_doc_result <- run_one_tool(
+        "dependency_diagram_doc",
+        generate_dependency_diagram_doc()
+    )
+
+    figure_counts_result <- run_one_tool(
+        "figure_counts_audit_doc",
+        generate_figure_counts_audit_doc()
+    )
+
     suite_manifest <- do.call(rbind, tool_rows)
     suite_csv <- file.path(output_dir, paste0("tool_refresh_suite_run_", suite_run_id, ".csv"))
     suite_txt <- file.path(output_dir, paste0("tool_refresh_suite_run_", suite_run_id, ".txt"))
@@ -79,6 +90,8 @@ run_tool_refresh_suite <- function(
             sprintf("output_dir: %s", output_dir),
             sprintf("derived_variables_documentation_status: %s", if (!is.null(derived_result$status)) derived_result$status else "unknown"),
             sprintf("comprehensive_variable_census_status: %s", if (!is.null(census_result$status)) census_result$status else "unknown"),
+            sprintf("dependency_diagram_doc_status: %s", if (!is.null(dependency_doc_result$status)) dependency_doc_result$status else "unknown"),
+            sprintf("figure_counts_audit_doc_status: %s", if (!is.null(figure_counts_result$status)) figure_counts_result$status else "unknown"),
             "tool outputs:"
         ),
         suite_txt
@@ -106,7 +119,9 @@ run_tool_refresh_suite <- function(
         csv_path = suite_csv,
         txt_path = suite_txt,
         derived_result = derived_result,
-        census_result = census_result
+        census_result = census_result,
+        dependency_doc_result = dependency_doc_result,
+        figure_counts_result = figure_counts_result
     ))
 }
 
