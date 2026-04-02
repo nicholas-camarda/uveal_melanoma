@@ -325,3 +325,150 @@ publish_outputs <- function(
         manifest = manifest
     )
 }
+
+# Direct-run usage examples:
+# Rscript scripts/workflow/publish_outputs.R
+# Rscript scripts/workflow/publish_outputs.R --snapshot-id 2026-04-02
+# Rscript scripts/workflow/publish_outputs.R --execute --snapshot-id 2026-04-02
+# Rscript scripts/workflow/publish_outputs.R --cohorts uveal_melanoma_full_cohort,gksrs
+# Rscript scripts/workflow/publish_outputs.R --execute --no-merged-tables
+
+#' Parse command-line arguments for direct `publish_outputs.R` execution
+#'
+#' Supports a lightweight `Rscript` interface for dry runs, real publish
+#' execution, custom snapshot ids, cohort filtering, and merged-table toggles.
+#'
+#' @return Named list containing `snapshot_id`, `dry_run`,
+#'   `include_merged_tables`, `cohorts`, and `help`.
+#' @examples
+#' \dontrun{
+#' parse_publish_outputs_args()
+#' }
+parse_publish_outputs_args <- function() {
+    args <- commandArgs(trailingOnly = TRUE)
+    opts <- list(
+        snapshot_id = format(Sys.Date(), "%Y-%m-%d"),
+        dry_run = TRUE,
+        include_merged_tables = TRUE,
+        cohorts = NULL,
+        help = FALSE
+    )
+
+    i <- 1L
+    while (i <= length(args)) {
+        arg <- args[[i]]
+
+        if (identical(arg, "--help") || identical(arg, "-h")) {
+            opts$help <- TRUE
+        } else if (identical(arg, "--execute")) {
+            opts$dry_run <- FALSE
+        } else if (identical(arg, "--dry-run")) {
+            opts$dry_run <- TRUE
+        } else if (identical(arg, "--no-merged-tables")) {
+            opts$include_merged_tables <- FALSE
+        } else if (grepl("^--snapshot-id=", arg)) {
+            opts$snapshot_id <- sub("^--snapshot-id=", "", arg)
+        } else if (identical(arg, "--snapshot-id") && i < length(args)) {
+            opts$snapshot_id <- args[[i + 1L]]
+            i <- i + 1L
+        } else if (grepl("^--cohorts=", arg)) {
+            cohort_value <- sub("^--cohorts=", "", arg)
+            opts$cohorts <- trimws(unlist(strsplit(cohort_value, ",", fixed = TRUE)))
+        } else if (identical(arg, "--cohorts") && i < length(args)) {
+            cohort_value <- args[[i + 1L]]
+            opts$cohorts <- trimws(unlist(strsplit(cohort_value, ",", fixed = TRUE)))
+            i <- i + 1L
+        } else {
+            stop(sprintf("Unrecognized argument: %s", arg), call. = FALSE)
+        }
+
+        i <- i + 1L
+    }
+
+    if (!is.null(opts$cohorts)) {
+        opts$cohorts <- opts$cohorts[nzchar(opts$cohorts)]
+        if (length(opts$cohorts) == 0) {
+            opts$cohorts <- NULL
+        }
+    }
+
+    opts
+}
+
+#' Print CLI usage text for direct `publish_outputs.R` execution
+#'
+#' @return Invisibly returns `NULL` after writing usage text to stdout.
+#' @examples
+#' \dontrun{
+#' print_publish_outputs_usage()
+#' }
+print_publish_outputs_usage <- function() {
+    cat(
+        paste(
+            "Usage:",
+            "  Rscript scripts/workflow/publish_outputs.R [--dry-run] [--execute]",
+            "      [--snapshot-id YYYY-MM-DD-or-label]",
+            "      [--cohorts cohort1,cohort2]",
+            "      [--no-merged-tables]",
+            "",
+            "Notes:",
+            "  --dry-run is the default and only previews the publish manifest.",
+            "  --execute performs the actual copy and writes publish_manifest.csv.",
+            "  cohort values can be runtime dirs (uveal_full, uveal_restricted, gksrs)",
+            "  or dataset ids (uveal_melanoma_full_cohort, etc.).",
+            sep = "\n"
+        )
+    )
+}
+
+#' Run the direct `Rscript` entry point for publishing outputs
+#'
+#' Parses CLI arguments, loads the project environment when needed, executes
+#' `publish_outputs()`, and prints a short manifest preview to stdout.
+#'
+#' @return Invisibly returns the list produced by `publish_outputs()`, or
+#'   `NULL` when showing help text.
+#' @examples
+#' \dontrun{
+#' main()
+#' }
+main <- function() {
+    opts <- parse_publish_outputs_args()
+    if (isTRUE(opts$help)) {
+        print_publish_outputs_usage()
+        return(invisible(NULL))
+    }
+
+    if (!exists("OUTPUT_DIR", inherits = TRUE)) {
+        source(here::here("scripts", "load_all.R"))
+    }
+
+    result <- publish_outputs(
+        cohorts = opts$cohorts,
+        snapshot_id = opts$snapshot_id,
+        include_merged_tables = opts$include_merged_tables,
+        dry_run = opts$dry_run
+    )
+
+    cat(sprintf("Snapshot target: %s\n", result$snapshot_dir))
+    cat(sprintf("Mode: %s\n", if (isTRUE(result$dry_run)) "dry_run" else "execute"))
+    print(result$summary)
+
+    preview_cols <- intersect(
+        c("status", "source_path", "destination_path", "message"),
+        names(result$manifest)
+    )
+    if (length(preview_cols) > 0 && nrow(result$manifest) > 0) {
+        preview_manifest <- utils::head(result$manifest[, preview_cols, drop = FALSE], 10)
+        print(preview_manifest, row.names = FALSE)
+        if (nrow(result$manifest) > 10) {
+            cat(sprintf("... %d more manifest rows\n", nrow(result$manifest) - 10))
+        }
+    }
+
+    invisible(result)
+}
+
+if (sys.nframe() == 0L) {
+    main()
+}
