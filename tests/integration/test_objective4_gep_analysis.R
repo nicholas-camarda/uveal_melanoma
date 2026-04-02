@@ -1305,7 +1305,8 @@ test_that("Comprehensive GEP summary states why slope is NA in plain language", 
     expect_match(summary_text, "too few patients had usable data")
     expect_match(summary_text, "events=3")
     expect_match(summary_text, "non-events=15")
-    expect_match(summary_text, "The calibration slope could not be estimated")
+    expect_match(summary_text, "Calibration slope was not estimable at any reported timepoint\\.")
+    expect_match(summary_text, "- 5yr:", fixed = TRUE)
 })
 
 test_that("PRAME incremental helper returns delta-C metrics on deterministic data", {

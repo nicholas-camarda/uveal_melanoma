@@ -100,9 +100,13 @@ test_that("resolve_config_path rejects relative runtime or export overrides", {
 test_that("artifact registry allowlists only explicit publishable outputs", {
     expect_true(is_publishable_relative_artifact("01_Efficacy/summary.xlsx", "cohort"))
     expect_true(is_publishable_relative_artifact("merged_tables/final_table.csv", "merged_tables"))
+    expect_true(is_publishable_relative_artifact("04_GEP_Validation/unified_summary/full_cohort_simple_gep_validation_report.md", "cohort"))
     expect_false(is_publishable_relative_artifact("01_Efficacy/model.rds", "cohort"))
     expect_false(is_publishable_relative_artifact("01_Efficacy/summary_diagnostics.xlsx", "cohort"))
     expect_false(is_publishable_relative_artifact("cache/intermediate.csv", "cohort"))
+    expect_false(is_publishable_relative_artifact("04_GEP_Validation/unified_summary/full_cohort_simple_gep_validation_report.txt", "cohort"))
+    expect_false(is_publishable_relative_artifact("04_GEP_Validation/a_metastasis_free_survival/05_summary_tables/full_cohort_mfs_validation_narrative_summary.txt", "cohort"))
+    expect_true(is_publishable_relative_artifact("04_GEP_Validation/c_proportional_hazards_diagnostics/full_cohort_mfs_proportional_hazards_summary.txt", "cohort"))
 })
 
 test_that("publish_outputs dry run reports publishable outputs and excludes runtime artifacts", {
@@ -147,6 +151,56 @@ test_that("publish_outputs dry run reports publishable outputs and excludes runt
     expect_true(any(result$manifest$status == "optional_root_absent"))
     expect_equal(result$summary$missing, 0)
     expect_false(dir.exists(result$snapshot_dir))
+})
+
+test_that("publish_outputs prefers Objective 4 markdown summaries over legacy text duplicates", {
+    tmp_root <- tempfile("runtime-publish-obj4-md-")
+    runtime_root <- file.path(tmp_root, "runtime")
+    output_root <- file.path(runtime_root, "Analysis")
+    export_root <- file.path(tmp_root, "export")
+    export_analysis_root <- file.path(export_root, "Analysis")
+    obj4_summary_dir <- file.path(output_root, "uveal_full", "04_GEP_Validation", "unified_summary")
+    obj4_mfs_summary_dir <- file.path(output_root, "uveal_full", "04_GEP_Validation", "a_metastasis_free_survival", "05_summary_tables")
+    obj4_diag_dir <- file.path(output_root, "uveal_full", "04_GEP_Validation", "c_proportional_hazards_diagnostics")
+
+    dir.create(obj4_summary_dir, recursive = TRUE, showWarnings = FALSE)
+    dir.create(obj4_mfs_summary_dir, recursive = TRUE, showWarnings = FALSE)
+    dir.create(obj4_diag_dir, recursive = TRUE, showWarnings = FALSE)
+
+    writeLines("md summary", file.path(obj4_summary_dir, "full_cohort_simple_gep_validation_report.md"))
+    writeLines("legacy txt summary", file.path(obj4_summary_dir, "full_cohort_simple_gep_validation_report.txt"))
+    writeLines("md narrative", file.path(obj4_mfs_summary_dir, "full_cohort_mfs_validation_narrative_summary.md"))
+    writeLines("legacy txt narrative", file.path(obj4_mfs_summary_dir, "full_cohort_mfs_validation_narrative_summary.txt"))
+    writeLines("diagnostic txt", file.path(obj4_diag_dir, "full_cohort_mfs_proportional_hazards_summary.txt"))
+
+    old_output <- OUTPUT_DIR
+    old_merged <- MERGED_TABLES_DIR
+    old_export_root <- EXPORT_ROOT
+    old_export_analysis <- EXPORT_ANALYSIS_DIR
+
+    on.exit({
+        assign("OUTPUT_DIR", old_output, envir = .GlobalEnv)
+        assign("MERGED_TABLES_DIR", old_merged, envir = .GlobalEnv)
+        assign("EXPORT_ROOT", old_export_root, envir = .GlobalEnv)
+        assign("EXPORT_ANALYSIS_DIR", old_export_analysis, envir = .GlobalEnv)
+        unlink(tmp_root, recursive = TRUE, force = TRUE)
+    }, add = TRUE)
+
+    assign("OUTPUT_DIR", output_root, envir = .GlobalEnv)
+    assign("MERGED_TABLES_DIR", file.path(output_root, "merged_tables"), envir = .GlobalEnv)
+    assign("EXPORT_ROOT", export_root, envir = .GlobalEnv)
+    assign("EXPORT_ANALYSIS_DIR", export_analysis_root, envir = .GlobalEnv)
+
+    result <- publish_outputs(snapshot_id = "2026-04-02-obj4-md", dry_run = TRUE)
+
+    would_copy_sources <- result$manifest$source_path[result$manifest$status == "would_copy"]
+    skipped_sources <- result$manifest$source_path[result$manifest$status == "skipped_not_publishable"]
+
+    expect_true(any(grepl("full_cohort_simple_gep_validation_report\\.md$", would_copy_sources)))
+    expect_true(any(grepl("full_cohort_mfs_validation_narrative_summary\\.md$", would_copy_sources)))
+    expect_true(any(grepl("full_cohort_mfs_proportional_hazards_summary\\.txt$", would_copy_sources)))
+    expect_true(any(grepl("full_cohort_simple_gep_validation_report\\.txt$", skipped_sources)))
+    expect_true(any(grepl("full_cohort_mfs_validation_narrative_summary\\.txt$", skipped_sources)))
 })
 
 test_that("publish_outputs creates a new snapshot and rejects existing snapshot overwrite", {

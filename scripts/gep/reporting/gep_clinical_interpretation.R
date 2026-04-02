@@ -87,14 +87,9 @@ join_gep_reason_fragments <- function(fragments) {
     )
 }
 
-describe_gep_slope_problem <- function(status, fit_n = NA_real_, events = NA_real_,
-                                       non_events = NA_real_, unique_risk_count = NA_real_,
-                                       slope_se = NA_real_, include_counts = TRUE) {
-    fit_n_text <- if (is.finite(fit_n)) as.character(as.integer(round(fit_n))) else "NA"
-    events_text <- if (is.finite(events)) as.character(as.integer(round(events))) else "NA"
-    non_events_text <- if (is.finite(non_events)) as.character(as.integer(round(non_events))) else "NA"
-    unique_risk_text <- if (is.finite(unique_risk_count)) as.character(as.integer(round(unique_risk_count))) else "NA"
-
+collect_gep_slope_problem_fragments <- function(status, fit_n = NA_real_, events = NA_real_,
+                                                non_events = NA_real_, unique_risk_count = NA_real_,
+                                                slope_se = NA_real_) {
     if (!is.na(status) && identical(status, "insufficient_recalibration_data")) {
         problem_fragments <- c()
 
@@ -113,6 +108,79 @@ describe_gep_slope_problem <- function(status, fit_n = NA_real_, events = NA_rea
         if (is.finite(unique_risk_count) && unique_risk_count < 2) {
             problem_fragments <- c(problem_fragments, "predicted risks did not vary enough")
         }
+
+        return(problem_fragments)
+    }
+
+    character()
+}
+
+format_gep_slope_problem_counts <- function(fit_n = NA_real_, events = NA_real_,
+                                            non_events = NA_real_, unique_risk_count = NA_real_) {
+    fit_n_text <- if (is.finite(fit_n)) as.character(as.integer(round(fit_n))) else "NA"
+    events_text <- if (is.finite(events)) as.character(as.integer(round(events))) else "NA"
+    non_events_text <- if (is.finite(non_events)) as.character(as.integer(round(non_events))) else "NA"
+    unique_risk_text <- if (is.finite(unique_risk_count)) as.character(as.integer(round(unique_risk_count))) else "NA"
+
+    count_fragments <- c(
+        sprintf("usable n=%s", fit_n_text),
+        sprintf("events=%s", events_text),
+        sprintf("non-events=%s", non_events_text)
+    )
+
+    if (is.finite(unique_risk_count)) {
+        count_fragments <- c(count_fragments, sprintf("distinct risk values=%s", unique_risk_text))
+    }
+
+    sprintf("(%s)", paste(count_fragments, collapse = ", "))
+}
+
+describe_gep_slope_problem_compact <- function(status, fit_n = NA_real_, events = NA_real_,
+                                               non_events = NA_real_, unique_risk_count = NA_real_,
+                                               slope_se = NA_real_) {
+    problem_fragments <- collect_gep_slope_problem_fragments(
+        status = status,
+        fit_n = fit_n,
+        events = events,
+        non_events = non_events,
+        unique_risk_count = unique_risk_count,
+        slope_se = slope_se
+    )
+
+    if (!is.na(status) && identical(status, "insufficient_recalibration_data")) {
+        if (length(problem_fragments) > 0) {
+            return(sprintf(
+                "insufficient recalibration data because %s",
+                join_gep_reason_fragments(problem_fragments)
+            ))
+        }
+
+        return("insufficient recalibration data")
+    }
+
+    if (!is.na(status) && identical(status, "recalibration_fit_unstable")) {
+        if (is.finite(slope_se) && slope_se > GEP_MAX_CALIBRATION_COEF_SE) {
+            return("unstable recalibration fit with excessive uncertainty")
+        }
+
+        return("unstable recalibration fit")
+    }
+
+    "calibration slope not estimable"
+}
+
+describe_gep_slope_problem <- function(status, fit_n = NA_real_, events = NA_real_,
+                                       non_events = NA_real_, unique_risk_count = NA_real_,
+                                       slope_se = NA_real_, include_counts = TRUE) {
+    if (!is.na(status) && identical(status, "insufficient_recalibration_data")) {
+        problem_fragments <- collect_gep_slope_problem_fragments(
+            status = status,
+            fit_n = fit_n,
+            events = events,
+            non_events = non_events,
+            unique_risk_count = unique_risk_count,
+            slope_se = slope_se
+        )
 
         if (length(problem_fragments) > 0) {
             description <- sprintf(
@@ -136,17 +204,15 @@ describe_gep_slope_problem <- function(status, fit_n = NA_real_, events = NA_rea
         return(description)
     }
 
-    count_fragments <- c(
-        sprintf("usable n=%s", fit_n_text),
-        sprintf("events=%s", events_text),
-        sprintf("non-events=%s", non_events_text)
+    paste(
+        description,
+        format_gep_slope_problem_counts(
+            fit_n = fit_n,
+            events = events,
+            non_events = non_events,
+            unique_risk_count = unique_risk_count
+        )
     )
-
-    if (is.finite(unique_risk_count)) {
-        count_fragments <- c(count_fragments, sprintf("distinct risk values=%s", unique_risk_text))
-    }
-
-    sprintf("%s (%s)", description, paste(count_fragments, collapse = ", "))
 }
 
 format_gep_calibration_slope_text <- function(slope, slope_method = NA_character_,
@@ -260,6 +326,44 @@ summarize_gep_ici_range <- function(calibration_data) {
     sprintf("ICI ranged from %.3f to %.3f across timepoints.", min(ici_values), max(ici_values))
 }
 
+create_gep_all_unavailable_calibration_lines <- function(calibration_data) {
+    unavailable_rows <- calibration_data[!is.finite(calibration_data$Slope), , drop = FALSE]
+    if (nrow(unavailable_rows) == 0) {
+        return(character())
+    }
+
+    statuses <- if ("Status" %in% names(unavailable_rows)) unavailable_rows$Status else rep(NA_character_, nrow(unavailable_rows))
+    fit_ns <- if ("Fit_N" %in% names(unavailable_rows)) unavailable_rows$Fit_N else rep(NA_real_, nrow(unavailable_rows))
+    events <- if ("Events" %in% names(unavailable_rows)) unavailable_rows$Events else rep(NA_real_, nrow(unavailable_rows))
+    non_events <- if ("Non_Events" %in% names(unavailable_rows)) unavailable_rows$Non_Events else rep(NA_real_, nrow(unavailable_rows))
+    unique_risk_counts <- if ("Unique_Risk_Count" %in% names(unavailable_rows)) unavailable_rows$Unique_Risk_Count else rep(NA_real_, nrow(unavailable_rows))
+    slope_ses <- if ("Slope_SE" %in% names(unavailable_rows)) unavailable_rows$Slope_SE else rep(NA_real_, nrow(unavailable_rows))
+
+    bullet_lines <- vapply(seq_len(nrow(unavailable_rows)), function(i) {
+        compact_reason <- describe_gep_slope_problem_compact(
+            status = statuses[[i]],
+            fit_n = fit_ns[[i]],
+            events = events[[i]],
+            non_events = non_events[[i]],
+            unique_risk_count = unique_risk_counts[[i]],
+            slope_se = slope_ses[[i]]
+        )
+        count_text <- format_gep_slope_problem_counts(
+            fit_n = fit_ns[[i]],
+            events = events[[i]],
+            non_events = non_events[[i]],
+            unique_risk_count = unique_risk_counts[[i]]
+        )
+
+        md_bullet(sprintf("%s: %s %s", unavailable_rows$Timepoint[[i]], compact_reason, count_text))
+    }, character(1))
+
+    c(
+        "Calibration slope was not estimable at any reported timepoint.",
+        bullet_lines
+    )
+}
+
 create_gep_slope_issue_context <- function(calibration_data) {
     if (nrow(calibration_data) == 0 || !"Slope" %in% names(calibration_data)) {
         return(list(
@@ -355,12 +459,13 @@ create_calibration_interpretation <- function(calibration_data, outcome_type) {
     slope_issue_context <- create_gep_slope_issue_context(calibration_data)
     if (all(!is.finite(calibration_data$Slope))) {
         interpretation_parts <- c(
-            slope_issue_context$detailed_summary,
+            create_gep_all_unavailable_calibration_lines(calibration_data),
+            "",
             summarize_gep_ici_range(calibration_data),
             "This limits direct assessment of whether predicted risks are systematically too high or too low."
         )
 
-        return(paste(interpretation_parts[nzchar(interpretation_parts)], collapse = " "))
+        return(interpretation_parts[nzchar(interpretation_parts)])
     }
     
     # Analyze calibration slope patterns

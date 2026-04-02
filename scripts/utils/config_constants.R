@@ -282,7 +282,7 @@ is_publishable_artifact <- function(path) {
 
     normalized_path <- normalizePath(path.expand(path), winslash = "/", mustWork = FALSE)
     extension <- tolower(tools::file_ext(normalized_path))
-    publishable_extensions <- c("xlsx", "xls", "html", "htm", "txt", "png", "pdf", "csv", "tsv")
+    publishable_extensions <- c("xlsx", "xls", "html", "htm", "md", "txt", "png", "pdf", "csv", "tsv")
     if (!(extension %in% publishable_extensions)) {
         return(FALSE)
     }
@@ -307,14 +307,15 @@ PUBLISH_ARTIFACT_REGISTRY <- list(
         "^01_Efficacy/.+\\.(xlsx|html|png|pdf|txt|csv|tsv)$",
         "^02_Safety/.+\\.(xlsx|html|png|pdf|txt|csv|tsv)$",
         "^03_Repeat_Radiation/.+\\.(xlsx|html|png|pdf|txt|csv|tsv)$",
-        "^04_GEP_Validation/.+\\.(xlsx|html|png|pdf|txt|csv|tsv)$"
+        "^04_GEP_Validation/.+\\.(xlsx|html|png|pdf|md|txt|csv|tsv)$"
     ),
     merged_tables = c(
         "^.+\\.(xlsx|html|csv|tsv|txt)$"
     ),
     excluded = c(
         "(^|/)(logs|cache|caches|tools_output|test_output|tmp|temp)(/|$)",
-        "(^|/).*(?:_diagnostics\\.xlsx|_SKIPPED\\.html|_NO_CONTENT_DIAGNOSTIC\\.html|publish_manifest\\.csv)$"
+        "(^|/).*(?:_diagnostics\\.xlsx|_SKIPPED\\.html|_NO_CONTENT_DIAGNOSTIC\\.html|publish_manifest\\.csv)$",
+        "(^|/)04_GEP_Validation/.+(?:_validation_narrative_summary|_extrapolation_assumption_summary|_mfs_sensitivity_summary|_simple_gep_validation_report|_exploratory_no_gep_summary)\\.txt$"
     )
 )
 

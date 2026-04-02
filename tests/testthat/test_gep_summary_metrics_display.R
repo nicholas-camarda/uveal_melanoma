@@ -109,3 +109,31 @@ test_that("Comprehensive GEP summary includes the compact follow-up limitation b
     expect_true(grepl("Median follow-up among the 10-patient GKSRS-Only Cohort GEP validation subset: 15.5 years.", gksrs_summary, fixed = TRUE))
     expect_false(grepl("Full Cohort GEP validation subset", gksrs_summary, fixed = TRUE))
 })
+
+test_that("Calibration interpretation uses bullets when slopes are unavailable at all timepoints", {
+    calibration_data <- data.frame(
+        Timepoint = c("5yr", "7yr", "10yr"),
+        Slope = c(NA_real_, NA_real_, NA_real_),
+        Status = c(
+            "insufficient_recalibration_data",
+            "insufficient_recalibration_data",
+            "insufficient_recalibration_data"
+        ),
+        Fit_N = c(10, 7, 4),
+        Events = c(3, 4, 4),
+        Non_Events = c(7, 3, 0),
+        Unique_Risk_Count = c(4, 2, 2),
+        Slope_SE = c(NA_real_, NA_real_, NA_real_),
+        ICI = c(0.063, 0.101, 0.134),
+        stringsAsFactors = FALSE
+    )
+
+    interpretation <- create_calibration_interpretation(calibration_data, outcome_type = "MFS")
+    interpretation_text <- paste(interpretation, collapse = "\n")
+
+    expect_match(interpretation_text, "Calibration slope was not estimable at any reported timepoint\\.")
+    expect_match(interpretation_text, "- 5yr: insufficient recalibration data because too few patients had usable data and too few events were available \\(usable n=10, events=3, non-events=7, distinct risk values=4\\)", perl = TRUE)
+    expect_match(interpretation_text, "- 7yr: insufficient recalibration data because too few patients had usable data, too few events were available, and too few non-events were available \\(usable n=7, events=4, non-events=3, distinct risk values=2\\)", perl = TRUE)
+    expect_match(interpretation_text, "ICI ranged from 0\\.063 to 0\\.134 across timepoints\\.", perl = TRUE)
+    expect_match(interpretation_text, "This limits direct assessment of whether predicted risks are systematically too high or too low\\.", perl = TRUE)
+})
