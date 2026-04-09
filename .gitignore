@@ -27,6 +27,7 @@ scripts/old/*
 .RData
 .Ruserdata
 tmp/
+openspec/
 
 # Ignore original files
 final_data/*
@@ -44,3 +45,4 @@ tests/.DS_Store
 
 # Ignore helper file
 scripts/tools/export_gep_objective4_to_downloads.R
+analysis_registry.yaml
