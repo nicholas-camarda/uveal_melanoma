@@ -33,6 +33,29 @@ test_that("Comprehensive GEP summary displays current robust discrimination metr
     expect_false(grepl("AUC=0.780[^\\n]*Uno", summary_text))
 })
 
+test_that("Competing-risk status formatter expands internal reason codes into explicit prose", {
+    expect_identical(
+        format_competing_risk_reason("groups_with_zero_melanoma_deaths:Class 1 PRAME Negative,Class 1 PRAME Positive"),
+        "these groups had zero melanoma deaths: Class 1 PRAME Negative, Class 1 PRAME Positive"
+    )
+    expect_identical(
+        format_competing_risk_status_text(
+            status = "skipped",
+            reason = "groups_with_zero_competing_deaths:Class 2",
+            model_label = "Fine-Gray"
+        ),
+        "Fine-Gray not run: these groups had zero competing deaths: Class 2"
+    )
+    expect_identical(
+        format_competing_risk_status_text(
+            status = "no_event_of_interest",
+            reason = "no_melanoma_deaths",
+            model_label = "CIF CI"
+        ),
+        "CIF CI not run: no melanoma deaths were observed by the analysis horizon"
+    )
+})
+
 test_that("Comprehensive GEP summary includes the compact follow-up limitation block for MFS and MSS", {
     mock_validation_results <- list(
         "5yr" = list(

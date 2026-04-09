@@ -1784,16 +1784,21 @@ create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, 
     describe_competing_risk_model_status <- function(model_key, model_label) {
         feasibility <- competing_results$feasibility %||% NULL
         if (is.null(feasibility) || is.null(feasibility$models[[model_key]])) {
-            return(sprintf("%s not fitted", model_label))
+            return(sprintf("%s not run: status metadata unavailable", model_label))
         }
 
         model_status <- feasibility$models[[model_key]]
-        if (identical(model_status$status, "eligible")) {
-            return(sprintf("%s eligible", model_label))
+        if (identical(model_status$status, "eligible") &&
+            ((identical(model_key, "fine_gray") && !is.null(competing_results$fine_gray) && nrow(competing_results$fine_gray) > 0) ||
+             (identical(model_key, "cause_specific_cox") && !is.null(competing_results$cause_specific_cox) && nrow(competing_results$cause_specific_cox) > 0))) {
+            return(sprintf("%s completed", model_label))
         }
 
-        reason <- model_status$reason %||% "feasibility criteria not met"
-        sprintf("%s skipped: %s", model_label, reason)
+        format_competing_risk_status_text(
+            status = model_status$status %||% NA_character_,
+            reason = model_status$reason %||% NA_character_,
+            model_label = model_label
+        )
     }
 
     # Add competing risks statistics to title if available
@@ -1994,7 +1999,14 @@ create_mss_cumulative_incidence_curves <- function(data, timepoint, output_dir, 
             any(competing_results$cif_with_ci$status != "completed", na.rm = TRUE)) {
             skipped_cif_groups <- competing_results$cif_with_ci %>%
                 dplyr::filter(status != "completed") %>%
-                dplyr::mutate(reason_label = dplyr::coalesce(skip_reason, status)) %>%
+                dplyr::rowwise() %>%
+                dplyr::mutate(
+                    reason_label = format_competing_risk_status_text(
+                        status = .data$status,
+                        reason = dplyr::coalesce(.data$skip_reason, .data$status)
+                    )
+                ) %>%
+                dplyr::ungroup() %>%
                 dplyr::transmute(label = sprintf("%s (%s)", Group, reason_label)) %>%
                 dplyr::pull(label)
             caption_lines <- c(

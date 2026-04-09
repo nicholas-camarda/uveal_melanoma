@@ -269,6 +269,18 @@ create_mss_validation_excel_files <- function(standard_results, competing_result
             if (!is.null(tp_results$cif_with_ci)) {
                 tmp <- tp_results$cif_with_ci
                 tmp$Timepoint <- tp_name
+                tmp$Status_Label <- mapply(
+                    format_competing_risk_status_text,
+                    tmp$status %||% NA_character_,
+                    dplyr::coalesce(tmp$skip_reason, tmp$status),
+                    MoreArgs = list(model_label = "CIF CI"),
+                    USE.NAMES = FALSE
+                )
+                tmp$Skip_Reason_Label <- vapply(
+                    dplyr::coalesce(tmp$skip_reason, tmp$status),
+                    format_competing_risk_reason,
+                    character(1)
+                )
                 cif_ci_df <- rbind(cif_ci_df, tmp)
             }
             if (!is.null(tp_results$feasibility)) {
@@ -281,6 +293,24 @@ create_mss_validation_excel_files <- function(standard_results, competing_result
                     group_tmp$FineGray_Reason <- tp_results$feasibility$models$fine_gray$reason %||% NA_character_
                     group_tmp$CIF_CI_Status <- tp_results$feasibility$models$cif_with_ci$status %||% NA_character_
                     group_tmp$CIF_CI_Reason <- tp_results$feasibility$models$cif_with_ci$reason %||% NA_character_
+                    group_tmp$CSC_Status_Label <- format_competing_risk_status_text(
+                        status = group_tmp$CSC_Status[[1]],
+                        reason = group_tmp$CSC_Reason[[1]],
+                        model_label = "Cause-specific Cox"
+                    )
+                    group_tmp$CSC_Reason_Label <- format_competing_risk_reason(group_tmp$CSC_Reason[[1]])
+                    group_tmp$FineGray_Status_Label <- format_competing_risk_status_text(
+                        status = group_tmp$FineGray_Status[[1]],
+                        reason = group_tmp$FineGray_Reason[[1]],
+                        model_label = "Fine-Gray"
+                    )
+                    group_tmp$FineGray_Reason_Label <- format_competing_risk_reason(group_tmp$FineGray_Reason[[1]])
+                    group_tmp$CIF_CI_Status_Label <- format_competing_risk_status_text(
+                        status = group_tmp$CIF_CI_Status[[1]],
+                        reason = group_tmp$CIF_CI_Reason[[1]],
+                        model_label = "CIF CI"
+                    )
+                    group_tmp$CIF_CI_Reason_Label <- format_competing_risk_reason(group_tmp$CIF_CI_Reason[[1]])
                     feasibility_df <- rbind(feasibility_df, group_tmp)
                 } else {
                     feasibility_df <- rbind(
@@ -301,6 +331,24 @@ create_mss_validation_excel_files <- function(standard_results, competing_result
                             FineGray_Reason = tp_results$feasibility$models$fine_gray$reason %||% NA_character_,
                             CIF_CI_Status = tp_results$feasibility$models$cif_with_ci$status %||% NA_character_,
                             CIF_CI_Reason = tp_results$feasibility$models$cif_with_ci$reason %||% NA_character_,
+                            CSC_Status_Label = format_competing_risk_status_text(
+                                status = tp_results$feasibility$models$cause_specific_cox$status %||% NA_character_,
+                                reason = tp_results$feasibility$models$cause_specific_cox$reason %||% NA_character_,
+                                model_label = "Cause-specific Cox"
+                            ),
+                            CSC_Reason_Label = format_competing_risk_reason(tp_results$feasibility$models$cause_specific_cox$reason %||% NA_character_),
+                            FineGray_Status_Label = format_competing_risk_status_text(
+                                status = tp_results$feasibility$models$fine_gray$status %||% NA_character_,
+                                reason = tp_results$feasibility$models$fine_gray$reason %||% NA_character_,
+                                model_label = "Fine-Gray"
+                            ),
+                            FineGray_Reason_Label = format_competing_risk_reason(tp_results$feasibility$models$fine_gray$reason %||% NA_character_),
+                            CIF_CI_Status_Label = format_competing_risk_status_text(
+                                status = tp_results$feasibility$models$cif_with_ci$status %||% NA_character_,
+                                reason = tp_results$feasibility$models$cif_with_ci$reason %||% NA_character_,
+                                model_label = "CIF CI"
+                            ),
+                            CIF_CI_Reason_Label = format_competing_risk_reason(tp_results$feasibility$models$cif_with_ci$reason %||% NA_character_),
                             stringsAsFactors = FALSE
                         )
                     )
@@ -315,6 +363,90 @@ create_mss_validation_excel_files <- function(standard_results, competing_result
     excel_path <- file.path(output_dir, paste0(prefix, "mss_validation_technical_details.xlsx"))
     write_gep_workbook(excel_sheets, excel_path)
     logger::log_info(sprintf("MSS validation Excel file saved: %s", excel_path))
+}
+
+build_mss_competing_risk_status_section <- function(competing_results) {
+    if (is.null(competing_results) || length(competing_results) == 0) {
+        return(character())
+    }
+
+    summarize_model_status <- function(tp_results, model_key, model_label, result_key) {
+        result_table <- tp_results[[result_key]] %||% NULL
+        if (is.data.frame(result_table) && nrow(result_table) > 0) {
+            return("Completed")
+        }
+
+        feasibility <- tp_results$feasibility %||% NULL
+        model_status <- feasibility$models[[model_key]] %||% NULL
+        if (is.null(model_status)) {
+            return("Status unavailable")
+        }
+
+        format_competing_risk_status_text(
+            status = model_status$status %||% NA_character_,
+            reason = model_status$reason %||% NA_character_,
+            model_label = model_label
+        )
+    }
+
+    summarize_cif_ci_status <- function(tp_results) {
+        cif_ci <- tp_results$cif_with_ci %||% NULL
+        if (is.data.frame(cif_ci) && nrow(cif_ci) > 0) {
+            skipped_rows <- cif_ci %>%
+                dplyr::filter(.data$status != "completed")
+
+            if (nrow(skipped_rows) == 0) {
+                return("Completed for all reported groups")
+            }
+
+            skipped_labels <- vapply(seq_len(nrow(skipped_rows)), function(i) {
+                sprintf(
+                    "%s: %s",
+                    skipped_rows$Group[[i]],
+                    format_competing_risk_status_text(
+                        status = skipped_rows$status[[i]],
+                        reason = dplyr::coalesce(skipped_rows$skip_reason[[i]], skipped_rows$status[[i]])
+                    )
+                )
+            }, character(1))
+
+            return(paste(skipped_labels, collapse = "; "))
+        }
+
+        feasibility <- tp_results$feasibility %||% NULL
+        model_status <- feasibility$models$cif_with_ci %||% NULL
+        if (is.null(model_status)) {
+            return("Status unavailable")
+        }
+
+        format_competing_risk_status_text(
+            status = model_status$status %||% NA_character_,
+            reason = model_status$reason %||% NA_character_,
+            model_label = "CIF CI"
+        )
+    }
+
+    status_rows <- lapply(names(competing_results), function(tp_name) {
+        tp_results <- competing_results[[tp_name]]
+        data.frame(
+            Timepoint = tp_name,
+            `Cause-specific Cox` = summarize_model_status(tp_results, "cause_specific_cox", "Cause-specific Cox", "cause_specific_cox"),
+            `Fine-Gray` = summarize_model_status(tp_results, "fine_gray", "Fine-Gray", "fine_gray"),
+            `CIF CI` = summarize_cif_ci_status(tp_results),
+            stringsAsFactors = FALSE,
+            check.names = FALSE
+        )
+    })
+
+    status_table <- do.call(rbind, status_rows)
+
+    c(
+        "",
+        md_heading("Competing-Risk Model Status", 2L),
+        md_bullet("Explicit not-run and failure reasons for MSS competing-risk outputs are summarized here. Group-level detail remains in the `CompRisk_Feasibility` and `CompRisk_CIF_with_CI` workbook sheets."),
+        "",
+        md_table(status_table)
+    )
 }
 
 #' Create MSS validation summary markdown
@@ -352,6 +484,10 @@ create_mss_validation_summary_text <- function(standard_results, competing_resul
         dataset_name = dataset_name,
         extrapolation_assessment = extrapolation_assessment,
         source_data = source_data
+    )
+    comprehensive_summary <- c(
+        comprehensive_summary,
+        build_mss_competing_risk_status_section(competing_results)
     )
     
     # Save comprehensive summary

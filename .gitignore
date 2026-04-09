@@ -19,6 +19,7 @@ scripts/old/*
 .history
 .github/
 .cursor/
+.codex/
 .agent-os/
 .claude/
 .vscode/

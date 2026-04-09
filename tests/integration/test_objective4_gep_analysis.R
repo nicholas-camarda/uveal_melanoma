@@ -628,6 +628,109 @@ test_that("Saved MSS summary text preserves dataset name", {
     unlink(test_output_dir, recursive = TRUE)
 })
 
+test_that("MSS competing-risk reporting writes explicit human-readable not-run reasons", {
+    standard_results <- list(
+        `5yr` = list(
+            observed_expected = tibble::tibble(
+                biopsy1_gep = c("Class 1", "Class 2"),
+                n = c(10, 12),
+                observed = c(1, 3),
+                expected = c(1.2, 2.4),
+                expected_rate = c(0.12, 0.20),
+                observed_rate = c(0.10, 0.25)
+            ),
+            calibration = list(
+                n = 22,
+                slope = 0.95,
+                ici = 0.04,
+                nam_dagostino_p = 0.31
+            ),
+            discrimination = list(
+                harrell_c = 0.81,
+                integrated_auc = 0.77,
+                cumulative_discrimination = 0.80,
+                time_averaged_discrimination = 0.79
+            )
+        )
+    )
+
+    competing_results <- list(
+        `5yr` = list(
+            cause_specific_cox = NULL,
+            fine_gray = NULL,
+            cif_with_ci = tibble::tibble(
+                Group = c("Class 1 PRAME Negative", "Class 2 PRAME Positive"),
+                n = c(10L, 10L),
+                cif = c(0, 0.25),
+                ci_lower = c(NA_real_, 0.10),
+                ci_upper = c(NA_real_, 0.40),
+                status = c("no_event_of_interest", "completed"),
+                skip_reason = c("no_melanoma_deaths", NA_character_)
+            ),
+            feasibility = list(
+                by_group = tibble::tibble(
+                    GEP_Class = c("Class 1 PRAME Negative", "Class 2 PRAME Positive"),
+                    n = c(10L, 10L),
+                    melanoma_deaths = c(0L, 4L),
+                    competing_deaths = c(0L, 0L),
+                    censored = c(10L, 6L),
+                    zero_melanoma_deaths = c(TRUE, FALSE),
+                    zero_competing_deaths = c(TRUE, TRUE),
+                    below_minimum_size = c(FALSE, FALSE)
+                ),
+                models = list(
+                    cause_specific_cox = build_competing_risk_model_status(
+                        "skipped",
+                        "groups_with_zero_melanoma_deaths:Class 1 PRAME Negative"
+                    ),
+                    fine_gray = build_competing_risk_model_status(
+                        "skipped",
+                        "groups_with_zero_competing_deaths:Class 1 PRAME Negative,Class 2 PRAME Positive"
+                    ),
+                    cif_with_ci = build_competing_risk_model_status("eligible")
+                )
+            ),
+            unexpected_failures = character()
+        )
+    )
+
+    missing_data_analysis <- list(missing_patterns = data.frame(pattern = character()))
+    test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective4_competing_risk_reason_reporting")
+    dir.create(test_output_dir, recursive = TRUE, showWarnings = FALSE)
+
+    save_mss_validation_results(
+        standard_results = standard_results,
+        competing_results = competing_results,
+        missing_data = missing_data_analysis,
+        prame_results = NULL,
+        output_dir = test_output_dir,
+        prefix = "dataset_",
+        dataset_name = "uveal_melanoma_full_cohort"
+    )
+
+    summary_path <- file.path(test_output_dir, "dataset_mss_validation_narrative_summary.md")
+    expect_true(file.exists(summary_path))
+
+    summary_text <- paste(readLines(summary_path, warn = FALSE), collapse = "\n")
+    expect_match(summary_text, "## Competing-Risk Model Status", fixed = TRUE)
+    expect_match(summary_text, "Cause-specific Cox not run: these groups had zero melanoma deaths: Class 1 PRAME Negative", fixed = TRUE)
+    expect_match(summary_text, "Fine-Gray not run: these groups had zero competing deaths: Class 1 PRAME Negative, Class 2 PRAME Positive", fixed = TRUE)
+    expect_match(summary_text, "Class 1 PRAME Negative: not run: no melanoma deaths were observed by the analysis horizon", fixed = TRUE)
+
+    technical_path <- file.path(test_output_dir, "dataset_mss_validation_technical_details.xlsx")
+    expect_true(file.exists(technical_path))
+
+    feasibility_sheet <- readxl::read_excel(technical_path, sheet = "CompRisk_Feasibility")
+    cif_ci_sheet <- readxl::read_excel(technical_path, sheet = "CompRisk_CIF_with_CI")
+
+    expect_true(all(c("CSC_Status_Label", "FineGray_Status_Label", "CIF_CI_Status_Label") %in% names(feasibility_sheet)))
+    expect_true(all(c("Status_Label", "Skip_Reason_Label") %in% names(cif_ci_sheet)))
+    expect_match(feasibility_sheet$CSC_Status_Label[[1]], "Cause-specific Cox not run: these groups had zero melanoma deaths", fixed = TRUE)
+    expect_match(cif_ci_sheet$Status_Label[[1]], "CIF CI not run: no melanoma deaths were observed by the analysis horizon", fixed = TRUE)
+
+    unlink(test_output_dir, recursive = TRUE)
+})
+
 test_that("Consolidated and unified workbooks write PRAME placeholder sheets when PRAME is unavailable", {
     validation_results <- list(
         `5yr` = list(

@@ -1320,6 +1320,127 @@ build_competing_risk_model_status <- function(status, reason = NA_character_, de
     )
 }
 
+#' Format competing-risk skip and failure reasons for reader-facing output
+#'
+#' @param reason Character scalar reason code.
+#' @param default Character scalar fallback string when `reason` is empty.
+#' @return Character scalar with an explicit explanation.
+format_competing_risk_reason <- function(reason, default = "reason not provided") {
+    reason_value <- as.character(reason %||% NA_character_)[1]
+    if (is.na(reason_value) || !nzchar(reason_value)) {
+        return(default)
+    }
+
+    parse_groups <- function(prefix) {
+        group_text <- sub(paste0("^", prefix), "", reason_value)
+        group_values <- trimws(unlist(strsplit(group_text, ",", fixed = TRUE)))
+        group_values <- group_values[nzchar(group_values)]
+
+        if (length(group_values) == 0) {
+            return("no groups recorded")
+        }
+
+        paste(group_values, collapse = ", ")
+    }
+
+    if (identical(reason_value, "no_complete_cases")) {
+        return("no complete cases remained after filtering")
+    }
+    if (identical(reason_value, "no_groups_available")) {
+        return("no analyzable groups remained after filtering")
+    }
+    if (identical(reason_value, "fewer_than_two_groups")) {
+        return("fewer than two analyzable groups remained")
+    }
+    if (identical(reason_value, "no_melanoma_deaths")) {
+        return("no melanoma deaths were observed by the analysis horizon")
+    }
+    if (identical(reason_value, "cuminc_unavailable")) {
+        return("the cumulative-incidence estimate could not be computed")
+    }
+    if (startsWith(reason_value, "groups_below_minimum_size:")) {
+        return(sprintf(
+            "these groups were below the minimum size threshold: %s",
+            parse_groups("groups_below_minimum_size:")
+        ))
+    }
+    if (startsWith(reason_value, "groups_with_zero_melanoma_deaths:")) {
+        return(sprintf(
+            "these groups had zero melanoma deaths: %s",
+            parse_groups("groups_with_zero_melanoma_deaths:")
+        ))
+    }
+    if (startsWith(reason_value, "groups_with_zero_competing_deaths:")) {
+        return(sprintf(
+            "these groups had zero competing deaths: %s",
+            parse_groups("groups_with_zero_competing_deaths:")
+        ))
+    }
+    if (startsWith(reason_value, "below_minimum_group_size:")) {
+        minimum_size <- trimws(sub("^below_minimum_group_size:", "", reason_value))
+        if (!nzchar(minimum_size)) {
+            minimum_size <- "required minimum"
+        }
+
+        return(sprintf(
+            "the group was below the minimum size threshold (n < %s)",
+            minimum_size
+        ))
+    }
+
+    gsub("_", " ", reason_value, fixed = TRUE)
+}
+
+#' Format a competing-risk model status in explicit prose
+#'
+#' @param status Character scalar status code.
+#' @param reason Optional character scalar reason code.
+#' @param model_label Optional prefix describing the model.
+#' @return Character scalar status label.
+format_competing_risk_status_text <- function(status, reason = NA_character_, model_label = NULL) {
+    status_value <- as.character(status %||% NA_character_)[1]
+    label_prefix <- if (!is.null(model_label) && nzchar(model_label)) {
+        paste0(model_label, " ")
+    } else {
+        ""
+    }
+
+    if (is.na(status_value) || !nzchar(status_value)) {
+        return(sprintf("%sstatus unavailable", label_prefix))
+    }
+    if (identical(status_value, "eligible")) {
+        return(sprintf("%seligible for fitting", label_prefix))
+    }
+    if (identical(status_value, "completed")) {
+        return(sprintf("%scompleted", label_prefix))
+    }
+    if (identical(status_value, "failed")) {
+        return(sprintf(
+            "%sfailed: %s",
+            label_prefix,
+            format_competing_risk_reason(reason, default = "unexpected failure")
+        ))
+    }
+    if (status_value %in% c("skipped", "skipped_ci", "no_event_of_interest")) {
+        return(sprintf(
+            "%snot run: %s",
+            label_prefix,
+            format_competing_risk_reason(reason, default = "feasibility criteria were not met")
+        ))
+    }
+
+    if (!is.na(reason) && nzchar(as.character(reason)[1])) {
+        return(sprintf(
+            "%s%s: %s",
+            label_prefix,
+            gsub("_", " ", status_value, fixed = TRUE),
+            format_competing_risk_reason(reason, default = as.character(reason)[1])
+        ))
+    }
+
+    sprintf("%s%s", label_prefix, gsub("_", " ", status_value, fixed = TRUE))
+}
+
 #' Assess competing-risk model feasibility by group
 #'
 #' Filter MSS-eligible complete cases, summarize group sizes and event counts,
