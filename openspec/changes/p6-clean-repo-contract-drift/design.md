@@ -13,6 +13,11 @@ The repo review found several cross-cutting drift points: stale `final_data/...`
 **Non-Goals:**
 - Move or delete large runtime trees as part of the spec itself.
 - Redesign the overall path architecture for the repo.
+- Add heavy automation or a new registry system just to police documentation drift.
+
+## Implementation Constraint
+
+Prefer lightweight doc/test checks that reuse existing doc-alignment coverage, path constants, and runtime/output utilities. Cleanup should clarify current contracts in existing docs and checks rather than introduce a second source of path or artifact truth.
 
 ## Decisions
 

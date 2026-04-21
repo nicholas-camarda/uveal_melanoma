@@ -14,6 +14,11 @@ Objective 4 validates imported GEP risk predictions against observed MFS and MSS
 - Fit a brand-new prognostic model to replace imported assay risks.
 - Eliminate all exploratory or QC outputs from Objective 4.
 - Expand the no-GEP appendix into a separate major objective.
+- Create a duplicate GEP reporting stack when existing consolidated workbooks, technical workbooks, simple validation outputs, and narrative generators can be extended.
+
+## Implementation Constraint
+
+Reuse the current Objective 4 orchestration, consolidated workbook, technical workbook, simple validation, no-GEP appendix, and narrative-summary mechanisms. Competing-risk MSS corrections, split retirement, QC checks, and narrative downgrades should be expressed through existing sheets, status columns, estimand metadata, and summary sections before adding any new artifact family.
 
 ## Decisions
 

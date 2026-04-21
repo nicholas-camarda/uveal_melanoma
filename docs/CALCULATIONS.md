@@ -275,8 +275,8 @@ tt_pfs2_months = case_when(
 **Components:**
 
 - **Starting point:** Date of salvage treatment (not primary treatment)
-- **Event:** Second recurrence OR death
-- **Censoring:** Last known alive without second recurrence
+- **Event:** Second local recurrence
+- **Censoring:** Death or last known alive without second local recurrence
 
 **Clinical Interpretation:**
 

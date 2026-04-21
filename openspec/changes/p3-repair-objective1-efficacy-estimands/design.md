@@ -14,6 +14,11 @@ Objective 1 spans recurrence, metastatic progression, OS, PFS, tumor-height chan
 - Rebuild the entire Objective 1 output tree from scratch.
 - Resolve every causal confounding limitation in observational treatment comparison.
 - Redesign tumor-height methodology beyond labeling and interpretation guardrails in this change.
+- Add repeated boilerplate or duplicate report generators across every Objective 1 plot, model table, and diagnostics artifact.
+
+## Implementation Constraint
+
+Reuse existing Objective 1 survival, RMST, binary-output, effect-summary, subgroup, forest-plot, and diagnostics mechanisms where possible. New event-time outputs and interpretation notes should extend existing workbooks, diagnostics tabs, notes/status fields, or high-level summaries rather than creating parallel report paths.
 
 ## Decisions
 

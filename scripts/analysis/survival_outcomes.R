@@ -572,6 +572,261 @@ determine_survival_output_dir <- function(ylab, output_dirs) {
     default_dir
 }
 
+#' Summarize censoring and follow-up support for a survival endpoint
+#'
+#' Builds an overall and optional by-group support table for time-to-event
+#' outputs, including event counts, censored counts, censoring percentage, and
+#' follow-up distribution. The table is intended for diagnostics workbooks and
+#' interpretation guardrails rather than hypothesis testing.
+#'
+#' @param data Data frame containing survival time, event, and optional group columns.
+#' @param time_var Character scalar naming the follow-up time column in months.
+#' @param event_var Character scalar naming the event indicator column.
+#' @param group_var Optional character scalar naming the grouping column.
+#' @param horizon_months Optional numeric reporting horizon used to count short follow-up.
+#' @return Tibble with censoring/follow-up support rows, or an empty tibble if
+#'   required inputs are unavailable.
+build_survival_censoring_support <- function(data,
+                                             time_var,
+                                             event_var,
+                                             group_var = NULL,
+                                             horizon_months = NULL) {
+    if (is.null(data) || !is.data.frame(data) || nrow(data) == 0 ||
+        !time_var %in% names(data) || !event_var %in% names(data)) {
+        return(tibble::tibble())
+    }
+
+    analysis_data <- data %>%
+        dplyr::filter(!is.na(.data[[time_var]]), !is.na(.data[[event_var]])) %>%
+        dplyr::mutate(
+            .event_value = coerce_binary_outcome_vector(.data[[event_var]]),
+            .follow_up_time = as.numeric(.data[[time_var]])
+        ) %>%
+        dplyr::filter(!is.na(.event_value), !is.na(.follow_up_time))
+
+    if (nrow(analysis_data) == 0) {
+        return(tibble::tibble())
+    }
+
+    summarize_support <- function(df, scope, group) {
+        n_total <- nrow(df)
+        n_events <- sum(df$.event_value == 1, na.rm = TRUE)
+        n_censored <- sum(df$.event_value == 0, na.rm = TRUE)
+        tibble::tibble(
+            scope = scope,
+            group = group,
+            analyzable_n = n_total,
+            second_recurrence_events = n_events,
+            censored_n = n_censored,
+            censoring_percent = round(100 * n_censored / n_total, 1),
+            median_follow_up_months = round(stats::median(df$.follow_up_time, na.rm = TRUE), 2),
+            q1_follow_up_months = round(stats::quantile(df$.follow_up_time, 0.25, na.rm = TRUE), 2),
+            q3_follow_up_months = round(stats::quantile(df$.follow_up_time, 0.75, na.rm = TRUE), 2),
+            min_follow_up_months = round(min(df$.follow_up_time, na.rm = TRUE), 2),
+            max_follow_up_months = round(max(df$.follow_up_time, na.rm = TRUE), 2),
+            below_horizon_n = if (!is.null(horizon_months)) {
+                sum(df$.follow_up_time < horizon_months, na.rm = TRUE)
+            } else {
+                NA_integer_
+            }
+        )
+    }
+
+    support <- summarize_support(analysis_data, "overall", "All patients")
+
+    if (!is.null(group_var) && group_var %in% names(analysis_data)) {
+        group_support <- analysis_data %>%
+            dplyr::mutate(.support_group = dplyr::case_when(
+                is.na(.data[[group_var]]) ~ "Missing",
+                TRUE ~ as.character(.data[[group_var]])
+            )) %>%
+            dplyr::group_split(.support_group) %>%
+            purrr::map_dfr(function(group_df) {
+                summarize_support(group_df, "by_treatment", group_df$.support_group[[1]])
+            })
+
+        support <- dplyr::bind_rows(support, group_support)
+    }
+
+    support
+}
+
+#' Assess PFS-2 censoring support against interpretation guardrails
+#'
+#' Converts the PFS-2 censoring support table into pass/downgrade guardrails for
+#' heavy censoring, insufficient follow-up at the reporting horizon, and
+#' between-arm censoring imbalance.
+#'
+#' @param censoring_support Tibble returned by `build_survival_censoring_support()`.
+#' @param horizon_months Numeric reporting horizon in months.
+#' @return List with `status`, `notes`, and `guardrail_table` for diagnostics
+#'   and narrative interpretation.
+assess_pfs2_censoring_support <- function(censoring_support,
+                                          horizon_months = PFS2_REPORT_HORIZON_MONTHS) {
+    if (is.null(censoring_support) || nrow(censoring_support) == 0) {
+        return(list(
+            status = "unavailable",
+            notes = "Censoring support could not be assessed.",
+            guardrail_table = tibble::tibble(
+                guardrail = "censoring_support",
+                status = "unavailable",
+                detail = "Censoring support could not be assessed."
+            )
+        ))
+    }
+
+    overall <- censoring_support %>%
+        dplyr::filter(.data$scope == "overall") %>%
+        dplyr::slice_head(n = 1)
+    by_treatment <- censoring_support %>%
+        dplyr::filter(.data$scope == "by_treatment")
+
+    heavy_censoring <- nrow(overall) > 0 &&
+        !is.na(overall$censoring_percent[[1]]) &&
+        overall$censoring_percent[[1]] >= 100 * PFS2_HEAVY_CENSORING_THRESHOLD
+    short_follow_up <- nrow(overall) > 0 &&
+        !is.na(overall$median_follow_up_months[[1]]) &&
+        overall$median_follow_up_months[[1]] < horizon_months
+    censoring_imbalance <- nrow(by_treatment) >= 2 &&
+        diff(range(by_treatment$censoring_percent, na.rm = TRUE)) >= 100 * PFS2_CENSORING_IMBALANCE_THRESHOLD
+    overall_censoring_percent <- if (nrow(overall) > 0) overall$censoring_percent[[1]] else NA_real_
+    overall_median_follow_up <- if (nrow(overall) > 0) overall$median_follow_up_months[[1]] else NA_real_
+
+    # These guardrails downgrade interpretation rather than suppressing KM/RMST:
+    # censoring affects reliability, but it does not make censoring-aware curves invalid.
+    detail_rows <- tibble::tibble(
+        guardrail = c("heavy_censoring", "short_follow_up", "imbalanced_censoring"),
+        status = c(
+            if (heavy_censoring) "downgrade" else "pass",
+            if (short_follow_up) "downgrade" else "pass",
+            if (censoring_imbalance) "downgrade" else "pass"
+        ),
+        detail = c(
+            sprintf(
+                "Overall censoring is %s%%; downgrade threshold is %s%%.",
+                overall_censoring_percent,
+                100 * PFS2_HEAVY_CENSORING_THRESHOLD
+            ),
+            sprintf(
+                "Median follow-up is %s months; reported PFS-2 horizon is %s months.",
+                overall_median_follow_up,
+                horizon_months
+            ),
+            if (nrow(by_treatment) >= 2) {
+                sprintf(
+                    "Treatment-arm censoring ranges from %.1f%% to %.1f%%.",
+                    min(by_treatment$censoring_percent, na.rm = TRUE),
+                    max(by_treatment$censoring_percent, na.rm = TRUE)
+                )
+            } else {
+                "Treatment-arm censoring imbalance could not be assessed with fewer than two arms."
+            }
+        )
+    )
+
+    downgrade_reasons <- detail_rows$guardrail[detail_rows$status == "downgrade"]
+    if (length(downgrade_reasons) == 0) {
+        notes <- "Censoring and follow-up support do not trigger Objective 3 downgrade guardrails."
+        status <- "supported"
+    } else {
+        notes <- paste(
+            "Interpret PFS-2 treatment comparisons cautiously because support guardrails were triggered:",
+            paste(downgrade_reasons, collapse = ", ")
+        )
+        status <- "downgraded"
+    }
+
+    list(
+        status = status,
+        notes = notes,
+        guardrail_table = detail_rows
+    )
+}
+
+#' Assess whether PFS-2 Cox treatment comparison is estimable
+#'
+#' Checks treatment-arm event support before fitting a Cox treatment comparison.
+#' KM/RMST outputs can still be produced when Cox treatment effects are not
+#' reportable, but the Cox artifact should be explicitly skipped with a reason.
+#'
+#' @param data PFS-2 analysis data after sparse treatment exclusions.
+#' @param group_var Character scalar naming the salvage-treatment group column.
+#' @param event_var Character scalar naming the PFS-2 event indicator column.
+#' @return List with `reportable`, `reason`, `support`, and the Cox reference
+#'   group when it can be identified.
+assess_pfs2_treatment_estimability <- function(data,
+                                               group_var = "recurrence1_treatment_clean",
+                                               event_var = "pfs2_event") {
+    if (is.null(data) || !is.data.frame(data) || nrow(data) == 0 ||
+        !group_var %in% names(data) || !event_var %in% names(data)) {
+        return(list(
+            reportable = FALSE,
+            reason = "PFS-2 Cox treatment comparison was skipped because treatment/event columns were unavailable.",
+            support = tibble::tibble()
+        ))
+    }
+
+    support <- data %>%
+        dplyr::filter(!is.na(.data[[group_var]]), !is.na(.data[[event_var]])) %>%
+        dplyr::mutate(
+            treatment_group = as.character(.data[[group_var]]),
+            event_value = coerce_binary_outcome_vector(.data[[event_var]])
+        ) %>%
+        dplyr::filter(!is.na(event_value)) %>%
+        dplyr::group_by(treatment_group) %>%
+        dplyr::summarise(
+            n = dplyr::n(),
+            events = sum(event_value == 1, na.rm = TRUE),
+            censored = sum(event_value == 0, na.rm = TRUE),
+            .groups = "drop"
+        )
+
+    if (nrow(support) < 2) {
+        return(list(
+            reportable = FALSE,
+            reason = "PFS-2 Cox treatment comparison was skipped because fewer than two salvage-treatment groups were analyzable.",
+            support = support
+        ))
+    }
+
+    # Preserve the model reference arm from existing factor levels; using
+    # alphabetical factor coercion here would silently change the Cox contrast.
+    observed_groups <- unique(as.character(stats::na.omit(data[[group_var]])))
+    group_levels <- get_stable_factor_levels(data[[group_var]])
+    group_levels <- group_levels[group_levels %in% observed_groups]
+    reference_group <- if (length(group_levels) > 0) group_levels[[1]] else support$treatment_group[[1]]
+    reference_row <- support %>% dplyr::filter(.data$treatment_group == reference_group)
+
+    if (nrow(reference_row) == 0 || reference_row$events[[1]] == 0) {
+        return(list(
+            reportable = FALSE,
+            reason = sprintf(
+                "PFS-2 Cox treatment comparison was skipped because the reference salvage-treatment arm `%s` had zero second-recurrence events.",
+                reference_group
+            ),
+            support = support,
+            reference_group = reference_group
+        ))
+    }
+
+    contrast_support <- support %>% dplyr::filter(.data$treatment_group != reference_group)
+    if (nrow(contrast_support) == 0 || all(contrast_support$events == 0)) {
+        return(list(
+            reportable = FALSE,
+            reason = "PFS-2 Cox treatment comparison was skipped because no non-reference treatment contrast had observed second-recurrence events.",
+            support = support,
+            reference_group = reference_group
+        ))
+    }
+
+    list(
+        reportable = TRUE,
+        reason = "PFS-2 Cox treatment comparison passed treatment-arm event-support guardrails.",
+        support = support,
+        reference_group = reference_group
+    )
+}
+
 #' Build standardized skip diagnostics for survival and Cox outputs
 #'
 #' @param data Data frame representing the modeled survival dataset.
@@ -616,6 +871,26 @@ build_survival_skip_diagnostics <- function(data,
     } else {
         ""
     }
+    censoring_support <- if (!is.null(time_var)) {
+        build_survival_censoring_support(
+            data = data,
+            time_var = time_var,
+            event_var = event_var,
+            group_var = NULL
+        )
+    } else {
+        tibble::tibble()
+    }
+    overall_censoring <- if (nrow(censoring_support) > 0) {
+        censoring_support %>%
+            dplyr::filter(.data$scope == "overall") %>%
+            dplyr::slice_head(n = 1)
+    } else {
+        tibble::tibble()
+    }
+    censored_count <- if (nrow(overall_censoring) > 0) overall_censoring$censored_n[[1]] else NA_integer_
+    censoring_percent <- if (nrow(overall_censoring) > 0) overall_censoring$censoring_percent[[1]] else NA_real_
+    median_follow_up <- if (nrow(overall_censoring) > 0) overall_censoring$median_follow_up_months[[1]] else NA_real_
 
     build_skip_report_diagnostics(
         status = status,
@@ -626,14 +901,20 @@ build_survival_skip_diagnostics <- function(data,
         sample_size_summary = sample_size_summary,
         skip_summary = build_skip_summary_tab(list(
             modeled_n = modeled_n,
-            total_events = total_events
+            total_events = total_events,
+            censored_n = censored_count,
+            censoring_percent = censoring_percent,
+            median_follow_up_months = median_follow_up
         )),
         sparse_level_diagnostics = sparse_level_diagnostics,
         event_support = build_level_support_tab(data, variables, outcome_var = event_var),
         model_context = build_model_context_tab(list(
             event_var = event_var,
             time_var = time_var %||% "",
-            follow_up_range = follow_up_range
+            follow_up_range = follow_up_range,
+            censored_n = censored_count,
+            censoring_percent = censoring_percent,
+            median_follow_up_months = median_follow_up
         )),
         raw_model_output = paste(narrative_lines, collapse = " ")
     )
@@ -664,7 +945,7 @@ summarize_cox_hr <- function(model, dataset_name, analysis_label, model_label, g
 #' @param output_dirs Output directories by analysis type
 #' @param prefix File prefix for outputs
 #' @return List with KM/cox outputs and diagnostics
-analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var = "treatment_group", model_group_var = group_var, confounders = NULL, ylab = "Survival Probability", analysis_type = "post_treatment_only", dataset_name = NULL, legend_labels = NULL, output_dirs = NULL, prefix = NULL, risk_table_height = 0.18, risk_table_rel_heights = c(0.78, 0.22), risk_table_y_expand = c(0.18, 0.18), saved_plot_height = NULL) {
+analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var = "treatment_group", model_group_var = group_var, confounders = NULL, ylab = "Survival Probability", analysis_type = "post_treatment_only", dataset_name = NULL, legend_labels = NULL, output_dirs = NULL, prefix = NULL, risk_table_height = 0.18, risk_table_rel_heights = c(0.78, 0.22), risk_table_y_expand = c(0.18, 0.18), saved_plot_height = NULL, allow_cox = TRUE, cox_skip_reason = NULL, cox_skip_narrative = NULL) {
     data <- normalize_treatment_group_data(data)
     plot_group_var <- group_var
     palette_group_var <- group_var
@@ -817,16 +1098,13 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
 
     cox_data <- cox_exclusion_result$data
 
-    cox_ready <- nrow(cox_data) > 0 && length(unique(stats::na.omit(cox_data[[model_group_var]]))) >= 2
+    cox_ready <- isTRUE(allow_cox) && nrow(cox_data) > 0 && length(unique(stats::na.omit(cox_data[[model_group_var]]))) >= 2
     if (!cox_ready) {
-        logger::log_warn(formatted(
-            "Cox model will be skipped: insufficient data after sparse-level exclusions.",
-            indent = 1
-        ))
+        logger::log_warn(formatted(cox_skip_reason %||% "Cox model will be skipped: insufficient data after sparse-level exclusions.", indent = 1))
     }
 
     km_unadjusted_cox_model <- NULL
-    unadjusted_ready <- nrow(model_data) > 0 && length(unique(stats::na.omit(model_data[[model_group_var]]))) >= 2
+    unadjusted_ready <- isTRUE(allow_cox) && nrow(model_data) > 0 && length(unique(stats::na.omit(model_data[[model_group_var]]))) >= 2
     if (unadjusted_ready) {
         km_unadjusted_cox_model <- tryCatch({
             survival::coxph(model_surv_formula, data = model_data)
@@ -835,10 +1113,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             NULL
         })
     } else {
-        logger::log_warn(formatted(
-            "Unadjusted Cox model skipped: insufficient groups in KM dataset.",
-            indent = 1
-        ))
+        logger::log_warn(formatted(cox_skip_reason %||% "Unadjusted Cox model skipped: insufficient groups in KM dataset.", indent = 1))
     }
 
     cox_unadjusted_model <- NULL
@@ -1539,8 +1814,8 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             variables = survival_variables,
             analysis_name = cox_analysis_name,
             dataset_name = dataset_name %||% "unspecified_dataset",
-            reason = "Cox regression was skipped because the post-exclusion survival dataset did not retain enough usable rows or group variation.",
-            narrative_lines = c(
+            reason = cox_skip_reason %||% "Cox regression was skipped because the post-exclusion survival dataset did not retain enough usable rows or group variation.",
+            narrative_lines = cox_skip_narrative %||% c(
                 sprintf(
                     "After sparse-level exclusions, %d rows remained in the Cox dataset.",
                     nrow(cox_data)
@@ -1967,12 +2242,29 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_d
         ) %>%
         arrange(primary_treatment, desc(n))
 
+    pfs2_censoring_support <- build_survival_censoring_support(
+        data = pfs2_data,
+        time_var = "tt_pfs2_months",
+        event_var = "pfs2_event",
+        group_var = "recurrence1_treatment_clean",
+        horizon_months = PFS2_REPORT_HORIZON_MONTHS
+    )
+    pfs2_interpretation_guardrails <- assess_pfs2_censoring_support(pfs2_censoring_support)
+    pfs2_treatment_estimability <- assess_pfs2_treatment_estimability(
+        data = pfs2_data,
+        group_var = "recurrence1_treatment_clean",
+        event_var = "pfs2_event"
+    )
+
     if (!is.null(output_dirs) && !is.null(output_dirs$obj3_pfs2)) {
         summary_path <- file.path(output_dirs$obj3_pfs2, paste0(prefix, "pfs2_treatment_summary.xlsx"))
         writexl::write_xlsx(
             list(
                 raw_primary_vs_salvage = raw_primary_vs_salvage,
-                model_primary_vs_salvage = model_primary_vs_salvage
+                model_primary_vs_salvage = model_primary_vs_salvage,
+                censoring_support = pfs2_censoring_support,
+                interpretation_guardrails = pfs2_interpretation_guardrails$guardrail_table,
+                treatment_estimability = pfs2_treatment_estimability$support
             ),
             summary_path
         )
@@ -1980,7 +2272,47 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_d
     }
 
     logger::log_info(sprintf("Final PFS-2 analysis dataset: %d patients", nrow(pfs2_data)))
-    logger::log_info(sprintf("PFS-2 events (2nd recurrence): %d", sum(pfs2_data$pfs2_event)))
+    total_events <- sum(pfs2_data$pfs2_event, na.rm = TRUE)
+    logger::log_info(sprintf("PFS-2 events (2nd recurrence): %d", total_events))
+
+    write_pfs2_skip_outputs <- function(reason, narrative_lines, explanation_text, status = "skipped") {
+        pfs2_skip_diagnostics <- build_survival_skip_diagnostics(
+            data = pfs2_data,
+            event_var = "pfs2_event",
+            variables = unique(c("recurrence1_treatment_clean", confounders)),
+            analysis_name = "pfs2_analysis",
+            dataset_name = dataset_name %||% "unspecified_dataset",
+            reason = reason,
+            narrative_lines = c(narrative_lines, pfs2_interpretation_guardrails$notes),
+            filter_stats = exclusion_result$filter_stats,
+            sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
+            modeled_n = nrow(pfs2_data),
+            status = status,
+            time_var = "tt_pfs2_months"
+        )
+        pfs2_skip_diagnostics$compatibility_text <- explanation_text
+
+        if (!is.null(output_dirs)) {
+            output_targets <- list(output_dirs$obj3_pfs2, output_dirs$obj3_ph_diagnostics)
+            for (target_dir in output_targets) {
+                if (!is.null(target_dir) && dir.exists(target_dir)) {
+                    explanation_file <- file.path(target_dir, paste0(prefix, "pfs2_analysis_skipped_explanation.txt"))
+                    writeLines(explanation_text, explanation_file)
+                    logger::log_info(sprintf("Explanation saved to: %s", explanation_file))
+                    save_skipped_model_outputs(
+                        analysis_name = "pfs2_analysis",
+                        dataset_name = dataset_name %||% "unspecified_dataset",
+                        output_dir = target_dir,
+                        prefix = prefix,
+                        reason = pfs2_skip_diagnostics$reason,
+                        diagnostics = pfs2_skip_diagnostics
+                    )
+                }
+            }
+        }
+
+        pfs2_skip_diagnostics
+    }
 
     # Check if we have enough patients and events for analysis
     if (nrow(pfs2_data) < MINIMUM_PFS2_PATIENTS) {
@@ -1988,15 +2320,68 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_d
             "Insufficient patients for PFS-2 analysis (minimum %d required)",
             MINIMUM_PFS2_PATIENTS
         ))
+        explanation_text <- sprintf(
+            "PFS-2 Analysis Skipped - Insufficient Patients
+
+            The Issue:
+            %s cohort: %d patients total
+            PFS-2 eligible patients: %d patients
+            Minimum required: %d analyzable patients for survival analysis
+
+            Analysis was skipped because there are insufficient analyzable patients to perform a meaningful PFS-2 survival analysis.
+
+            This is expected behavior for cohorts with limited recurrence data and does not indicate an error.",
+            tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name))),
+            nrow(data),
+            nrow(pfs2_data),
+            MINIMUM_PFS2_PATIENTS
+        )
+        pfs2_skip_diagnostics <- write_pfs2_skip_outputs(
+            reason = sprintf(
+                "PFS-2 survival analysis was skipped because only %d analyzable patients were available; at least %d are required.",
+                nrow(pfs2_data),
+                MINIMUM_PFS2_PATIENTS
+            ),
+            narrative_lines = c(
+                sprintf(
+                    "%s cohort contained %d total patients, with %d PFS-2-eligible patients.",
+                    tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name))),
+                    nrow(data),
+                    nrow(pfs2_data)
+                ),
+                sprintf(
+                    "Only %d analyzable PFS-2 patients were available; the minimum requirement is %d.",
+                    nrow(pfs2_data),
+                    MINIMUM_PFS2_PATIENTS
+                )
+            ),
+            explanation_text = explanation_text
+        )
+        pfs2_survival <- list(
+            fit = NULL,
+            plot = NULL,
+            survival_rates = NULL,
+            cox_model = NULL,
+            cox_table = NULL,
+            diagnostics = pfs2_skip_diagnostics,
+            censoring_support = pfs2_censoring_support,
+            interpretation_guardrails = pfs2_interpretation_guardrails,
+            treatment_estimability = pfs2_treatment_estimability
+        )
         return(list(
             pfs2_data = pfs2_data,
-            survival_analysis = NULL,
-            summary_table = NULL
+            survival_analysis = pfs2_survival,
+            summary_table = NULL,
+            raw_primary_vs_salvage = raw_primary_vs_salvage,
+            model_primary_vs_salvage = model_primary_vs_salvage,
+            censoring_support = pfs2_censoring_support,
+            interpretation_guardrails = pfs2_interpretation_guardrails,
+            treatment_estimability = pfs2_treatment_estimability,
+            ph_diagnostics = NULL
         ))
     }
 
     # Check if we have enough events for survival analysis
-    total_events <- sum(pfs2_data$pfs2_event)
 
     if (total_events < MINIMUM_SURVIVAL_EVENTS) {
         logger::log_error("ERROR: Insufficient events for PFS-2 survival analysis")
@@ -2053,8 +2438,11 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_d
                     total_events,
                     MINIMUM_SURVIVAL_EVENTS
                 ),
-                "This is expected for cohorts with limited recurrence data and does not indicate a pipeline error."
+                "This is expected for cohorts with limited recurrence data and does not indicate a pipeline error.",
+                pfs2_interpretation_guardrails$notes
             ),
+            filter_stats = exclusion_result$filter_stats,
+            sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
             modeled_n = nrow(pfs2_data),
             status = "skipped",
             time_var = "tt_pfs2_months"
@@ -2101,7 +2489,11 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_d
             plot = NULL,
             survival_rates = NULL,
             cox_model = NULL,
-            cox_table = NULL
+            cox_table = NULL,
+            diagnostics = pfs2_skip_diagnostics,
+            censoring_support = pfs2_censoring_support,
+            interpretation_guardrails = pfs2_interpretation_guardrails,
+            treatment_estimability = pfs2_treatment_estimability
         )
     } else {
         # Use existing analyze_time_to_event_outcomes function with dynamic legend labels
@@ -2117,25 +2509,45 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_d
             analysis_type = "all_patients", # PFS-2 analysis includes all recurrent patients
             dataset_name = paste0(dataset_name, "_pfs2_recurrent"),
             output_dirs = output_dirs,
-            prefix = prefix
+            prefix = prefix,
+            allow_cox = isTRUE(pfs2_treatment_estimability$reportable),
+            cox_skip_reason = if (!isTRUE(pfs2_treatment_estimability$reportable)) pfs2_treatment_estimability$reason else NULL,
+            cox_skip_narrative = if (!isTRUE(pfs2_treatment_estimability$reportable)) {
+                c(
+                    pfs2_treatment_estimability$reason,
+                    pfs2_interpretation_guardrails$notes
+                )
+            } else {
+                NULL
+            }
         )
     }
+
+    pfs2_survival$censoring_support <- pfs2_censoring_support
+    pfs2_survival$interpretation_guardrails <- pfs2_interpretation_guardrails
+    pfs2_survival$treatment_estimability <- pfs2_treatment_estimability
 
     logger::log_info("PFS-2 analysis completed")
 
-    # Generate proportional hazards diagnostics for PFS-2 (Objective 3)
-    ph_diag_result <- NULL
-    if (!is.null(pfs2_survival$cox_model)) {
-        ph_output_dir <- if (!is.null(output_dirs)) output_dirs$obj3_ph_diagnostics else getwd()
-        ph_file_prefix <- paste0(prefix, make_filename_safe("PFS-2 Probability (Freedom from 2nd Recurrence)"), "_")
-        ph_diag_result <- test_proportional_hazards_assumption(
-            cox_model = pfs2_survival$cox_model,
-            outcome_name = "PFS-2 Probability (Freedom from 2nd Recurrence)",
-            output_dir = ph_output_dir,
-            file_prefix = ph_file_prefix,
-            dataset_name = dataset_name
-        )
-    }
+    ph_diag_result <- run_or_skip_proportional_hazards_diagnostics(
+        cox_model = pfs2_survival$cox_model,
+        outcome_name = "PFS-2 Probability (Freedom from 2nd Recurrence)",
+        output_dir = if (!is.null(output_dirs)) output_dirs$obj3_ph_diagnostics else getwd(),
+        file_prefix = paste0(prefix, make_filename_safe("PFS-2 Probability (Freedom from 2nd Recurrence)"), "_"),
+        dataset_name = dataset_name,
+        data = pfs2_data,
+        time_var = "tt_pfs2_months",
+        event_var = "pfs2_event",
+        variables = c("recurrence1_treatment_clean", confounders),
+        reason = paste(
+            "PFS-2 proportional hazards diagnostics were not run because no Cox model was fit.",
+            pfs2_treatment_estimability$reason %||% "The Cox model was unavailable."
+        ),
+        narrative_lines = pfs2_interpretation_guardrails$notes,
+        filter_stats = exclusion_result$filter_stats,
+        sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
+        modeled_n = nrow(pfs2_data)
+    )
 
     return(list(
         pfs2_data = pfs2_data,
@@ -2143,8 +2555,119 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_d
         summary_table = pfs2_survival$cox_table, # Use the standardized table from generate_regression_table
         raw_primary_vs_salvage = raw_primary_vs_salvage,
         model_primary_vs_salvage = model_primary_vs_salvage,
+        censoring_support = pfs2_censoring_support,
+        interpretation_guardrails = pfs2_interpretation_guardrails,
+        treatment_estimability = pfs2_treatment_estimability,
         ph_diagnostics = ph_diag_result
     ))
+}
+
+
+#' Run PH diagnostics or write an explicit skip artifact
+#'
+#' Proportional hazards diagnostics require a fitted Cox model. This orchestration
+#' helper centralizes the "model unavailable" decision so objectives do not
+#' silently leave PH folders empty when Cox fitting is skipped or fails. When a
+#' valid Cox model is supplied, event-floor checks, Schoenfeld residual tests, and
+#' diagnostic plot generation are delegated to
+#' `test_proportional_hazards_assumption()`.
+#'
+#' @param cox_model Optional fitted `coxph` model.
+#' @param outcome_name Character outcome label for logs and artifacts.
+#' @param output_dir Directory where PH diagnostics or skip artifacts are saved.
+#' @param file_prefix Prefix used for PH diagnostic files.
+#' @param dataset_name Optional dataset label.
+#' @param data Optional survival-analysis data used to build skip diagnostics.
+#' @param time_var Optional follow-up time column for skip diagnostics.
+#' @param event_var Optional event indicator column for skip diagnostics.
+#' @param variables Character vector of modeled variables for event-support diagnostics.
+#' @param reason Optional skip reason when no Cox model is available.
+#' @param narrative_lines Optional additional skip explanation lines.
+#' @param filter_stats Optional sample-size audit details.
+#' @param sparse_level_diagnostics Optional sparse-level exclusion diagnostics.
+#' @param modeled_n Optional modeled sample size.
+#'
+#' @return PH diagnostic results when testing is feasible. If no Cox model is
+#'   available, returns skip diagnostics after writing skipped HTML/workbook
+#'   artifacts. If a Cox model is available but PH testing is not feasible, the
+#'   delegated `test_proportional_hazards_assumption()` return value records that
+#'   skip or unavailability reason.
+run_or_skip_proportional_hazards_diagnostics <- function(cox_model,
+                                                         outcome_name = "Survival",
+                                                         output_dir = NULL,
+                                                         file_prefix = "",
+                                                         dataset_name = NULL,
+                                                         data = NULL,
+                                                         time_var = NULL,
+                                                         event_var = NULL,
+                                                         variables = character(),
+                                                         reason = NULL,
+                                                         narrative_lines = NULL,
+                                                         filter_stats = NULL,
+                                                         sparse_level_diagnostics = NULL,
+                                                         modeled_n = NULL) {
+    if (!is.null(cox_model) && inherits(cox_model, "coxph")) {
+        return(test_proportional_hazards_assumption(
+            cox_model = cox_model,
+            outcome_name = outcome_name,
+            output_dir = output_dir,
+            file_prefix = file_prefix,
+            dataset_name = dataset_name
+        ))
+    }
+
+    if (is.null(output_dir)) {
+        output_dir <- getwd()
+    }
+    if (is.null(modeled_n)) {
+        modeled_n <- if (!is.null(data) && is.data.frame(data)) nrow(data) else NA_integer_
+    }
+
+    skip_reason <- reason %||% sprintf(
+        "%s proportional hazards diagnostics were not run because no Cox model was fit.",
+        outcome_name
+    )
+    skip_narrative <- c(
+        skip_reason,
+        "Schoenfeld residual proportional hazards tests require a fitted Cox model.",
+        narrative_lines
+    )
+    skip_analysis_name <- paste0(outcome_name, "_proportional_hazards_diagnostics")
+
+    if (!is.null(data) && is.data.frame(data) && !is.null(event_var) && event_var %in% names(data)) {
+        diagnostics <- build_survival_skip_diagnostics(
+            data = data,
+            event_var = event_var,
+            variables = variables[variables %in% names(data)],
+            analysis_name = skip_analysis_name,
+            dataset_name = dataset_name %||% "unspecified_dataset",
+            reason = skip_reason,
+            narrative_lines = skip_narrative,
+            filter_stats = filter_stats,
+            sparse_level_diagnostics = sparse_level_diagnostics,
+            modeled_n = modeled_n,
+            time_var = time_var
+        )
+    } else {
+        diagnostics <- build_skip_report_diagnostics(
+            status = "skipped",
+            analysis_name = skip_analysis_name,
+            dataset_name = dataset_name %||% "unspecified_dataset",
+            reason = skip_reason,
+            narrative_lines = skip_narrative
+        )
+    }
+
+    save_skipped_model_outputs(
+        analysis_name = "proportional_hazards_diagnostics",
+        dataset_name = dataset_name %||% "unspecified_dataset",
+        output_dir = output_dir,
+        prefix = file_prefix,
+        reason = skip_reason,
+        diagnostics = diagnostics
+    )
+
+    diagnostics
 }
 
 
@@ -2160,8 +2683,12 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_d
 #' @param file_prefix Prefix for output files
 #' @param dataset_name Name of the dataset for labeling
 #' @details PH diagnostics are only attempted when the fitted Cox model has at
-#'   least `MINIMUM_PH_TEST_EVENTS` observed events.
-#' @return List containing schoenfeld_test, individual_tests, plots, summary
+#'   least `MINIMUM_PH_TEST_EVENTS` observed events. Below that event floor, the
+#'   function writes skipped HTML/workbook artifacts instead of returning `NULL`
+#'   silently. If Schoenfeld residual testing fails after model fitting, the
+#'   function writes an unavailable-artifact bundle with model context.
+#' @return List containing Schoenfeld test results and plot paths when testing
+#'   succeeds, or skip/unavailable diagnostics when PH testing is not feasible.
 test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Survival", output_dir = NULL, file_prefix = "", dataset_name = NULL) {
     logger::log_info(sprintf("Testing proportional hazards assumption for %s", outcome_name))
 
@@ -2184,6 +2711,64 @@ test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Surv
 
     total_events <- tryCatch(cox_model$nevent, error = function(...) NA_integer_)
     if (!is.na(total_events) && total_events < MINIMUM_PH_TEST_EVENTS) {
+        dataset_label <- dataset_name %||% "unspecified_dataset"
+        total_patients <- tryCatch(cox_model$n, error = function(...) NA_integer_)
+        model_terms <- tryCatch(attr(cox_model$terms, "term.labels"), error = function(...) character())
+        model_formula <- tryCatch(paste(stats::deparse(stats::formula(cox_model)), collapse = " "), error = function(...) "Unavailable")
+        model_frame <- tryCatch(stats::model.frame(cox_model), error = function(...) NULL)
+        event_support <- NULL
+
+        if (!is.null(model_frame) && length(model_terms) > 0) {
+            response <- model_frame[[1]]
+            if (inherits(response, "Surv")) {
+                model_frame$.ph_event_status <- as.numeric(response[, "status"])
+                event_support <- build_level_support_tab(
+                    data = model_frame,
+                    variables = model_terms,
+                    outcome_var = ".ph_event_status"
+                )
+            }
+        }
+
+        skip_reason <- sprintf(
+            "%s proportional hazards diagnostics were not run because only %d events were available (<%d minimum).",
+            outcome_name,
+            total_events,
+            MINIMUM_PH_TEST_EVENTS
+        )
+        # Low-event Schoenfeld tests are materialized as skip reports so PH
+        # output folders do not look silently incomplete.
+        skip_diagnostics <- build_skip_report_diagnostics(
+            status = "skipped",
+            analysis_name = "proportional_hazards_diagnostics",
+            dataset_name = dataset_label,
+            reason = skip_reason,
+            narrative_lines = c(
+                skip_reason,
+                "Schoenfeld residual proportional hazards tests require adequate event support."
+            ),
+            skip_summary = build_skip_summary_tab(list(
+                patients_in_model = total_patients,
+                events_observed = total_events,
+                minimum_required_events = MINIMUM_PH_TEST_EVENTS
+            )),
+            event_support = event_support,
+            model_context = build_model_context_tab(list(
+                outcome = outcome_name,
+                dataset = dataset_label,
+                model_formula = model_formula,
+                variables_in_model = if (length(model_terms) > 0) paste(model_terms, collapse = ", ") else ""
+            )),
+            raw_model_output = skip_reason
+        )
+        save_skipped_model_outputs(
+            analysis_name = "proportional_hazards_diagnostics",
+            dataset_name = dataset_label,
+            output_dir = output_dir,
+            prefix = file_prefix,
+            reason = skip_reason,
+            diagnostics = skip_diagnostics
+        )
         logger::log_warn(formatted(
             sprintf(
                 "Skipping PH diagnostics: only %d events available (<%d minimum).",
@@ -2192,7 +2777,7 @@ test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Surv
             ),
             indent = 1
         ))
-        return(NULL)
+        return(skip_diagnostics)
     }
 
     build_ph_failure_note <- function(error_obj) {

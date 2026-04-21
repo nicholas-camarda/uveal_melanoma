@@ -89,7 +89,7 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
     # ===== PFS-2 VARIABLES (SECOND PROGRESSION) =====
     tt_pfs2_months = list(
         description = "Time from first recurrence treatment to second recurrence (months)",
-        calculation = "case_when(recurrence1 == 'Y' & !is.na(recurrence1_treatment_date) & recurrence2 == 'Y' ~ interval(recurrence1_treatment_date, recurrence2_date), recurrence1 == 'Y' & !is.na(recurrence1_treatment_date) ~ interval(recurrence1_treatment_date, last_known_alive_date), TRUE ~ NA)",
+        calculation = "case_when(second recurrence observed before death ~ interval(recurrence1_treatment_date, recurrence2_date), recurrence1 == 'Y' & !is.na(recurrence1_treatment_date) ~ interval(recurrence1_treatment_date, censor_date), TRUE ~ NA)",
         purpose = "Secondary endpoint for progression after first recurrence treatment",
         data_type = "numeric",
         units = "months"
@@ -119,7 +119,7 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
     ),
     tt_pfs2 = list(
         description = "Time from first recurrence treatment to second recurrence (days) - LEGACY",
-        calculation = "case_when(recurrence1 == 'Y' & !is.na(recurrence1_treatment_date) & recurrence2 == 'Y' ~ difftime(recurrence2_date, recurrence1_treatment_date, units = 'days'), recurrence1 == 'Y' & !is.na(recurrence1_treatment_date) ~ difftime(last_known_alive_date, recurrence1_treatment_date, units = 'days'), TRUE ~ NA)",
+        calculation = "case_when(second recurrence observed before death ~ difftime(recurrence2_date, recurrence1_treatment_date, units = 'days'), recurrence1 == 'Y' & !is.na(recurrence1_treatment_date) ~ difftime(censor_date, recurrence1_treatment_date, units = 'days'), TRUE ~ NA)",
         purpose = "Legacy variable for backward compatibility",
         data_type = "numeric",
         units = "days"
@@ -149,7 +149,7 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
     ),
     tt_pfs2_years = list(
         description = "Time from first recurrence treatment to second recurrence (years)",
-        calculation = "case_when(recurrence1 == 'Y' & !is.na(recurrence1_treatment_date) & recurrence2 == 'Y' ~ interval(recurrence1_treatment_date, recurrence2_date), recurrence1 == 'Y' & !is.na(recurrence1_treatment_date) ~ interval(recurrence1_treatment_date, last_known_alive_date), TRUE ~ NA)",
+        calculation = "case_when(second recurrence observed before death ~ interval(recurrence1_treatment_date, recurrence2_date), recurrence1 == 'Y' & !is.na(recurrence1_treatment_date) ~ interval(recurrence1_treatment_date, censor_date), TRUE ~ NA)",
         purpose = "Time-to-event for reporting and reference",
         data_type = "numeric",
         units = "years"
@@ -248,7 +248,7 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
     ),
     pfs2_event = list(
         description = "Binary indicator for PFS-2 (1 = second recurrence, 0 = censored, NA = no first recurrence)",
-        calculation = "case_when(recurrence1 == 'Y' & !is.na(recurrence1_treatment_date) & recurrence2 == 'Y' ~ 1, recurrence1 == 'Y' & !is.na(recurrence1_treatment_date) ~ 0, TRUE ~ NA)",
+        calculation = "case_when(second recurrence observed before death ~ 1, recurrence1 == 'Y' & !is.na(recurrence1_treatment_date) ~ 0, TRUE ~ NA)",
         purpose = "Event indicator for PFS-2 analysis (only for patients with first recurrence)",
         data_type = "numeric",
         units = "binary"

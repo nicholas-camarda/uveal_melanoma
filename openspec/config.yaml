@@ -1,20 +1,27 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+context: |
+  R research-analysis repo with source code in scripts/ and runtime artifacts under ~/ProjectsRuntime/uveal_melanoma.
+  Existing reporting mechanisms include diagnostics workbooks, effect summaries, skip-artifact helpers, GEP consolidated workbooks, and narrative summary generators.
+  Prefer extending those existing surfaces over creating new parallel output trees, bespoke workbook writers, or duplicate diagnostics systems.
+  Objective changes should preserve current cohort/objective folder organization unless a spec explicitly requires a contract change.
+  Methodological fixes must distinguish descriptive, associational, causal, and predictive/prognostic claims.
+  New functions must include roxygen-style docstrings. Non-obvious statistical, endpoint, censoring, artifact-routing, or skip/failure logic must include concise explanatory comments.
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+rules:
+  proposal:
+    - State whether the change reuses existing output/reporting mechanisms or intentionally creates a new one.
+    - Treat new artifact families as a compatibility risk that needs explicit justification.
+  design:
+    - Reuse existing diagnostics, effect-summary, skip-artifact, workbook, and narrative-generation helpers before inventing new abstractions.
+    - Describe the minimal data-flow and artifact-flow changes needed; avoid parallel pipelines when an existing pipeline can be extended.
+    - Keep technical detail in existing diagnostics/workbook tabs when possible, and keep reader-facing notes concise.
+    - For any endpoint with event time, follow-up horizon, censoring, or competing risks, state the censoring/competing-risk handling explicitly and classify any non-censoring-aware result as descriptive, QC, or burden-only.
+  specs:
+    - Specify behavior at the existing artifact surface whenever possible instead of requiring new files or folders.
+    - Use wording that permits extending existing diagnostics tables, notes sheets, status columns, or narrative sections.
+    - Do not permit naive event proportions or binary horizon labels as primary time-to-event evidence when censoring-aware variables or methods are available.
+  tasks:
+    - Break work into small changes that first add tests around existing mechanisms, then minimally extend those mechanisms.
+    - Include a check that no duplicate reporting path or redundant diagnostics writer was introduced unless explicitly justified.
+    - Include a lightweight audit for time/follow-up variables before accepting binary endpoint implementations for recurrence, metastasis, survival, PFS, or GEP validation outputs.

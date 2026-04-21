@@ -150,15 +150,18 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     # Proportional hazards diagnostics (OS)
     try(
         {
-            if (!is.null(os_analysis$cox_model)) {
-                test_proportional_hazards_assumption(
-                    cox_model = os_analysis$cox_model,
-                    outcome_name = "Overall Survival Probability",
-                    output_dir = output_dirs$obj1_ph_diagnostics,
-                    file_prefix = paste0(prefix, "overall_survival_probability_"),
-                    dataset_name = dataset_name
-                )
-            }
+            os_analysis$ph_diagnostics <- run_or_skip_proportional_hazards_diagnostics(
+                cox_model = os_analysis$cox_model,
+                outcome_name = "Overall Survival Probability",
+                output_dir = output_dirs$obj1_ph_diagnostics,
+                file_prefix = paste0(prefix, "overall_survival_probability_"),
+                dataset_name = dataset_name,
+                data = data,
+                time_var = "tt_death_months",
+                event_var = "death_event",
+                variables = unique(c("treatment_group", confounders)),
+                reason = "Overall Survival Probability proportional hazards diagnostics were not run because no Cox model was fit."
+            )
         },
         silent = TRUE
     )
@@ -182,15 +185,18 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     # Proportional hazards diagnostics (PFS)
     try(
         {
-            if (!is.null(pfs_analysis$cox_model)) {
-                test_proportional_hazards_assumption(
-                    cox_model = pfs_analysis$cox_model,
-                    outcome_name = "Progression-Free Survival Probability",
-                    output_dir = output_dirs$obj1_ph_diagnostics,
-                    file_prefix = paste0(prefix, "progression_free_survival_probability_"),
-                    dataset_name = dataset_name
-                )
-            }
+            pfs_analysis$ph_diagnostics <- run_or_skip_proportional_hazards_diagnostics(
+                cox_model = pfs_analysis$cox_model,
+                outcome_name = "Progression-Free Survival Probability",
+                output_dir = output_dirs$obj1_ph_diagnostics,
+                file_prefix = paste0(prefix, "progression_free_survival_probability_"),
+                dataset_name = dataset_name,
+                data = data,
+                time_var = "tt_pfs_months",
+                event_var = "pfs_event",
+                variables = unique(c("treatment_group", confounders)),
+                reason = "Progression-Free Survival Probability proportional hazards diagnostics were not run because no Cox model was fit."
+            )
         },
         silent = TRUE
     )

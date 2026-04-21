@@ -19,6 +19,11 @@ This change is cross-cutting because it affects derivation, validation, reportin
 - Re-architect the entire cohort-build pipeline.
 - Redesign every validation rule in Objective 0.
 - Change cohort inclusion logic or downstream endpoint definitions beyond chronology enforcement.
+- Replace the existing Objective 0 validation bundle/reporting system with a new audit framework.
+
+## Implementation Constraint
+
+Extend the existing Objective 0 validation engine, reconciliation audit workbooks, validation bundles, and provenance/reporting helpers. Reload provenance, chronology hard-failure status, and missing audit components should appear in existing validation outputs or their established workbook/narrative surfaces unless a new artifact is explicitly necessary.
 
 ## Decisions
 

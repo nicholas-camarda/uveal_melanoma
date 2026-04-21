@@ -380,6 +380,9 @@ LOG_SCALE_NEAR_PERFECT_SEPARATION_THRESHOLD <- 0.1 # Threshold for near-perfect 
 MINIMUM_ADJUSTED_LOGISTIC_EVENTS <- 10L # Minimum outcome events for adjusted binary logistic regression
 MINIMUM_SURVIVAL_EVENTS <- 5L # Minimum outcome events for survival analysis
 MINIMUM_PFS2_PATIENTS <- 10L # Minimum analyzable patients before attempting PFS-2 modeling
+PFS2_REPORT_HORIZON_MONTHS <- 36 # PFS-2 support horizon used for censoring diagnostics
+PFS2_HEAVY_CENSORING_THRESHOLD <- 0.70 # Downgrade fitted PFS-2 interpretation at or above this censored fraction
+PFS2_CENSORING_IMBALANCE_THRESHOLD <- 0.30 # Downgrade if treatment-arm censoring differs by this fraction
 MINIMUM_PH_TEST_EVENTS <- 10L # Minimum events for proportional-hazards diagnostics/reporting
 
 # Tumor size thresholds for cohort eligibility

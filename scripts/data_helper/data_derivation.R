@@ -1,3 +1,42 @@
+#' Normalize raw or display yes/no indicators to canonical Y/N values
+#'
+#' Accepts raw binary encodings and display labels so endpoint derivations do
+#' not depend on whether upstream data used machine-readable or reader-facing
+#' recurrence values.
+#'
+#' @param values Vector containing binary indicators or display labels.
+#' @return Character vector with recognized yes/no values normalized to `"Y"`
+#'   and `"N"`; unrecognized non-missing values are preserved.
+normalize_raw_or_display_binary_indicator <- function(values) {
+    value_text <- trimws(tolower(as.character(values)))
+    dplyr::case_when(
+        is.na(value_text) | value_text == "" ~ NA_character_,
+        value_text %in% c("y", "yes", "1", "true") ~ "Y",
+        value_text %in% c("n", "no", "0", "false") ~ "N",
+        TRUE ~ as.character(values)
+    )
+}
+
+#' Normalize recurrence indicator columns before endpoint derivation
+#'
+#' Applies canonical Y/N normalization to recurrence columns that may arrive
+#' from raw exports or display-oriented tables.
+#'
+#' @param data Data frame that may contain `recurrence1` and/or `recurrence2`.
+#' @return Data frame with available recurrence indicator columns normalized.
+normalize_recurrence_indicator_columns <- function(data) {
+    recurrence_columns <- intersect(c("recurrence1", "recurrence2"), names(data))
+    if (length(recurrence_columns) == 0) {
+        return(data)
+    }
+
+    data %>%
+        dplyr::mutate(dplyr::across(
+            dplyr::all_of(recurrence_columns),
+            normalize_raw_or_display_binary_indicator
+        ))
+}
+
 #' Create derived variables for the full dataset
 #'
 #' Adds derived variables (dates, follow-up, time-to-event, event indicators, etc.) to the full data frame.
@@ -10,7 +49,9 @@
 #' create_derived_variables(cleaned_data)
 create_derived_variables <- function(data) {
     logger::log_info("Creating derived variables")
-    
+
+    data <- normalize_recurrence_indicator_columns(data)
+
     old_variables <- colnames(data)
 
     new_data <- data %>%
@@ -36,13 +77,34 @@ create_derived_variables <- function(data) {
         ) %>%
         mutate(treatment_group = factor(treatment_group, levels = TREATMENT_FACTOR_LEVELS)) %>%
         mutate(
+            # PFS-2 is second local recurrence only; death before the second
+            # recurrence is censoring, not a recurrence/death composite event.
+            pfs2_second_recurrence_observed = recurrence1 == "Y" &
+                !is.na(recurrence1_treatment_date) &
+                recurrence2 == "Y" &
+                !is.na(recurrence2_date) &
+                (is.na(dod) | recurrence2_date <= dod),
+            pfs2_censor_date = case_when(
+                recurrence1 == "Y" &
+                    !is.na(recurrence1_treatment_date) &
+                    !is.na(dod) &
+                    (is.na(recurrence2_date) | recurrence2_date > dod) ~ dod,
+                recurrence1 == "Y" & !is.na(recurrence1_treatment_date) ~ last_known_alive_date,
+                TRUE ~ as.Date(NA)
+            ),
+            pfs2_end_date = case_when(
+                pfs2_second_recurrence_observed ~ recurrence2_date,
+                recurrence1 == "Y" & !is.na(recurrence1_treatment_date) ~ pfs2_censor_date,
+                TRUE ~ as.Date(NA)
+            )
+        ) %>%
+        mutate(
             tt_recurrence = case_when(
                 recurrence1 == "Y" ~ as.numeric(difftime(recurrence1_date, treatment_date, units = "days")),
                 TRUE ~ as.numeric(difftime(last_known_alive_date, treatment_date, units = "days"))
             ),
             tt_pfs2 = case_when(
-                recurrence1 == "Y" & !is.na(recurrence1_treatment_date) & recurrence2 == "Y" & !is.na(recurrence2_date) ~ as.numeric(difftime(recurrence2_date, recurrence1_treatment_date, units = "days")),
-                recurrence1 == "Y" & !is.na(recurrence1_treatment_date) ~ as.numeric(difftime(last_known_alive_date, recurrence1_treatment_date, units = "days")),
+                recurrence1 == "Y" & !is.na(recurrence1_treatment_date) & !is.na(pfs2_end_date) ~ as.numeric(difftime(pfs2_end_date, recurrence1_treatment_date, units = "days")),
                 TRUE ~ NA_real_
             ),
             tt_mets = case_when(
@@ -67,8 +129,7 @@ create_derived_variables <- function(data) {
             ),
             tt_pfs_months = pmin(tt_recurrence_months, tt_death_months, na.rm = FALSE),
             tt_pfs2_months = case_when(
-                recurrence1 == "Y" & !is.na(recurrence1_treatment_date) & recurrence2 == "Y" & !is.na(recurrence2_date) ~ time_length(interval(recurrence1_treatment_date, recurrence2_date), "months"),
-                recurrence1 == "Y" & !is.na(recurrence1_treatment_date) ~ time_length(interval(recurrence1_treatment_date, last_known_alive_date), "months"),
+                recurrence1 == "Y" & !is.na(recurrence1_treatment_date) & !is.na(pfs2_end_date) ~ time_length(interval(recurrence1_treatment_date, pfs2_end_date), "months"),
                 TRUE ~ NA_real_
             ),
             tt_recurrence_years = case_when(
@@ -84,8 +145,7 @@ create_derived_variables <- function(data) {
                 TRUE ~ time_length(interval(treatment_date, last_known_alive_date), "years")
             ),
             tt_pfs2_years = case_when(
-                recurrence1 == "Y" & !is.na(recurrence1_treatment_date) & recurrence2 == "Y" & !is.na(recurrence2_date) ~ time_length(interval(recurrence1_treatment_date, recurrence2_date), "years"),
-                recurrence1 == "Y" & !is.na(recurrence1_treatment_date) ~ time_length(interval(recurrence1_treatment_date, last_known_alive_date), "years"),
+                recurrence1 == "Y" & !is.na(recurrence1_treatment_date) & !is.na(pfs2_end_date) ~ time_length(interval(recurrence1_treatment_date, pfs2_end_date), "years"),
                 TRUE ~ NA_real_
             ),
             mets_before_treatment = tt_mets_months < 0,
@@ -131,7 +191,7 @@ create_derived_variables <- function(data) {
             ),
             pfs_event = if_else(recurrence_event == 1 | death_event == 1, 1, 0),
             pfs2_event = case_when(
-                recurrence1 == "Y" & !is.na(recurrence1_treatment_date) & recurrence2 == "Y" & !is.na(recurrence2_date) ~ 1,
+                pfs2_second_recurrence_observed ~ 1,
                 recurrence1 == "Y" & !is.na(recurrence1_treatment_date) ~ 0,
                 TRUE ~ NA_real_
             ),
@@ -145,6 +205,11 @@ create_derived_variables <- function(data) {
                 TRUE ~ NA_character_
             )
         ) %>%
+        dplyr::select(-dplyr::any_of(c(
+            "pfs2_second_recurrence_observed",
+            "pfs2_censor_date",
+            "pfs2_end_date"
+        ))) %>%
         mutate(mets_free_at_baseline = !(mets_progression == "Y" & mets_progression_date < treatment_date)) %>%
         mutate(
             gep_class_simple = case_when(

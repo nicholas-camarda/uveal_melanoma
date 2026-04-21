@@ -12,6 +12,11 @@ Objective 2 contains vision-change modeling plus binary complication models for 
 **Non-Goals:**
 - Implement a complete new ophthalmic outcome ontology.
 - Rebuild Objective 2 around external adjudication or new raw data not already available in the repo.
+- Replace the existing Objective 2 diagnostics/effect-summary system with a new toxicity reporting framework.
+
+## Implementation Constraint
+
+Reuse the current Objective 2 model-fitting, diagnostics workbook, effect-summary, and skip-artifact mechanisms. Missingness policy, burden-language notes, proportional-odds assumption status, and sparse-support handling should be added as existing diagnostics tabs, notes/status fields, or concise summary text rather than as new standalone reporting layers.
 
 ## Decisions
 

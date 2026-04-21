@@ -158,11 +158,141 @@ test_that("PFS-2 precheck requires the configured minimum analyzable patient cou
   )
 
   expect_equal(nrow(result$pfs2_data), MINIMUM_PFS2_PATIENTS - 1L)
-  expect_null(result$survival_analysis)
+  expect_false(is.null(result$survival_analysis))
+  expect_null(result$survival_analysis$cox_model)
   expect_null(result$summary_table)
   expect_null(result$ph_diagnostics)
-  expect_false(file.exists(file.path(output_dirs$obj3_pfs2, "test_pfs2_analysis_SKIPPED.html")))
-  expect_false(file.exists(file.path(output_dirs$obj3_pfs2, "test_pfs2_analysis_diagnostics.xlsx")))
+  expect_true(file.exists(file.path(output_dirs$obj3_pfs2, "test_pfs2_analysis_skipped_explanation.txt")))
+  expect_true(file.exists(file.path(output_dirs$obj3_pfs2, "test_pfs2_analysis_SKIPPED.html")))
+  expect_true(file.exists(file.path(output_dirs$obj3_pfs2, "test_pfs2_analysis_diagnostics.xlsx")))
+  expect_true(file.exists(file.path(output_dirs$obj3_ph_diagnostics, "test_pfs2_analysis_SKIPPED.html")))
+
+  skip_sheets <- readxl::excel_sheets(file.path(output_dirs$obj3_pfs2, "test_pfs2_analysis_diagnostics.xlsx"))
+  expect_true(all(c("Skip_summary", "Narrative_summary", "Event_support", "Model_context") %in% skip_sheets))
+})
+
+test_that("PFS-2 derivation censors death before second recurrence", {
+  base_date <- as.Date("2020-01-01")
+  test_data <- create_test_dataset()
+  test_data$recurrence1[[1]] <- "Y"
+  test_data$recurrence1_date[[1]] <- base_date + 30
+  test_data$recurrence1_treatment_date[[1]] <- base_date + 60
+  test_data$recurrence1_treatment[[1]] <- "GKSRS"
+  test_data$recurrence2[[1]] <- "Y"
+  test_data$recurrence2_date[[1]] <- base_date + 240
+  test_data$dod[[1]] <- base_date + 120
+  test_data$last_known_alive_date[[1]] <- base_date + 300
+
+  derived <- create_derived_variables(test_data)
+
+  expect_equal(derived$pfs2_event[[1]], 0)
+  expect_equal(derived$tt_pfs2[[1]], 60)
+  expect_equal(round(derived$tt_pfs2_months[[1]], 1), round(lubridate::time_length(lubridate::interval(base_date + 60, base_date + 120), "months"), 1))
+})
+
+test_that("PFS-2 derivation is invariant to raw and display recurrence coding", {
+  raw_data <- create_test_dataset()
+  display_data <- raw_data
+
+  display_data$recurrence1 <- dplyr::case_when(
+    raw_data$recurrence1 == "Y" ~ "Yes",
+    raw_data$recurrence1 == "N" ~ "No",
+    TRUE ~ raw_data$recurrence1
+  )
+  display_data$recurrence2 <- dplyr::case_when(
+    raw_data$recurrence2 == "Y" ~ "Yes",
+    raw_data$recurrence2 == "N" ~ "No",
+    TRUE ~ raw_data$recurrence2
+  )
+
+  raw_derived <- create_derived_variables(raw_data)
+  display_derived <- create_derived_variables(display_data)
+
+  expect_equal(display_derived$tt_pfs2, raw_derived$tt_pfs2)
+  expect_equal(display_derived$tt_pfs2_months, raw_derived$tt_pfs2_months)
+  expect_equal(display_derived$tt_pfs2_years, raw_derived$tt_pfs2_years)
+  expect_equal(display_derived$pfs2_event, raw_derived$pfs2_event)
+  expect_equal(display_derived$recurrence1_treatment_clean, raw_derived$recurrence1_treatment_clean)
+})
+
+test_that("PFS-2 summaries include censoring support and downgrade notes", {
+  test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective3_pfs2_censoring_support")
+  output_dirs <- list(
+    obj3_pfs2 = file.path(test_output_dir, "03_Repeat_Radiation", "a_pfs2"),
+    obj3_ph_diagnostics = file.path(test_output_dir, "03_Repeat_Radiation", "b_proportional_hazards_diagnostics")
+  )
+  dir.create(output_dirs$obj3_pfs2, recursive = TRUE, showWarnings = FALSE)
+  dir.create(output_dirs$obj3_ph_diagnostics, recursive = TRUE, showWarnings = FALSE)
+  withr::defer(unlink(test_output_dir, recursive = TRUE), envir = parent.frame())
+
+  pfs2_test_data <- tibble::tibble(
+    id = seq_len(12),
+    tt_pfs2_months = c(8, 10, 12, 14, 16, 18, 9, 11, 13, 15, 17, 19),
+    recurrence1_treatment_clean = factor(rep(c("GKSRS", "Plaque"), each = 6)),
+    recurrence1_treatment = rep(c("GKSRS", "Plaque"), each = 6),
+    treatment_group = factor(rep(c("PBT", "GKSRS"), each = 6)),
+    pfs2_event = c(1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0)
+  )
+
+  result <- analyze_pfs2(
+    data = pfs2_test_data,
+    confounders = character(),
+    dataset_name = "test_cohort",
+    output_dirs = output_dirs,
+    prefix = "test_"
+  )
+
+  summary_path <- file.path(output_dirs$obj3_pfs2, "test_pfs2_treatment_summary.xlsx")
+  expect_true(file.exists(summary_path))
+  expect_true(all(c("censoring_support", "interpretation_guardrails") %in% readxl::excel_sheets(summary_path)))
+  guardrails <- readxl::read_xlsx(summary_path, sheet = "interpretation_guardrails")
+  expect_true(any(guardrails$guardrail == "short_follow_up" & guardrails$status == "downgrade"))
+  expect_identical(result$interpretation_guardrails$status, "downgraded")
+})
+
+test_that("PFS-2 zero-event reference arm suppresses Cox treatment output", {
+  test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective3_pfs2_zero_reference")
+  output_dirs <- list(
+    obj3_pfs2 = file.path(test_output_dir, "03_Repeat_Radiation", "a_pfs2"),
+    obj3_ph_diagnostics = file.path(test_output_dir, "03_Repeat_Radiation", "b_proportional_hazards_diagnostics")
+  )
+  dir.create(output_dirs$obj3_pfs2, recursive = TRUE, showWarnings = FALSE)
+  dir.create(output_dirs$obj3_ph_diagnostics, recursive = TRUE, showWarnings = FALSE)
+  withr::defer(unlink(test_output_dir, recursive = TRUE), envir = parent.frame())
+
+  pfs2_test_data <- tibble::tibble(
+    id = seq_len(12),
+    tt_pfs2_months = c(8, 10, 12, 14, 16, 18, 9, 11, 13, 15, 17, 19),
+    recurrence1_treatment_clean = factor(rep(c("GKSRS", "Plaque"), each = 6), levels = c("GKSRS", "Plaque")),
+    recurrence1_treatment = rep(c("GKSRS", "Plaque"), each = 6),
+    treatment_group = factor(rep(c("PBT", "GKSRS"), each = 6)),
+    pfs2_event = c(0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0)
+  )
+
+  result <- analyze_pfs2(
+    data = pfs2_test_data,
+    confounders = character(),
+    dataset_name = "test_cohort",
+    output_dirs = output_dirs,
+    prefix = "test_"
+  )
+
+  expect_false(isTRUE(result$treatment_estimability$reportable))
+  expect_match(result$treatment_estimability$reason, "reference salvage-treatment arm `GKSRS` had zero second-recurrence events")
+  expect_null(result$survival_analysis$cox_model)
+  expect_null(result$summary_table)
+
+  skipped_files <- list.files(output_dirs$obj3_pfs2, pattern = "cox_SKIPPED\\.html$", full.names = TRUE)
+  expect_length(skipped_files, 1)
+  skipped_html <- paste(readLines(skipped_files[[1]], warn = FALSE), collapse = "\n")
+  expect_match(skipped_html, "zero second-recurrence events", fixed = TRUE)
+
+  ph_skipped_files <- list.files(output_dirs$obj3_ph_diagnostics, pattern = "proportional_hazards_diagnostics_SKIPPED\\.html$", full.names = TRUE)
+  expect_length(ph_skipped_files, 1)
+  ph_skipped_html <- paste(readLines(ph_skipped_files[[1]], warn = FALSE), collapse = "\n")
+  expect_match(ph_skipped_html, "no Cox model was fit", fixed = TRUE)
+  expect_match(ph_skipped_html, "zero second-recurrence events", fixed = TRUE)
+  expect_true(any(grepl("proportional_hazards_diagnostics_diagnostics\\.xlsx$", list.files(output_dirs$obj3_ph_diagnostics))))
 })
 
 test_that("PH diagnostics are skipped below the configured event floor", {
@@ -187,6 +317,44 @@ test_that("PH diagnostics are skipped below the configured event floor", {
     dataset_name = "test_cohort"
   )
 
-  expect_null(ph_result)
+  expect_identical(ph_result$status, "skipped")
+  expect_true(file.exists(file.path(test_output_dir, "unit_proportional_hazards_diagnostics_SKIPPED.html")))
+  expect_true(file.exists(file.path(test_output_dir, "unit_proportional_hazards_diagnostics_diagnostics.xlsx")))
   expect_false(file.exists(file.path(test_output_dir, "unit_proportional_hazards_tests.xlsx")))
+})
+
+test_that("generic PH diagnostics helper writes skip artifacts when Cox is unavailable", {
+  test_output_dir <- file.path(TEST_OUTPUT_DIR, "generic_ph_skip_artifacts")
+  dir.create(test_output_dir, recursive = TRUE, showWarnings = FALSE)
+  withr::defer(unlink(test_output_dir, recursive = TRUE), envir = parent.frame())
+
+  ph_skip_data <- tibble::tibble(
+    time_months = c(6, 9, 12, 15),
+    status = c(1, 0, 0, 1),
+    treatment_group = factor(c("PBT", "PBT", "GKSRS", "GKSRS"))
+  )
+
+  ph_result <- run_or_skip_proportional_hazards_diagnostics(
+    cox_model = NULL,
+    outcome_name = "Unit Test Survival",
+    output_dir = test_output_dir,
+    file_prefix = "unit_survival_",
+    dataset_name = "test_cohort",
+    data = ph_skip_data,
+    time_var = "time_months",
+    event_var = "status",
+    variables = "treatment_group",
+    reason = "Unit Test Survival proportional hazards diagnostics were not run because no Cox model was fit."
+  )
+
+  expect_identical(ph_result$status, "skipped")
+  expect_true(file.exists(file.path(test_output_dir, "unit_survival_proportional_hazards_diagnostics_SKIPPED.html")))
+  expect_true(file.exists(file.path(test_output_dir, "unit_survival_proportional_hazards_diagnostics_diagnostics.xlsx")))
+
+  ph_skip_html <- paste(
+    readLines(file.path(test_output_dir, "unit_survival_proportional_hazards_diagnostics_SKIPPED.html"), warn = FALSE),
+    collapse = "\n"
+  )
+  expect_match(ph_skip_html, "no Cox model was fit", fixed = TRUE)
+  expect_match(ph_skip_html, "Schoenfeld residual proportional hazards tests require a fitted Cox model", fixed = TRUE)
 })

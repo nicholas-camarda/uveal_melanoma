@@ -21,3 +21,18 @@ Objective 3 MUST NOT present a fitted Cox treatment result as reportable when th
 #### Scenario: Fully filtered treatment contrasts downgrade fitted output
 - **WHEN** all primary treatment contrasts are removed as extreme or non-estimable
 - **THEN** Objective 3 marks the fitted treatment analysis as non-reportable
+
+### Requirement: Objective 3 SHALL report censoring support for PFS-2
+Objective 3 PFS-2 outputs MUST report censoring and follow-up support so right-censoring-aware estimates are interpreted according to the observed data support.
+
+#### Scenario: Fitted PFS-2 output includes censoring diagnostics
+- **WHEN** Objective 3 publishes a fitted PFS-2 survival output
+- **THEN** the output includes analyzable patient count, second-recurrence event count, censored count, and follow-up distribution overall and by treatment arm where feasible
+
+#### Scenario: Heavy or imbalanced censoring downgrades interpretation
+- **WHEN** censoring is heavy, follow-up is short relative to the reported horizon, or censoring is materially imbalanced across treatment groups
+- **THEN** Objective 3 adds an explicit caution or downgrade to the fitted-output interpretation rather than treating convergence as sufficient support
+
+#### Scenario: Skipped PFS-2 output includes censoring context
+- **WHEN** Objective 3 skips PFS-2 modeling because of sparse data or non-estimability
+- **THEN** the skip diagnostics include censoring and follow-up context so reviewers can distinguish low event incidence from inadequate observation time
