@@ -27,7 +27,9 @@ scripts/old/*
 .RData
 .Ruserdata
 tmp/
-openspec/
+
+# Version OpenSpec planning artifacts for broad research-methods changes.
+openspec/changes/archive/
 
 # Ignore original files
 final_data/*
