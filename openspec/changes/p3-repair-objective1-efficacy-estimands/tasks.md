@@ -6,7 +6,7 @@
 
 ## 2. Cohort and Interpretation Guardrails
 
-- [ ] 2.1 Update Objective 1 narratives and summaries so the restricted cohort is primary comparative and the full/GKSRS-only cohorts are downgraded appropriately
+- [ ] 2.1 Add one centralized Objective 1 cohort-interpretation note to high-level reader-facing summaries without duplicating boilerplate across low-level artifacts
 - [ ] 2.2 Make PFS summaries RMST-first whenever PH diagnostics fail
 - [ ] 2.3 Add artifact-level notes to legacy post-baseline OS/PFS folders
 

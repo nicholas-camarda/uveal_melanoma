@@ -1,15 +1,15 @@
 ## ADDED Requirements
 
-### Requirement: Objective 1 SHALL distinguish comparative and associational cohort interpretations
-Objective 1 summaries, tables, and narrative outputs MUST identify the restricted cohort as the primary comparative treatment cohort and MUST downgrade treatment language for the full and GKSRS-only cohorts.
+### Requirement: Objective 1 SHALL use a centralized cohort-interpretation note
+Objective 1 high-level reader-facing summaries MUST include a centralized cohort-interpretation note that identifies the restricted cohort as the primary dual-eligible comparative cohort, the full cohort as real-world associational context, and the GKSRS-only cohort as characterization or exploratory support. This requirement does not require duplicating the note in every plot, model table, HTML regression output, or low-level diagnostic artifact.
 
-#### Scenario: Restricted cohort carries primary comparative framing
-- **WHEN** Objective 1 publishes treatment-effect summaries for the restricted cohort
-- **THEN** the narrative may use comparative language consistent with the documented observational limits
+#### Scenario: High-level summaries include cohort interpretation
+- **WHEN** Objective 1 writes a high-level reader-facing summary or narrative artifact
+- **THEN** the artifact includes or links to the centralized cohort-interpretation note
 
-#### Scenario: Full and GKSRS-only cohorts are labeled non-primary
-- **WHEN** Objective 1 publishes treatment summaries for the full or GKSRS-only cohort
-- **THEN** the narrative labels them as associational, characterization, or exploratory rather than primary comparative evidence
+#### Scenario: Low-level artifacts are not burdened with repeated boilerplate
+- **WHEN** Objective 1 writes individual plots, model tables, HTML regression outputs, or diagnostics
+- **THEN** those artifacts are not required to repeat the full cohort-interpretation note unless they already have a centralized notes or metadata mechanism
 
 ### Requirement: Objective 1 PFS summaries SHALL defer to RMST when PH fails
 Objective 1 MUST NOT present the Cox hazard ratio as the lead interpretation for PFS when proportional-hazards diagnostics fail.

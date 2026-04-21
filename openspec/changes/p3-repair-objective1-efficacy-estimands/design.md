@@ -24,9 +24,9 @@ Objective 1 will move recurrence and metastatic progression to event-time analys
 Alternative considered:
 - Keep logistic outputs as the primary analysis and relabel them. Rejected because the repo already derives event-time variables and the comparative claim is too strong for ever-event logits.
 
-### Decision: Make the restricted cohort the primary comparative surface
+### Decision: Add a centralized cohort-interpretation note
 
-The restricted cohort will carry the strongest comparative language. The full cohort will be reported as real-world associational, and the GKSRS-only cohort as characterization or exploratory support.
+The restricted cohort will carry the strongest comparative language. The full cohort will be reported as real-world associational, and the GKSRS-only cohort as characterization or exploratory support. This will be implemented through a centralized note in high-level Objective 1 reader-facing summaries rather than by adding repeated boilerplate to every plot, model table, HTML regression output, or diagnostic artifact.
 
 Alternative considered:
 - Preserve equal treatment language across all cohorts. Rejected because the cohort construction itself encodes different causal credibility.
@@ -49,7 +49,7 @@ This change will not leave the current mismatch in place. Either the subgroup su
 
 1. Decide the primary recurrence/metastasis estimand.
 2. Implement event-time analysis and reporting updates for Objective 1a/1b.
-3. Add cohort-specific interpretation guardrails and RMST-first PFS summaries.
+3. Add the centralized cohort-interpretation note and RMST-first PFS summaries.
 4. Repair subgroup and legacy-output contracts in code, docs, and tests.
 
 ## Open Questions
