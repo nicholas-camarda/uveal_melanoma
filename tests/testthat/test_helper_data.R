@@ -175,7 +175,7 @@ create_test_dataset <- function() {
     # Derived GEP variables (created by create_derived_variables)
     gep_class_simple = rep(c("Class 1", "Class 2"), each = 10),
     prame_status = rep(c("Negative", "Positive"), each = 10),
-    gep_validation_set = rep(c("Training", "Testing"), each = 10),
+    gep_validation_set = rep("Eligible", 20),
 
     # Melanoma-specific death variables
     melanoma_death_event = c(

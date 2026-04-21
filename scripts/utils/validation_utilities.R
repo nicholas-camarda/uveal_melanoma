@@ -570,62 +570,28 @@ validate_single_cohort_comprehensive <- function(data, cohort_name) {
             validation_passed <- FALSE
         }
         
-        # Enhanced GEP validation set checks
+        # GEP validation status is eligibility metadata, not a Training/Testing split.
         if ("gep_validation_set" %in% names(data)) {
             validation_set_counts <- table(data$gep_validation_set, useNA = "ifany")
-            training_count <- ifelse("Training" %in% names(validation_set_counts), validation_set_counts["Training"], 0)
-            testing_count <- ifelse("Testing" %in% names(validation_set_counts), validation_set_counts["Testing"], 0)
+            eligible_count <- ifelse("Eligible" %in% names(validation_set_counts), validation_set_counts["Eligible"], 0)
             no_gep_count <- ifelse("No GEP Data" %in% names(validation_set_counts), validation_set_counts["No GEP Data"], 0)
-            enforce_global_split_shape <- identical(cohort_name, "uveal_melanoma_full_cohort") ||
-                identical(cohort_name, "single_dataset")
-            
+
             # Calculate expected counts for patients with valid GEP data
             patients_with_valid_gep <- sum(!is.na(data$biopsy1_gep_mfs) & !is.na(data$biopsy1_gep_mss) & 
                                           data$gep_class_simple %in% c("Class 1", "Class 2"), na.rm = TRUE)
-            
-            # Validation checks for gep_validation_set
-            # Split-shape checks are only meaningful on the global/full GEP population.
-            if (enforce_global_split_shape) {
-                if (training_count == 0 && patients_with_valid_gep > 0) {
-                    logger::log_error(formatted("VALIDATION FAILED: No patients assigned to Training set despite having valid GEP data", indent = 3))
-                    validation_passed <- FALSE
-                }
-                
-                if (testing_count == 0 && patients_with_valid_gep > 0) {
-                    logger::log_error(formatted("VALIDATION FAILED: No patients assigned to Testing set despite having valid GEP data", indent = 3))
-                    validation_passed <- FALSE
-                }
-                
-                if (training_count > 0 && testing_count > 0) {
-                    actual_training_rate <- training_count / (training_count + testing_count)
-                    if (actual_training_rate < 0.5 || actual_training_rate > 0.9) {
-                        logger::log_error(formatted(sprintf(
-                            "VALIDATION FAILED: Training/testing split is unreasonable: %.1f%% training (expected ~70%%)", 
-                            actual_training_rate * 100
-                        ), indent = 3))
-                        validation_passed <- FALSE
-                    }
-                }
-            } else if (patients_with_valid_gep > 0) {
-                logger::log_info(formatted(sprintf(
-                    "Subset cohort split summary: %d Training, %d Testing, %d No GEP Data",
-                    training_count, testing_count, no_gep_count
-                ), indent = 3))
-            }
-            
-            # Check 3: Ensure total Training + Testing equals patients with valid GEP data
-            total_assigned <- training_count + testing_count
-            if (abs(total_assigned - patients_with_valid_gep) > 1) { # Allow small rounding differences
+
+            # Check 3: Ensure Eligible count equals patients with valid GEP data.
+            if (eligible_count != patients_with_valid_gep) {
                 logger::log_error(formatted(sprintf(
-                    "VALIDATION FAILED: Training + Testing count (%d) doesn't match patients with valid GEP data (%d)", 
-                    total_assigned, patients_with_valid_gep
+                    "VALIDATION FAILED: Eligible GEP count (%d) doesn't match patients with valid GEP data (%d)",
+                    eligible_count, patients_with_valid_gep
                 ), indent = 3))
                 validation_passed <- FALSE
             }
-            
+
             # Check 4: Ensure "No GEP Data" count is reasonable
             expected_no_gep <- nrow(data) - patients_with_valid_gep
-            if (abs(no_gep_count - expected_no_gep) > 1) {
+            if (no_gep_count != expected_no_gep) {
                 logger::log_error(formatted(sprintf(
                     "VALIDATION FAILED: 'No GEP Data' count (%d) doesn't match expected (%d)", 
                     no_gep_count, expected_no_gep
@@ -635,8 +601,8 @@ validate_single_cohort_comprehensive <- function(data, cohort_name) {
             
             # Log validation results
             if (validation_passed) {
-                logger::log_info(formatted(sprintf("✓ GEP validation set properly configured: %d Training, %d Testing, %d No GEP Data", 
-                                                 training_count, testing_count, no_gep_count), indent = 3))
+                logger::log_info(formatted(sprintf("✓ GEP validation status configured: %d Eligible, %d No GEP Data",
+                                                 eligible_count, no_gep_count), indent = 3))
             }
         } else {
             logger::log_error(formatted("VALIDATION FAILED: gep_validation_set variable not found in dataset", indent = 3))

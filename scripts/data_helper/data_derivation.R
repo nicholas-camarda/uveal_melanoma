@@ -251,8 +251,8 @@ create_derived_variables <- function(data) {
                 ),
                 levels = c("Negative", "Positive")
             ),
-            # Create GEP validation set with proper Training/Testing split
-            # Use a simpler approach that doesn't rely on factor levels
+            # Preserve only Objective 4 eligibility status; imported GEP
+            # predictions are validated directly rather than training a model.
             gep_validation_set = if_else(
                 !is.na(biopsy1_gep_mfs) & !is.na(biopsy1_gep_mss) &
                     !is.na(gep_class_simple) & gep_class_simple %in% GEP_DEFINITIVE_SIMPLE_LEVELS,
@@ -372,24 +372,6 @@ create_derived_variables <- function(data) {
         logger::log_info("No new derived variables created")
     }
     
-    # Apply Training/Testing split to eligible patients using base R approach
-    # This needs to be done after the dplyr pipeline is complete
-    eligible_indices <- which(new_data$gep_validation_set == "Eligible")
-    if (length(eligible_indices) > 0) {
-        n_eligible <- length(eligible_indices)
-        n_training <- round(n_eligible * 0.7)
-        n_testing <- n_eligible - n_training
-        
-        # Create the sampling vector
-        sampled_values <- c(rep("Training", n_training), rep("Testing", n_testing))
-        
-        # Shuffle the vector to randomize the assignment
-        sampled_values <- sample(sampled_values)
-        
-        # Assign to eligible patients
-        new_data$gep_validation_set[eligible_indices] <- sampled_values
-    }
-        
     return(new_data)
 }
 

@@ -210,6 +210,212 @@ calculate_observed_expected_mss <- function(data,
     grouped_results
 }
 
+#' Prepare MSS Competing-Risk Validation Data
+#'
+#' Build a compact analysis frame for melanoma-specific death at a requested
+#' horizon, preserving non-melanoma death as a competing event.
+#'
+#' @param data Data frame containing MSS follow-up, event, and prediction fields.
+#' @param timepoint Numeric year value for evaluation.
+#' @param time_var Character name of the MSS follow-up column in months.
+#' @param expected_var Optional character expected-survival column name.
+#' @param melanoma_event_var Character melanoma-death indicator column.
+#' @param competing_event_var Character competing-death indicator column.
+#' @return Data frame with observed time, event type, predicted survival, and
+#'   predicted melanoma-death risk.
+prepare_mss_competing_risk_validation_data <- function(data,
+                                                       timepoint,
+                                                       time_var = "tt_death_months",
+                                                       expected_var = NULL,
+                                                       melanoma_event_var = "melanoma_death_event",
+                                                       competing_event_var = "competing_death_event") {
+    expected_var <- expected_var %||% paste0("expected_mss_", timepoint, "yr")
+    required_vars <- c(time_var, expected_var, melanoma_event_var, competing_event_var)
+    missing_vars <- setdiff(required_vars, names(data))
+    if (length(missing_vars) > 0) {
+        stop(sprintf(
+            "prepare_mss_competing_risk_validation_data() requires columns: %s",
+            paste(missing_vars, collapse = ", ")
+        ))
+    }
+
+    data %>%
+        dplyr::mutate(
+            observed_time = suppressWarnings(as.numeric(.data[[time_var]])),
+            predicted_survival = suppressWarnings(as.numeric(.data[[expected_var]])),
+            predicted_risk = 1 - .data$predicted_survival,
+            melanoma_event = suppressWarnings(as.integer(.data[[melanoma_event_var]])),
+            competing_event = suppressWarnings(as.integer(.data[[competing_event_var]])),
+            event_type = dplyr::case_when(
+                .data$melanoma_event == 1L ~ 1L,
+                .data$competing_event == 1L ~ 2L,
+                TRUE ~ 0L
+            )
+        ) %>%
+        dplyr::filter(
+            is.finite(.data$observed_time),
+            is.finite(.data$predicted_risk),
+            .data$predicted_risk >= 0,
+            .data$predicted_risk <= 1,
+            !is.na(.data$event_type)
+        )
+}
+
+#' Calculate Competing-Risk MSS Calibration Metrics
+#'
+#' Estimate grouped calibration for imported MSS predictions using
+#' Aalen-Johansen cumulative incidence of melanoma-specific death, with
+#' non-melanoma death retained as a competing event.
+#'
+#' @param data Data frame prepared for MSS analysis.
+#' @param timepoint Numeric year value for evaluation.
+#' @param time_var Character name of the MSS follow-up column in months.
+#' @param expected_var Optional character expected-survival column name.
+#' @param melanoma_event_var Character melanoma-death indicator column.
+#' @param competing_event_var Character competing-death indicator column.
+#' @return Named list matching the standard calibration result shape with
+#'   competing-risk estimand metadata.
+calculate_competing_risk_mss_calibration_metrics <- function(data,
+                                                             timepoint,
+                                                             time_var = "tt_death_months",
+                                                             expected_var = NULL,
+                                                             melanoma_event_var = "melanoma_death_event",
+                                                             competing_event_var = "competing_death_event") {
+    logger::log_info(formatted(sprintf(
+        "Performing competing-risk calibration assessment for %d-year MSS",
+        timepoint
+    ), indent = 2))
+
+    timepoint_months <- timepoint * 12
+    estimand <- "Cumulative incidence of melanoma-specific death with non-melanoma death as a competing event"
+    calibration_data <- prepare_mss_competing_risk_validation_data(
+        data = data,
+        timepoint = timepoint,
+        time_var = time_var,
+        expected_var = expected_var,
+        melanoma_event_var = melanoma_event_var,
+        competing_event_var = competing_event_var
+    )
+
+    if (nrow(calibration_data) == 0) {
+        return(list(
+            n = 0L,
+            known_status_n = 0L,
+            status = "no_complete_cases",
+            fit_n = 0L,
+            events = 0L,
+            non_events = 0L,
+            competing_events = 0L,
+            unique_risk_count = 0L,
+            intercept = NA_real_,
+            calibration_intercept = NA_real_,
+            intercept_method = "not_estimated_for_competing_risk_primary_lane",
+            slope = NA_real_,
+            slope_method = "not_estimated_for_competing_risk_primary_lane",
+            slope_se = NA_real_,
+            ici = NA_real_,
+            ici_method = "grouped_aalen_johansen_cif",
+            nam_dagostino_p = NA_real_,
+            nam_dagostino_log_p = NA_real_,
+            nam_dagostino_statistic = NA_real_,
+            nam_dagostino_method = "not_estimated_for_competing_risk_primary_lane",
+            n_groups = 0L,
+            group_results = data.frame(),
+            brier_score = NA_real_,
+            brier_method = "not_estimated_for_competing_risk_primary_lane",
+            brier_fallback_used = FALSE,
+            curve = list(bins = data.frame(), smooth = NULL, curve_method = "grouped_aalen_johansen_cif"),
+            estimand = estimand,
+            analysis_tier = "primary_competing_risk",
+            interpretation_role = "primary_mss_evidence"
+        ))
+    }
+
+    calibration_data <- calibration_data %>%
+        dplyr::mutate(risk_group = assign_calibration_risk_groups(.data$predicted_risk))
+
+    group_results <- split(calibration_data, calibration_data$risk_group) %>%
+        lapply(function(group_data) {
+            cif_metrics <- estimate_mss_cif_at_horizon(
+                data = group_data,
+                timepoint_months = timepoint_months,
+                time_var = "observed_time",
+                melanoma_event_var = "melanoma_event",
+                competing_event_var = "competing_event"
+            )
+            expected_risk <- mean(group_data$predicted_risk, na.rm = TRUE)
+            expected_events <- sum(group_data$predicted_risk, na.rm = TRUE)
+
+            data.frame(
+                risk_group = as.character(group_data$risk_group[[1]]),
+                n = nrow(group_data),
+                mean_predicted_risk = expected_risk,
+                expected_events = expected_events,
+                observed_risk = cif_metrics$cif,
+                observed_events = cif_metrics$observed_events,
+                raw_events_by_horizon = cif_metrics$raw_events_by_horizon,
+                observed_method = cif_metrics$observed_method,
+                stringsAsFactors = FALSE
+            )
+        }) %>%
+        dplyr::bind_rows()
+
+    valid_groups <- group_results %>%
+        dplyr::filter(
+            is.finite(.data$mean_predicted_risk),
+            is.finite(.data$observed_risk),
+            .data$n > 0
+        )
+
+    ici <- if (nrow(valid_groups) > 0) {
+        stats::weighted.mean(
+            abs(valid_groups$observed_risk - valid_groups$mean_predicted_risk),
+            w = valid_groups$n,
+            na.rm = TRUE
+        )
+    } else {
+        NA_real_
+    }
+
+    list(
+        n = nrow(calibration_data),
+        known_status_n = nrow(calibration_data),
+        status = "ok",
+        fit_n = nrow(calibration_data),
+        events = sum(calibration_data$event_type == 1L & calibration_data$observed_time <= timepoint_months, na.rm = TRUE),
+        non_events = sum(calibration_data$event_type != 1L | calibration_data$observed_time > timepoint_months, na.rm = TRUE),
+        competing_events = sum(calibration_data$event_type == 2L & calibration_data$observed_time <= timepoint_months, na.rm = TRUE),
+        unique_risk_count = length(unique(calibration_data$predicted_risk)),
+        intercept = NA_real_,
+        calibration_intercept = NA_real_,
+        intercept_method = "not_estimated_for_competing_risk_primary_lane",
+        intercept_se = NA_real_,
+        slope = NA_real_,
+        slope_method = "not_estimated_for_competing_risk_primary_lane",
+        slope_se = NA_real_,
+        ici = round(ici, 4),
+        ici_method = "grouped_aalen_johansen_cif",
+        nam_dagostino_p = NA_real_,
+        nam_dagostino_log_p = NA_real_,
+        nam_dagostino_statistic = NA_real_,
+        nam_dagostino_method = "not_estimated_for_competing_risk_primary_lane",
+        n_groups = nrow(valid_groups),
+        group_results = group_results,
+        brier_score = NA_real_,
+        brier_method = "not_estimated_for_competing_risk_primary_lane",
+        brier_fallback_used = FALSE,
+        brier_calculation_notes = "Primary MSS calibration uses grouped Aalen-Johansen cumulative incidence; binary-survival Brier score is retained only in technical sidecars.",
+        curve = list(
+            bins = group_results,
+            smooth = NULL,
+            curve_method = "grouped_aalen_johansen_cif"
+        ),
+        estimand = estimand,
+        analysis_tier = "primary_competing_risk",
+        interpretation_role = "primary_mss_evidence"
+    )
+}
+
 #' Perform standard MSS validation
 #'
 #' Validate melanoma-specific survival (MSS) predictions at a given timepoint
@@ -244,8 +450,9 @@ perform_standard_mss_validation <- function(data, timepoint, bootstrap_iteration
         group_var = group_var
     )
 
-    # Calculate calibration metrics
-    calibration_metrics <- calculate_calibration_metrics(
+    # Legacy binary/cause-specific style metrics remain available only as
+    # technical sidecars; the primary MSS lane targets competing-risk CIF.
+    legacy_calibration_metrics <- calculate_calibration_metrics(
         data = analysis_data,
         expected_var = paste0("expected_mss_", timepoint, "yr"),
         event_var = "event_occurred",
@@ -253,10 +460,21 @@ perform_standard_mss_validation <- function(data, timepoint, bootstrap_iteration
         eval_time_months = timepoint_months
     )
 
-    # Time-dependent discrimination metrics (Harrell C, Uno C, AUC at timepoint)
-    discrimination_metrics <- perform_discrimination_mss(
+    legacy_discrimination_metrics <- perform_discrimination_mss(
         data = analysis_data,
         timepoint = timepoint
+    )
+
+    calibration_metrics <- calculate_competing_risk_mss_calibration_metrics(
+        data = data,
+        timepoint = timepoint,
+        time_var = time_var
+    )
+
+    discrimination_metrics <- perform_competing_risk_discrimination_mss(
+        data = data,
+        timepoint = timepoint,
+        time_var = time_var
     )
 
     # Decision curve analysis at this timepoint
@@ -265,12 +483,20 @@ perform_standard_mss_validation <- function(data, timepoint, bootstrap_iteration
         timepoint = timepoint,
         time_unit = "months"
     )
+    decision_curve$analysis_tier <- "technical_sidecar"
+    decision_curve$interpretation_role <- "not_primary_mss_evidence"
+    decision_curve$estimand <- "Binary melanoma-specific death status by horizon; not the primary competing-risk MSS estimand"
 
     return(list(
         observed_expected = observed_expected,
         calibration = calibration_metrics,
         discrimination = discrimination_metrics,
         decision_curve = decision_curve,
+        technical_sidecars = list(
+            legacy_binary_calibration = legacy_calibration_metrics,
+            legacy_binary_discrimination = legacy_discrimination_metrics,
+            legacy_binary_decision_curve = decision_curve
+        ),
         timepoint = timepoint
     ))
 }
@@ -484,6 +710,143 @@ perform_prame_augmented_analysis_mss <- function(data, timepoints) {
         analysis_type = "incremental_discrimination",
         comparison_results = comparison_results
     ))
+}
+
+#' Perform Competing-Risk Discrimination for MSS
+#'
+#' Evaluate imported MSS melanoma-death risk against a competing-risk
+#' cumulative-incidence target using time-dependent AUC for cause 1
+#' (melanoma-specific death).
+#'
+#' @param data Data frame prepared for MSS analysis.
+#' @param timepoint Numeric year value for evaluation.
+#' @param time_var Character name of the MSS follow-up column in months.
+#' @param expected_var Optional character expected-survival column name.
+#' @return Named list with primary discrimination metrics and explicit method
+#'   metadata for the competing-risk MSS estimand.
+perform_competing_risk_discrimination_mss <- function(data,
+                                                      timepoint,
+                                                      time_var = "tt_death_months",
+                                                      expected_var = NULL) {
+    logger::log_info(formatted(sprintf(
+        "Performing competing-risk discrimination analysis for %d-year MSS",
+        timepoint
+    ), indent = 2))
+
+    timepoint_months <- timepoint * 12
+    estimand <- "Cumulative incidence of melanoma-specific death with non-melanoma death as a competing event"
+    disc_data <- prepare_mss_competing_risk_validation_data(
+        data = data,
+        timepoint = timepoint,
+        time_var = time_var,
+        expected_var = expected_var
+    )
+
+    events_by_timepoint <- sum(disc_data$event_type == 1L & disc_data$observed_time <= timepoint_months, na.rm = TRUE)
+    competing_by_timepoint <- sum(disc_data$event_type == 2L & disc_data$observed_time <= timepoint_months, na.rm = TRUE)
+    unique_risk_count <- length(unique(disc_data$predicted_risk))
+    not_estimable_reason <- NA_character_
+
+    if (nrow(disc_data) < GEP_MIN_SAMPLE_SIZE) {
+        not_estimable_reason <- sprintf(
+            "Insufficient usable MSS competing-risk data (n=%d; minimum=%d)",
+            nrow(disc_data),
+            GEP_MIN_SAMPLE_SIZE
+        )
+    } else if (events_by_timepoint < GEP_MIN_EVENTS_COMPETING_RISK) {
+        not_estimable_reason <- sprintf(
+            "Too few melanoma-specific deaths by %d years for competing-risk AUC (events=%d; minimum>%d)",
+            timepoint,
+            events_by_timepoint,
+            GEP_MIN_EVENTS_COMPETING_RISK
+        )
+    } else if (unique_risk_count < 2) {
+        not_estimable_reason <- "Predicted MSS risks do not vary enough to estimate discrimination"
+    } else if (!requireNamespace("timeROC", quietly = TRUE)) {
+        not_estimable_reason <- "timeROC package is required for competing-risk AUC but is not installed"
+    }
+
+    integrated_auc <- NA_real_
+    integrated_auc_status <- "not_estimable"
+    integrated_auc_method <- "timeROC_competing_risk_auc"
+    if (is.na(not_estimable_reason)) {
+        auc_result <- tryCatch({
+            timeROC::timeROC(
+                T = disc_data$observed_time,
+                delta = disc_data$event_type,
+                marker = disc_data$predicted_risk,
+                cause = 1,
+                weighting = "marginal",
+                times = timepoint_months,
+                iid = FALSE
+            )
+        }, error = function(e) {
+            not_estimable_reason <<- e$message
+            NULL
+        })
+
+        auc_values <- if (!is.null(auc_result)) {
+            auc_result$AUC_1 %||% auc_result$AUC
+        } else {
+            NULL
+        }
+        auc_value <- if (!is.null(auc_values) && length(auc_values) > 0) {
+            utils::tail(auc_values[is.finite(auc_values)], 1)
+        } else {
+            NA_real_
+        }
+
+        if (!is.null(auc_result) && length(auc_value) > 0 && is.finite(auc_value[[1]])) {
+            integrated_auc <- as.numeric(auc_value[[1]])
+            integrated_auc_status <- "ok"
+        } else if (is.na(not_estimable_reason)) {
+            not_estimable_reason <- "timeROC returned no finite competing-risk AUC estimate"
+        }
+    }
+
+    if (identical(integrated_auc_status, "ok")) {
+        logger::log_info(formatted(sprintf(
+            "Primary MSS competing-risk AUC calculated successfully: %.3f",
+            integrated_auc
+        ), indent = 3))
+    } else {
+        logger::log_warn(formatted(sprintf(
+            "Primary MSS competing-risk AUC unavailable: %s",
+            not_estimable_reason
+        ), indent = 3))
+    }
+
+    list(
+        n = nrow(disc_data),
+        events = sum(disc_data$event_type == 1L, na.rm = TRUE),
+        events_by_timepoint = events_by_timepoint,
+        competing_events_by_timepoint = competing_by_timepoint,
+        unique_risk_count = unique_risk_count,
+        harrell_c = NA_real_,
+        harrell_ci_lower = NA_real_,
+        harrell_ci_upper = NA_real_,
+        harrell_method = "not_primary_for_competing_risk_mss",
+        integrated_auc = round(integrated_auc, 3),
+        integrated_auc_method = integrated_auc_method,
+        integrated_auc_status = integrated_auc_status,
+        integrated_auc_na_reason = not_estimable_reason,
+        integrated_auc_time_periods = ifelse(identical(integrated_auc_status, "ok"), 1L, 0L),
+        cumulative_discrimination = round(integrated_auc, 3),
+        cumulative_discrimination_method = integrated_auc_method,
+        time_averaged_discrimination = NA_real_,
+        time_averaged_discrimination_method = "not_primary_for_competing_risk_mss",
+        primary_discrimination = round(integrated_auc, 3),
+        primary_discrimination_method = integrated_auc_method,
+        primary_discrimination_status = integrated_auc_status,
+        primary_discrimination_unavailable_reason = not_estimable_reason,
+        ipa = NA_real_,
+        ipa_method = "not_primary_for_competing_risk_mss",
+        ipa_fallback_used = FALSE,
+        ipa_calculation_notes = "Binary-survival IPA is retained only in technical sidecars for MSS.",
+        estimand = estimand,
+        analysis_tier = "primary_competing_risk",
+        interpretation_role = "primary_mss_evidence"
+    )
 }
 
 #' Time-dependent discrimination for MSS at a given timepoint

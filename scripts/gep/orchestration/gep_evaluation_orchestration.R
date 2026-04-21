@@ -60,11 +60,11 @@ analyze_gep_mfs_validation <- function(data,
             restored_gep_rows
         ), indent = 1))
     }
-    logger::log_info(formatted("Reporting GEP validation dataset distribution", indent = 1))
+    logger::log_info(formatted("Reporting GEP eligibility distribution", indent = 1))
     gep_distribution <- display_data %>%
         count(gep_validation_set, biopsy1_gep) %>%
         tidyr::pivot_wider(names_from = biopsy1_gep, values_from = n, values_fill = 0)
-    logger::log_info(formatted("GEP Validation Set Distribution:", indent = 1))
+    logger::log_info(formatted("GEP Eligibility Distribution:", indent = 1))
     for (i in seq_len(nrow(gep_distribution))) {
         set_name <- gep_distribution$gep_validation_set[i]
         class_1 <- ifelse(is.na(gep_distribution$`Class 1`[i]), 0, gep_distribution$`Class 1`[i])
@@ -287,20 +287,52 @@ analyze_gep_mfs_validation <- function(data,
             # Create proportional hazards diagnostics for MFS
             logger::log_info(formatted("Creating MFS proportional hazards diagnostics", indent = 1))
             tryCatch({
-                if (length(unique(km_ph_data$biopsy1_gep)) >= 2) {
-                    mfs_cox_formula <- as.formula("Surv(tt_mets_months, mets_event) ~ biopsy1_gep")
-                    mfs_cox_model <- survival::coxph(mfs_cox_formula, data = km_ph_data)
-                    
-                    test_proportional_hazards_assumption(
-                        cox_model = mfs_cox_model,
-                        outcome_name = "Metastasis-Free Survival",
-                        output_dir = output_dirs$obj4_ph_diagnostics,
-                        file_prefix = paste0(prefix, "mfs_"),
-                        dataset_name = dataset_name
+                ph_group_count <- length(unique(stats::na.omit(km_ph_data$biopsy1_gep)))
+                ph_model_result <- if (ph_group_count >= 2) {
+                    tryCatch(
+                        {
+                            mfs_cox_formula <- as.formula("Surv(tt_mets_months, mets_event) ~ biopsy1_gep")
+                            list(
+                                cox_model = survival::coxph(mfs_cox_formula, data = km_ph_data),
+                                reason = NULL
+                            )
+                        },
+                        error = function(e) {
+                            list(
+                                cox_model = NULL,
+                                reason = sprintf(
+                                    "Metastasis-Free Survival proportional hazards diagnostics were not run because Cox model fitting failed: %s",
+                                    e$message
+                                )
+                            )
+                        }
                     )
-                    logger::log_info(formatted("MFS proportional hazards diagnostics completed", indent = 2))
                 } else {
-                    logger::log_warn(formatted("Insufficient groups for MFS proportional hazards diagnostics", indent = 2))
+                    list(
+                        cox_model = NULL,
+                        reason = sprintf(
+                            "Metastasis-Free Survival proportional hazards diagnostics were not run because fewer than two GEP groups were available (observed groups: %d).",
+                            ph_group_count
+                        )
+                    )
+                }
+
+                ph_diag_result <- run_or_skip_proportional_hazards_diagnostics(
+                    cox_model = ph_model_result$cox_model,
+                    outcome_name = "Metastasis-Free Survival",
+                    output_dir = output_dirs$obj4_ph_diagnostics,
+                    file_prefix = paste0(prefix, "mfs_"),
+                    dataset_name = dataset_name,
+                    data = km_ph_data,
+                    time_var = "tt_mets_months",
+                    event_var = "mets_event",
+                    variables = "biopsy1_gep",
+                    reason = ph_model_result$reason
+                )
+                if (is.list(ph_diag_result) && identical(ph_diag_result$status, "skipped")) {
+                    logger::log_warn(formatted("MFS proportional hazards diagnostics skipped with explicit artifact", indent = 2))
+                } else {
+                    logger::log_info(formatted("MFS proportional hazards diagnostics completed", indent = 2))
                 }
             }, error = function(e) {
                 logger::log_warn(formatted(sprintf("MFS diagnostics failed: %s", e$message), indent = 2))

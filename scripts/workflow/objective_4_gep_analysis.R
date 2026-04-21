@@ -63,6 +63,7 @@ run_objective_4 <- function(data, dataset_name, output_dirs, prefix, confounders
     exploratory_no_gep_results <- NULL
     if (identical(dataset_name, "uveal_melanoma_full_cohort")) {
         logger::log_info(formatted("Executing exploratory no-GEP summary integration for the full cohort", indent = 1))
+        no_gep_output_dir <- file.path(dirname(output_dirs$obj4_mfs), "d_exploratory_no_gep")
         exploratory_no_gep_results <- tryCatch({
             collected_no_gep_results <- collect_exploratory_no_gep_analysis(
                 data = data,
@@ -71,14 +72,34 @@ run_objective_4 <- function(data, dataset_name, output_dirs, prefix, confounders
             )
             run_exploratory_no_gep_report(
                 dataset_name = dataset_name,
-                output_dir = file.path(dirname(output_dirs$obj4_mfs), "d_exploratory_no_gep"),
+                output_dir = no_gep_output_dir,
                 verify_km_fix = FALSE,
                 data = data,
                 collected_results = collected_no_gep_results
             )
         }, error = function(e) {
-            logger::log_warn(formatted(sprintf("Exploratory no-GEP integration failed: %s", e$message), indent = 2))
-            warning_issues <<- append_issue(warning_issues, sprintf("exploratory_no_gep:%s", e$message))
+            failure_reason <- sprintf("Exploratory no-GEP report generation failed: %s", e$message)
+            diagnostics <- build_skip_report_diagnostics(
+                status = "failed",
+                analysis_name = "exploratory_no_gep_report",
+                dataset_name = dataset_name,
+                reason = failure_reason,
+                narrative_lines = c(
+                    failure_reason,
+                    "Existing no-GEP report files may be stale if their timestamps predate this workflow run.",
+                    "Regenerate this component after resolving the listed QC error before interpreting the no-GEP sidecar report."
+                )
+            )
+            save_skipped_model_outputs(
+                analysis_name = "exploratory_no_gep_report",
+                dataset_name = dataset_name,
+                output_dir = no_gep_output_dir,
+                prefix = prefix,
+                reason = failure_reason,
+                diagnostics = diagnostics
+            )
+            logger::log_warn(formatted(failure_reason, indent = 2))
+            warning_issues <<- append_issue(warning_issues, sprintf("exploratory_no_gep:%s", failure_reason))
             NULL
         })
     }

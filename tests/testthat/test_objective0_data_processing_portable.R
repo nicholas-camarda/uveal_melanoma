@@ -10,6 +10,8 @@ test_that("Objective 0 preprocessing creates expected derived fields on syntheti
         "mfs_event_5yr",
         "mss_event_5yr"
     ) %in% names(derived)))
+    expect_true(all(stats::na.omit(derived$gep_validation_set) %in% c("Eligible", "No GEP Data")))
+    expect_false(any(derived$gep_validation_set %in% c("Training", "Testing"), na.rm = TRUE))
 })
 
 test_that("Objective 0 factor preparation and cohort criteria run on synthetic data", {

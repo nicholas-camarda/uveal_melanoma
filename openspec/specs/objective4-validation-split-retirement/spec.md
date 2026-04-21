@@ -1,5 +1,9 @@
-## ADDED Requirements
+# objective4-validation-split-retirement Specification
 
+## Purpose
+Define the Objective 4 contract that retires historical Training/Testing split language as an active validation requirement while preserving analyzable versus non-analyzable GEP eligibility metadata.
+
+## Requirements
 ### Requirement: Objective 4 SHALL retire Training/Testing as an active validation contract
 Objective 4 MUST NOT require or present `Training` / `Testing` split membership as a primary validation mechanism for imported GEP probabilities.
 

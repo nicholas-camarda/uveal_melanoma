@@ -12,15 +12,13 @@ skip_if_local_data_unavailable()
     exp_mfs <- c("Class 1" = 0.92, "Class 2" = 0.65)
     exp_mss <- c("Class 1" = 0.96, "Class 2" = 0.75)
     prame_levels <- c("Negative", "Positive")
-    val_sets <- c("Training", "Testing")
-
     df <- do.call(rbind, lapply(classes, function(cls) {
       n <- n_per_class
       tibble::tibble(
         id = seq_len(n),
         gep_class_simple = cls,
         biopsy1_gep = "Valid",
-        gep_validation_set = sample(val_sets, size = n, replace = TRUE, prob = c(0.7, 0.3)),
+        gep_validation_set = "Eligible",
         prame_status = sample(prame_levels, size = n, replace = TRUE),
         biopsy1_gep_mfs = exp_mfs[[cls]],
         biopsy1_gep_mss = exp_mss[[cls]],

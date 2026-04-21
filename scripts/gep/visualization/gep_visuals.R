@@ -350,28 +350,44 @@ create_full_survival_calibration_plot <- function(results, outcome_type, output_
         if (!is.null(cal$curve) && is.list(cal$curve) && is.data.frame(cal$curve$bins)) {
             bins <- cal$curve$bins
         } else if (is.data.frame(cal$group_results) && nrow(cal$group_results) > 0) {
-            bins <- cal$group_results %>%
-                dplyr::mutate(
-                    timepoint_months = NA_real_,
-                    risk_bin = .data$risk_group %||% NA_integer_,
-                    mean_predicted_risk = as.numeric(.data$mean_predicted_risk),
-                    observed_risk_km = as.numeric(.data$observed_rate),
-                    km_survival_se = as.numeric(.data$km_survival_se)
-                ) %>%
-                dplyr::select(
-                    timepoint_months,
-                    risk_bin,
-                    n,
-                    mean_predicted_risk,
-                    observed_risk_km,
-                    km_survival_se
-                ) %>%
-                as.data.frame()
+            bins <- cal$group_results
         }
 
         if (!is.null(bins) && nrow(bins) > 0) {
+            # Calibration payloads come from KM and Aalen-Johansen paths; normalize
+            # their equivalent column names before applying a shared plot contract.
+            if (!"risk_bin" %in% names(bins)) {
+                bins$risk_bin <- if ("risk_group" %in% names(bins)) bins$risk_group else seq_len(nrow(bins))
+            }
+            if (!"observed_risk_km" %in% names(bins)) {
+                bins$observed_risk_km <- if ("observed_risk" %in% names(bins)) {
+                    bins$observed_risk
+                } else if ("observed_rate" %in% names(bins)) {
+                    bins$observed_rate
+                } else {
+                    NA_real_
+                }
+            }
+            if (!"timepoint_months" %in% names(bins)) {
+                bins$timepoint_months <- NA_real_
+            }
+            if (!"km_survival_se" %in% names(bins)) {
+                bins$km_survival_se <- NA_real_
+            }
+            if (!"n" %in% names(bins)) {
+                bins$n <- NA_integer_
+            }
             bins <- bins %>%
                 dplyr::mutate(timepoint = tp_name) %>%
+                dplyr::transmute(
+                    timepoint_months = .data$timepoint_months,
+                    risk_bin = .data$risk_bin,
+                    n = .data$n,
+                    mean_predicted_risk = as.numeric(.data$mean_predicted_risk),
+                    observed_risk_km = as.numeric(.data$observed_risk_km),
+                    km_survival_se = as.numeric(.data$km_survival_se),
+                    timepoint = .data$timepoint
+                ) %>%
                 dplyr::filter(!is.na(risk_bin), is.finite(mean_predicted_risk), is.finite(observed_risk_km))
             if (nrow(bins) > 0) {
                 bins_rows[[tp_name]] <- as.data.frame(bins)

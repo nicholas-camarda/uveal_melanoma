@@ -197,6 +197,9 @@ source(here("scripts", "workflow", "objective_2_safety_toxicity.R"))
 source(here("scripts", "workflow", "objective_3_repeat_radiation.R"))
 source(here("scripts", "workflow", "objective_4_gep_analysis.R"))
 
+# Source the GEP data diagnostics script
+source(here("scripts", "data_helper", "gep_missing_data_analysis.R"))
+
 # Set seed for reproducibility
 set.seed(123)
 
@@ -335,5 +338,15 @@ required_packages <- c(
     "rmarkdown", "DT", "plotly", "shiny", "shinydashboard", "flexdashboard"
 )
 
-# Source the GEP data diagnostics script
-source(here("scripts", "data_helper", "gep_missing_data_analysis.R"))
+# Initialize logging
+if (USE_LOGS) {
+    # Create logs directory if it doesn't exist
+    if (!dir.exists(LOGS_DIR)) {
+        dir.create(LOGS_DIR, showWarnings = FALSE)
+    }
+    timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
+    log_file <- file.path(LOGS_DIR, paste0("run_log_", timestamp, ".txt"))
+    setup_logging(log_path = log_file, level = "INFO", progress = interactive(), quiet_html = TRUE)
+} else {
+    setup_logging(log_path = NULL, level = "INFO", progress = interactive(), quiet_html = TRUE)
+}

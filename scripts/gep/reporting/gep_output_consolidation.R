@@ -434,6 +434,9 @@ create_consolidated_calibration_table <- function(validation_results, outcome_ty
                 N = cal$n %||% NA,
                 Fit_N = cal$fit_n %||% NA,
                 Status = cal$status %||% NA,
+                Analysis_Tier = cal$analysis_tier %||% NA,
+                Interpretation_Role = cal$interpretation_role %||% NA,
+                Estimand = cal$estimand %||% NA,
                 Events = cal$events %||% NA,
                 Non_Events = cal$non_events %||% NA,
                 Unique_Risk_Count = cal$unique_risk_count %||% NA,
@@ -493,6 +496,17 @@ create_consolidated_discrimination_table <- function(validation_results, outcome
                 Events = disc$events %||% NA,
                 # PRIMARY DISCRIMINATION METRIC
                 Harrell_C = disc$harrell_c %||% NA,
+                Primary_Discrimination = disc$primary_discrimination %||% disc$harrell_c %||% NA,
+                Primary_Discrimination_Method = disc$primary_discrimination_method %||% disc$harrell_method %||% NA,
+                Primary_Discrimination_Status = disc$primary_discrimination_status %||% ifelse(
+                    is.finite(disc$primary_discrimination %||% disc$harrell_c %||% NA_real_),
+                    "ok",
+                    "not_estimable"
+                ),
+                Primary_Discrimination_Unavailable_Reason = disc$primary_discrimination_unavailable_reason %||% NA,
+                Analysis_Tier = disc$analysis_tier %||% NA,
+                Interpretation_Role = disc$interpretation_role %||% NA,
+                Estimand = disc$estimand %||% NA,
                 # ROBUST DISCRIMINATION METRICS (replacing fragile timepoint-dependent metrics)
                 Integrated_AUC = disc$integrated_auc %||% NA,
                 Integrated_AUC_Status = disc$integrated_auc_status %||% ifelse(
@@ -577,6 +591,9 @@ create_consolidated_decision_curve_table <- function(validation_results, outcome
                 Threshold_Range_Max = dca$threshold_range_max %||% NA,
                 Threshold_Scale = "probability_0_to_1",
                 Area_Between_Curves = dca$area_between_curves %||% NA,
+                Analysis_Tier = dca$analysis_tier %||% NA,
+                Interpretation_Role = dca$interpretation_role %||% NA,
+                Estimand = dca$estimand %||% NA,
                 stringsAsFactors = FALSE
             ))
         }
@@ -883,6 +900,9 @@ create_unified_calibration_summary <- function(mfs_results, mss_results) {
                     N = cal$n %||% NA,
                     Fit_N = cal$fit_n %||% NA,
                     Status = cal$status %||% NA,
+                    Analysis_Tier = cal$analysis_tier %||% NA,
+                    Interpretation_Role = cal$interpretation_role %||% NA,
+                    Estimand = cal$estimand %||% NA,
                     Events = cal$events %||% NA,
                     Non_Events = cal$non_events %||% NA,
                     Unique_Risk_Count = cal$unique_risk_count %||% NA,
@@ -925,6 +945,9 @@ create_unified_calibration_summary <- function(mfs_results, mss_results) {
                     N = cal$n %||% NA,
                     Fit_N = cal$fit_n %||% NA,
                     Status = cal$status %||% NA,
+                    Analysis_Tier = cal$analysis_tier %||% NA,
+                    Interpretation_Role = cal$interpretation_role %||% NA,
+                    Estimand = cal$estimand %||% NA,
                     Events = cal$events %||% NA,
                     Non_Events = cal$non_events %||% NA,
                     Unique_Risk_Count = cal$unique_risk_count %||% NA,
@@ -996,6 +1019,17 @@ create_unified_discrimination_summary <- function(mfs_results, mss_results) {
                     Events = disc$events %||% NA,
                     # PRIMARY DISCRIMINATION METRIC
                     Harrell_C = disc$harrell_c %||% NA,
+                    Primary_Discrimination = disc$primary_discrimination %||% disc$harrell_c %||% NA,
+                    Primary_Discrimination_Method = disc$primary_discrimination_method %||% disc$harrell_method %||% NA,
+                    Primary_Discrimination_Status = disc$primary_discrimination_status %||% ifelse(
+                        is.finite(disc$primary_discrimination %||% disc$harrell_c %||% NA_real_),
+                        "ok",
+                        "not_estimable"
+                    ),
+                    Primary_Discrimination_Unavailable_Reason = disc$primary_discrimination_unavailable_reason %||% NA,
+                    Analysis_Tier = disc$analysis_tier %||% NA,
+                    Interpretation_Role = disc$interpretation_role %||% NA,
+                    Estimand = disc$estimand %||% NA,
                     # ROBUST DISCRIMINATION METRICS (replacing fragile timepoint-dependent metrics)
                     Integrated_AUC = disc$integrated_auc %||% NA,
                     Integrated_AUC_Status = disc$integrated_auc_status %||% ifelse(
@@ -1027,6 +1061,17 @@ create_unified_discrimination_summary <- function(mfs_results, mss_results) {
                     Events = disc$events %||% NA,
                     # PRIMARY DISCRIMINATION METRIC
                     Harrell_C = disc$harrell_c %||% NA,
+                    Primary_Discrimination = disc$primary_discrimination %||% disc$harrell_c %||% NA,
+                    Primary_Discrimination_Method = disc$primary_discrimination_method %||% disc$harrell_method %||% NA,
+                    Primary_Discrimination_Status = disc$primary_discrimination_status %||% ifelse(
+                        is.finite(disc$primary_discrimination %||% disc$harrell_c %||% NA_real_),
+                        "ok",
+                        "not_estimable"
+                    ),
+                    Primary_Discrimination_Unavailable_Reason = disc$primary_discrimination_unavailable_reason %||% NA,
+                    Analysis_Tier = disc$analysis_tier %||% NA,
+                    Interpretation_Role = disc$interpretation_role %||% NA,
+                    Estimand = disc$estimand %||% NA,
                     # ROBUST DISCRIMINATION METRICS (replacing fragile timepoint-dependent metrics)
                     Integrated_AUC = disc$integrated_auc %||% NA,
                     Integrated_AUC_Status = disc$integrated_auc_status %||% ifelse(

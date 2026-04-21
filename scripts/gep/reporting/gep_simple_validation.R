@@ -183,6 +183,41 @@ create_simple_gep_report <- function(mfs_results, mss_results, overall_summary, 
     writeLines(report_content, file.path(output_dir, paste0(prefix, "simple_gep_validation_report.md")))
 }
 
+#' Summarize Simple MSS Actual Survival by GEP Class
+#'
+#' Convert the primary competing-risk MSS observed-risk definition into the
+#' simple reader-facing expected-vs-actual survival table.
+#'
+#' @param mss_data Data frame filtered to MSS-eligible rows.
+#' @param time_var Character name of the month-scale death follow-up column.
+#' @param timepoint_months Numeric evaluation horizon in months.
+#' @return Data frame with class-level observed survival and method metadata.
+summarize_simple_mss_actual_by_class <- function(mss_data,
+                                                 time_var = "simple_mss_time_months",
+                                                 timepoint_months = 60) {
+    split(mss_data, as.character(mss_data$gep_class_simple)) %>%
+        lapply(function(class_data) {
+            cif_metrics <- estimate_mss_cif_at_horizon(
+                data = class_data,
+                timepoint_months = timepoint_months,
+                time_var = time_var,
+                melanoma_event_var = "melanoma_death_event",
+                competing_event_var = "competing_death_event"
+            )
+            data.frame(
+                gep_class_simple = as.character(class_data$gep_class_simple[[1]]),
+                actual_rate = 1 - cif_metrics$cif,
+                observed_melanoma_death_risk = cif_metrics$cif,
+                actual_rate_method = cif_metrics$observed_method,
+                observed_melanoma_deaths_by_horizon = cif_metrics$raw_events_by_horizon,
+                estimand = "5-year MSS survival derived from melanoma-death CIF with non-melanoma death as a competing event",
+                analysis_tier = "reader_facing_primary_aligned",
+                stringsAsFactors = FALSE
+            )
+        }) %>%
+        dplyr::bind_rows()
+}
+
 #' Simple GEP validation - Actual vs Expected rates
 #'
 #' Compute 5-year expected vs actual survival by GEP class for MFS and MSS,
@@ -211,7 +246,6 @@ simple_gep_validation <- function(data, output_dirs, prefix, dataset_name = NULL
 
     expected_mfs_col <- if ("expected_mfs_5yr" %in% names(data)) "expected_mfs_5yr" else "biopsy1_gep_mfs"
     expected_mss_col <- if ("expected_mss_5yr" %in% names(data)) "expected_mss_5yr" else "biopsy1_gep_mss"
-    mss_event_col <- if ("mss_event_5yr" %in% names(data)) "mss_event_5yr" else NULL
     mss_time_col <- dplyr::case_when(
         "tt_death_months" %in% names(data) ~ "tt_death_months",
         "tt_death_years" %in% names(data) ~ "tt_death_years",
@@ -288,23 +322,28 @@ simple_gep_validation <- function(data, output_dirs, prefix, dataset_name = NULL
         ) %>%
         mutate(
             expected_mss_5yr = .data[[expected_mss_col]],
-            actual_mss_5yr = if (!is.null(mss_event_col)) {
-                1 - .data[[mss_event_col]]
-            } else if (mss_time_col == "tt_death_months") {
-                ifelse(tt_death_months > 60 | (tt_death_months <= 60 & melanoma_death_event == 0), 1, 0)
-            } else {
-                ifelse(tt_death_years > 5 | (tt_death_years <= 5 & melanoma_death_event == 0), 1, 0)
-            },
+            simple_mss_time_months = if (mss_time_col == "tt_death_months") tt_death_months else tt_death_years * 12,
             time_to_5yr = if (mss_time_col == "tt_death_months") pmin(tt_death_months, 60) else pmin(tt_death_years * 12, 60)
         )
 
-    mss_results <- mss_data %>%
+    mss_expected_by_class <- mss_data %>%
         group_by(gep_class_simple) %>%
         summarise(
             n = n(),
             expected_rate = mean(expected_mss_5yr, na.rm = TRUE),
-            actual_rate = mean(actual_mss_5yr, na.rm = TRUE),
             .groups = "drop"
+        )
+
+    mss_actual_by_class <- summarize_simple_mss_actual_by_class(
+        mss_data = mss_data,
+        time_var = "simple_mss_time_months",
+        timepoint_months = 60
+    )
+
+    mss_results <- mss_expected_by_class %>%
+        dplyr::left_join(
+            mss_actual_by_class,
+            by = "gep_class_simple"
         ) %>%
         mutate(
             difference = actual_rate - expected_rate,
@@ -322,6 +361,13 @@ simple_gep_validation <- function(data, output_dirs, prefix, dataset_name = NULL
         data = mfs_data,
         timepoint_months = 60
     )
+    overall_mss_cif <- estimate_mss_cif_at_horizon(
+        data = mss_data,
+        timepoint_months = 60,
+        time_var = "simple_mss_time_months",
+        melanoma_event_var = "melanoma_death_event",
+        competing_event_var = "competing_death_event"
+    )
     overall_summary <- data.frame(
         outcome = c("MFS", "MSS"),
         total_patients = c(nrow(mfs_data), nrow(mss_data)),
@@ -331,11 +377,19 @@ simple_gep_validation <- function(data, output_dirs, prefix, dataset_name = NULL
         ),
         overall_actual = c(
             overall_mfs_km$survival,
-            mean(mss_data$actual_mss_5yr, na.rm = TRUE)
+            1 - overall_mss_cif$cif
         ),
         overall_difference = c(
             overall_mfs_km$survival - mean(mfs_data$expected_mfs_5yr, na.rm = TRUE),
-            mean(mss_data$actual_mss_5yr, na.rm = TRUE) - mean(mss_data$expected_mss_5yr, na.rm = TRUE)
+            (1 - overall_mss_cif$cif) - mean(mss_data$expected_mss_5yr, na.rm = TRUE)
+        ),
+        actual_rate_method = c(
+            "kaplan_meier_at_horizon",
+            overall_mss_cif$observed_method
+        ),
+        estimand = c(
+            "5-year metastasis-free survival using Kaplan-Meier",
+            "5-year MSS survival derived from melanoma-death CIF with non-melanoma death as a competing event"
         ),
         stringsAsFactors = FALSE
     ) %>%

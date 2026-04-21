@@ -31,12 +31,12 @@ create_clinical_interpretation <- function(calibration_data, discrimination_data
     } else {
         if (all_slopes_unavailable && slope_issue_context$has_issue) {
             paste(
-                "The GEP model shows excellent discrimination for melanoma-specific survival.",
+                "The GEP model provides prognostic ranking information for melanoma-specific survival at estimable horizons.",
                 slope_issue_context$overall_summary,
                 "The model still provides useful prognostic information, but absolute risk estimates should be interpreted with caution."
             )
         } else {
-            "The GEP model shows excellent discrimination for melanoma-specific survival, though calibration varies across timepoints. The model provides valuable prognostic information for clinical decision-making and patient counseling."
+            "The GEP model provides prognostic ranking information for melanoma-specific survival, though calibration varies across timepoints. Interpret patient-level absolute-risk use cautiously when follow-up, calibration, or extrapolation support is limited."
         }
     }
     
@@ -508,29 +508,98 @@ create_calibration_interpretation <- function(calibration_data, outcome_type) {
 #'
 #' Summarize Harrell's C across timepoints in narrative form.
 #'
+#' Select the Discrimination Metric for Narrative Interpretation
+#'
+#' Choose the manuscript-facing discrimination metric for narrative text,
+#' preferring explicitly marked primary competing-risk metrics when present.
+#'
+#' @param discrimination_data Data frame with discrimination metrics.
+#' @return Named list with selected values, label, and method.
+select_gep_primary_discrimination_metric <- function(discrimination_data) {
+    primary_values <- if ("Primary_Discrimination" %in% names(discrimination_data)) {
+        discrimination_data$Primary_Discrimination
+    } else {
+        rep(NA_real_, nrow(discrimination_data))
+    }
+    harrell_values <- if ("Harrell_C" %in% names(discrimination_data)) {
+        discrimination_data$Harrell_C
+    } else {
+        rep(NA_real_, nrow(discrimination_data))
+    }
+
+    primary_methods <- if ("Primary_Discrimination_Method" %in% names(discrimination_data)) {
+        discrimination_data$Primary_Discrimination_Method
+    } else {
+        rep(NA_character_, nrow(discrimination_data))
+    }
+    analysis_tiers <- if ("Analysis_Tier" %in% names(discrimination_data)) {
+        discrimination_data$Analysis_Tier
+    } else {
+        rep(NA_character_, nrow(discrimination_data))
+    }
+
+    use_primary <- any(is.finite(primary_values)) &&
+        (any(analysis_tiers == "primary_competing_risk", na.rm = TRUE) ||
+            !any(is.finite(harrell_values)))
+
+    if (use_primary) {
+        return(list(
+            values = primary_values,
+            label = "primary competing-risk discrimination",
+            method = unique(stats::na.omit(primary_methods))[1] %||% "not recorded"
+        ))
+    }
+
+    harrell_methods <- if ("Harrell_Method" %in% names(discrimination_data)) {
+        discrimination_data$Harrell_Method
+    } else {
+        rep(NA_character_, nrow(discrimination_data))
+    }
+
+    list(
+        values = harrell_values,
+        label = "Harrell's C-index",
+        method = unique(stats::na.omit(harrell_methods))[1] %||% "not recorded"
+    )
+}
+
 #' @param discrimination_data Data frame with at least a `Harrell_C` column.
 #' @param outcome_type Character outcome label, typically `"MFS"` or `"MSS"`.
 #' @return Character scalar with a discrimination interpretation.
 create_discrimination_interpretation <- function(discrimination_data, outcome_type) {
     if (nrow(discrimination_data) == 0) return("Discrimination metrics not available")
     
-    # Analyze Harrell's C-index patterns
-    harrell_c <- discrimination_data$Harrell_C
-    valid_harrell <- harrell_c[is.finite(harrell_c)]
+    selected_metric <- select_gep_primary_discrimination_metric(discrimination_data)
+    discrimination_values <- selected_metric$values
+    valid_discrimination <- discrimination_values[is.finite(discrimination_values)]
 
-    if (length(valid_harrell) == 0) {
+    if (length(valid_discrimination) == 0) {
         return("Discrimination metrics were not estimable across timepoints.")
     }
 
-    mean_harrell <- mean(harrell_c, na.rm = TRUE)
+    mean_discrimination <- mean(discrimination_values, na.rm = TRUE)
     
-    discrimination_quality <- tolower(get_discrimination_quality(mean_harrell))
-    trend_text <- if (length(valid_harrell) > 1) {
-        diffs <- diff(valid_harrell)
+    discrimination_quality <- tolower(get_discrimination_quality(mean_discrimination))
+    discrimination_range <- if (length(valid_discrimination) > 1) {
+        diff(range(valid_discrimination))
+    } else {
+        0
+    }
+    has_material_variation <- length(valid_discrimination) > 1 && discrimination_range >= 0.20
+    has_weak_latest_horizon <- length(valid_discrimination) > 1 &&
+        is.finite(utils::tail(valid_discrimination, 1)) &&
+        utils::tail(valid_discrimination, 1) < 0.70 &&
+        max(valid_discrimination, na.rm = TRUE) >= 0.80
+    trend_text <- if (length(valid_discrimination) > 1) {
+        diffs <- diff(valid_discrimination)
         if (all(diffs > 0, na.rm = TRUE)) {
             "improved over time"
         } else if (all(diffs < 0, na.rm = TRUE)) {
             "declined over time"
+        } else if (isTRUE(has_weak_latest_horizon)) {
+            "was weaker at the latest horizon"
+        } else if (isTRUE(has_material_variation)) {
+            "varied materially across timepoints"
         } else {
             "remained stable across timepoints"
         }
@@ -538,8 +607,8 @@ create_discrimination_interpretation <- function(discrimination_data, outcome_ty
         "was assessed at a single timepoint"
     }
 
-    range_text <- if (length(valid_harrell) > 1) {
-        sprintf(" (range %.3f-%.3f)", min(valid_harrell), max(valid_harrell))
+    range_text <- if (length(valid_discrimination) > 1) {
+        sprintf(" (range %.3f-%.3f)", min(valid_discrimination), max(valid_discrimination))
     } else {
         ""
     }
@@ -570,14 +639,29 @@ create_discrimination_interpretation <- function(discrimination_data, outcome_ty
         }
     }
 
-    interpretation <- sprintf(
-        "Discrimination was %s and %s, with mean Harrell's C-index = %.3f%s. The model %s separates higher- and lower-risk patients.",
-        discrimination_quality,
-        trend_text,
-        mean_harrell,
-        range_text,
-        if (discrimination_quality %in% c("excellent", "very good")) "effectively" else "adequately"
-    )
+    interpretation <- if (isTRUE(has_material_variation) || isTRUE(has_weak_latest_horizon)) {
+        sprintf(
+            "Discrimination was %s on average but %s, with mean %s = %.3f%s (method=%s). The lowest estimate was %.3f, so late-horizon risk separation should be interpreted cautiously.",
+            discrimination_quality,
+            trend_text,
+            selected_metric$label,
+            mean_discrimination,
+            range_text,
+            selected_metric$method,
+            min(valid_discrimination)
+        )
+    } else {
+        sprintf(
+            "Discrimination was %s and %s, with mean %s = %.3f%s (method=%s). The model %s separates higher- and lower-risk patients.",
+            discrimination_quality,
+            trend_text,
+            selected_metric$label,
+            mean_discrimination,
+            range_text,
+            selected_metric$method,
+            if (discrimination_quality %in% c("excellent", "very good")) "effectively" else "adequately"
+        )
+    }
 
     if (!is.null(iauc_note) && nzchar(iauc_note)) {
         interpretation <- paste0(interpretation, iauc_note)
@@ -661,15 +745,22 @@ create_temporal_patterns <- function(calibration_data, discrimination_data, oe_d
     
     # Discrimination trends
     if (nrow(discrimination_data) > 1) {
-        harrell_c <- discrimination_data$Harrell_C
-        # Filter out NA values before computing differences
-        valid_harrell <- harrell_c[!is.na(harrell_c)]
-        if (length(valid_harrell) > 1) {
-            diffs <- diff(valid_harrell)
+        selected_discrimination <- select_gep_primary_discrimination_metric(discrimination_data)
+        valid_discrimination <- selected_discrimination$values[is.finite(selected_discrimination$values)]
+        if (length(valid_discrimination) > 1) {
+            diffs <- diff(valid_discrimination)
+            discrimination_range <- diff(range(valid_discrimination))
+            has_weak_latest_horizon <- is.finite(utils::tail(valid_discrimination, 1)) &&
+                utils::tail(valid_discrimination, 1) < 0.70 &&
+                max(valid_discrimination, na.rm = TRUE) >= 0.80
             if (all(diffs > 0, na.rm = TRUE)) {
                 patterns <- c(patterns, "Discrimination improves over time, indicating better risk separation for longer follow-up")
             } else if (all(diffs < 0, na.rm = TRUE)) {
                 patterns <- c(patterns, "Discrimination declines over time, suggesting reduced predictive accuracy for longer follow-up")
+            } else if (isTRUE(has_weak_latest_horizon)) {
+                patterns <- c(patterns, "Discrimination is weaker at the latest horizon, so long-horizon risk separation should be interpreted cautiously")
+            } else if (is.finite(discrimination_range) && discrimination_range >= 0.20) {
+                patterns <- c(patterns, "Discrimination varies materially across timepoints")
             } else {
                 patterns <- c(patterns, "Discrimination remains stable across timepoints")
             }
@@ -715,13 +806,20 @@ create_clinical_implications <- function(calibration_data, discrimination_data, 
     
     # Overall model utility
     if (nrow(discrimination_data) > 0) {
-        mean_harrell <- mean(discrimination_data$Harrell_C, na.rm = TRUE)
-        if (is.na(mean_harrell)) {
+        selected_discrimination <- select_gep_primary_discrimination_metric(discrimination_data)
+        valid_discrimination <- selected_discrimination$values[is.finite(selected_discrimination$values)]
+        if (length(valid_discrimination) == 0) {
             implications <- c(implications, "Discrimination was not estimable across the available timepoints")
-        } else if (mean_harrell >= 0.8) {
-            implications <- c(implications, "The GEP model provides strong prognostic information suitable for clinical decision-making")
         } else {
-            implications <- c(implications, "The GEP model provides moderate prognostic information; clinical decisions should consider additional factors")
+            mean_discrimination <- mean(valid_discrimination, na.rm = TRUE)
+            minimum_discrimination <- min(valid_discrimination, na.rm = TRUE)
+            if (mean_discrimination >= 0.8 && minimum_discrimination >= 0.7) {
+                implications <- c(implications, "The GEP model provides strong prognostic ranking information; clinical decisions should still incorporate calibration, follow-up, and cohort support")
+            } else if (mean_discrimination >= 0.8) {
+                implications <- c(implications, "The GEP model provides strong prognostic ranking at some horizons but weaker separation at one or more horizons; clinical decisions should still incorporate calibration, follow-up, and cohort support")
+            } else {
+                implications <- c(implications, "The GEP model provides moderate prognostic information; clinical decisions should consider additional factors")
+            }
         }
     }
     
@@ -735,7 +833,7 @@ create_clinical_implications <- function(calibration_data, discrimination_data, 
                 implications <- c(implications, "Calibration slope was not estimable across the available timepoints")
             }
         } else if (abs(mean_slope - 1) < 0.2) {
-            implications <- c(implications, "Good calibration suggests the model's risk estimates can be used directly for patient counseling")
+            implications <- c(implications, "Good calibration supports cautious absolute-risk discussion when follow-up and extrapolation support are adequate")
         } else {
             implications <- c(implications, "Moderate calibration suggests risk estimates should be interpreted with caution and may require adjustment")
         }
@@ -745,7 +843,7 @@ create_clinical_implications <- function(calibration_data, discrimination_data, 
     if (outcome_type == "MFS") {
         implications <- c(implications, "For metastasis-free survival, the model can guide surveillance intensity and adjuvant therapy decisions")
     } else {
-        implications <- c(implications, "For melanoma-specific survival, the model can inform treatment aggressiveness and patient counseling about prognosis")
+        implications <- c(implications, "For melanoma-specific survival, the model provides prognosis context; avoid using it alone for treatment aggressiveness or direct patient counseling when calibration, follow-up, or extrapolation support is limited")
     }
     
     return(paste(implications, collapse = ". "))

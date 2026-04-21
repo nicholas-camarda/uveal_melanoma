@@ -143,6 +143,155 @@ test_that("MSS discrimination event counts respect month-based horizons", {
     expect_equal(disc_result$events_by_timepoint, 3)
 })
 
+test_that("standard MSS validation exposes a competing-risk primary lane", {
+    test_data <- tibble::tibble(
+        biopsy1_gep = rep(c("Class 1", "Class 2"), each = 20),
+        expected_mss_5yr = seq(0.95, 0.20, length.out = 40),
+        tt_death_months = rep(72, 40),
+        melanoma_death_event = rep(0L, 40),
+        competing_death_event = rep(0L, 40),
+        mss_analysis_eligible = TRUE
+    )
+    melanoma_rows <- 25:34
+    competing_rows <- c(5, 10, 15, 20, 35, 36, 37, 38)
+    test_data$melanoma_death_event[melanoma_rows] <- 1L
+    test_data$tt_death_months[melanoma_rows] <- seq(12, 58, length.out = length(melanoma_rows))
+    test_data$competing_death_event[competing_rows] <- 1L
+    test_data$tt_death_months[competing_rows] <- seq(18, 54, length.out = length(competing_rows))
+    test_data$mss_event_5yr <- as.integer(test_data$melanoma_death_event == 1L & test_data$tt_death_months <= 60)
+    test_data$tt_death_years <- test_data$tt_death_months / 12
+
+    result <- perform_standard_mss_validation(
+        data = test_data,
+        timepoint = 5,
+        bootstrap_iterations = 5
+    )
+
+    expect_equal(result$calibration$analysis_tier, "primary_competing_risk")
+    expect_equal(result$calibration$ici_method, "grouped_aalen_johansen_cif")
+    expect_match(result$calibration$estimand, "competing event")
+    expect_equal(result$discrimination$analysis_tier, "primary_competing_risk")
+    expect_equal(result$discrimination$integrated_auc_method, "timeROC_competing_risk_auc")
+    expect_equal(result$discrimination$integrated_auc_status, "ok")
+    expect_true(is.finite(result$discrimination$primary_discrimination))
+    expect_equal(result$discrimination$harrell_method, "not_primary_for_competing_risk_mss")
+    expect_equal(result$decision_curve$analysis_tier, "technical_sidecar")
+    expect_true(all(c("legacy_binary_calibration", "legacy_binary_discrimination", "legacy_binary_decision_curve") %in% names(result$technical_sidecars)))
+})
+
+test_that("Simple GEP validation uses competing-risk CIF-adjusted MSS at 5 years", {
+    test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective4_simple_mss_cif_actual")
+    output_dirs <- build_objective4_output_dirs(test_output_dir)
+    dir.create(test_output_dir, recursive = TRUE, showWarnings = FALSE)
+    for (dir_path in output_dirs) {
+        dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
+    }
+    withr::defer(unlink(test_output_dir, recursive = TRUE), envir = parent.frame())
+
+    test_data <- tibble::tibble(
+        biopsy1_gep = c("Class 1", "Class 1", "Class 1", "Class 1", "Class 2", "Class 2"),
+        gep_class_simple = c("Class 1", "Class 1", "Class 1", "Class 1", "Class 2", "Class 2"),
+        biopsy1_gep_mfs = c(0.8, 0.8, 0.8, 0.8, 0.4, 0.4),
+        biopsy1_gep_mss = c(0.8, 0.8, 0.8, 0.8, 0.4, 0.4),
+        expected_mfs_5yr = c(0.8, 0.8, 0.8, 0.8, 0.4, 0.4),
+        expected_mss_5yr = c(0.8, 0.8, 0.8, 0.8, 0.4, 0.4),
+        tt_mets_months = rep(72, 6),
+        mets_event = rep(0L, 6),
+        mfs_event_5yr = rep(0L, 6),
+        tt_death_months = c(12, 48, 72, 72, 72, 72),
+        tt_death_years = tt_death_months / 12,
+        death_event = c(0L, 1L, 0L, 0L, 0L, 0L),
+        melanoma_death_event = c(0L, 1L, 0L, 0L, 0L, 0L),
+        competing_death_event = rep(0L, 6),
+        mss_event_5yr = c(0L, 1L, 0L, 0L, 0L, 0L),
+        mfs_analysis_eligible = TRUE,
+        mss_analysis_eligible = TRUE
+    )
+
+    results <- simple_gep_validation(test_data, output_dirs, "cif_")
+    class1_mss <- results$mss_results %>%
+        dplyr::filter(gep_class_simple == "Class 1")
+
+    expect_equal(class1_mss$actual_rate, 2 / 3, tolerance = 0.001)
+    expect_equal(class1_mss$actual_rate_method, "aalen_johansen_cif_at_horizon")
+    expect_match(class1_mss$estimand, "competing event")
+})
+
+test_that("Objective 4 reporting guardrails are explicit for weak support and invalid intervals", {
+    extrapolation_lines <- create_gep_extrapolation_narrative_section(list(
+        status = "Weakly Supported",
+        note = "Limited post-5-year information."
+    ))
+
+    expect_true(any(grepl("do not use those later horizons for treatment planning", extrapolation_lines, fixed = TRUE)))
+    expect_true(any(grepl("direct patient counseling", extrapolation_lines, fixed = TRUE)))
+    expect_error(
+        format_exploratory_metric_interval(estimate = 0.50, lower = 0.60, upper = 0.70),
+        "Invalid exploratory no-GEP interval"
+    )
+
+    repeated_cv_interval <- summarize_numeric_interval(c(0.58, 0.61, 0.70))
+    expect_no_error(format_exploratory_metric_interval(
+        estimate = repeated_cv_interval$median,
+        lower = repeated_cv_interval$lower,
+        upper = repeated_cv_interval$upper
+    ))
+})
+
+test_that("MSS discrimination narrative flags weak late-horizon performance", {
+    discrimination_data <- tibble::tibble(
+        Timepoint = c("5yr", "7yr", "10yr"),
+        Harrell_C = c(NA_real_, NA_real_, NA_real_),
+        Primary_Discrimination = c(0.845, 0.933, 0.628),
+        Primary_Discrimination_Method = "timeROC_competing_risk_auc",
+        Analysis_Tier = "primary_competing_risk",
+        Integrated_AUC = c(0.845, 0.933, 0.628),
+        Integrated_AUC_Status = "ok",
+        Integrated_AUC_Method = "timeROC_competing_risk_auc",
+        Integrated_AUC_Unavailable_Reason = NA_character_
+    )
+
+    interpretation <- create_discrimination_interpretation(discrimination_data, "MSS")
+    patterns <- create_temporal_patterns(tibble::tibble(), discrimination_data, tibble::tibble(), "MSS")
+
+    expect_match(interpretation, "latest horizon")
+    expect_false(grepl("remained stable", interpretation, fixed = TRUE))
+    expect_match(patterns, "weaker at the latest horizon")
+})
+
+test_that("full calibration plot accepts Aalen-Johansen MSS curve bins", {
+    test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective4_mss_calibration_plot")
+    dir.create(test_output_dir, recursive = TRUE, showWarnings = FALSE)
+    withr::defer(unlink(test_output_dir, recursive = TRUE), envir = parent.frame())
+
+    mss_results <- list(
+        standard_validation = list(
+            `5yr` = list(
+                calibration = list(
+                    curve = list(
+                        bins = data.frame(
+                            risk_group = c("1", "2"),
+                            n = c(20L, 20L),
+                            mean_predicted_risk = c(0.05, 0.30),
+                            observed_risk = c(0.02, 0.35)
+                        ),
+                        smooth = NULL,
+                        curve_method = "grouped_aalen_johansen_cif"
+                    )
+                )
+            )
+        )
+    )
+
+    expect_no_error(create_full_survival_calibration_plot(
+        results = mss_results,
+        outcome_type = "MSS",
+        output_dir = test_output_dir,
+        prefix = "portable_"
+    ))
+    expect_true(file.exists(file.path(test_output_dir, "portable_mss_calibration_full.png")))
+})
+
 test_that("Unified GEP summary accepts MSS standard_validation containers", {
     test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective4_unified_standard_validation")
     dir.create(test_output_dir, recursive = TRUE, showWarnings = FALSE)
@@ -175,6 +324,43 @@ test_that("Unified GEP summary accepts MSS standard_validation containers", {
     expect_true(any(summary$calibration$Outcome == "MSS"))
     expect_true(any(summary$discrimination$Outcome == "MSS"))
     expect_true(all(c("Integrated_AUC_Status", "Integrated_AUC_Method", "Integrated_AUC_Unavailable_Reason") %in% names(summary$discrimination)))
+})
+
+test_that("Unified GEP discrimination summary carries MSS estimand metadata", {
+    mfs_results <- list(
+        validation_results = list(
+            `5yr` = list(
+                discrimination = list(n = 20, events = 5, harrell_c = 0.72)
+            )
+        )
+    )
+    mss_results <- list(
+        standard_validation = list(
+            `5yr` = list(
+                discrimination = list(
+                    n = 20,
+                    events = 5,
+                    harrell_c = NA_real_,
+                    primary_discrimination = 0.81,
+                    primary_discrimination_method = "timeROC_competing_risk_auc",
+                    primary_discrimination_status = "ok",
+                    integrated_auc = 0.81,
+                    integrated_auc_method = "timeROC_competing_risk_auc",
+                    integrated_auc_status = "ok",
+                    analysis_tier = "primary_competing_risk",
+                    interpretation_role = "primary_mss_evidence",
+                    estimand = "Cumulative incidence of melanoma-specific death with non-melanoma death as a competing event"
+                )
+            )
+        )
+    )
+
+    unified_disc <- create_unified_discrimination_summary(mfs_results, mss_results)
+    mss_row <- unified_disc %>% dplyr::filter(Outcome == "MSS")
+
+    expect_equal(mss_row$Primary_Discrimination_Method, "timeROC_competing_risk_auc")
+    expect_equal(mss_row$Analysis_Tier, "primary_competing_risk")
+    expect_match(mss_row$Estimand, "competing event")
 })
 
 test_that("Objective 4 returns fatal issues and failed run_state when MSS analysis errors", {

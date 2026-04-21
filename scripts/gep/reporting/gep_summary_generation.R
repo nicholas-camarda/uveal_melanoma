@@ -43,17 +43,26 @@ create_gep_extrapolation_narrative_section <- function(extrapolation_assessment 
         ))
     }
 
+    support_status <- extrapolation_assessment$status %||% "Unavailable"
+    weak_support <- support_status %in% c("Unsupported", "Weakly Supported", "Unavailable")
+    guardrail_line <- if (weak_support) {
+        md_bullet("Guardrail: keep 7-year and 10-year values in the main output, but do not use those later horizons for treatment planning or direct patient counseling without stronger external support.")
+    } else {
+        md_bullet("Guardrail: later-horizon values remain assumption-dependent even when the observed data do not strongly contradict the extrapolation rule.")
+    }
+
     c(
         md_heading("Extrapolation Interpretation", 2L),
         md_bullet(sprintf(
             "Current extrapolation support status: %s",
-            extrapolation_assessment$status %||% "Unavailable"
+            support_status
         )),
         md_bullet(sprintf(
             "Current extrapolation support note: %s",
             extrapolation_assessment$note %||% "No extrapolation support note available."
         )),
-        md_bullet("Later-horizon issues usually reflect the 7-year and 10-year extension rule, not the imported 5-year assay output itself.")
+        md_bullet("Later-horizon issues usually reflect the 7-year and 10-year extension rule, not the imported 5-year assay output itself."),
+        guardrail_line
     )
 }
 
@@ -145,6 +154,9 @@ create_comprehensive_gep_summary <- function(validation_results, outcome_type, p
         Slope = numeric(),
         Slope_Method = character(),
         Status = character(),
+        Analysis_Tier = character(),
+        Interpretation_Role = character(),
+        Estimand = character(),
         Fit_N = numeric(),
         Events = numeric(),
         Non_Events = numeric(),
@@ -159,6 +171,13 @@ create_comprehensive_gep_summary <- function(validation_results, outcome_type, p
     discrimination_data <- data.frame(
         Timepoint = character(),
         Harrell_C = numeric(),
+        Primary_Discrimination = numeric(),
+        Primary_Discrimination_Method = character(),
+        Primary_Discrimination_Status = character(),
+        Primary_Discrimination_Unavailable_Reason = character(),
+        Analysis_Tier = character(),
+        Interpretation_Role = character(),
+        Estimand = character(),
         Integrated_AUC = numeric(),
         Integrated_AUC_Status = character(),
         Integrated_AUC_Method = character(),
@@ -193,6 +212,9 @@ create_comprehensive_gep_summary <- function(validation_results, outcome_type, p
                     Slope = cal$slope,
                     Slope_Method = ifelse(is.null(cal$slope_method), NA_character_, cal$slope_method),
                     Status = ifelse(is.null(cal$status), NA_character_, cal$status),
+                    Analysis_Tier = ifelse(is.null(cal$analysis_tier), NA_character_, cal$analysis_tier),
+                    Interpretation_Role = ifelse(is.null(cal$interpretation_role), NA_character_, cal$interpretation_role),
+                    Estimand = ifelse(is.null(cal$estimand), NA_character_, cal$estimand),
                     Fit_N = ifelse(is.null(cal$fit_n), NA_real_, cal$fit_n),
                     Events = ifelse(is.null(cal$events), NA_real_, cal$events),
                     Non_Events = ifelse(is.null(cal$non_events), NA_real_, cal$non_events),
@@ -221,6 +243,17 @@ create_comprehensive_gep_summary <- function(validation_results, outcome_type, p
             new_disc_row <- data.frame(
                 Timepoint = tp,
                 Harrell_C = ifelse(is.null(disc$harrell_c), NA_real_, disc$harrell_c),
+                Primary_Discrimination = disc$primary_discrimination %||% disc$harrell_c %||% NA_real_,
+                Primary_Discrimination_Method = disc$primary_discrimination_method %||% disc$harrell_method %||% NA_character_,
+                Primary_Discrimination_Status = disc$primary_discrimination_status %||% ifelse(
+                    is.finite(disc$primary_discrimination %||% disc$harrell_c %||% NA_real_),
+                    "ok",
+                    "not_estimable"
+                ),
+                Primary_Discrimination_Unavailable_Reason = disc$primary_discrimination_unavailable_reason %||% NA_character_,
+                Analysis_Tier = disc$analysis_tier %||% NA_character_,
+                Interpretation_Role = disc$interpretation_role %||% NA_character_,
+                Estimand = disc$estimand %||% NA_character_,
                 Integrated_AUC = ifelse(is.null(disc$integrated_auc), NA_real_, disc$integrated_auc),
                 Integrated_AUC_Status = ifelse(is.null(disc$integrated_auc_status), NA_character_, disc$integrated_auc_status),
                 Integrated_AUC_Method = ifelse(is.null(disc$integrated_auc_method), NA_character_, disc$integrated_auc_method),

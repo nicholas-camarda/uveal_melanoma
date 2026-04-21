@@ -1,5 +1,9 @@
-## ADDED Requirements
+# objective4-reporting-and-qc-guardrails Specification
 
+## Purpose
+Define Objective 4 reporting guardrails that prevent overstatement when follow-up, extrapolation, calibration, interval consistency, or cross-outcome estimand support is limited.
+
+## Requirements
 ### Requirement: Objective 4 narrative strength SHALL degrade when support is weak
 Objective 4 reader-facing clinical interpretation MUST be conditional on follow-up support, extrapolation support, and calibration support.
 

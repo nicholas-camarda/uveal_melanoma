@@ -1568,21 +1568,27 @@ fit_exploratory_binary_model <- function(data,
     cv_slope_interval <- summarize_numeric_interval(repeated_cv_metrics$cv_calibration_slope)
     coefficient_data <- extract_binary_model_coefficients(fitted_model, predictors = predictors)
     predictor_contributions <- summarize_predictor_contributions(coefficient_data, model_name = model_name)
+    single_cv_auc <- calculate_binary_auc(outcome, cv_predictions)
+    single_cv_brier <- calculate_binary_brier(outcome, cv_predictions)
+    single_cv_calibration_slope <- cv_calibration$slope
 
     metrics <- tibble::tibble(
         model = model_name,
         n = nrow(analysis_data),
         events = sum(outcome == 1, na.rm = TRUE),
         apparent_auc = calculate_binary_auc(outcome, apparent_predictions),
-        cv_auc = calculate_binary_auc(outcome, cv_predictions),
+        cv_auc = cv_auc_interval$median,
+        single_cv_auc = single_cv_auc,
         apparent_brier = calculate_binary_brier(outcome, apparent_predictions),
-        cv_brier = calculate_binary_brier(outcome, cv_predictions),
+        cv_brier = cv_brier_interval$median,
+        single_cv_brier = single_cv_brier,
         calibration_status = calibration$status,
         calibration_intercept = calibration$intercept,
         calibration_slope = calibration$slope,
         cv_calibration_status = cv_calibration$status,
         cv_calibration_intercept = cv_calibration$intercept,
-        cv_calibration_slope = cv_calibration$slope,
+        cv_calibration_slope = cv_slope_interval$median,
+        single_cv_calibration_slope = single_cv_calibration_slope,
         cv_folds = cv_folds,
         cv_repeats = nrow(repeated_cv_metrics),
         cv_auc_ci_lower = cv_auc_interval$lower,
@@ -1704,10 +1710,38 @@ summarize_no_gep_predictions <- function(prediction_data) {
         )
 }
 
+#' Validate a Reader-Facing No-GEP Metric Interval
+#'
+#' Ensures a point estimate is contained within its displayed interval before
+#' the no-GEP workbook or markdown report prints it.
+#'
+#' @param estimate Numeric point estimate.
+#' @param lower Numeric lower interval bound.
+#' @param upper Numeric upper interval bound.
+#'
+#' @return Invisibly returns `TRUE` for finite valid intervals and `FALSE` when
+#'   any bound is unavailable.
+validate_exploratory_metric_interval <- function(estimate, lower, upper) {
+    if (any(!is.finite(c(estimate, lower, upper)))) {
+        return(invisible(FALSE))
+    }
+
+    if (lower > upper || estimate < lower || estimate > upper) {
+        stop(sprintf(
+            "Invalid exploratory no-GEP interval: estimate %.6f is not within [%.6f, %.6f].",
+            estimate,
+            lower,
+            upper
+        ))
+    }
+
+    invisible(TRUE)
+}
+
 #' Format a Metric Interval as Text
 #'
 #' Combines a point estimate and percentile interval into a compact string for
-#' reader-facing workbook tabs.
+#' reader-facing workbook tabs after validating interval consistency.
 #'
 #' @param estimate Numeric point estimate.
 #' @param lower Numeric lower interval bound.
@@ -1719,6 +1753,8 @@ format_exploratory_metric_interval <- function(estimate, lower, upper, digits = 
     if (any(!is.finite(c(estimate, lower, upper)))) {
         return(NA_character_)
     }
+
+    validate_exploratory_metric_interval(estimate, lower, upper)
 
     sprintf(
         paste0("%.", digits, "f (%.", digits, "f to %.", digits, "f)"),
@@ -3459,8 +3495,8 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
             mss_model$metrics$model_mode_used[[1]] %||% "raw_binary"
         )),
         md_bullet("All reported no-GEP probabilities and thresholds use the 0-1 probability scale; multiply by 100 for percentages (for example, 0.20 = 20%)."),
-        md_bullet("Apparent AUC is the in-sample fit; cross-validated AUC is the better estimate of expected performance on new patients."),
-        md_bullet("95% repeated-CV intervals show how much AUC, Brier score, and calibration slope change across different fold assignments."),
+        md_bullet("Apparent AUC is the in-sample fit; reported cross-validated AUC is the repeated-CV median and is the better estimate of expected performance on new patients."),
+        md_bullet("95% repeated-CV intervals show how much AUC, Brier score, and calibration slope change across different fold assignments; reader-facing point estimates and intervals use the same repeated-CV distribution."),
         md_bullet("Observed 5-year MFS and MSS rates in the subgroup and ladder summaries use censoring-aware horizon estimates rather than raw event means."),
         "",
         md_heading("Parsimonious Sensitivity Check", 2L),

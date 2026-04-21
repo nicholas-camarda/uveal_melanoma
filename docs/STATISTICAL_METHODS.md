@@ -530,35 +530,22 @@ In Objective 4, the starting predictions are externally supplied patient-level G
 
 The analyzable Objective 4 subset is narrower than “any row with a GEP-related field.” MFS and MSS validation require a definitive raw DecisionDx label, valid endpoint-specific imported GEP probabilities, and the required observed outcome fields. Definitive raw labels are `Class_1A_PRAME_negative`, `Class_1A_PRAME_positive`, `Class_1B_PRAME_negative`, `Class_1B_PRAME_positive`, `Class_2_PRAME_negative`, and `Class_2_PRAME_positive`. Nondefinitive labels such as `*_not_reported`, `Class_2_PRAME_Unknown`, `Class_1A_PRAME_discordant`, `Failed`, `Unknown`, `Other`, and `No` are excluded from `mfs_analysis_eligible` and `mss_analysis_eligible`. Objective 4 entry points refresh these flags before analysis so the definitive-label rule is applied consistently.
 
-#### Training/testing split generation and rationale
+#### GEP validation eligibility
 
-Objective 0 creates the `gep_validation_set` variable once during preprocessing on the full cohort. Patients are eligible for this split only when they have analyzable imported GEP data for the validation workflow: non-missing `biopsy1_gep_mfs`, non-missing `biopsy1_gep_mss`, and a definitive simplified GEP class in `GEP_DEFINITIVE_SIMPLE_LEVELS` (`Class 1` or `Class 2`). Everyone else is labeled `No GEP Data`.
+Objective 0 creates `gep_validation_set` as Objective 4 eligibility metadata. Patients are labeled `Eligible` when they have analyzable imported GEP data for the validation workflow: non-missing `biopsy1_gep_mfs`, non-missing `biopsy1_gep_mss`, and a definitive simplified GEP class in `GEP_DEFINITIVE_SIMPLE_LEVELS` (`Class 1` or `Class 2`). Everyone else is labeled `No GEP Data`.
 
-The current implementation does not perform independent Bernoulli sampling row by row. Instead, it identifies the full set of eligible rows, calculates `n_training = round(n_eligible * 0.7)`, assigns the remaining eligible rows to `Testing`, builds a vector with those exact counts, shuffles that vector, and writes the shuffled labels back to the eligible rows. The result is therefore an approximately 70/30 partition with deterministic counts for a given eligible sample size, rather than a purely probabilistic split with wider run-to-run variation in the realized proportion.
-
-This split exists to support Objective 4 internal validation summaries and quality-control checks. The imported GEP predictions are already fixed before the analytic pipeline begins, so the split is not used to train a new molecular model. Instead, it provides a stable internal partition for reader-facing training/testing comparisons and for validation outputs that should not silently pool all analyzable GEP rows into a single undifferentiated set.
-
-#### Why Objective 0 treats split failure as fatal
-
-Objective 0 is the only stage that creates and validates `gep_validation_set`, so this is the correct place to fail fast if the full-cohort partition is malformed. A broken split at this stage means the processed analytic datasets no longer satisfy a core preprocessing contract for Objective 4. If the full cohort has analyzable GEP rows but no `Training` rows, no `Testing` rows, an implausible training proportion, or inconsistent counts between `Training`, `Testing`, and `No GEP Data`, downstream Objective 4 summaries become misleading rather than merely incomplete. For that reason, Objective 0 now treats full-cohort split-shape failures as fatal and stops the run before downstream objectives execute.
-
-In practice, the full-cohort split is expected to satisfy broad sanity conditions rather than an exact 70.0/30.0 ratio. The validation checks require count consistency and an approximately 70/30 partition in the full cohort, with a wide tolerance intended to catch corruption or derivation failure rather than ordinary rounding.
-
-#### Permissible subset exceptions, including GKSRS
-
-The `uveal_melanoma_restricted_cohort` and `uveal_melanoma_gksrs_only_cohort` are not assigned new training/testing labels. They inherit the labels created once in the full cohort and then apply additional inclusion filters. Because these are deterministic subsets of the original partition, their apparent training/testing ratio can change substantially after subsetting, and some subsets may even lose one split entirely if the subset is small or clinically selective enough.
-
-This behavior is permissible because the preprocessing contract is defined at the full-cohort level, where the split is generated. Subset cohorts only need to remain internally count-consistent with the inherited labels; they are not required to recreate an approximately 70/30 split. The GKSRS cohort is the clearest example: it is a treatment-defined subset of the full cohort, so enforcing the original split proportion after subsetting would be statistically inappropriate and would generate false validation failures. Objective 0 therefore enforces split-shape rules only on the full cohort while still checking that subset-cohort labels remain structurally consistent.
+Objective 4 validates imported GEP probabilities directly. It does not train a new molecular prognostic model from the analytic cohort, so `gep_validation_set` is not a model-training partition and is not used as a primary validation mechanism. Objective 0 validates count consistency between `Eligible`, `No GEP Data`, and the rows with analyzable imported GEP probabilities.
 
 **Analyses:**
 1. **Observed vs Expected / Calibration:** Agreement between lab-reported and realized event rates
 2. **Discrimination:** Ability to separate patients with vs without events
 3. **Clinical Utility:** Impact on clinical decision-making
-4. **Competing-risk MSS sensitivity analysis:** Separate accounting for non-melanoma death when evaluating MSS
+4. **Competing-risk MSS validation:** Primary MSS calibration and discrimination target melanoma-death cumulative incidence while retaining non-melanoma death as a competing event
 
 **Role of the downstream methods:**
-- Kaplan-Meier summaries in MFS and standard MSS grouped calibration estimate observed outcome risk from follow-up data; they are not the source of the GEP prediction.
-- Companion competing-risk MSS analyses use cumulative incidence functions to estimate observed melanoma-specific death risk when non-melanoma death is handled explicitly as a competing event.
+- Kaplan-Meier summaries in MFS estimate observed metastasis risk from follow-up data; they are not the source of the GEP prediction.
+- Primary MSS summaries use cumulative-incidence methods to estimate observed melanoma-specific death risk when non-melanoma death is handled explicitly as a competing event.
+- Legacy binary/cause-specific MSS metrics can remain in technical sidecars when useful for continuity, but they are not the manuscript-facing MSS evidence.
 - IPCW-weighted recalibration models, grouped calibration statistics, discrimination metrics, and decision-curve analysis all evaluate how well the supplied GEP predictions performed.
 
 For a workbook-first overview written for non-statistical readers, see [Understanding GEP Analysis](INTERPRETATION_GUIDE.md#understanding-gep-analysis) and [GEP Quick Read](INTERPRETATION_GUIDE.md#gep-quick-read).
@@ -577,7 +564,7 @@ The canonical repository interpretation is that the Objective 4 MFS 5-year obser
 - **Pearson goodness-of-fit p-value:** Tests whether grouped observed counts depart materially from grouped expected counts across GEP classes
 - **Nam-D'Agostino statistic:** Grouped calibration test reported in the consolidated workbook
 - **Integrated Calibration Index (ICI):** Average absolute difference between predicted and observed risk
-- **Calibration slope:** Should be close to 1.0; reported as the primary slope summary across timepoints
+- **Calibration slope:** Should be close to 1.0 when estimable; competing-risk MSS primary summaries mark slope unavailable rather than forcing a binary-horizon recalibration model
 - **Brier score:** Horizon-specific mean squared error between predicted event risk and observed horizon outcome, carried in the workbook as a compact overall accuracy summary
 
 **Workbook traceability:**
@@ -590,8 +577,7 @@ The canonical repository interpretation is that the Objective 4 MFS 5-year obser
 
 **Endpoint note:**
 - MFS uses metastasis events.
-- MSS standard validation uses melanoma-specific death as the event.
-- Non-melanoma death is handled separately in competing-risk analyses rather than being treated as an MSS event.
+- MSS uses melanoma-specific death as the event of interest and treats non-melanoma death as a competing event in the primary MSS validation lane.
 
 ### How Expected Counts Are Calculated
 
@@ -681,8 +667,9 @@ This is again a pseudo-event count on the original denominator scale. It is not 
 
 Sheet distinction:
 - For MFS, the `Observed_Expected_Summary` sheet reflects the Kaplan-Meier-derived observed count scale described above.
+- For MSS, the `Observed_Expected_Summary` sheet reflects the Aalen-Johansen cumulative-incidence count scale described above.
 - The `Observed_Expected_Summary` sheet reports its overall goodness-of-fit p-value as `OE_Chi_Square_p`.
-- The `Calibration_Summary` sheet reports its grouped survival-calibration p-value as `Nam_D_Agostino_p` and uses grouped Kaplan-Meier estimates with Greenwood variance for that field.
+- The `Calibration_Summary` sheet reports method-specific calibration fields. MFS uses grouped Kaplan-Meier/Greenwood logic where support allows it; MSS primary calibration uses grouped Aalen-Johansen cumulative incidence and labels binary-horizon statistics as non-primary when retained.
 
 These are not interchangeable quantities:
 - `OE_Chi_Square_p` is the overall observed-versus-expected count-comparison p-value attached to the calibration-in-the-large summary.
@@ -738,14 +725,15 @@ with a $\chi^2$ reference distribution using $G-1$ degrees of freedom.
 
 For a plain-English reading order for calibration outputs, see [GEP Calibration Made Simple](INTERPRETATION_GUIDE.md#gep-calibration-made-simple).
 
-#### MSS standard-validation calibration implementation
+#### MSS primary calibration implementation
 
-For MSS standard validation, the grouped calibration p-value uses the same Greenwood-based grouped survival approach:
+For MSS primary validation, grouped calibration targets melanoma-death cumulative incidence:
 - Predicted melanoma-specific death risk is grouped into quantiles.
-- Group-specific observed risk is estimated by Kaplan-Meier at the evaluation horizon while treating non-melanoma deaths as censored in the standard MSS analysis.
-- Greenwood variance is used in the grouped goodness-of-fit denominator.
+- Group-specific observed risk is estimated with Aalen-Johansen cumulative incidence at the evaluation horizon.
+- Non-melanoma deaths remain competing events rather than being censored as if they were ordinary incomplete follow-up.
+- The grouped ICI is computed as a weighted mean absolute difference between group-level predicted melanoma-death risk and observed cumulative incidence.
 
-This grouped survival-calibration statistic is used for both MFS and standard MSS calibration summaries, while the competing-risk MSS analyses remain separate.
+Competing-risk MSS calibration does not publish a forced binary-horizon calibration slope or Greenwood/Nam-D'Agostino p-value as primary evidence. Those fields are explicitly marked unavailable for the primary MSS lane, and legacy binary-style calibration is retained only as a technical sidecar when emitted.
 
 ### Integrated Calibration Index (ICI)
 
@@ -755,8 +743,9 @@ For MFS:
 - When the effective risk support at the evaluation horizon is rich enough, the reported ICI is computed from an IPCW-weighted logistic spline recalibration curve on the logit-transformed predicted risk.
 - When the effective risk support is too coarse for a stable smooth curve, the method falls back to the grouped Kaplan-Meier absolute calibration error already used for the Greenwood-based grouped calibration summary.
 
-For MSS standard validation:
-- The same rule is used: preferred IPCW-smoothed ICI when the horizon-specific predicted risks are sufficiently granular, grouped Kaplan-Meier fallback when they are not.
+For MSS primary validation:
+- ICI is computed from grouped Aalen-Johansen cumulative incidence so the observed side matches the competing-risk MSS estimand.
+- IPCW-smoothed binary-horizon ICI remains a technical sidecar rather than the primary MSS calibration summary.
 
 #### IPCW-smoothed ICI path
 
@@ -807,9 +796,9 @@ For sparse cohorts or sparse horizons, the summary-writing behavior is deliberat
 
 ### Calibration Slope
 
-The calibration slope is now computed with a single censoring-aware method for both MFS and standard MSS.
+For MFS, the calibration slope is computed with a censoring-aware IPCW method when the horizon has enough support.
 
-For both MFS and MSS standard validation:
+For MFS:
 - The predicted event risk at the requested horizon is transformed to the logit scale.
 - Patients with known horizon status contribute through inverse-probability-of-censoring weights (IPCW), so early censoring does not get treated as an observed non-event.
 - A weighted logistic recalibration model is then fit at that horizon, and the coefficient of the transformed predicted risk is reported as the calibration slope.
@@ -830,6 +819,8 @@ Operationally, the slope is treated as unavailable when the recalibration fit fa
 - and the rest of the summary is still emitted so the horizon remains reviewable rather than disappearing from the workbook.
 
 The intercept may remain estimable even when the slope is withheld. That is intentional: the offset-only IPCW intercept fit can be numerically acceptable in settings where the free slope fit is not.
+
+For MSS primary validation, the competing-risk lane does not report a binary logistic calibration slope as primary evidence. The workbook keeps the slope field for schema consistency, writes it as missing, and records `Slope_Method = not_estimated_for_competing_risk_primary_lane`.
 
 **Practical interpretation:** `Slope` near 1 is best; values below 1 suggest predictions are too extreme, and values above 1 suggest predictions are too compressed.
 
@@ -854,7 +845,7 @@ Current implementation details:
 - `Brier_Method = insufficient_data`, `calculation_failed`, or `all_methods_failed`: the score was unavailable or too degraded for normal interpretation.
 - `Brier_Fallback_Used = TRUE`: the reported value did not come from the preferred path and should be described as a fallback estimate.
 
-In this pipeline, the Brier score is a secondary calibration/accuracy check. The primary calibration interpretation should still rest on the grouped Greenwood Nam-D'Agostino result, the ICI, and the calibration slope.
+In this pipeline, the Brier score is a secondary calibration/accuracy check. For MFS, the primary calibration interpretation rests on the grouped Greenwood/Nam-D'Agostino result, the ICI, and the calibration slope. For MSS, primary calibration interpretation rests on the grouped Aalen-Johansen ICI and observed-vs-expected cumulative-incidence alignment; binary-survival Brier scores are technical sidecars.
 
 
 ### Discrimination Assessment
@@ -875,9 +866,9 @@ These fields are written to the `Discrimination_Summary` sheet of the consolidat
 - `Harrell_C` is then computed on those horizon-truncated data, so the MFS value is a horizon-specific concordance estimate.
 
 **MSS implementation:**
-- In `perform_discrimination_mss()`, the primary `Harrell_C` uses the same `survcomp::concordance.index()` call but on full observed follow-up in the horizon-specific analytic subset.
-- The code passes `time_to_event` and `event_occurred` directly rather than truncating the primary concordance calculation at the landmark year.
-- This means the MSS `Harrell_C` is not the same estimand as the MFS `Harrell_C`, even though both appear in the same workbook column.
+- MSS primary discrimination is reported in `Primary_Discrimination` and uses `timeROC` competing-risk AUC for melanoma-specific death as cause 1 at the requested horizon.
+- The `Harrell_C` field is retained for schema continuity but is marked as not primary for the competing-risk MSS lane.
+- Legacy Harrell-style MSS discrimination can remain in `technical_sidecars` for continuity, but it should not be used as the lead MSS discrimination claim.
 
 **Fallback:** If `survcomp` fails, the code falls back to concordance from `survival::coxph()`.
 
@@ -890,9 +881,9 @@ For a plain-English reading order for discrimination outputs, see [GEP Discrimin
 The pipeline intentionally removed Uno's C and single-timepoint time-dependent AUC because those metrics were too fragile for the current event pattern. The replacement discrimination fields are more stable summaries over follow-up.
 
 **Integrated AUC (`Integrated_AUC`):**
-- The code fits `coxph(Surv(observed_time, observed_event) ~ predicted_risk)`.
-- It then calls `riskRegression::Score()` with monthly evaluation times: `seq(0, max(observed_time), by = 12)`.
-- The reported integrated AUC is the mean of the returned AUC values across those time periods.
+- MFS fits `coxph(Surv(observed_time, observed_event) ~ predicted_risk)` and calls `riskRegression::Score()` with monthly evaluation times.
+- MSS primary discrimination calls `timeROC::timeROC()` with melanoma-specific death as cause 1 and non-melanoma death as the competing event.
+- The reported MSS primary value is carried in both `Integrated_AUC` and `Primary_Discrimination` with method `timeROC_competing_risk_auc`.
 - If `riskRegression::Score()` does not return a finite integrated AUC, the pipeline now leaves `Integrated_AUC` as missing and carries the explanation in `Integrated_AUC_Status`, `Integrated_AUC_Method`, and `Integrated_AUC_Unavailable_Reason`.
 - The pipeline does not silently substitute Harrell's C or another discrimination metric when integrated AUC is not estimable.
 
