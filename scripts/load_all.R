@@ -18,22 +18,23 @@ USE_CLINICAL_BINNING_CONTINUOUS <- TRUE # DEFAULT: Use clinical thresholds for t
 ######################################################################
 ############### LOAD / INSTALL REQUIRED LIBRARIES ####################
 ######################################################################
-#' Require an Installed Package and Load It
+#' Install a Missing Project Package with pak and Load It
 #'
-#' Fails fast with a clear bootstrap instruction when a required package is
-#' missing, and otherwise loads it with startup messages suppressed.
+#' Uses the CRAN pak package to install a missing project dependency, then
+#' loads the package with startup messages suppressed.
 #'
 #' @param pkg Character package name
 #' @return Invisibly loads the package into the session
-use <- function(pkg) {
+load_project_package <- function(pkg) {
     if (!requireNamespace(pkg, quietly = TRUE)) {
-        stop(
-            sprintf(
-                "Required package '%s' is not installed. Run `Rscript scripts/bootstrap_packages.R` before sourcing load_all.R.",
-                pkg
-            ),
-            call. = FALSE
-        )
+        if (!requireNamespace("pak", quietly = TRUE)) {
+            stop(
+                "Required installer package 'pak' is not installed. Run `install.packages(\"pak\")` before sourcing load_all.R.",
+                call. = FALSE
+            )
+        }
+
+        pak::pak(pkg, ask = FALSE)
     }
 
     suppressPackageStartupMessages(
@@ -41,60 +42,77 @@ use <- function(pkg) {
     )
 }
 
+##########################################################################
+############### SETUP LOGGING ############################################
+##########################################################################
+
+if (USE_LOGS) {
+    # Create logs directory if it doesn't exist
+    if (!dir.exists(LOGS_DIR)) {
+        dir.create(LOGS_DIR, showWarnings = FALSE)
+    }
+    timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
+    log_file <- file.path(LOGS_DIR, paste0("run_log_", timestamp, ".txt"))
+    setup_logging(log_path = log_file, level = "INFO", progress = interactive(), quiet_html = TRUE)
+} else {
+    setup_logging(log_path = NULL, level = "INFO", progress = interactive(), quiet_html = TRUE)
+}
+
+
 ######################################################################
 ############### LOAD / INSTALL REQUIRED LIBRARIES ####################
 ######################################################################
 
 # Data wrangling & core utilities
-use("tidyverse") # For data manipulation and visualization (dplyr, ggplot2, etc.)
-use("readxl") # For reading Excel files
-use("writexl") # For writing Excel files
-use("openxlsx") # For creating Excel workbooks with multiple sheets
-use("lubridate") # Date handling
-use("janitor") # Data cleaning
-use("broom.helpers") # For broom helpers
-use("parameters") # For broom
-use("gtsummary") # Creating publication-ready tables
+load_project_package("tidyverse") # For data manipulation and visualization (dplyr, ggplot2, etc.)
+load_project_package("readxl") # For reading Excel files
+load_project_package("writexl") # For writing Excel files
+load_project_package("openxlsx") # For creating Excel workbooks with multiple sheets
+load_project_package("lubridate") # Date handling
+load_project_package("janitor") # Data cleaning
+load_project_package("broom.helpers") # For broom helpers
+load_project_package("parameters") # For broom
+load_project_package("gtsummary") # Creating publication-ready tables
 
 # Core survival analysis
-use("survival") # For survival analysis
-use("survminer") # For survival visualization
-use("survRM2") # Survival analysis at differ ent time points
+load_project_package("survival") # For survival analysis
+load_project_package("survminer") # For survival visualization
+load_project_package("survRM2") # Survival analysis at differ ent time points
 
 # Tables and plots
-use("gt") # Table formatting
-use("cardx") # Extended statistical functions for gtsummary
-use("forestploter") # Forest plots
-use("grid") # grid::unit(), viewport helpers
-use("gridExtra") # Table grobs for inset RMST summaries
-use("cowplot") # Combining ggplots
-use("ggsurvfit") # For cumulative incidence plots
-use("tidycmprsk") # For cumulative incidence plots
+load_project_package("gt") # Table formatting
+load_project_package("cardx") # Extended statistical functions for gtsummary
+load_project_package("forestploter") # Forest plots
+load_project_package("grid") # grid::unit(), viewport helpers
+load_project_package("gridExtra") # Table grobs for inset RMST summaries
+load_project_package("cowplot") # Combining ggplots
+load_project_package("ggsurvfit") # For cumulative incidence plots
+load_project_package("tidycmprsk") # For cumulative incidence plots
 
 # Logging and progress
-use("logger")
-use("progressr")
+load_project_package("logger")
+load_project_package("progressr")
 
 # Testing
-use("here") # For finding project root
-use("usethis") # For creating test files
-use("testthat") # For testing
+load_project_package("here") # For finding project root
+load_project_package("usethis") # For creating test files
+load_project_package("testthat") # For testing
 # usethis::use_testthat(3) # Set testthat edition to 3 for improved error messages
 # local_edition(3) # Set testthat edition to 3 for improved error messages
 
 
 # Advanced GEP validation (Objective 4)
-use("rms") # Advanced regression modeling and validation
-use("pec") # Prediction-error curves & validation metrics
-use("survcomp") # Survival model comparison and validation (Bioconductor)
-use("riskRegression") # Risk regression & competing risks
-use("cmprsk") # Competing-risk analysis (Fine-Gray models)
-use("timeROC") # Time-dependent ROC analysis
-use("pROC") # ROC analysis
-use("rmda") # Risk-model decision analysis
-use("VIM") # Visualization & imputation of missing values
-use("mice") # Multiple imputation by chained equations
-use("glmnet") # Penalized generalized linear models for exploratory no-GEP models
+load_project_package("rms") # Advanced regression modeling and validation
+load_project_package("pec") # Prediction-error curves & validation metrics
+load_project_package("survcomp") # Survival model comparison and validation (Bioconductor)
+load_project_package("riskRegression") # Risk regression & competing risks
+load_project_package("cmprsk") # Competing-risk analysis (Fine-Gray models)
+load_project_package("timeROC") # Time-dependent ROC analysis
+load_project_package("pROC") # ROC analysis
+load_project_package("rmda") # Risk-model decision analysis
+load_project_package("VIM") # Visualization & imputation of missing values
+load_project_package("mice") # Multiple imputation by chained equations
+load_project_package("glmnet") # Penalized generalized linear models for exploratory no-GEP models
 
 ######################################################################
 ############### SOURCE ALL NECESSARY SCRIPTS #########################
@@ -326,27 +344,4 @@ make_filename_safe <- function(label) {
         gsub("^_|_$", "", .) # Remove leading/trailing underscores
 
     return(safe_name)
-}
-
-# Required packages for GEP analysis
-required_packages <- c(
-    "survival", "survminer", "cmprsk", "riskRegression", "survcomp", "timeROC", "pROC",
-    "dplyr", "ggplot2", "gridExtra", "writexl", "readxl", "knitr", "kableExtra",
-    "gt", "gtsummary", "broom", "car", "lmtest", "sandwich", "MASS", "pscl",
-    "logistf", "mice", "VIM", "naniar", "corrplot", "RColorBrewer", "scales",
-    "stringr", "forcats", "tidyr", "purrr", "readr", "tibble", "magrittr",
-    "rmarkdown", "DT", "plotly", "shiny", "shinydashboard", "flexdashboard"
-)
-
-# Initialize logging
-if (USE_LOGS) {
-    # Create logs directory if it doesn't exist
-    if (!dir.exists(LOGS_DIR)) {
-        dir.create(LOGS_DIR, showWarnings = FALSE)
-    }
-    timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
-    log_file <- file.path(LOGS_DIR, paste0("run_log_", timestamp, ".txt"))
-    setup_logging(log_path = log_file, level = "INFO", progress = interactive(), quiet_html = TRUE)
-} else {
-    setup_logging(log_path = NULL, level = "INFO", progress = interactive(), quiet_html = TRUE)
 }
