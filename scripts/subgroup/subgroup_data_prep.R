@@ -127,6 +127,46 @@ process_subgroup_data <- function(data, subgroup_var, confounders, include_basel
     list(data = processed_data, subgroup_var_to_use = subgroup_var_to_use, confounders_to_use = confounders_to_use, was_continuous = was_continuous, cutoff_value = cutoff_value)
 }
 
+#' Resolve the outcome column used for subgroup event counts
+#'
+#' @param data Data frame used for the subgroup analysis.
+#' @param outcome_config List describing the modeled outcome.
+#' @return Character column name, or `NULL` for continuous outcomes or missing columns.
+resolve_subgroup_event_count_variable <- function(data, outcome_config) {
+    if (identical(outcome_config$type, "binary")) {
+        outcome_var <- outcome_config$outcome_var %||% NULL
+    } else if (identical(outcome_config$type, "survival")) {
+        outcome_var <- outcome_config$event_var %||% NULL
+    } else {
+        return(NULL)
+    }
+
+    if (!is.null(outcome_var) && outcome_var %in% names(data)) {
+        return(outcome_var)
+    }
+
+    NULL
+}
+
+#' Count modeled outcome events by treatment arm within a subgroup level
+#'
+#' @param level_data Data frame restricted to one subgroup level.
+#' @param outcome_config List describing the modeled outcome.
+#' @return List with `plaque_events`, `gksrs_events`, and `event_var`.
+count_subgroup_events_by_arm <- function(level_data, outcome_config) {
+    event_var <- resolve_subgroup_event_count_variable(level_data, outcome_config)
+    if (is.null(event_var)) {
+        return(list(plaque_events = NA_real_, gksrs_events = NA_real_, event_var = NULL))
+    }
+
+    event_indicator <- coerce_binary_outcome_vector(level_data[[event_var]])
+    list(
+        plaque_events = sum(level_data$treatment_group == "PBT" & event_indicator == 1, na.rm = TRUE),
+        gksrs_events = sum(level_data$treatment_group == "GKSRS" & event_indicator == 1, na.rm = TRUE),
+        event_var = event_var
+    )
+}
+
 #' Fit model with interaction for a given outcome type
 #' @param data Processed data
 #' @param outcome_config List with type & vars
@@ -150,18 +190,10 @@ fit_subgroup_model <- function(data, outcome_config, subgroup_var_to_use, confou
         gksrs_events <- NA
         reason_parts <- c()
         if (outcome_config$type == "survival") {
-            event_vars <- c("death_event", "mets_event", "pfs_event", "event")
-            event_var <- NULL
-            for (ev in event_vars) {
-                if (ev %in% names(level_data)) {
-                    event_var <- ev
-                    break
-                }
-            }
-            if (!is.null(event_var)) {
-                plaque_events <- sum(level_data$treatment_group == "PBT" & level_data[[event_var]] == 1, na.rm = TRUE)
-                gksrs_events <- sum(level_data$treatment_group == "GKSRS" & level_data[[event_var]] == 1, na.rm = TRUE)
-            }
+            event_counts <- count_subgroup_events_by_arm(level_data, outcome_config)
+            event_var <- event_counts$event_var
+            plaque_events <- event_counts$plaque_events
+            gksrs_events <- event_counts$gksrs_events
             sample_ok <- n_plaque >= 2 && n_gksrs >= 2
             events_ok <- !is.null(event_var) && !is.na(plaque_events) && !is.na(gksrs_events) && plaque_events >= 1 && gksrs_events >= 1
             if (!sample_ok) {
@@ -176,25 +208,9 @@ fit_subgroup_model <- function(data, outcome_config, subgroup_var_to_use, confou
             }
         } else {
             if (outcome_config$type == "binary") {
-                outcome_vars <- c("recurrence1", "mets_progression", "event", "outcome")
-                found_outcome_var <- NULL
-                for (ov in outcome_vars) {
-                    if (ov %in% names(level_data)) {
-                        found_outcome_var <- ov
-                        break
-                    }
-                }
-                if (!is.null(found_outcome_var)) {
-                    outcome_var <- level_data[[found_outcome_var]]
-                    if (is.factor(outcome_var)) {
-                        ref_level <- levels(outcome_var)[1]
-                        plaque_events <- sum(level_data$treatment_group == "PBT" & level_data[[found_outcome_var]] != ref_level, na.rm = TRUE)
-                        gksrs_events <- sum(level_data$treatment_group == "GKSRS" & level_data[[found_outcome_var]] != ref_level, na.rm = TRUE)
-                    } else {
-                        plaque_events <- sum(level_data$treatment_group == "PBT" & (level_data[[found_outcome_var]] == 1 | level_data[[found_outcome_var]] == TRUE), na.rm = TRUE)
-                        gksrs_events <- sum(level_data$treatment_group == "GKSRS" & (level_data[[found_outcome_var]] == 1 | level_data[[found_outcome_var]] == TRUE), na.rm = TRUE)
-                    }
-                }
+                event_counts <- count_subgroup_events_by_arm(level_data, outcome_config)
+                plaque_events <- event_counts$plaque_events
+                gksrs_events <- event_counts$gksrs_events
             }
             sample_ok <- n_plaque >= 2 && n_gksrs >= 2
             events_ok <- TRUE
@@ -253,6 +269,7 @@ fit_subgroup_model <- function(data, outcome_config, subgroup_var_to_use, confou
         interaction_diagnostics$failure_reason <- "Model fitting failed"
         return(list(model = NULL, interaction_p = NA, formula_used = NA, interaction_diagnostics = interaction_diagnostics, filtered_data = filtered_data))
     }
+    attr(model, "subgroup_event_var") <- resolve_subgroup_event_count_variable(filtered_data, outcome_config)
     subgroup_levels <- levels(filtered_data[[subgroup_var_to_use]])
     if (length(subgroup_levels) == 2) {
         interaction_coef_name <- get_interaction_coefficient_name(model, "treatment_group", subgroup_var_to_use, subgroup_levels[2], filtered_data)
@@ -303,42 +320,17 @@ calculate_subgroup_effects <- function(model, data, subgroup_var_to_use, outcome
         n_gksrs <- sum(level_data$treatment_group == "GKSRS", na.rm = TRUE)
         events_plaque <- NA
         events_gksrs <- NA
+        outcome_config <- list(type = outcome_type)
         if (outcome_type == "survival") {
-            plaque_data <- level_data %>% dplyr::filter(treatment_group == "PBT")
-            gksrs_data <- level_data %>% dplyr::filter(treatment_group == "GKSRS")
-            event_vars <- c("death_event", "mets_event", "pfs_event", "event")
-            found_event_var <- NULL
-            for (ev in event_vars) {
-                if (ev %in% names(level_data)) {
-                    found_event_var <- ev
-                    break
-                }
-            }
-            if (!is.null(found_event_var)) {
-                events_plaque <- sum(plaque_data[[found_event_var]] == 1, na.rm = TRUE)
-                events_gksrs <- sum(gksrs_data[[found_event_var]] == 1, na.rm = TRUE)
-            }
+            outcome_config$event_var <- attr(model, "subgroup_event_var") %||% NULL
+            event_counts <- count_subgroup_events_by_arm(level_data, outcome_config)
+            events_plaque <- event_counts$plaque_events
+            events_gksrs <- event_counts$gksrs_events
         } else if (outcome_type == "binary") {
-            plaque_data <- level_data %>% dplyr::filter(treatment_group == "PBT")
-            gksrs_data <- level_data %>% dplyr::filter(treatment_group == "GKSRS")
-            outcome_vars <- c("recurrence1", "mets_progression", "outcome")
-            found_outcome_var <- NULL
-            for (ov in outcome_vars) {
-                if (ov %in% names(level_data)) {
-                    found_outcome_var <- ov
-                    break
-                }
-            }
-            if (!is.null(found_outcome_var)) {
-                outcome_var <- level_data[[found_outcome_var]]
-                if (is.factor(outcome_var)) {
-                    events_plaque <- sum(plaque_data[[found_outcome_var]] != levels(outcome_var)[1], na.rm = TRUE)
-                    events_gksrs <- sum(gksrs_data[[found_outcome_var]] != levels(outcome_var)[1], na.rm = TRUE)
-                } else {
-                    events_plaque <- sum(plaque_data[[found_outcome_var]] == 1 | plaque_data[[found_outcome_var]] == TRUE, na.rm = TRUE)
-                    events_gksrs <- sum(gksrs_data[[found_outcome_var]] == 1 | gksrs_data[[found_outcome_var]] == TRUE, na.rm = TRUE)
-                }
-            }
+            outcome_config$outcome_var <- attr(model, "subgroup_event_var") %||% NULL
+            event_counts <- count_subgroup_events_by_arm(level_data, outcome_config)
+            events_plaque <- event_counts$plaque_events
+            events_gksrs <- event_counts$gksrs_events
         }
         if (i == 1) {
             coef_idx <- get_treatment_coefficient_name(model, "treatment_group", data)

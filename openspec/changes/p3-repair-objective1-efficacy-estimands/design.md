@@ -20,11 +20,15 @@ Objective 1 spans recurrence, metastatic progression, OS, PFS, tumor-height chan
 
 Reuse existing Objective 1 survival, RMST, binary-output, effect-summary, subgroup, forest-plot, and diagnostics mechanisms where possible. New cumulative-incidence outputs and interpretation notes should extend existing workbooks, diagnostics tabs, notes/status fields, or high-level summaries rather than creating parallel report paths.
 
+Do not create new PH/RMST interpretation workbooks, folders, or one-off sidecar reports unless no existing artifact can carry the information. Prefer adding compact fields or notes to the current survival effect summaries, proportional-hazards summary text, RMST summary tables, and centralized Objective 1 high-level summary.
+
 ## Decisions
 
 ### Decision: Treat binary rates and cumulative incidence as co-primary for recurrence/metastasis
 
 Objective 1 will preserve the collaborator-requested binary recurrence and metastatic-progression comparisons while adding competing-risk cumulative incidence as co-primary evidence using existing time variables. Death before recurrence or metastasis will be handled as a competing event for the cumulative-incidence lane. Binary outputs answer whether an event was ever observed during available follow-up; cumulative-incidence outputs answer event probability by a time horizon while accounting for censoring and competing death.
+
+The cumulative-incidence workbook labels the Gray test as `gray_test_global_curve_p_value` because Gray's test is one global across-group comparison of cumulative-incidence curves. It is repeated across horizon rows only as contextual test metadata and must not be interpreted as a separate p-value for each time horizon or treatment group.
 
 Alternative considered:
 - Replace binary/logistic outputs entirely. Rejected because the project objectives and collaborator-facing materials explicitly ask for binary rate comparisons.
@@ -39,6 +43,25 @@ Materiality should be judged from the existing PH diagnostics and companion outp
 Alternative considered:
 - Automatically make RMST primary whenever PH p < 0.05. Rejected because mild PH departures do not necessarily invalidate Cox summaries and prior statistical guidance supports proportional response to the severity of the violation.
 
+Implementation examples from the current Objective 1 results:
+
+- Full-cohort OS: treatment PH p=0.151 and global PH p=0.128; adjusted Cox HR=1.12 (95% CI 0.65 to 1.93). Interpretation priority should remain Cox-forward, with RMST/KM as complementary absolute-time context.
+- Full-cohort PFS: treatment PH p=0.0341 and global PH p=0.0340; adjusted Cox HR=1.22 (95% CI 0.77 to 1.94), while RMST favors PBT by about 5.0 months at 5 years (p=0.03). Interpretation priority should be RMST/KM-forward or at least Cox-with-material-PH-caution, with the Cox HR described as an average/time-compressed effect.
+- Restricted-cohort PFS: global PH p=0.0241 but treatment PH p=0.212; adjusted Cox HR=1.31 (95% CI 0.72 to 2.37), with 5-year RMST difference about -5.5 months (p=0.07). Interpretation priority should be Cox-with-PH-caution rather than automatic Cox demotion because the treatment term itself does not show PH violation.
+- GKSRS-only PFS: treatment PH p=0.0787 and global PH p=0.102; adjusted Cox HR=0.77 (95% CI 0.31 to 1.91). Interpretation priority can remain Cox-forward from a PH standpoint, while cohort-level language still treats this surface as exploratory characterization rather than the primary treatment-comparison surface.
+
+Suggested compact fields for existing tables:
+
+- `PH_Interpretation`: `cox_forward`, `cox_with_ph_caution`, `rmst_km_forward`, or `cox_limited_ph_untestable`.
+- `PH_Interpretation_Reason`: short text such as `No PH diagnostic concern`, `Global PH flag without treatment-term PH flag`, `Treatment-term and global PH flags with RMST contrast`, or `PH diagnostics unavailable due to low event support`.
+
+Suggested concise note patterns:
+
+- Cox-forward: "PH diagnostics did not show evidence against proportional hazards; Cox HR remains the lead model-based summary, with RMST/KM retained as absolute-time context."
+- Cox with PH caution: "PH diagnostics showed a global concern but not a treatment-term concern; Cox HR remains reportable, but interpretation should be triangulated with RMST/KM."
+- RMST/KM-forward: "PH diagnostics flagged treatment and global non-proportionality; the Cox HR is reported as an average/time-compressed effect, while RMST/KM provide the lead interpretation."
+- PH untestable: "PH diagnostics were not supportable; any Cox HR should be interpreted cautiously with event-support and RMST/KM context where available."
+
 ### Decision: Add a centralized cohort-interpretation note
 
 The restricted cohort will carry the strongest comparative language. The full cohort will be reported as real-world associational, and the GKSRS-only cohort as characterization or exploratory support. This will be implemented through a centralized note in high-level Objective 1 reader-facing summaries rather than by adding repeated boilerplate to every plot, model table, HTML regression output, or diagnostic artifact.
@@ -50,9 +73,9 @@ Alternative considered:
 
 Legacy recurrence-stratified and metastasis-stratified OS/PFS outputs may remain available, but they must include artifact-level labeling that they are post-baseline, non-causal exploratory analyses.
 
-### Decision: Align subgroup contract by either producing the promised tables or narrowing the docs
+### Decision: Align subgroup contract to stable runtime artifacts
 
-This change will not leave the current mismatch in place. Either the subgroup surface will emit the documented artifacts, or the docs will be reduced to the true runtime contract.
+Objective 1 subgroup tabular outputs will be documented around the consolidated multi-sheet Excel workbooks that are emitted by the workflow: forest-plot diagnostics workbooks and primary/sensitivity tumor-height diagnostics workbooks. Subgroup forest plots and subgroup interaction RDS objects remain part of the stable runtime contract. Per-subgroup HTML files may remain as ancillary previews if the existing formatter emits them, but they should not be treated as the primary documented tabular surface or expanded into a new artifact family.
 
 ## Risks / Trade-offs
 
@@ -70,5 +93,4 @@ This change will not leave the current mismatch in place. Either the subgroup su
 
 ## Open Questions
 
-- For Objective 1 subgroup outputs, should the implementation generate the documented subgroup table workbooks or narrow the documented contract to the currently stable runtime artifacts?
-- Default recommendation for the next implementation pass: verify current subgroup artifacts first, then narrow documentation unless a missing workbook can be produced through the existing subgroup formatting path without adding a parallel reporting system.
+None for the current P3 implementation pass.

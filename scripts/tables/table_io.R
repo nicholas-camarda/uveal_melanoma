@@ -470,7 +470,7 @@ write_effect_summary_workbook <- function(effect_summary_rows, output_dir, prefi
 
     filename <- paste0(prefix, make_filename_safe(analysis_name), "_effect_summary.xlsx")
     output_path <- file.path(output_dir, filename)
-    writexl::write_xlsx(rows_to_write, output_path)
+    write_readable_xlsx(rows_to_write, output_path)
     logger::log_info(sprintf("Effect summary saved to %s", output_path))
 
     output_path
@@ -842,76 +842,66 @@ write_diagnostics_workbook <- function(diagnostics, diagnostics_path) {
 
     tryCatch(
         {
-            wb <- createWorkbook()
+            workbook_data <- list()
             if (!is.null(diagnostics$model_summary)) {
-                addWorksheet(wb, "Model_summary")
-                writeData(wb, "Model_summary", diagnostics$model_summary)
+                workbook_data$Model_summary <- diagnostics$model_summary
             }
             if (!is.null(diagnostics$model_diagnostics)) {
-                addWorksheet(wb, "Model_diagnostics")
-                writeData(wb, "Model_diagnostics", diagnostics$model_diagnostics)
+                workbook_data$Model_diagnostics <- diagnostics$model_diagnostics
             }
             if (!is.null(diagnostics$data_characteristics)) {
-                addWorksheet(wb, "Data_characteristics")
-                writeData(wb, "Data_characteristics", diagnostics$data_characteristics)
+                workbook_data$Data_characteristics <- diagnostics$data_characteristics
             }
             if (!is.null(diagnostics$sparse_level_diagnostics)) {
-                addWorksheet(wb, "Sparse_level_diagnostics")
-                writeData(wb, "Sparse_level_diagnostics", diagnostics$sparse_level_diagnostics)
+                workbook_data$Sparse_level_diagnostics <- diagnostics$sparse_level_diagnostics
             }
             if (!is.null(diagnostics$raw_model_output)) {
-                addWorksheet(wb, "Raw_model_output")
                 if (is.data.frame(diagnostics$raw_model_output)) {
                     raw_output_formatted <- diagnostics$raw_model_output
                     if ("p_value" %in% names(raw_output_formatted)) {
                         raw_output_formatted$p_value <- as.character(raw_output_formatted$p_value)
                         raw_output_formatted$p_value[raw_output_formatted$p_value == "NA"] <- ""
                     }
-                    writeData(wb, "Raw_model_output", raw_output_formatted)
+                    workbook_data$Raw_model_output <- raw_output_formatted
                 } else {
-                    writeData(wb, "Raw_model_output", data.frame(
+                    workbook_data$Raw_model_output <- data.frame(
                         message = diagnostics$raw_model_output,
                         stringsAsFactors = FALSE
-                    ))
+                    )
                 }
             }
             if (!is.null(diagnostics$filtering_summary)) {
-                addWorksheet(wb, "Filtering_summary")
-                writeData(wb, "Filtering_summary", diagnostics$filtering_summary)
+                workbook_data$Filtering_summary <- diagnostics$filtering_summary
             }
             if (!is.null(diagnostics$reference_levels)) {
-                addWorksheet(wb, "Reference_Levels")
-                writeData(wb, "Reference_Levels", diagnostics$reference_levels)
+                workbook_data$Reference_Levels <- diagnostics$reference_levels
             }
             if (!is.null(diagnostics$sample_size_summary)) {
-                addWorksheet(wb, "Sample_size_summary")
-                writeData(wb, "Sample_size_summary", diagnostics$sample_size_summary)
+                workbook_data$Sample_size_summary <- diagnostics$sample_size_summary
             }
             if (!is.null(diagnostics$covariate_variation)) {
-                addWorksheet(wb, "Covariate_variation")
-                writeData(wb, "Covariate_variation", diagnostics$covariate_variation)
+                workbook_data$Covariate_variation <- diagnostics$covariate_variation
             }
             if (!is.null(diagnostics$skip_summary)) {
-                addWorksheet(wb, "Skip_summary")
-                writeData(wb, "Skip_summary", diagnostics$skip_summary)
+                workbook_data$Skip_summary <- diagnostics$skip_summary
             }
             if (!is.null(diagnostics$event_support)) {
-                addWorksheet(wb, "Event_support")
-                writeData(wb, "Event_support", diagnostics$event_support)
+                workbook_data$Event_support <- diagnostics$event_support
             }
             if (!is.null(diagnostics$level_support)) {
-                addWorksheet(wb, "Level_support")
-                writeData(wb, "Level_support", diagnostics$level_support)
+                workbook_data$Level_support <- diagnostics$level_support
             }
             if (!is.null(diagnostics$narrative_summary)) {
-                addWorksheet(wb, "Narrative_summary")
-                writeData(wb, "Narrative_summary", diagnostics$narrative_summary)
+                workbook_data$Narrative_summary <- diagnostics$narrative_summary
             }
             if (!is.null(diagnostics$model_context)) {
-                addWorksheet(wb, "Model_context")
-                writeData(wb, "Model_context", diagnostics$model_context)
+                workbook_data$Model_context <- diagnostics$model_context
             }
-            saveWorkbook(wb, diagnostics_path, overwrite = TRUE)
+            if (length(workbook_data) == 0) {
+                logger::log_warn("No populated diagnostics sheets to save")
+                return(invisible(NULL))
+            }
+            write_readable_xlsx(workbook_data, diagnostics_path)
             logger::log_info(sprintf("Comprehensive diagnostics saved to %s", diagnostics_path))
         },
         error = function(e) {

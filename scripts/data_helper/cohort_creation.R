@@ -273,7 +273,7 @@ save_cohorts <- function(cohort_data) {
 
     for (cohort_name in names(cohort_data)) {
         logger::log_info(sprintf("Saving cohort: %s", cohort_name))
-        write_xlsx(cohort_data[[cohort_name]], file.path(PROCESSED_DATA_DIR, paste0(cohort_name, ".xlsx")))
+        write_readable_xlsx(cohort_data[[cohort_name]], file.path(PROCESSED_DATA_DIR, paste0(cohort_name, ".xlsx")))
         saveRDS(cohort_data[[cohort_name]], file.path(PROCESSED_DATA_DIR, paste0(cohort_name, ".rds")))
     }
 }

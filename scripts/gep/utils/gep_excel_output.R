@@ -54,36 +54,11 @@ write_gep_workbook <- function(workbook_data,
         names(workbook_data) <- paste0("Sheet", seq_along(workbook_data))
     }
 
-    workbook <- openxlsx::createWorkbook()
-    used_sheet_names <- character()
-    old_options <- options(openxlsx.minWidth = min_width, openxlsx.maxWidth = max_width)
-    on.exit(options(old_options), add = TRUE)
-
-    for (sheet_name in names(workbook_data)) {
-        sheet_data <- workbook_data[[sheet_name]]
-        if (is.null(sheet_data)) {
-            next
-        }
-
-        if (!is.data.frame(sheet_data)) {
-            sheet_data <- as.data.frame(sheet_data, stringsAsFactors = FALSE)
-        }
-
-        safe_sheet_name <- sanitize_gep_sheet_name(sheet_name, used_sheet_names)
-        used_sheet_names <- c(used_sheet_names, safe_sheet_name)
-
-        openxlsx::addWorksheet(workbook, safe_sheet_name)
-        openxlsx::writeData(workbook, safe_sheet_name, sheet_data)
-
-        if (freeze_header && nrow(sheet_data) > 0) {
-            openxlsx::freezePane(workbook, safe_sheet_name, firstActiveRow = 2)
-        }
-
-        if (ncol(sheet_data) > 0) {
-            openxlsx::setColWidths(workbook, safe_sheet_name, cols = seq_len(ncol(sheet_data)), widths = "auto")
-        }
-    }
-
-    openxlsx::saveWorkbook(workbook, output_path, overwrite = TRUE)
-    invisible(output_path)
+    write_readable_xlsx(
+        workbook_data,
+        output_path,
+        freeze_header = freeze_header,
+        min_width = min_width,
+        max_width = max_width
+    )
 }

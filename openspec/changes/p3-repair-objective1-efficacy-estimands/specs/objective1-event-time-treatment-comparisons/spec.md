@@ -18,6 +18,11 @@ Objective 1 MUST preserve collaborator-requested binary recurrence and metastati
 - **THEN** binary outputs are labeled as ever-observed event/rate comparisons over available follow-up
 - **AND** cumulative-incidence outputs are labeled as time-horizon event probabilities accounting for censoring and competing death
 
+#### Scenario: Gray test output is labeled as a global curve comparison
+- **WHEN** Objective 1 writes cumulative-incidence summaries for recurrence or metastatic progression
+- **THEN** the Gray test p-value is labeled as one global across-group cumulative-incidence curve comparison
+- **AND** the output states that this p-value is not a per-horizon or per-group p-value
+
 ### Requirement: Objective 1 SHALL handle death consistently with each co-primary estimand
 Objective 1 recurrence and metastatic progression reporting MUST state and implement death handling for both co-primary estimands. The cumulative-incidence lane MUST treat death before the event of interest as a competing event. The binary lane MUST state that it is an ever-observed event comparison over available follow-up and is not the censoring-aware probability of event by a horizon.
 

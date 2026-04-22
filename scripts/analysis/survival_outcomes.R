@@ -1729,18 +1729,18 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     if (!is.null(output_dirs)) {
         output_dir <- determine_survival_output_dir(ylab, output_dirs)
         summary_dir <- ensure_output_dir(resolve_obj4_output_dir(output_dirs, output_dir, "summary"))
-        writexl::write_xlsx(
+        write_readable_xlsx(
             surv_rates,
             path = file.path(summary_dir, paste0(prefix, make_filename_safe(ylab), "_survival_rates.xlsx"))
         )
-        writexl::write_xlsx(
+        write_readable_xlsx(
             surv_rates_wide_with_rmst,
             path = file.path(summary_dir, paste0(prefix, make_filename_safe(ylab), "_survival_rates_wide.xlsx"))
         )
         rmst_dir <- ensure_output_dir(resolve_obj4_output_dir(output_dirs, output_dir, "rmst"))
         rmst_has_completed_results <- nrow(completed_rmst_results) > 0
         if (nrow(rmst_results) > 0) {
-            writexl::write_xlsx(
+            write_readable_xlsx(
                 rmst_results,
                 path = file.path(rmst_dir, paste0(prefix, make_filename_safe(ylab), "_rmst_analysis.xlsx"))
             )
@@ -1750,7 +1750,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         }
         if (rmst_has_completed_results && nrow(rmst_survival_summary) > 0) {
             combined_path <- file.path(rmst_dir, paste0(prefix, make_filename_safe(ylab), "_survival_rmst_summary.xlsx"))
-            writexl::write_xlsx(rmst_survival_summary, path = combined_path)
+            write_readable_xlsx(rmst_survival_summary, path = combined_path)
             logger::log_info(sprintf("Survival + RMST summary saved: %s", basename(combined_path)))
         } else if (nrow(rmst_results) > 0) {
             logger::log_info(sprintf(
@@ -1761,7 +1761,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         }
         if (rmst_has_completed_results && nrow(rmst_timepoint_table) > 0) {
             rmst_table_path <- file.path(rmst_dir, paste0(prefix, make_filename_safe(ylab), "_rmst_timepoint_table.xlsx"))
-            writexl::write_xlsx(rmst_timepoint_table, path = rmst_table_path)
+            write_readable_xlsx(rmst_timepoint_table, path = rmst_table_path)
             logger::log_info(sprintf("RMST timepoint table saved: %s", basename(rmst_table_path)))
         } else if (nrow(rmst_results) > 0 && !rmst_has_completed_results) {
             logger::log_info(sprintf("RMST timepoint table skipped for %s - all timepoints were infeasible", ylab))
@@ -1921,7 +1921,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         hr_dir <- ensure_output_dir(resolve_obj4_output_dir(output_dirs, hr_output_dir, "cox"))
         
         hr_filename <- paste0(prefix, make_filename_safe(ylab), "_effect_summary.xlsx")
-        writexl::write_xlsx(hazard_ratio_summary, file.path(hr_dir, hr_filename))
+        write_readable_xlsx(hazard_ratio_summary, file.path(hr_dir, hr_filename))
         logger::log_info(sprintf("Effect summary saved: %s", hr_filename))
     }
 
@@ -2258,7 +2258,7 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_d
 
     if (!is.null(output_dirs) && !is.null(output_dirs$obj3_pfs2)) {
         summary_path <- file.path(output_dirs$obj3_pfs2, paste0(prefix, "pfs2_treatment_summary.xlsx"))
-        writexl::write_xlsx(
+        write_readable_xlsx(
             list(
                 raw_primary_vs_salvage = raw_primary_vs_salvage,
                 model_primary_vs_salvage = model_primary_vs_salvage,
@@ -3033,7 +3033,7 @@ test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Surv
             ph_summary_with_global <- rbind(ph_summary[var_names != "GLOBAL", ], global_test)
 
             # Save summary table
-            writexl::write_xlsx(
+            write_readable_xlsx(
                 ph_summary_with_global,
                 path = file.path(output_dir, paste0(file_prefix, "proportional_hazards_tests.xlsx"))
             )

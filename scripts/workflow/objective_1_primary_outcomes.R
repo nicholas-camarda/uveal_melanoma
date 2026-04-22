@@ -1,3 +1,219 @@
+#' Determine the Objective 1 cohort interpretation role
+#'
+#' @param dataset_name Character dataset/cohort identifier.
+#' @return A single-row data frame describing the comparative interpretation role.
+build_objective1_cohort_interpretation <- function(dataset_name) {
+    role <- dplyr::case_when(
+        grepl("restricted", dataset_name %||% "", ignore.case = TRUE) ~ "primary_dual_eligible_comparative",
+        grepl("full", dataset_name %||% "", ignore.case = TRUE) ~ "real_world_associational_context",
+        grepl("gksrs", dataset_name %||% "", ignore.case = TRUE) ~ "gksrs_only_characterization",
+        TRUE ~ "cohort_context_not_preclassified"
+    )
+    interpretation <- switch(role,
+        primary_dual_eligible_comparative = "Restricted cohort is the primary dual-eligible treatment-comparison surface.",
+        real_world_associational_context = "Full cohort is real-world associational context; treatment comparisons require confounding caution.",
+        gksrs_only_characterization = "GKSRS-only cohort is characterization or exploratory support, not a primary treatment-comparison surface.",
+        cohort_context_not_preclassified = "Cohort role was not preclassified; interpret treatment contrasts according to cohort construction."
+    )
+
+    data.frame(
+        dataset = dataset_name %||% "unspecified_dataset",
+        cohort_interpretation_role = role,
+        interpretation = interpretation,
+        stringsAsFactors = FALSE
+    )
+}
+
+#' Write the centralized Objective 1 interpretation note
+#'
+#' @param output_dirs Named output directory list for one cohort.
+#' @param dataset_name Character dataset/cohort identifier.
+#' @param prefix Character file prefix for the cohort.
+#' @return Path to the note file, invisibly.
+write_objective1_interpretation_note <- function(output_dirs, dataset_name, prefix) {
+    obj1_dir <- dirname(output_dirs$obj1_recurrence %||% output_dirs$obj1_os %||% getwd())
+    if (!dir.exists(obj1_dir)) {
+        dir.create(obj1_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+    cohort_note <- build_objective1_cohort_interpretation(dataset_name)
+    note_path <- file.path(obj1_dir, paste0(prefix, "objective1_interpretation_notes.txt"))
+    note_lines <- c(
+        "OBJECTIVE 1 INTERPRETATION NOTES",
+        "",
+        paste0("Dataset: ", cohort_note$dataset),
+        paste0("Cohort role: ", cohort_note$cohort_interpretation_role),
+        paste0("Interpretation: ", cohort_note$interpretation),
+        "",
+        "Recurrence and metastatic-progression endpoints use co-primary estimands:",
+        "- Binary ever-observed event/rate comparisons over available follow-up.",
+        "- Competing-risk cumulative incidence by time horizon, with death before the event treated as a competing event.",
+        "",
+        "Cox survival summaries use graded PH interpretation:",
+        "- Cox-forward when PH diagnostics do not show concern.",
+        "- Cox-with-PH-caution for mild or isolated PH concerns.",
+        "- RMST/KM-forward when treatment and global PH concerns are material and RMST/KM context is available.",
+        "- Cox-limited when PH diagnostics are not supportable."
+    )
+    writeLines(note_lines, note_path)
+    invisible(note_path)
+}
+
+#' Write an artifact-level note for legacy post-baseline Objective 1 outputs
+#'
+#' @param output_dir Directory containing a legacy post-baseline output bundle.
+#' @param analysis_label Character label for the legacy analysis.
+#' @param stratifier_label Character label for the post-baseline stratifier.
+#' @return Path to the note file, invisibly.
+write_objective1_legacy_exploratory_note <- function(output_dir, analysis_label, stratifier_label) {
+    if (!dir.exists(output_dir)) {
+        dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+    note_path <- file.path(output_dir, "post_baseline_exploratory_note.txt")
+    writeLines(c(
+        "POST-BASELINE EXPLORATORY ANALYSIS",
+        "",
+        paste0("Analysis: ", analysis_label),
+        paste0("Post-baseline stratifier: ", stratifier_label),
+        "",
+        "This output stratifies OS/PFS by a post-baseline event status.",
+        "It is exploratory and non-causal, and it must not be interpreted as a baseline treatment comparison."
+    ), note_path)
+    invisible(note_path)
+}
+
+#' Classify Objective 1 proportional-hazards interpretation severity
+#'
+#' @param ph_diagnostics Result from proportional-hazards diagnostics.
+#' @param rmst_results RMST result table for the same endpoint.
+#' @return Single-row data frame with PH interpretation metadata.
+classify_objective1_ph_interpretation <- function(ph_diagnostics, rmst_results = NULL) {
+    if (is.null(ph_diagnostics) || is.null(ph_diagnostics$ph_summary)) {
+        return(data.frame(
+            PH_Interpretation = "cox_limited_ph_untestable",
+            PH_Interpretation_Reason = "PH diagnostics unavailable due to low event support, missing Cox model, or diagnostic failure.",
+            Interpretation_Priority = "Cox HR limited; interpret with event support and RMST/KM context where available.",
+            stringsAsFactors = FALSE
+        ))
+    }
+
+    ph_summary <- ph_diagnostics$ph_summary
+    global_p <- ph_summary$P_Value[ph_summary$Variable == "GLOBAL"][1] %||% NA_real_
+    treatment_p <- ph_summary$P_Value[grepl("treatment_group", ph_summary$Variable)][1] %||% NA_real_
+    has_completed_rmst <- !is.null(rmst_results) &&
+        is.data.frame(rmst_results) &&
+        nrow(rmst_results) > 0 &&
+        any(rmst_results$Analysis_Status == "completed", na.rm = TRUE)
+
+    global_flag <- !is.na(global_p) && global_p < 0.05
+    treatment_flag <- !is.na(treatment_p) && treatment_p < 0.05
+    material_flag <- has_completed_rmst && (
+        (!is.na(global_p) && !is.na(treatment_p) && global_p < 0.05 && treatment_p < 0.05) ||
+            (!is.na(treatment_p) && treatment_p < 0.01)
+    )
+
+    if (material_flag) {
+        return(data.frame(
+            PH_Interpretation = "rmst_km_forward",
+            PH_Interpretation_Reason = "Treatment-term and global PH diagnostics indicate material non-proportionality with RMST/KM context available.",
+            Interpretation_Priority = "RMST/KM lead; Cox HR is secondary or time-compressed.",
+            stringsAsFactors = FALSE
+        ))
+    }
+    if (global_flag || treatment_flag) {
+        reason <- if (global_flag && !treatment_flag) {
+            "Global PH diagnostic concern without treatment-term PH concern."
+        } else if (treatment_flag && !global_flag) {
+            "Treatment-term PH diagnostic concern without global PH concern."
+        } else {
+            "PH diagnostics show some evidence against proportional hazards."
+        }
+        return(data.frame(
+            PH_Interpretation = "cox_with_ph_caution",
+            PH_Interpretation_Reason = reason,
+            Interpretation_Priority = "Cox HR remains reportable with PH caution and RMST/KM triangulation.",
+            stringsAsFactors = FALSE
+        ))
+    }
+
+    data.frame(
+        PH_Interpretation = "cox_forward",
+        PH_Interpretation_Reason = "PH diagnostics did not show evidence against proportional hazards.",
+        Interpretation_Priority = "Cox HR remains the lead model-based summary, with RMST/KM retained as absolute-time context.",
+        stringsAsFactors = FALSE
+    )
+}
+
+#' Add graded PH interpretation to an existing Objective 1 effect summary
+#'
+#' @param output_dir Directory containing the survival effect summary workbook.
+#' @param prefix Character file prefix.
+#' @param outcome_label Character survival outcome label used in filenames.
+#' @param ph_diagnostics Result from proportional-hazards diagnostics.
+#' @param rmst_results RMST result table for the same endpoint.
+#' @return PH interpretation data frame, invisibly.
+annotate_objective1_survival_effect_summary <- function(output_dir, prefix, outcome_label, ph_diagnostics, rmst_results = NULL) {
+    interpretation <- classify_objective1_ph_interpretation(ph_diagnostics, rmst_results)
+    summary_path <- file.path(output_dir, paste0(prefix, make_filename_safe(outcome_label), "_effect_summary.xlsx"))
+    if (file.exists(summary_path)) {
+        summary_rows <- readxl::read_xlsx(summary_path)
+        summary_rows$PH_Interpretation <- interpretation$PH_Interpretation
+        summary_rows$PH_Interpretation_Reason <- interpretation$PH_Interpretation_Reason
+        summary_rows$Interpretation_Priority <- interpretation$Interpretation_Priority
+        write_readable_xlsx(summary_rows, summary_path)
+    }
+    invisible(interpretation)
+}
+
+#' Write the Objective 1 subgroup artifact contract note
+#'
+#' @param output_dirs Named output directory list for one cohort.
+#' @param dataset_name Character dataset/cohort identifier.
+#' @param prefix Character file prefix for the cohort.
+#' @return Path to the note file, invisibly.
+write_objective1_subgroup_contract_note <- function(output_dirs, dataset_name, prefix) {
+    subgroup_dir <- dirname(output_dirs$obj1_subgroup_primary %||% output_dirs$obj1_forest_plots %||% getwd())
+    if (!dir.exists(subgroup_dir)) {
+        dir.create(subgroup_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+    note_path <- file.path(subgroup_dir, paste0(prefix, "subgroup_analysis_contract_note.txt"))
+    writeLines(c(
+        "OBJECTIVE 1 SUBGROUP ARTIFACT CONTRACT",
+        "",
+        paste0("Dataset: ", dataset_name %||% "unspecified_dataset"),
+        "",
+        "Primary tabular subgroup outputs are consolidated multi-sheet Excel diagnostics workbooks:",
+        "- forest_plots/*_forest_plot_diagnostics.xlsx",
+        "- tumor_height_primary/*_primary_tumor_height_diagnostics.xlsx",
+        "- tumor_height_sensitivity/*_sensitivity_tumor_height_diagnostics.xlsx",
+        "",
+        "Companion artifacts include subgroup forest plots and subgroup interaction RDS objects.",
+        "Per-subgroup HTML files are ancillary previews when emitted by the existing formatter.",
+        "Subgroup analyses are exploratory support analyses and should not be interpreted as confirmatory interaction evidence."
+    ), note_path)
+    invisible(note_path)
+}
+
+#' Add exploratory interpretation metadata to subgroup diagnostic rows
+#'
+#' @param diagnostics Data frame of subgroup diagnostics.
+#' @param dataset_name Character dataset/cohort identifier.
+#' @param subgroup_surface Character subgroup output family.
+#' @return Diagnostics data frame with exploratory interpretation columns.
+annotate_objective1_subgroup_diagnostics <- function(diagnostics, dataset_name, subgroup_surface) {
+    if (is.null(diagnostics) || !is.data.frame(diagnostics)) {
+        return(diagnostics)
+    }
+    sparse_note <- if (grepl("gksrs", dataset_name %||% "", ignore.case = TRUE)) {
+        "GKSRS-only subgroup surface is sparse-support characterization; avoid confirmatory interaction language."
+    } else {
+        "Subgroup surface is exploratory support; interaction findings require cautious interpretation."
+    }
+    diagnostics$analysis_role <- "exploratory_support"
+    diagnostics$subgroup_surface <- subgroup_surface
+    diagnostics$interpretation_note <- sparse_note
+    diagnostics
+}
+
 #' Run Objective 1: Primary Outcomes Analysis
 #'
 #' Performs comprehensive analysis of primary outcomes for uveal melanoma patients:
@@ -21,6 +237,8 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     step1_start_time <- Sys.time()
     display_name <- tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name)))
     log_phase(paste("STEP 1: PRIMARY OUTCOMES ANALYSIS", display_name, sep = " - "))
+    write_objective1_interpretation_note(output_dirs, dataset_name, prefix)
+    write_objective1_subgroup_contract_note(output_dirs, dataset_name, prefix)
 
     # Determine cohort-specific subgroup variables and forest plot variables
     all_subgroup_vars <- subgroup_vars
@@ -77,6 +295,11 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         prefix = prefix,
         confounders = confounders
     )
+    write_objective1_legacy_exploratory_note(
+        output_dir = output_dirs$obj1_recurrence_1a1 %||% file.path(output_dirs$obj1_recurrence, "1a1_recurrence_stratified_os"),
+        analysis_label = "Recurrence-stratified overall survival",
+        stratifier_label = "Local recurrence status"
+    )
     logger::log_info(formatted("Recurrence-stratified overall survival completed", indent = 1))
 
     # 1a2. Progression-free survival stratified by local recurrence status
@@ -87,6 +310,11 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         output_dirs = output_dirs,
         prefix = prefix,
         confounders = confounders
+    )
+    write_objective1_legacy_exploratory_note(
+        output_dir = output_dirs$obj1_recurrence_1a2 %||% file.path(output_dirs$obj1_recurrence, "1a2_recurrence_stratified_pfs"),
+        analysis_label = "Recurrence-stratified progression-free survival",
+        stratifier_label = "Local recurrence status"
     )
     logger::log_info(formatted("Recurrence-stratified progression-free survival completed", indent = 1))
 
@@ -118,6 +346,11 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         prefix = prefix,
         confounders = confounders
     )
+    write_objective1_legacy_exploratory_note(
+        output_dir = output_dirs$obj1_mets_2a1 %||% file.path(output_dirs$obj1_mets, "2a1_metastasis_stratified_os"),
+        analysis_label = "Metastasis-stratified overall survival",
+        stratifier_label = "Metastatic progression status"
+    )
     logger::log_info(formatted("Metastasis-stratified overall survival completed", indent = 1))
 
     # 2a2. Progression-free survival stratified by metastatic progression status
@@ -128,6 +361,11 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         output_dirs = output_dirs,
         prefix = prefix,
         confounders = confounders
+    )
+    write_objective1_legacy_exploratory_note(
+        output_dir = output_dirs$obj1_mets_2a2 %||% file.path(output_dirs$obj1_mets, "2a2_metastasis_stratified_pfs"),
+        analysis_label = "Metastasis-stratified progression-free survival",
+        stratifier_label = "Metastatic progression status"
     )
     logger::log_info(formatted("Metastasis-stratified progression-free survival completed", indent = 1))
 
@@ -165,6 +403,13 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         },
         silent = TRUE
     )
+    annotate_objective1_survival_effect_summary(
+        output_dir = output_dirs$obj1_os,
+        prefix = prefix,
+        outcome_label = "Overall Survival Probability",
+        ph_diagnostics = os_analysis$ph_diagnostics,
+        rmst_results = os_analysis$rmst_analysis
+    )
 
     # 1d. Progression Free Survival (includes both progression AND death)
     logger::log_info(formatted("Executing analyze_time_to_event_outcomes: Progression-free survival analysis (progression OR death)", indent = 1))
@@ -199,6 +444,13 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
             )
         },
         silent = TRUE
+    )
+    annotate_objective1_survival_effect_summary(
+        output_dir = output_dirs$obj1_pfs,
+        prefix = prefix,
+        outcome_label = "Progression-Free Survival Probability",
+        ph_diagnostics = pfs_analysis$ph_diagnostics,
+        rmst_results = pfs_analysis$rmst_analysis
     )
 
     # 1e. Tumor height changes
@@ -400,11 +652,16 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
             result$subgroup_effects$other_variable_contents <- ""
             # Bind header row before the detailed subgroup rows
             df_out <- rbind(header_row, result$subgroup_effects)
+            df_out <- annotate_objective1_subgroup_diagnostics(
+                diagnostics = df_out,
+                dataset_name = dataset_name,
+                subgroup_surface = "tumor_height_primary"
+            )
             primary_diagnostics_list[[tab_name]] <- df_out
         }
     }
     consolidated_primary_path <- file.path(output_dirs$obj1_subgroup_primary, paste0(prefix, "primary_tumor_height_diagnostics.xlsx"))
-    writexl::write_xlsx(primary_diagnostics_list, consolidated_primary_path)
+    write_readable_xlsx(primary_diagnostics_list, consolidated_primary_path)
     logger::log_info(formatted(sprintf("Primary tumor height diagnostics written to %s with %d tabs", consolidated_primary_path, length(primary_diagnostics_list)), indent = 1))
 
     # SENSITIVITY TUMOR HEIGHT SUBGROUP ANALYSIS CONSOLIDATION
@@ -434,11 +691,16 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
             )
             result$subgroup_effects$other_variable_contents <- ""
             df_out <- rbind(header_row, result$subgroup_effects)
+            df_out <- annotate_objective1_subgroup_diagnostics(
+                diagnostics = df_out,
+                dataset_name = dataset_name,
+                subgroup_surface = "tumor_height_sensitivity"
+            )
             sensitivity_diagnostics_list[[tab_name]] <- df_out
         }
     }
     consolidated_sensitivity_path <- file.path(output_dirs$obj1_subgroup_sensitivity, paste0(prefix, "sensitivity_tumor_height_diagnostics.xlsx"))
-    writexl::write_xlsx(sensitivity_diagnostics_list, consolidated_sensitivity_path)
+    write_readable_xlsx(sensitivity_diagnostics_list, consolidated_sensitivity_path)
     logger::log_info(formatted(sprintf("Sensitivity tumor height diagnostics written to %s with %d tabs", consolidated_sensitivity_path, length(sensitivity_diagnostics_list)), indent = 1))
 
     # 1g. PRIMARY OUTCOMES SUBGROUP ANALYSIS
@@ -659,9 +921,13 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         if (is.data.frame(df) && ("interaction_p" %in% names(df))) {
             df <- df[, setdiff(names(df), "interaction_p"), drop = FALSE]
         }
-        df
+        annotate_objective1_subgroup_diagnostics(
+            diagnostics = df,
+            dataset_name = dataset_name,
+            subgroup_surface = "primary_outcomes_forest_plots"
+        )
     })
-    writexl::write_xlsx(diagnostics_list_no_interaction, consolidated_forest_path)
+    write_readable_xlsx(diagnostics_list_no_interaction, consolidated_forest_path)
     logger::log_info(formatted(sprintf("Forest plot diagnostics written to %s with %d tabs", consolidated_forest_path, length(diagnostics_list)), indent = 1))
 
     logger::log_info(sprintf(">>> COMPLETED %s (Duration: %.1f seconds)",

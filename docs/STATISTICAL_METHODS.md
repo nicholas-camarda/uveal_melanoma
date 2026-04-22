@@ -261,8 +261,10 @@ For practical reading of PH tests and Schoenfeld plots, see [Interpreting Propor
 
 **Outputs:**
 1. **Cumulative Incidence Curves:** Probability of event over time accounting for competing events
-2. **Gray's Test:** Statistical comparison between treatment groups
+2. **Gray's Test:** One global statistical comparison of treatment-group cumulative-incidence curves
 3. **Fine-Gray Model:** Regression with competing risks adjustment
+
+Objective 1 recurrence and metastatic-progression cumulative-incidence sheets report this as `gray_test_global_curve_p_value`. The same value can appear on multiple horizon rows because it describes the overall across-group curve comparison, not a separate p-value for each horizon or group.
 
 ### When Competing Risks Matter
 
@@ -281,8 +283,9 @@ For practical reading of PH tests and Schoenfeld plots, see [Interpreting Propor
 - More realistic than K-M estimate which might overestimate as 20%
 
 **Gray's Test p = 0.03**
-- Treatment groups differ significantly in cumulative incidence
+- Treatment-group cumulative-incidence curves differ significantly over follow-up
 - Accounts for differential competing risk rates
+- This is a global curve-comparison p-value, not a timepoint-specific p-value
 
 For practical reading of cumulative-incidence outputs, see [Cumulative Incidence Plots (Competing Risks)](INTERPRETATION_GUIDE.md#cumulative-incidence-plots-competing-risks).
 

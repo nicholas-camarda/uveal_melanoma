@@ -142,7 +142,7 @@ write_diagnostics_excel <- function(diagnostics_list, file_path) {
     if (length(diagnostics_list) == 0) {
         return(invisible(NULL))
     }
-    writexl::write_xlsx(diagnostics_list, file_path)
+    write_readable_xlsx(diagnostics_list, file_path)
 }
 
 #' Compute dynamic height for a single forest plot grob

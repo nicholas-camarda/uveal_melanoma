@@ -366,7 +366,7 @@ write_event_date_reconciliation_audit <- function(audit_rows,
         manual_corrections_to_write <- empty_manual_date_correction_audit_rows()
     }
 
-    writexl::write_xlsx(
+    write_readable_xlsx(
         list(
             Audit_Metadata = audit_metadata,
             Reconciliation_Summary = audit_summary_to_write,

@@ -12,7 +12,7 @@ Objective 1 high-level reader-facing summaries MUST include a centralized cohort
 - **THEN** those artifacts are not required to repeat the full cohort-interpretation note unless they already have a centralized notes or metadata mechanism
 
 ### Requirement: Objective 1 Cox-based survival summaries SHALL use graded PH interpretation
-Objective 1 MUST interpret Cox hazard ratios according to proportional-hazards diagnostic severity rather than treating every p-value below 0.05 as an automatic full demotion. When PH concerns are mild or borderline, Cox HRs may remain prominent with cautionary language and RMST/KM context. When PH violations are material and RMST/KM outputs are available, reader-facing summaries MUST lead with RMST/KM or other non-PH-sensitive estimates and downgrade the single Cox HR as secondary or time-compressed.
+Objective 1 MUST interpret Cox hazard ratios according to proportional-hazards diagnostic severity rather than treating every p-value below 0.05 as an automatic full demotion. When PH concerns are mild or borderline, Cox HRs may remain prominent with cautionary language and RMST/KM context. When PH violations are material and RMST/KM outputs are available, reader-facing summaries MUST lead with RMST/KM or other non-PH-sensitive estimates and downgrade the single Cox HR as secondary or time-compressed. This interpretation metadata MUST be incorporated into existing survival summaries, PH diagnostic summaries, effect-summary notes, or centralized Objective 1 summaries instead of creating a separate reporting surface.
 
 #### Scenario: Mild PH concern triggers caution rather than full demotion
 - **WHEN** Objective 1 PH diagnostics show only mild or borderline PH concern
@@ -27,6 +27,11 @@ Objective 1 MUST interpret Cox hazard ratios according to proportional-hazards d
 #### Scenario: PH cannot be tested
 - **WHEN** Objective 1 PH diagnostics cannot be run because model or event support is inadequate
 - **THEN** the summary avoids claiming PH support and interprets any fitted Cox HR cautiously with event-support and RMST/KM context where available
+
+#### Scenario: PH interpretation uses existing artifacts
+- **WHEN** Objective 1 writes graded PH interpretation
+- **THEN** it amends existing survival effect summaries, proportional-hazards summary text, RMST summaries, or centralized Objective 1 summaries where feasible
+- **AND** it does not create additional PH/RMST interpretation workbooks, folders, or sidecar reports solely for this note
 
 ### Requirement: Legacy post-baseline outputs SHALL self-identify as exploratory
 Objective 1 legacy recurrence-stratified and metastasis-stratified OS/PFS outputs MUST include artifact-level warnings that they are post-baseline exploratory analyses and not baseline treatment comparisons.

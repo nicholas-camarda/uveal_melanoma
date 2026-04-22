@@ -362,7 +362,7 @@ summarize_tumor_size_by_treatment <- function(data, size_var = "initial_tumor_he
         summary_path <- file.path(output_dir, paste0(prefix, size_suffix, "tumor_size_by_treatment_summary.xlsx"))
         plot_path <- file.path(output_dir, paste0(prefix, size_suffix, "tumor_size_by_treatment.png"))
         try(
-            writexl::write_xlsx(
+            write_readable_xlsx(
                 list(
                     summary = summary_tbl,
                     test = test_table

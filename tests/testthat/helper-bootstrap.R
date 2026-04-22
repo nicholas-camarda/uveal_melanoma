@@ -21,11 +21,26 @@ if (!identical(Sys.getenv("OCULAR_TESTTHAT_BOOTSTRAPPED"), "true")) {
     Sys.setenv(LOGS_DIR = file.path(runtime_root, "logs"))
     Sys.setenv(TEST_OUTPUT_DIR = file.path(runtime_root, "test_output"))
 
+    assign("RUNTIME_ROOT", runtime_root, envir = .GlobalEnv)
+    assign("EXPORT_PARENT_DIR", export_parent_dir, envir = .GlobalEnv)
+    assign("EXPORT_ROOT", export_root, envir = .GlobalEnv)
+    assign("EXPORT_ANALYSIS_DIR", export_analysis_dir, envir = .GlobalEnv)
+    assign("TEST_OUTPUT_DIR", file.path(runtime_root, "test_output"), envir = .GlobalEnv)
+    assign("DATA_DIR", export_root, envir = .GlobalEnv)
+    assign("PROCESSED_DATA_DIR", file.path(runtime_root, "Analytic Dataset"), envir = .GlobalEnv)
+    assign("OUTPUT_DIR", file.path(runtime_root, "Analysis"), envir = .GlobalEnv)
+    assign("RAW_DATA_DIR", file.path(export_root, "Original Files"), envir = .GlobalEnv)
+    assign("TOOLS_OUTPUT_DIR", file.path(runtime_root, "tools_output"), envir = .GlobalEnv)
+    assign("MERGED_TABLES_DIR", file.path(runtime_root, "Analysis", "merged_tables"), envir = .GlobalEnv)
+    assign("LOGS_DIR", file.path(runtime_root, "logs"), envir = .GlobalEnv)
+
     withr::defer(
         unlink(test_output_root, recursive = TRUE, force = TRUE),
         envir = testthat::teardown_env()
     )
 
+    library(logger)
+    source(here::here("scripts", "utils", "logging_utilities.R"))
     source(here::here("scripts", "load_all.R"))
     source(here::here("tests", "testthat", "test_helper_data.R"))
 

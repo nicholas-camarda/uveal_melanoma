@@ -163,7 +163,7 @@ create_consolidated_gep_tables <- function(validation_results,
     # Save consolidated workbook
     if (length(consolidated_workbook) > 0) {
         consolidated_path <- file.path(output_dir, paste0(prefix, outcome_type, "_consolidated_summary.xlsx"))
-        writexl::write_xlsx(consolidated_workbook, consolidated_path)
+        write_readable_xlsx(consolidated_workbook, consolidated_path)
         logger::log_info(formatted(sprintf("Consolidated %s tables saved: %s", outcome_type, consolidated_path), indent = 2))
     }
 
@@ -843,7 +843,7 @@ create_unified_gep_validation_summary <- function(mfs_results, mss_results, outp
     # Save unified workbook
     if (length(unified_workbook) > 0) {
         unified_path <- file.path(output_dir, paste0(prefix, "unified_gep_validation_summary.xlsx"))
-        writexl::write_xlsx(unified_workbook, unified_path)
+        write_readable_xlsx(unified_workbook, unified_path)
         logger::log_info(formatted(sprintf("Unified GEP validation summary saved: %s", unified_path), indent = 2))
     }
 

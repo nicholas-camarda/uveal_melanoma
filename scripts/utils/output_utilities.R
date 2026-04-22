@@ -6,6 +6,286 @@
 
 # Unused complex styling functions removed - main workflow now uses bold_labels() and italicize_levels() from gtsummary
 
+#' Sanitize an Excel worksheet name
+#'
+#' Excel worksheet names must be unique, short, and free of reserved
+#' characters.
+#'
+#' @param sheet_name Proposed worksheet name.
+#' @param existing_names Character vector of names already used in the workbook.
+#' @return A worksheet name safe for Excel.
+sanitize_excel_sheet_name <- function(sheet_name, existing_names = character()) {
+    safe_name <- gsub("[:\\\\/?*\\[\\]]", "_", as.character(sheet_name))
+    safe_name <- substr(safe_name, 1, 31)
+
+    if (is.na(safe_name) || !nzchar(safe_name)) {
+        safe_name <- "Sheet"
+    }
+
+    candidate <- safe_name
+    suffix <- 1
+    while (candidate %in% existing_names) {
+        suffix_label <- paste0("_", suffix)
+        candidate <- paste0(substr(safe_name, 1, max(1, 31 - nchar(suffix_label))), suffix_label)
+        suffix <- suffix + 1
+    }
+
+    candidate
+}
+
+#' Convert cell values to display text for Excel sizing
+#'
+#' @param x Vector or list-column to render as text.
+#' @return Character vector with missing values represented as empty strings.
+excel_cell_text <- function(x) {
+    if (is.list(x) && !is.data.frame(x)) {
+        text <- vapply(
+            x,
+            function(value) {
+                if (length(value) == 0) {
+                    return("")
+                }
+                paste(as.character(value), collapse = "; ")
+            },
+            character(1)
+        )
+    } else {
+        text <- as.character(x)
+    }
+
+    text[is.na(text)] <- ""
+    text
+}
+
+#' Identify columns that should not be expanded to their full text length
+#'
+#' @param sheet_data Data frame written to a worksheet.
+#' @param long_text_threshold Character width above which a column is treated as long text.
+#' @param note_column_pattern Regular expression for note-like columns.
+#' @return Logical vector, one value per column.
+detect_long_text_excel_columns <- function(sheet_data,
+                                           long_text_threshold = 240,
+                                           note_column_pattern = "(^|_)(note|notes|narrative|interpretation|rationale|reason|message|details?|description|calculation|purpose|comment|comments|explanation|assumptions?|limitations?|caveat|text)(_|$)|raw_model_output") {
+    if (ncol(sheet_data) == 0) {
+        return(logical())
+    }
+
+    column_names <- names(sheet_data)
+    note_like <- grepl(note_column_pattern, column_names, ignore.case = TRUE)
+    has_long_values <- vapply(
+        sheet_data,
+        function(col) {
+            text <- excel_cell_text(col)
+            if (length(text) == 0) {
+                return(FALSE)
+            }
+            max(nchar(text, type = "width"), na.rm = TRUE) > long_text_threshold
+        },
+        logical(1)
+    )
+
+    note_like | has_long_values
+}
+
+#' Estimate wrapped line count for a cell
+#'
+#' @param text Cell display text.
+#' @param width Approximate Excel column character width.
+#' @return Integer line count.
+estimate_wrapped_excel_lines <- function(text, width) {
+    if (is.na(text) || !nzchar(text)) {
+        return(1L)
+    }
+
+    wrapped_width <- max(1, floor(width) - 2)
+    lines <- strsplit(text, "\n", fixed = TRUE)[[1]]
+    sum(pmax(1L, ceiling(nchar(lines, type = "width") / wrapped_width)))
+}
+
+#' Apply readable Excel column widths and row heights to a worksheet
+#'
+#' Normal columns are automatically sized. Note-like or very long text columns
+#' are kept at a capped width so narrative fields do not dominate the sheet.
+#' Row heights are estimated from non-long-text columns to keep ordinary cells
+#' visible without expanding every row around massive notes.
+#'
+#' @param wb openxlsx workbook object.
+#' @param sheet Worksheet name.
+#' @param sheet_data Data frame written to the worksheet.
+#' @param start_row First row containing the table header.
+#' @param start_col First column containing the table.
+#' @param freeze_header Logical; freeze the row below the header.
+#' @param min_width Minimum auto-sized column width.
+#' @param max_width Maximum auto-sized column width for ordinary columns.
+#' @param long_text_width Fixed width for note-like or very long text columns.
+#' @param long_text_threshold Character threshold for long text detection.
+#' @param max_row_height Maximum row height applied by this formatter.
+#' @return Invisibly returns `wb`.
+format_excel_worksheet_dimensions <- function(wb,
+                                              sheet,
+                                              sheet_data,
+                                              start_row = 1,
+                                              start_col = 1,
+                                              freeze_header = TRUE,
+                                              min_width = 8,
+                                              max_width = 45,
+                                              long_text_width = 45,
+                                              long_text_threshold = 240,
+                                              max_row_height = 90) {
+    if (is.null(sheet_data)) {
+        return(invisible(wb))
+    }
+
+    if (!is.data.frame(sheet_data)) {
+        sheet_data <- as.data.frame(sheet_data, stringsAsFactors = FALSE)
+    }
+
+    if (ncol(sheet_data) == 0) {
+        return(invisible(wb))
+    }
+
+    row_count <- nrow(sheet_data) + 1
+    rows <- seq.int(start_row, length.out = row_count)
+    cols <- seq.int(start_col, length.out = ncol(sheet_data))
+    wrap_style <- openxlsx::createStyle(wrapText = TRUE, valign = "top")
+    openxlsx::addStyle(wb, sheet, wrap_style, rows = rows, cols = cols, gridExpand = TRUE, stack = TRUE)
+
+    long_text_cols <- detect_long_text_excel_columns(
+        sheet_data,
+        long_text_threshold = long_text_threshold
+    )
+    auto_cols <- which(!long_text_cols)
+    fixed_cols <- which(long_text_cols)
+
+    calculated_widths <- vapply(
+        seq_len(ncol(sheet_data)),
+        function(col_index) {
+            text <- c(names(sheet_data)[[col_index]], excel_cell_text(sheet_data[[col_index]]))
+            max_width_seen <- max(nchar(text, type = "width"), na.rm = TRUE) + 2
+            min(max(max_width_seen, min_width), max_width)
+        },
+        numeric(1)
+    )
+
+    if (length(auto_cols) > 0) {
+        openxlsx::setColWidths(
+            wb,
+            sheet,
+            cols = start_col + auto_cols - 1,
+            widths = calculated_widths[auto_cols]
+        )
+    }
+    if (length(fixed_cols) > 0) {
+        openxlsx::setColWidths(wb, sheet, cols = start_col + fixed_cols - 1, widths = long_text_width)
+    }
+
+    if (freeze_header && nrow(sheet_data) > 0) {
+        openxlsx::freezePane(wb, sheet, firstActiveRow = start_row + 1)
+    }
+
+    sizing_cols <- auto_cols
+    if (length(sizing_cols) == 0 || nrow(sheet_data) == 0) {
+        openxlsx::setRowHeights(wb, sheet, rows = start_row, heights = 18)
+        return(invisible(wb))
+    }
+
+    estimated_widths <- calculated_widths[sizing_cols]
+
+    data_heights <- vapply(
+        seq_len(nrow(sheet_data)),
+        function(row_index) {
+            row_lines <- mapply(
+                function(col_index, col_width) {
+                    estimate_wrapped_excel_lines(excel_cell_text(sheet_data[[col_index]])[[row_index]], col_width)
+                },
+                sizing_cols,
+                estimated_widths
+            )
+            min(max_row_height, max(15, 15 * max(row_lines, na.rm = TRUE)))
+        },
+        numeric(1)
+    )
+
+    openxlsx::setRowHeights(wb, sheet, rows = start_row, heights = 18)
+    openxlsx::setRowHeights(wb, sheet, rows = start_row + seq_len(nrow(sheet_data)), heights = data_heights)
+
+    invisible(wb)
+}
+
+#' Write a readable Excel workbook
+#'
+#' Writes a data frame or named list of data frames using openxlsx and applies
+#' shared column-width and row-height formatting.
+#'
+#' @param x Data frame or named list of data frames.
+#' @param path Output `.xlsx` path.
+#' @param freeze_header Logical; freeze the header row on each sheet.
+#' @param min_width Minimum auto-sized column width.
+#' @param max_width Maximum auto-sized ordinary column width.
+#' @param long_text_width Fixed width for note-like or very long text columns.
+#' @param long_text_threshold Character threshold for long text detection.
+#' @param max_row_height Maximum row height applied by this formatter.
+#' @return Invisibly returns `path`.
+write_readable_xlsx <- function(x,
+                                path,
+                                freeze_header = TRUE,
+                                min_width = 8,
+                                max_width = 45,
+                                long_text_width = 45,
+                                long_text_threshold = 240,
+                                max_row_height = 90) {
+    if (is.data.frame(x)) {
+        workbook_data <- list(Sheet1 = x)
+    } else if (is.list(x) && length(x) > 0) {
+        workbook_data <- x
+        if (is.null(names(workbook_data)) || any(!nzchar(names(workbook_data)))) {
+            names(workbook_data) <- paste0("Sheet", seq_along(workbook_data))
+        }
+    } else {
+        stop("write_readable_xlsx() requires a data frame or non-empty named list of data frames", call. = FALSE)
+    }
+
+    wb <- openxlsx::createWorkbook()
+    used_sheet_names <- character()
+    written_sheet_count <- 0
+
+    for (sheet_name in names(workbook_data)) {
+        sheet_data <- workbook_data[[sheet_name]]
+        if (is.null(sheet_data)) {
+            next
+        }
+
+        if (!is.data.frame(sheet_data)) {
+            sheet_data <- as.data.frame(sheet_data, stringsAsFactors = FALSE)
+        }
+
+        safe_sheet_name <- sanitize_excel_sheet_name(sheet_name, used_sheet_names)
+        used_sheet_names <- c(used_sheet_names, safe_sheet_name)
+
+        openxlsx::addWorksheet(wb, safe_sheet_name)
+        openxlsx::writeData(wb, safe_sheet_name, sheet_data)
+        written_sheet_count <- written_sheet_count + 1
+        format_excel_worksheet_dimensions(
+            wb = wb,
+            sheet = safe_sheet_name,
+            sheet_data = sheet_data,
+            freeze_header = freeze_header,
+            min_width = min_width,
+            max_width = max_width,
+            long_text_width = long_text_width,
+            long_text_threshold = long_text_threshold,
+            max_row_height = max_row_height
+        )
+    }
+
+    if (written_sheet_count == 0) {
+        stop("write_readable_xlsx() did not receive any non-null sheets to write", call. = FALSE)
+    }
+
+    openxlsx::saveWorkbook(wb, path, overwrite = TRUE)
+    invisible(path)
+}
+
 #' Create organized output directory structure based on study objectives
 #'
 #' Creates directory structure organized by cohort first, then by study objectives
@@ -560,7 +840,7 @@ merge_cohort_tables <- function(full_cohort_data, restricted_cohort_data, output
             # Save as Excel
             merged_table %>%
                 as_tibble() %>%
-                writexl::write_xlsx(
+                write_readable_xlsx(
                     path = file.path(output_path, "merged_baseline_characteristics.xlsx")
                 )
 
@@ -639,7 +919,7 @@ merge_all_cohort_baseline_tables <- function(full_cohort_data,
 
             merged_table %>%
                 as_tibble() %>%
-                writexl::write_xlsx(
+                write_readable_xlsx(
                     path = file.path(output_path, "merged_baseline_characteristics_all_three_cohorts.xlsx")
                 )
 
@@ -710,7 +990,7 @@ merge_full_vs_gksrs_baseline_tables <- function(full_cohort_data,
 
             merged_table %>%
                 as_tibble() %>%
-                writexl::write_xlsx(
+                write_readable_xlsx(
                     path = file.path(output_path, "merged_baseline_characteristics_full_vs_gksrs_only.xlsx")
                 )
 
@@ -933,9 +1213,9 @@ write_analysis_diagnostics_excel <- function(diagnostics, file_path) {
         return(invisible(NULL))
     }
     if (is.data.frame(diagnostics)) {
-        writexl::write_xlsx(list(Diagnostics = diagnostics), file_path)
+        write_readable_xlsx(list(Diagnostics = diagnostics), file_path)
     } else if (is.list(diagnostics)) {
-        writexl::write_xlsx(diagnostics, file_path)
+        write_readable_xlsx(diagnostics, file_path)
     } else {
         stop("diagnostics must be a data.frame or a named list of data.frames")
     }
@@ -1062,7 +1342,7 @@ merge_recurrence_metastatic_progression_tables <- function(full_cohort_data, res
             # Save as Excel (same approach as merge_cohort_tables)
             merged_table %>%
                 as_tibble() %>%
-                writexl::write_xlsx(
+                write_readable_xlsx(
                     path = file.path(output_path, "merged_recurrence_metastatic_progression.xlsx")
                 )
 
@@ -1407,7 +1687,7 @@ merge_adverse_events_tables <- function(full_cohort_data, restricted_cohort_data
 
             merged_table %>%
                 as_tibble() %>%
-                writexl::write_xlsx(
+                write_readable_xlsx(
                     path = file.path(output_path, "merged_adverse_events.xlsx")
                 )
 
@@ -1617,7 +1897,7 @@ export_repeat_treatment_descriptive_stats <- function(full_cohort_data, restrict
             excel_file <- file.path(output_path, "repeat_treatment_descriptive_statistics.xlsx")
             
             # Write to Excel with multiple sheets
-            writexl::write_xlsx(
+            write_readable_xlsx(
                 list(
                     "All_Repeat_Treatments" = all_repeat_treatments,
                     "Full_Cohort_Repeat" = full_repeat_treatments,

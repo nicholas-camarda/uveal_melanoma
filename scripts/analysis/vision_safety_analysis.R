@@ -492,14 +492,14 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
     )
 
     if (nrow(line_change_distribution) > 0) {
-        writexl::write_xlsx(
+        write_readable_xlsx(
             line_change_distribution,
             path = file.path(output_dirs$obj2_vision, paste0(prefix, "snellen_line_change_integer_distribution.xlsx"))
         )
     }
 
     if (nrow(line_change_bucket_distribution) > 0) {
-        writexl::write_xlsx(
+        write_readable_xlsx(
             line_change_bucket_distribution,
             path = file.path(output_dirs$obj2_vision, paste0(prefix, "snellen_line_change_distribution_summary.xlsx"))
         )
@@ -1084,7 +1084,7 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
     ) # fallback to retinopathy folder
 
     # Save rates summary
-    writexl::write_xlsx(
+    write_readable_xlsx(
         sequela_rates,
         file.path(output_dir, paste0(prefix, sequela_type, "_rates_summary.xlsx"))
     )

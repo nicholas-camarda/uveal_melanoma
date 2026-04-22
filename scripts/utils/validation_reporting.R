@@ -350,7 +350,7 @@ write_objective0_validation_artifacts <- function(validation_result,
         bundle_path <- file.path(general_dir, sprintf("%s_validation_bundle.xlsx", cohort_key))
 
         writeLines(summary_lines, summary_path)
-        writexl::write_xlsx(workbook_sheets, bundle_path)
+        write_readable_xlsx(workbook_sheets, bundle_path)
 
         logger::log_info(sprintf("Objective 0 validation summary written to %s", summary_path))
         logger::log_info(sprintf("Objective 0 validation bundle written to %s", bundle_path))

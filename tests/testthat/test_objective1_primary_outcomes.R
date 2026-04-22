@@ -1,7 +1,11 @@
 build_objective1_output_dirs <- function(test_output_dir) {
     list(
         obj1_recurrence = file.path(test_output_dir, "01_Efficacy", "a_recurrence"),
+        obj1_recurrence_1a1 = file.path(test_output_dir, "01_Efficacy", "a_recurrence", "1a1_recurrence_stratified_os"),
+        obj1_recurrence_1a2 = file.path(test_output_dir, "01_Efficacy", "a_recurrence", "1a2_recurrence_stratified_pfs"),
         obj1_mets = file.path(test_output_dir, "01_Efficacy", "b_metastatic_progression"),
+        obj1_mets_2a1 = file.path(test_output_dir, "01_Efficacy", "b_metastatic_progression", "2a1_metastasis_stratified_os"),
+        obj1_mets_2a2 = file.path(test_output_dir, "01_Efficacy", "b_metastatic_progression", "2a2_metastasis_stratified_pfs"),
         obj1_os = file.path(test_output_dir, "01_Efficacy", "c_overall_survival"),
         obj1_pfs = file.path(test_output_dir, "01_Efficacy", "d_progression_free_survival"),
         obj1_height_primary = file.path(test_output_dir, "01_Efficacy", "e_tumor_height_primary"),
@@ -52,6 +56,41 @@ test_that("Objective 1 pipeline returns expected top-level analyses", {
     expect_true(file.exists(file.path(pipeline$output_dirs$obj1_pfs, "test_progression_free_survival_probability_effect_summary.xlsx")))
 })
 
+test_that("Objective 1 recurrence and metastasis rate summaries include co-primary cumulative incidence", {
+    pipeline <- run_objective1_test(create_test_dataset(), output_tag = "objective1_cumulative_incidence_test")
+    withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
+
+    recurrence_summary_path <- file.path(pipeline$output_dirs$obj1_recurrence, "test_recurrence1_rates_summary.xlsx")
+    mets_summary_path <- file.path(pipeline$output_dirs$obj1_mets, "test_mets_progression_rates_summary.xlsx")
+
+    for (summary_path in c(recurrence_summary_path, mets_summary_path)) {
+        expect_true(file.exists(summary_path))
+        expect_true(all(c(
+            "binary_rates",
+            "cumulative_incidence",
+            "competing_risk_support",
+            "estimand_notes"
+        ) %in% readxl::excel_sheets(summary_path)))
+
+        binary_rates <- readxl::read_xlsx(summary_path, sheet = "binary_rates")
+        cumulative_incidence <- readxl::read_xlsx(summary_path, sheet = "cumulative_incidence")
+        estimand_notes <- readxl::read_xlsx(summary_path, sheet = "estimand_notes")
+
+        expect_true(all(binary_rates$estimand == "binary_ever_observed"))
+        expect_true(any(grepl("not a censoring-aware", binary_rates$notes, fixed = TRUE)))
+        expect_true(any(cumulative_incidence$status == "completed"))
+        expect_true(any(grepl("competing event", cumulative_incidence$notes, fixed = TRUE)))
+        expect_true("gray_test_global_curve_p_value" %in% names(cumulative_incidence))
+        expect_false("gray_test_p_value" %in% names(cumulative_incidence))
+        expect_true(any(grepl("not a per-horizon p-value", cumulative_incidence$notes, fixed = TRUE)))
+        expect_true(all(c("binary_ever_observed", "competing_risk_cumulative_incidence") %in% estimand_notes$estimand))
+        expect_true(all(estimand_notes$role == "co-primary"))
+    }
+
+    expect_false(is.null(pipeline$results$recurrence_rates$cumulative_incidence))
+    expect_false(is.null(pipeline$results$mets_rates$cumulative_incidence))
+})
+
 test_that("Objective 1 survival effect summaries include canonical columns", {
     pipeline <- run_objective1_test(create_test_dataset(), output_tag = "objective1_effect_summary_test")
     withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
@@ -67,6 +106,30 @@ test_that("Objective 1 survival effect summaries include canonical columns", {
 
     expect_true(all(c("effect_measure", "estimate", "model_status") %in% names(os_summary)))
     expect_true(all(c("effect_measure", "estimate", "model_status") %in% names(pfs_summary)))
+})
+
+test_that("Objective 1 survival effect summaries include graded PH interpretation", {
+    pipeline <- run_objective1_test(create_test_dataset(), output_tag = "objective1_ph_interpretation_test")
+    withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
+
+    os_summary <- readxl::read_xlsx(file.path(
+        pipeline$output_dirs$obj1_os,
+        "test_overall_survival_probability_effect_summary.xlsx"
+    ))
+    pfs_summary <- readxl::read_xlsx(file.path(
+        pipeline$output_dirs$obj1_pfs,
+        "test_progression_free_survival_probability_effect_summary.xlsx"
+    ))
+
+    expected_cols <- c("PH_Interpretation", "PH_Interpretation_Reason", "Interpretation_Priority")
+    expect_true(all(expected_cols %in% names(os_summary)))
+    expect_true(all(expected_cols %in% names(pfs_summary)))
+    expect_true(all(os_summary$PH_Interpretation %in% c(
+        "cox_forward",
+        "cox_with_ph_caution",
+        "rmst_km_forward",
+        "cox_limited_ph_untestable"
+    )))
 })
 
 test_that("Objective 1 survival effect summaries separate modeled patients from events", {
@@ -183,4 +246,97 @@ test_that("Objective 1 logs legacy warnings for exploratory post-baseline surviv
 
     expect_true(any(grepl("Legacy exploratory one-off analysis", log_lines, fixed = TRUE)))
     expect_true(any(grepl("post-baseline", log_lines, fixed = TRUE)))
+
+    legacy_note_paths <- file.path(c(
+        output_dirs$obj1_recurrence_1a1,
+        output_dirs$obj1_recurrence_1a2,
+        output_dirs$obj1_mets_2a1,
+        output_dirs$obj1_mets_2a2
+    ), "post_baseline_exploratory_note.txt")
+    expect_true(all(file.exists(legacy_note_paths)))
+    expect_true(any(grepl(
+        "not be interpreted as a baseline treatment comparison",
+        readLines(legacy_note_paths[[1]], warn = FALSE),
+        fixed = TRUE
+    )))
+})
+
+test_that("Objective 1 centralized interpretation and subgroup contract notes are emitted once per cohort", {
+    pipeline <- run_objective1_test(create_test_dataset(), output_tag = "objective1_contract_notes_test")
+    withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
+
+    obj1_note <- file.path(
+        pipeline$test_output_dir,
+        "01_Efficacy",
+        "test_objective1_interpretation_notes.txt"
+    )
+    subgroup_note <- file.path(
+        pipeline$test_output_dir,
+        "01_Efficacy",
+        "g_subgroup_analysis",
+        "test_subgroup_analysis_contract_note.txt"
+    )
+
+    expect_true(file.exists(obj1_note))
+    expect_true(file.exists(subgroup_note))
+    expect_true(any(grepl("co-primary estimands", readLines(obj1_note, warn = FALSE), fixed = TRUE)))
+    expect_true(any(grepl("consolidated multi-sheet Excel", readLines(subgroup_note, warn = FALSE), fixed = TRUE)))
+})
+
+test_that("Objective 1 subgroup diagnostics label exploratory support surfaces", {
+    pipeline <- run_objective1_test(create_test_dataset(), output_tag = "objective1_subgroup_contract_test")
+    withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
+
+    primary_workbook <- file.path(
+        pipeline$output_dirs$obj1_subgroup_primary,
+        "test_primary_tumor_height_diagnostics.xlsx"
+    )
+    forest_workbook <- file.path(
+        pipeline$output_dirs$obj1_forest_plots,
+        "test_forest_plot_diagnostics.xlsx"
+    )
+
+    expect_true(file.exists(primary_workbook))
+    expect_true(file.exists(forest_workbook))
+
+    primary_sheet <- readxl::read_xlsx(primary_workbook, sheet = readxl::excel_sheets(primary_workbook)[[1]])
+    forest_sheet <- readxl::read_xlsx(forest_workbook, sheet = readxl::excel_sheets(forest_workbook)[[1]])
+
+    expect_true(all(c("analysis_role", "subgroup_surface", "interpretation_note") %in% names(primary_sheet)))
+    expect_true(all(c("analysis_role", "subgroup_surface", "interpretation_note") %in% names(forest_sheet)))
+    expect_true(all(primary_sheet$analysis_role == "exploratory_support"))
+    expect_true(any(grepl("exploratory support", primary_sheet$interpretation_note, fixed = TRUE)))
+})
+
+test_that("Objective 1 subgroup event diagnostics use the modeled endpoint", {
+    subgroup_data <- tibble::tibble(
+        treatment_group = rep(c("PBT", "PBT", "GKSRS", "GKSRS"), times = 2),
+        subgroup_flag = factor(rep(c("A", "B"), each = 4), levels = c("A", "B")),
+        recurrence1 = c(0, 0, 0, 0, 1, 0, 1, 1),
+        mets_progression = c(1, 1, 1, 0, 1, 0, 1, 1),
+        tt_pfs_months = c(6, 8, 7, 9, 10, 12, 11, 13),
+        death_event = rep(0, 8),
+        pfs_event = c(1, 1, 1, 0, 1, 0, 1, 1)
+    )
+
+    mets_result <- fit_subgroup_model(
+        data = subgroup_data,
+        outcome_config = list(type = "binary", outcome_var = "mets_progression"),
+        subgroup_var_to_use = "subgroup_flag",
+        confounders_to_use = NULL
+    )
+    expect_equal(mets_result$interaction_diagnostics$level_statistics$A$events_plaque, 2)
+    expect_equal(mets_result$interaction_diagnostics$level_statistics$A$events_gksrs, 1)
+    expect_equal(levels(mets_result$filtered_data$subgroup_flag), c("A", "B"))
+
+    pfs_result <- fit_subgroup_model(
+        data = subgroup_data,
+        outcome_config = list(type = "survival", time_var = "tt_pfs_months", event_var = "pfs_event"),
+        subgroup_var_to_use = "subgroup_flag",
+        confounders_to_use = NULL
+    )
+    expect_equal(pfs_result$interaction_diagnostics$level_statistics$A$events_plaque, 2)
+    expect_equal(pfs_result$interaction_diagnostics$level_statistics$A$events_gksrs, 1)
+    expect_equal(attr(pfs_result$model, "subgroup_event_var"), "pfs_event")
+    expect_equal(levels(pfs_result$filtered_data$subgroup_flag), c("A", "B"))
 })

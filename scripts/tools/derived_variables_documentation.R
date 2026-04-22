@@ -511,6 +511,7 @@ export_derived_variables_to_excel <- function(output_file = NULL, include_timest
     openxlsx::setColWidths(wb, sheet_name, cols = 5, widths = 40) # Purpose
     openxlsx::setColWidths(wb, sheet_name, cols = 6, widths = 12) # Data Type
     openxlsx::setColWidths(wb, sheet_name, cols = 7, widths = 10) # Units
+    format_excel_worksheet_dimensions(wb, sheet_name, doc_df, start_row = 2)
 
     # Add alternating row colors for readability
     alt_style <- openxlsx::createStyle(fgFill = "#F2F2F2")
@@ -544,6 +545,7 @@ export_derived_variables_to_excel <- function(output_file = NULL, include_timest
     openxlsx::setColWidths(wb, summary_sheet, cols = 1, widths = 25)
     openxlsx::setColWidths(wb, summary_sheet, cols = 2, widths = 10)
     openxlsx::setColWidths(wb, summary_sheet, cols = 3, widths = 15)
+    format_excel_worksheet_dimensions(wb, summary_sheet, summary_df, start_row = 3)
 
     # Save workbook
     openxlsx::saveWorkbook(wb, output_file, overwrite = TRUE)

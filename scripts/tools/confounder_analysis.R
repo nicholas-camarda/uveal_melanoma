@@ -410,6 +410,7 @@ if (length(significant_vars) > 0) {
     openxlsx::setColWidths(wb, sheet_name, cols = 5, widths = 15) # Effect size type
     openxlsx::setColWidths(wb, sheet_name, cols = 6, widths = 25) # Interpretation
     openxlsx::setColWidths(wb, sheet_name, cols = 7, widths = 12) # Significant
+    format_excel_worksheet_dimensions(wb, sheet_name, results_summary, start_row = 2)
 
     # Add alternating row colors for readability
     alt_style <- openxlsx::createStyle(fgFill = "#F2F2F2")
@@ -450,6 +451,7 @@ if (length(significant_vars) > 0) {
         openxlsx::setColWidths(wb, summary_sheet, cols = 4, widths = 12)
         openxlsx::setColWidths(wb, summary_sheet, cols = 5, widths = 15)
         openxlsx::setColWidths(wb, summary_sheet, cols = 6, widths = 25)
+        format_excel_worksheet_dimensions(wb, summary_sheet, summary_data, start_row = 3)
     }
 
     # Add data preprocessing information sheet
@@ -488,6 +490,7 @@ if (length(significant_vars) > 0) {
     # Set preprocessing column widths
     openxlsx::setColWidths(wb, preprocessing_sheet, cols = 1, widths = 30)
     openxlsx::setColWidths(wb, preprocessing_sheet, cols = 2, widths = 50)
+    format_excel_worksheet_dimensions(wb, preprocessing_sheet, preprocessing_info, start_row = 3)
 
     # Save workbook
     openxlsx::saveWorkbook(wb, output_file, overwrite = TRUE)

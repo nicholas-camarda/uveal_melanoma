@@ -109,6 +109,7 @@ create_comprehensive_variable_census <- function(
     # Main census sheet
     addWorksheet(wb, "Variable_Census")
     writeData(wb, "Variable_Census", comprehensive_census)
+    format_excel_worksheet_dimensions(wb, "Variable_Census", comprehensive_census)
 
     # Summary statistics sheet
     summary_df <- data.frame(
@@ -124,6 +125,7 @@ create_comprehensive_variable_census <- function(
     )
     addWorksheet(wb, "Summary_Statistics")
     writeData(wb, "Summary_Statistics", summary_df)
+    format_excel_worksheet_dimensions(wb, "Summary_Statistics", summary_df)
 
     # Category breakdown sheet
     category_df <- data.frame(
@@ -132,6 +134,7 @@ create_comprehensive_variable_census <- function(
     )
     addWorksheet(wb, "Category_Breakdown")
     writeData(wb, "Category_Breakdown", category_df)
+    format_excel_worksheet_dimensions(wb, "Category_Breakdown", category_df)
 
     # Save XLSX file
     saveWorkbook(wb, xlsx_file, overwrite = TRUE)

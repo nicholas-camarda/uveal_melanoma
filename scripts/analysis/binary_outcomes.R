@@ -1,5 +1,231 @@
 # Binary Outcomes Analysis
 
+#' Build Objective 1 co-primary estimand notes for binary endpoints
+#'
+#' @param outcome_var Character outcome variable name.
+#' @param time_var Character event-time variable name used for cumulative incidence.
+#' @param event_var Character event indicator variable name.
+#' @return Data frame describing the binary and cumulative-incidence estimands.
+build_objective1_binary_estimand_notes <- function(outcome_var, time_var, event_var) {
+    outcome_label <- dplyr::case_when(
+        identical(outcome_var, "recurrence1") ~ "local recurrence",
+        identical(outcome_var, "mets_progression") ~ "metastatic progression",
+        TRUE ~ outcome_var
+    )
+
+    data.frame(
+        estimand = c("binary_ever_observed", "competing_risk_cumulative_incidence"),
+        role = c("co-primary", "co-primary"),
+        endpoint = outcome_label,
+        interpretation = c(
+            "Ever-observed event/rate comparison over available follow-up; not a censoring-aware fixed-horizon probability.",
+            "Time-horizon event probability accounting for censoring and death before the event as a competing event."
+        ),
+        time_variable = c(NA_character_, time_var),
+        event_variable = c(event_var, event_var),
+        death_handling = c(
+            "Deaths are reflected only through available follow-up for the binary ever-observed endpoint.",
+            "Death before the event of interest is coded as a competing event."
+        ),
+        stringsAsFactors = FALSE
+    )
+}
+
+#' Prepare Objective 1 competing-risk status data
+#'
+#' @param data Data frame containing event, follow-up, and treatment variables.
+#' @param time_var Character event-time variable for the endpoint of interest.
+#' @param event_var Character event indicator variable for the endpoint of interest.
+#' @param group_var Character treatment/grouping variable.
+#' @param death_time_var Character death-time variable.
+#' @param death_event_var Character death event indicator variable.
+#' @return Data frame with `.cr_time`, `.cr_status`, and group columns.
+prepare_competing_risk_data <- function(data,
+                                        time_var,
+                                        event_var,
+                                        group_var = "treatment_group",
+                                        death_time_var = "tt_death_months",
+                                        death_event_var = "death_event") {
+    required_cols <- c(time_var, event_var, group_var, death_time_var, death_event_var)
+    missing_cols <- setdiff(required_cols, names(data))
+    if (length(missing_cols) > 0) {
+        stop(sprintf(
+            "Competing-risk data cannot be prepared; missing columns: %s",
+            paste(missing_cols, collapse = ", ")
+        ))
+    }
+
+    event_indicator <- coerce_binary_outcome_vector(data[[event_var]])
+    death_indicator <- coerce_binary_outcome_vector(data[[death_event_var]])
+    event_time <- suppressWarnings(as.numeric(data[[time_var]]))
+    death_time <- suppressWarnings(as.numeric(data[[death_time_var]]))
+    has_event <- !is.na(event_indicator) & event_indicator == 1 & !is.na(event_time)
+    has_competing_death <- !is.na(death_indicator) & death_indicator == 1 &
+        !is.na(death_time) & (!has_event | death_time < event_time)
+
+    cr_status <- dplyr::case_when(
+        has_competing_death ~ 2L,
+        has_event ~ 1L,
+        TRUE ~ 0L
+    )
+    cr_time <- dplyr::case_when(
+        has_competing_death ~ death_time,
+        TRUE ~ event_time
+    )
+
+    data.frame(
+        group = data[[group_var]],
+        .cr_time = cr_time,
+        .cr_status = cr_status,
+        stringsAsFactors = FALSE
+    ) %>%
+        dplyr::filter(!is.na(.data$group), !is.na(.data$.cr_time), .data$.cr_time >= 0)
+}
+
+#' Estimate Objective 1 cumulative incidence by treatment group
+#'
+#' @param data Data frame containing the Objective 1 binary endpoint.
+#' @param outcome_var Character outcome variable name.
+#' @param time_var Character event-time variable name.
+#' @param event_var Character event indicator variable name.
+#' @param group_var Character grouping variable.
+#' @param time_horizons_years Numeric vector of horizons in years.
+#' @return List containing cumulative-incidence summary, support, and notes tables.
+estimate_objective1_cumulative_incidence <- function(data,
+                                                     outcome_var,
+                                                     time_var,
+                                                     event_var,
+                                                     group_var = "treatment_group",
+                                                     time_horizons_years = SURVIVAL_SUMMARY_TIMEPOINTS_YEARS) {
+    notes <- build_objective1_binary_estimand_notes(outcome_var, time_var, event_var)
+    cr_data <- tryCatch(
+        prepare_competing_risk_data(
+            data = data,
+            time_var = time_var,
+            event_var = event_var,
+            group_var = group_var
+        ),
+        error = function(e) {
+            return(NULL)
+        }
+    )
+
+    if (is.null(cr_data) || nrow(cr_data) == 0) {
+        skipped <- data.frame(
+            endpoint = outcome_var,
+            group = NA_character_,
+            horizon_years = time_horizons_years,
+            horizon_months = time_horizons_years * 12,
+            cumulative_incidence_percent = NA_real_,
+            ci_lower_percent = NA_real_,
+            ci_upper_percent = NA_real_,
+            gray_test_global_curve_p_value = NA_real_,
+            status = "skipped",
+            notes = "Cumulative incidence was skipped because no usable event-time rows were available.",
+            stringsAsFactors = FALSE
+        )
+        return(list(summary = skipped, support = data.frame(), notes = notes))
+    }
+
+    cr_data$group <- as.factor(cr_data$group)
+    support <- cr_data %>%
+        dplyr::group_by(.data$group) %>%
+        dplyr::summarise(
+            n = dplyr::n(),
+            events_of_interest = sum(.data$.cr_status == 1, na.rm = TRUE),
+            competing_deaths = sum(.data$.cr_status == 2, na.rm = TRUE),
+            censored = sum(.data$.cr_status == 0, na.rm = TRUE),
+            median_follow_up_months = stats::median(.data$.cr_time, na.rm = TRUE),
+            .groups = "drop"
+        ) %>%
+        dplyr::rename(!!group_var := group)
+
+    if (length(unique(cr_data$group)) < 2) {
+        skipped <- tidyr::expand_grid(
+            group = as.character(unique(cr_data$group)),
+            horizon_years = time_horizons_years
+        ) %>%
+            dplyr::mutate(
+                endpoint = outcome_var,
+                horizon_months = .data$horizon_years * 12,
+                cumulative_incidence_percent = NA_real_,
+                ci_lower_percent = NA_real_,
+                ci_upper_percent = NA_real_,
+                gray_test_global_curve_p_value = NA_real_,
+                status = "skipped",
+                notes = "Cumulative incidence comparison was skipped because fewer than two treatment groups were available."
+            ) %>%
+            dplyr::select("endpoint", "group", "horizon_years", "horizon_months", dplyr::everything())
+        return(list(summary = skipped, support = support, notes = notes))
+    }
+
+    ci_fit <- tryCatch(
+        cmprsk::cuminc(
+            ftime = cr_data$.cr_time,
+            fstatus = cr_data$.cr_status,
+            group = cr_data$group,
+            cencode = 0
+        ),
+        error = function(e) NULL
+    )
+
+    gray_p <- NA_real_
+    if (!is.null(ci_fit) && !is.null(ci_fit$Tests)) {
+        tests <- as.data.frame(ci_fit$Tests)
+        if ("pv" %in% names(tests) && nrow(tests) >= 1) {
+            gray_p <- suppressWarnings(as.numeric(tests$pv[[1]]))
+        }
+    }
+
+    rows <- list()
+    for (group_name in levels(cr_data$group)) {
+        component_name <- paste(group_name, "1")
+        component <- ci_fit[[component_name]] %||% NULL
+        for (horizon_years in time_horizons_years) {
+            horizon_months <- horizon_years * 12
+            if (is.null(component) || length(component$time) == 0) {
+                estimate <- 0
+                variance <- NA_real_
+            } else {
+                idx <- max(which(component$time <= horizon_months), na.rm = TRUE)
+                if (!is.finite(idx)) {
+                    estimate <- 0
+                    variance <- 0
+                } else {
+                    estimate <- component$est[[idx]]
+                    variance <- component$var[[idx]] %||% NA_real_
+                }
+            }
+            se <- if (!is.na(variance) && variance >= 0) sqrt(variance) else NA_real_
+            ci_lower <- if (!is.na(se)) max(0, estimate - stats::qnorm(0.975) * se) else NA_real_
+            ci_upper <- if (!is.na(se)) min(1, estimate + stats::qnorm(0.975) * se) else NA_real_
+            rows[[length(rows) + 1]] <- data.frame(
+                endpoint = outcome_var,
+                group = group_name,
+                horizon_years = horizon_years,
+                horizon_months = horizon_months,
+                cumulative_incidence_percent = round(100 * estimate, 1),
+                ci_lower_percent = round(100 * ci_lower, 1),
+                ci_upper_percent = round(100 * ci_upper, 1),
+                gray_test_global_curve_p_value = gray_p,
+                status = "completed",
+                notes = paste(
+                    "Death before the endpoint is treated as a competing event;",
+                    "estimates are cumulative incidence probabilities.",
+                    "Gray test p-value is one global across-group curve comparison, not a per-horizon p-value."
+                ),
+                stringsAsFactors = FALSE
+            )
+        }
+    }
+
+    list(
+        summary = dplyr::bind_rows(rows),
+        support = support,
+        notes = notes
+    )
+}
+
 #' This function performs logistic regression for binary outcomes, computes event rates by group,
 #' and outputs results and diagnostics. It supports both post-treatment and all-patient analyses,
 #' and writes summary tables to Excel if output directories are provided.
@@ -106,7 +332,20 @@ analyze_binary_outcome_rates <- function(
             events = sum(!!sym(event_var), na.rm = TRUE),
             rate = events / n * 100,
             .groups = "drop"
+        ) %>%
+        dplyr::mutate(
+            estimand = "binary_ever_observed",
+            estimand_role = "co-primary",
+            notes = "Ever-observed event/rate comparison over available follow-up; not a censoring-aware fixed-horizon probability."
         )
+
+    cumulative_incidence <- estimate_objective1_cumulative_incidence(
+        data = fix_event_data,
+        outcome_var = outcome_var,
+        time_var = time_var,
+        event_var = event_var,
+        group_var = group_var
+    )
 
     output_dir <- NULL
 
@@ -120,8 +359,13 @@ analyze_binary_outcome_rates <- function(
             NULL
         }
         if (!is.null(output_dir)) {
-            writexl::write_xlsx(
-                rates,
+            write_readable_xlsx(
+                list(
+                    binary_rates = rates,
+                    cumulative_incidence = cumulative_incidence$summary,
+                    competing_risk_support = cumulative_incidence$support,
+                    estimand_notes = cumulative_incidence$notes
+                ),
                 path = file.path(output_dir, paste0(prefix, outcome_var, "_rates_summary.xlsx"))
             )
         }
@@ -217,6 +461,7 @@ analyze_binary_outcome_rates <- function(
     # Return a list of results: rates, regression table, model object, and diagnostics
     list(
         rates = rates,
+        cumulative_incidence = cumulative_incidence,
         table = result$table,
         model = result$model,
         diagnostics = result$diagnostics

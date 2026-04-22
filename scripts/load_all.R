@@ -42,23 +42,6 @@ load_project_package <- function(pkg) {
     )
 }
 
-##########################################################################
-############### SETUP LOGGING ############################################
-##########################################################################
-
-if (USE_LOGS) {
-    # Create logs directory if it doesn't exist
-    if (!dir.exists(LOGS_DIR)) {
-        dir.create(LOGS_DIR, showWarnings = FALSE)
-    }
-    timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
-    log_file <- file.path(LOGS_DIR, paste0("run_log_", timestamp, ".txt"))
-    setup_logging(log_path = log_file, level = "INFO", progress = interactive(), quiet_html = TRUE)
-} else {
-    setup_logging(log_path = NULL, level = "INFO", progress = interactive(), quiet_html = TRUE)
-}
-
-
 ######################################################################
 ############### LOAD / INSTALL REQUIRED LIBRARIES ####################
 ######################################################################
@@ -344,4 +327,20 @@ make_filename_safe <- function(label) {
         gsub("^_|_$", "", .) # Remove leading/trailing underscores
 
     return(safe_name)
+}
+
+##########################################################################
+############### SETUP LOGGING ############################################
+##########################################################################
+
+if (USE_LOGS) {
+    # Create logs directory if it doesn't exist
+    if (!dir.exists(LOGS_DIR)) {
+        dir.create(LOGS_DIR, showWarnings = FALSE)
+    }
+    timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
+    log_file <- file.path(LOGS_DIR, paste0("run_log_", timestamp, ".txt"))
+    setup_logging(log_path = log_file, level = "INFO", progress = interactive(), quiet_html = TRUE)
+} else {
+    setup_logging(log_path = NULL, level = "INFO", progress = interactive(), quiet_html = TRUE)
 }
