@@ -11,12 +11,22 @@ Objective 1 high-level reader-facing summaries MUST include a centralized cohort
 - **WHEN** Objective 1 writes individual plots, model tables, HTML regression outputs, or diagnostics
 - **THEN** those artifacts are not required to repeat the full cohort-interpretation note unless they already have a centralized notes or metadata mechanism
 
-### Requirement: Objective 1 PFS summaries SHALL defer to RMST when PH fails
-Objective 1 MUST NOT present the Cox hazard ratio as the lead interpretation for PFS when proportional-hazards diagnostics fail.
+### Requirement: Objective 1 Cox-based survival summaries SHALL use graded PH interpretation
+Objective 1 MUST interpret Cox hazard ratios according to proportional-hazards diagnostic severity rather than treating every p-value below 0.05 as an automatic full demotion. When PH concerns are mild or borderline, Cox HRs may remain prominent with cautionary language and RMST/KM context. When PH violations are material and RMST/KM outputs are available, reader-facing summaries MUST lead with RMST/KM or other non-PH-sensitive estimates and downgrade the single Cox HR as secondary or time-compressed.
 
-#### Scenario: PFS PH failure triggers RMST-first language
-- **WHEN** Objective 1 PFS diagnostics indicate a proportional-hazards failure
-- **THEN** the primary summary and narrative lead with RMST or other non-PH-sensitive estimates and explicitly downgrade the single HR interpretation
+#### Scenario: Mild PH concern triggers caution rather than full demotion
+- **WHEN** Objective 1 PH diagnostics show only mild or borderline PH concern
+- **THEN** the Cox HR may remain prominent
+- **AND** the summary includes cautionary language and points to RMST/KM context
+
+#### Scenario: Material PH violation triggers RMST-first language
+- **WHEN** Objective 1 PH diagnostics indicate a material PH violation and RMST/KM outputs are available
+- **THEN** the primary summary and narrative lead with RMST, KM, or other non-PH-sensitive estimates
+- **AND** the single Cox HR is explicitly labeled as secondary, time-compressed, or PH-limited
+
+#### Scenario: PH cannot be tested
+- **WHEN** Objective 1 PH diagnostics cannot be run because model or event support is inadequate
+- **THEN** the summary avoids claiming PH support and interprets any fitted Cox HR cautiously with event-support and RMST/KM context where available
 
 ### Requirement: Legacy post-baseline outputs SHALL self-identify as exploratory
 Objective 1 legacy recurrence-stratified and metastasis-stratified OS/PFS outputs MUST include artifact-level warnings that they are post-baseline exploratory analyses and not baseline treatment comparisons.

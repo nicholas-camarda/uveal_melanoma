@@ -1,13 +1,13 @@
 ## 1. Event-Time Estimand Repair
 
-- [ ] 1.1 Decide and document whether Objective 1a/1b use cumulative incidence as primary or cause-specific hazards as primary
-- [ ] 1.2 Replace recurrence and metastatic progression primary analyses with event-time implementations and matching report outputs
-- [ ] 1.3 Update tests to lock the selected event-time contract and death handling
+- [ ] 1.1 Document Objective 1a/1b binary and competing-risk cumulative incidence as co-primary estimands
+- [ ] 1.2 Preserve binary recurrence/metastatic progression outputs and add co-primary cumulative-incidence implementations with matching report outputs
+- [ ] 1.3 Update tests to lock co-primary output labeling, death handling, and no-sole-logistic-primary behavior
 
 ## 2. Cohort and Interpretation Guardrails
 
 - [ ] 2.1 Add one centralized Objective 1 cohort-interpretation note to high-level reader-facing summaries without duplicating boilerplate across low-level artifacts
-- [ ] 2.2 Make PFS summaries RMST-first whenever PH diagnostics fail
+- [ ] 2.2 Add graded PH interpretation for Objective 1 Cox-based survival summaries, with RMST/KM-first language only for material PH violations when supported
 - [ ] 2.3 Add artifact-level notes to legacy post-baseline OS/PFS folders
 
 ## 3. Subgroup Contract Alignment
