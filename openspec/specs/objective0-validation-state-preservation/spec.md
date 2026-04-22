@@ -1,7 +1,12 @@
-## ADDED Requirements
+# objective0-validation-state-preservation Specification
 
+## Purpose
+TBD - created by archiving change p5-harden-objective0-validation-contracts. Update Purpose after archive.
+## Requirements
 ### Requirement: Objective 0 SHALL preserve full audit state on reload-path validation
 When Objective 0 runs with analytic dataset recreation disabled, the published validation bundle MUST still include the same reconciliation-detail classes that are present on a recreate run, including manual date correction detail when it exists.
+
+Objective 0 SHOULD recover persisted audit detail from existing `00_General` audit and validation-bundle surfaces. Missing persisted audit components MUST be reported explicitly rather than silently omitted.
 
 #### Scenario: Reload path republishes prior audit detail
 - **WHEN** Objective 0 validates an existing runtime cohort without rebuilding it from raw input
@@ -21,3 +26,4 @@ Objective 0 validation outputs MUST identify whether a cohort was rebuilt from r
 #### Scenario: Reloaded cohort provenance is published
 - **WHEN** Objective 0 validates a previously saved runtime cohort
 - **THEN** the validation outputs include provenance text or fields stating that the cohort was revalidated from an existing runtime artifact
+

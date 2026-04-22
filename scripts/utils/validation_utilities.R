@@ -473,7 +473,7 @@ validate_single_cohort_comprehensive <- function(data, cohort_name) {
     logger::log_info(formatted("2. Critical Variable Validation", indent = 2))
 
     # Essential variables that must exist
-    missing_critical <- setdiff(CRITICAL_VARIABLES, names(data))
+    missing_critical <- setdiff(OBJECTIVE0_GLOBAL_REQUIRED_VARIABLES, names(data))
     if (length(missing_critical) > 0) {
         logger::log_error(formatted(sprintf(
             "VALIDATION FAILED: Missing critical variables: %s",
@@ -486,7 +486,7 @@ validate_single_cohort_comprehensive <- function(data, cohort_name) {
     logger::log_info(formatted("3. Derived Variable Validation", indent = 2))
 
     # Check that key derived variables were created
-    missing_derived <- setdiff(DERIVED_VARIABLES, names(data))
+    missing_derived <- setdiff(OBJECTIVE0_DERIVED_OUTPUT_MANIFEST, names(data))
     if (length(missing_derived) > 0) {
         logger::log_error(formatted(sprintf(
             "VALIDATION FAILED: Missing derived variables: %s",

@@ -882,6 +882,9 @@ write_diagnostics_workbook <- function(diagnostics, diagnostics_path) {
             if (!is.null(diagnostics$covariate_variation)) {
                 workbook_data$Covariate_variation <- diagnostics$covariate_variation
             }
+            if (!is.null(diagnostics$assumption_status)) {
+                workbook_data$Assumption_status <- diagnostics$assumption_status
+            }
             if (!is.null(diagnostics$skip_summary)) {
                 workbook_data$Skip_summary <- diagnostics$skip_summary
             }

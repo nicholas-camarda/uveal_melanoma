@@ -81,6 +81,31 @@ count_binary_outcome_events <- function(outcome_values, warn_context = "binary o
 #' @param sparse_level_diagnostics Data frame of excluded sparse levels (optional)
 #' @param filter_stats List summarizing pre/post filtering sample sizes (optional)
 #' @return List containing all diagnostic data frames
+#' Build assumption-status diagnostics for ordinal regression models
+#'
+#' Records that the proportional-odds assumption is acknowledged but not
+#' formally tested, keeping the caveat in the existing diagnostics workbook
+#' rather than creating a separate artifact.
+#'
+#' @param model_fit Fitted model object.
+#' @param dataset_name Character scalar dataset identifier.
+#' @param analysis_name Character scalar analysis identifier.
+#' @return Data frame for ordinal models, otherwise `NULL`.
+build_ordinal_assumption_status_tab <- function(model_fit, dataset_name, analysis_name) {
+    if (!inherits(model_fit, "polr")) {
+        return(NULL)
+    }
+
+    data.frame(
+        dataset_name = dataset_name,
+        analysis_name = analysis_name,
+        assumption = "proportional_odds",
+        status = "not_formally_tested",
+        implication = "Ordinal odds ratios are assumption-dependent descriptive model summaries.",
+        stringsAsFactors = FALSE
+    )
+}
+
 create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predictor_vars, confounders, analysis_name, dataset_name, filtered_variables = NULL, extreme_diagnostics = NULL, treatment_var = "treatment_group", effect_measure = NULL, table_result = NULL, sparse_level_diagnostics = NULL, filter_stats = NULL) {
     # === UNIFIED MODEL EXTRACTION ===
     # Single model summary call - no redundancy
@@ -146,6 +171,11 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
         dataset_name = dataset_name,
         analysis_name = analysis_name
     )
+    assumption_status_tab <- build_ordinal_assumption_status_tab(
+        model_fit = model_fit,
+        dataset_name = dataset_name,
+        analysis_name = analysis_name
+    )
 
     return(list(
         model_summary = model_summary_tab,
@@ -156,7 +186,8 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
         filtering_summary = filtering_summary_tab,
         reference_levels = reference_levels_tab,
         sample_size_summary = sample_size_summary_tab,
-        covariate_variation = covariate_variation_tab
+        covariate_variation = covariate_variation_tab,
+        assumption_status = assumption_status_tab
     ))
 }
 

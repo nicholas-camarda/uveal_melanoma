@@ -127,7 +127,7 @@ estimate_objective1_cumulative_incidence <- function(data,
         return(list(summary = skipped, support = data.frame(), notes = notes))
     }
 
-    cr_data$group <- as.factor(cr_data$group)
+    cr_data$group <- coerce_to_factor_preserving_levels(cr_data$group)
     support <- cr_data %>%
         dplyr::group_by(.data$group) %>%
         dplyr::summarise(

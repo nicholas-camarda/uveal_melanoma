@@ -189,30 +189,30 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
 
     # ===== ANALYSIS-READY TIME VARIABLES =====
     tt_mets_months_analysis = list(
-        description = "Time to metastasis for analysis (negative values set to 0)",
-        calculation = "if_else(tt_mets_months < 0, 0, tt_mets_months)",
-        purpose = "Analysis-ready variable for post-treatment survival models",
+        description = "Time to metastasis for analysis (negative values preserved for Objective 0 hard-error validation)",
+        calculation = "tt_mets_months",
+        purpose = "Analysis-ready variable for post-treatment survival models after Objective 0 chronology validation passes",
         data_type = "numeric",
         units = "months"
     ),
     tt_recurrence_months_analysis = list(
-        description = "Time to recurrence for analysis (negative values set to 0)",
-        calculation = "if_else(tt_recurrence_months < 0, 0, tt_recurrence_months)",
-        purpose = "Analysis-ready variable for post-treatment survival models",
+        description = "Time to recurrence for analysis (negative values preserved for Objective 0 hard-error validation)",
+        calculation = "tt_recurrence_months",
+        purpose = "Analysis-ready variable for post-treatment survival models after Objective 0 chronology validation passes",
         data_type = "numeric",
         units = "months"
     ),
     tt_death_months_analysis = list(
-        description = "Time to death for analysis (negative values set to 0)",
-        calculation = "if_else(tt_death_months < 0, 0, tt_death_months)",
-        purpose = "Analysis-ready variable for post-treatment survival models",
+        description = "Time to death for analysis (negative values preserved for Objective 0 hard-error validation)",
+        calculation = "tt_death_months",
+        purpose = "Analysis-ready variable for post-treatment survival models after Objective 0 chronology validation passes",
         data_type = "numeric",
         units = "months"
     ),
     tt_pfs_months_analysis = list(
-        description = "Progression-free survival for analysis (negative values set to 0)",
+        description = "Progression-free survival for analysis (negative values preserved for Objective 0 hard-error validation)",
         calculation = "pmin(tt_recurrence_months_analysis, tt_death_months_analysis, na.rm = FALSE)",
-        purpose = "Analysis-ready variable for post-treatment survival models",
+        purpose = "Analysis-ready variable for post-treatment survival models after Objective 0 chronology validation passes",
         data_type = "numeric",
         units = "months"
     ),
@@ -258,7 +258,7 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
     recurrence1_treatment_clean = list(
         description = "Cleaned categorization of first recurrence treatment",
         calculation = "case_when(str_detect(tolower(recurrence1_treatment), 'gk') ~ 'GKSRS', str_detect(tolower(recurrence1_treatment), 'enuc') ~ 'Enucleation', str_detect(tolower(recurrence1_treatment), 'ttt') ~ 'TTT', TRUE ~ recurrence1_treatment)",
-        purpose = "Categorized treatment for PFS-2 analysis. Note: Rare categories are collapsed into 'Other' by the standard rare category processing system.",
+        purpose = "Categorized treatment for PFS-2 analysis. Sparse or unsupported categories are handled through model diagnostics rather than collapsed into a catch-all label.",
         data_type = "character",
         units = "categorical"
     ),

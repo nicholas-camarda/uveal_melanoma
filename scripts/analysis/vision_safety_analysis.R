@@ -48,6 +48,192 @@ format_continuous_summary_string <- function(values, digits = 1) {
     )
 }
 
+#' Evaluate an expression with a local RNG seed and restore prior RNG state
+#'
+#' Runs seeded calculations without changing the caller's `.Random.seed`. This
+#' is used for Objective 2 simulated Fisher p-values so reported descriptive
+#' p-values are reproducible without perturbing unrelated analyses.
+#'
+#' @param seed Integer random seed.
+#' @param expr Expression to evaluate under the local seed.
+#' @return The value produced by `expr`.
+with_preserved_rng_seed <- function(seed, expr) {
+    had_seed <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+    previous_seed <- if (had_seed) {
+        get(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+    } else {
+        NULL
+    }
+
+    on.exit({
+        if (had_seed) {
+            assign(".Random.seed", previous_seed, envir = .GlobalEnv)
+        } else if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
+            rm(".Random.seed", envir = .GlobalEnv)
+        }
+    }, add = TRUE)
+
+    set.seed(seed)
+    force(expr)
+}
+
+#' Compute an Objective 2 simulated Fisher p-value with the configured seed
+#'
+#' Uses the central Objective 2 seed for sparse categorical descriptive tests.
+#' Degenerate tables return `NA` instead of stopping the analysis.
+#'
+#' @param data Data frame containing grouping and outcome columns.
+#' @param group_var Character scalar grouping column name.
+#' @param outcome_var Character scalar categorical outcome column name.
+#' @return Numeric p-value or `NA_real_` when the table is not testable.
+calculate_objective2_fisher_p_value <- function(data, group_var, outcome_var) {
+    test_data <- data %>%
+        dplyr::filter(!is.na(.data[[group_var]]), !is.na(.data[[outcome_var]]))
+
+    if (
+        nrow(test_data) == 0 ||
+            dplyr::n_distinct(test_data[[group_var]]) < 2 ||
+            dplyr::n_distinct(test_data[[outcome_var]]) < 2
+    ) {
+        return(NA_real_)
+    }
+
+    contingency_table <- table(test_data[[group_var]], test_data[[outcome_var]])
+    if (any(dim(contingency_table) < 2)) {
+        return(NA_real_)
+    }
+
+    with_preserved_rng_seed(
+        OBJECTIVE2_SIMULATED_FISHER_SEED,
+        tryCatch(
+            stats::fisher.test(contingency_table, simulate.p.value = TRUE)$p.value,
+            error = function(e) NA_real_
+        )
+    )
+}
+
+#' Safely compute a Wilcoxon treatment-group p-value
+#'
+#' Returns `NA` for one-group, all-missing, or otherwise untestable vision
+#' summaries so Objective 2 can still write descriptive artifacts.
+#'
+#' @param data Data frame containing the grouping and continuous outcome columns.
+#' @param value_var Character scalar continuous outcome column name.
+#' @param group_var Character scalar grouping column name.
+#' @return Numeric p-value or `NA_real_` when the comparison is not testable.
+safe_wilcox_p_value <- function(data, value_var, group_var = "treatment_group") {
+    test_data <- data %>%
+        dplyr::filter(!is.na(.data[[group_var]]), !is.na(.data[[value_var]]))
+
+    if (nrow(test_data) == 0 || dplyr::n_distinct(test_data[[group_var]]) < 2) {
+        return(NA_real_)
+    }
+
+    tryCatch(
+        stats::wilcox.test(stats::as.formula(paste(value_var, "~", group_var)), data = test_data)$p.value,
+        error = function(e) NA_real_
+    )
+}
+
+#' Add p-values to a gtsummary table without stopping Objective 2 outputs
+#'
+#' Keeps descriptive tables publishable when sparse or degenerate data prevent a
+#' p-value calculation. The returned table includes a blank p-value column when
+#' `gtsummary::add_p()` cannot compute one.
+#'
+#' @param summary_table A gtsummary object.
+#' @param context_label Character scalar used in warning messages.
+#' @param test Optional `gtsummary::add_p()` test specification.
+#' @param test.args Optional `gtsummary::add_p()` test arguments.
+#' @return A gtsummary object with p-value support where available.
+safe_add_p_to_summary <- function(summary_table, context_label, test = NULL, test.args = NULL) {
+    tryCatch(
+        {
+            if (is.null(test.args)) {
+                summary_table %>% add_p(test = test)
+            } else {
+                summary_table %>% add_p(test = test, test.args = test.args)
+            }
+        },
+        error = function(e) {
+            logger::log_warn(sprintf("%s p-value not computed: %s", context_label, e$message))
+            summary_table %>%
+                modify_table_body(function(body) {
+                    if (!"p.value" %in% names(body)) {
+                        body$p.value <- NA_real_
+                    }
+                    body
+                })
+        }
+    )
+}
+
+#' Resolve the Objective 2 burden field for a toxicity endpoint
+#'
+#' Looks up the Objective 0-prepared burden field that Objective 2 must consume
+#' for the requested toxicity endpoint.
+#'
+#' @param sequela_type Character scalar toxicity endpoint source field.
+#' @return Character scalar prepared burden field name.
+resolve_objective2_toxicity_burden_field <- function(sequela_type) {
+    endpoint <- OBJECTIVE2_TOXICITY_ENDPOINTS %>%
+        dplyr::filter(.data$source_field == sequela_type)
+
+    if (nrow(endpoint) != 1) {
+        stop(sprintf("No Objective 2 toxicity endpoint contract found for '%s'.", sequela_type), call. = FALSE)
+    }
+
+    endpoint$analysis_field[[1]]
+}
+
+#' Assert that an Objective 2 toxicity burden field is analysis-ready
+#'
+#' Objective 2 does not recode raw toxicity source values. This assertion
+#' requires the Objective 0-prepared burden field to be present, numeric, and
+#' complete binary 0/1 before descriptive or model outputs are generated.
+#'
+#' @param data Data frame used by Objective 2.
+#' @param analysis_field Character scalar prepared burden field name.
+#' @param sequela_type Character scalar toxicity endpoint source field.
+#' @return Invisibly returns `TRUE` when the field is valid.
+assert_valid_objective2_toxicity_burden_field <- function(data, analysis_field, sequela_type) {
+    if (!analysis_field %in% names(data)) {
+        stop(
+            sprintf(
+                "Objective 2 requires Objective 0-validated toxicity burden field '%s' for %s; re-run Objective 0 data derivation/validation.",
+                analysis_field,
+                sequela_type
+            ),
+            call. = FALSE
+        )
+    }
+
+    if (!is.numeric(data[[analysis_field]]) && !is.integer(data[[analysis_field]])) {
+        stop(
+            sprintf(
+                "Objective 2 requires numeric binary 0/1 toxicity burden field '%s'; found class %s.",
+                analysis_field,
+                paste(class(data[[analysis_field]]), collapse = ", ")
+            ),
+            call. = FALSE
+        )
+    }
+
+    invalid_rows <- is.na(data[[analysis_field]]) | !data[[analysis_field]] %in% c(0, 1)
+    if (any(invalid_rows)) {
+        stop(
+            sprintf(
+                "Objective 2 requires Objective 0-validated toxicity burden field '%s'; found %d missing/non-binary row(s).",
+                analysis_field,
+                sum(invalid_rows)
+            ),
+            call. = FALSE
+        )
+    }
+
+    invisible(TRUE)
+}
+
 build_grouped_continuous_summary <- function(data, value_var, digits = 1) {
     group_var <- "treatment_group"
     overall_stat <- format_continuous_summary_string(data[[value_var]], digits = digits)
@@ -81,27 +267,24 @@ build_summary_note <- function(display_stats, p_value = NA_real_, suffix = NULL)
     paste(parts, collapse = "; ")
 }
 
-build_distribution_note <- function(data, category_var, detail_file_label) {
+build_distribution_note <- function(data, category_var, detail_file_label, suffix = NULL) {
     non_missing_data <- data %>%
         filter(!is.na(.data[[category_var]]))
 
-    p_value <- NA_real_
-    if (nrow(non_missing_data) > 0 && dplyr::n_distinct(non_missing_data$treatment_group) > 1) {
-        p_value <- tryCatch(
-            stats::fisher.test(table(non_missing_data$treatment_group, non_missing_data[[category_var]]), simulate.p.value = TRUE)$p.value,
-            error = function(e) NA_real_
-        )
-    }
-
+    p_value <- calculate_objective2_fisher_p_value(non_missing_data, "treatment_group", category_var)
     category_count <- dplyr::n_distinct(stats::na.omit(non_missing_data[[category_var]]))
-    paste(
+    parts <- c(
         sprintf("Observed %d non-missing ordered categories.", category_count),
         format_effect_summary_pvalue(p_value),
         sprintf("Detailed counts are saved in %s.", detail_file_label)
     )
+    if (!is.null(suffix) && nzchar(suffix)) {
+        parts <- c(parts, suffix)
+    }
+    paste(parts, collapse = " ")
 }
 
-build_binary_rate_note <- function(data, outcome_var) {
+build_binary_rate_note <- function(data, outcome_var, suffix = NULL) {
     group_var <- "treatment_group"
     overall_n <- sum(!is.na(data[[outcome_var]]))
     overall_events <- sum(data[[outcome_var]] == 1, na.rm = TRUE)
@@ -118,12 +301,13 @@ build_binary_rate_note <- function(data, outcome_var) {
         parts <- c(parts, sprintf("%s: %d/%d (%.1f%%)", group_name, group_events, group_n, group_rate))
     }
 
-    p_value <- tryCatch(
-        stats::fisher.test(table(data$treatment_group, data[[outcome_var]]), simulate.p.value = TRUE)$p.value,
-        error = function(e) NA_real_
-    )
+    p_value <- calculate_objective2_fisher_p_value(data, group_var, outcome_var)
+    parts <- c(parts, format_effect_summary_pvalue(p_value))
+    if (!is.null(suffix) && nzchar(suffix)) {
+        parts <- c(parts, suffix)
+    }
 
-    paste(c(parts, format_effect_summary_pvalue(p_value)), collapse = "; ")
+    paste(parts, collapse = "; ")
 }
 
 #' Analyze visual acuity changes by treatment group
@@ -161,6 +345,15 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             vision_line_change_label = categorize_line_change(vision_change),
             vision_line_change_bucket = assign_line_change_bucket(vision_line_change)
         )
+    vision_change_contract_note <- paste(
+        "Vision endpoint is the implemented change score",
+        "(initial vision minus final or recurrence-pre-treatment vision);",
+        "no baseline vision covariate is included."
+    )
+    ordinal_assumption_note <- paste(
+        "Proportional-odds assumption was not formally tested;",
+        "ordinal odds ratios are assumption-dependent descriptive model summaries."
+    )
 
     line_levels <- line_change_label_levels(summary_data$vision_line_change)
     line_values <- line_change_ordered_values(summary_data$vision_line_change)
@@ -350,8 +543,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
         line_change_bucket_distribution <- bind_rows(bucket_counts, overall_bucket_counts)
     }
 
-    # Statistical test
-    wilcox.test(vision_change ~ treatment_group, data = summary_data)
+    logmar_p_value <- safe_wilcox_p_value(summary_data, "vision_change")
 
     # Table for publication (row-level input)
     tbl_summary_obj <- summary_data %>%
@@ -364,7 +556,8 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             digits = list(all_continuous() ~ 1, all_categorical() ~ 0),
             label = list(vision_change ~ "Vision Change (logMAR)")
         ) %>%
-        add_p(
+        safe_add_p_to_summary(
+            context_label = "LogMAR vision summary",
             test = list(
                 all_continuous() ~ "wilcox.test"
             )
@@ -381,22 +574,26 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
     line_change_bucket_tbl <- NULL
     line_change_tbl <- NULL
     if (length(line_levels) > 0) {
-        line_change_tbl <- summary_data %>%
-            filter(!is.na(vision_line_change_label)) %>%
-            select(treatment_group, vision_line_change_label) %>%
-            tbl_summary(
-                missing = "no",
-                by = treatment_group,
-                type = list(vision_line_change_label ~ "categorical"),
-                statistic = list(all_categorical() ~ "{n} ({p}%)"),
-                digits = list(all_categorical() ~ 1),
-                label = list(vision_line_change_label ~ "Snellen Line Change Integer Distribution")
-            ) %>%
-            add_p(
-                test = list(
-                    all_categorical() ~ "fisher.test"
-                ),
-                test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))
+        line_change_tbl <- with_preserved_rng_seed(
+            OBJECTIVE2_SIMULATED_FISHER_SEED,
+            summary_data %>%
+                filter(!is.na(vision_line_change_label)) %>%
+                select(treatment_group, vision_line_change_label) %>%
+                tbl_summary(
+                    missing = "no",
+                    by = treatment_group,
+                    type = list(vision_line_change_label ~ "categorical"),
+                    statistic = list(all_categorical() ~ "{n} ({p}%)"),
+                    digits = list(all_categorical() ~ 1),
+                    label = list(vision_line_change_label ~ "Snellen Line Change Integer Distribution")
+                ) %>%
+                safe_add_p_to_summary(
+                    context_label = "Snellen integer line-change summary",
+                    test = list(
+                        all_categorical() ~ "fisher.test"
+                    ),
+                    test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))
+                )
             ) %>%
             add_overall() %>%
             format_count_percent_columns() %>%
@@ -412,22 +609,26 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
     }
 
     if (!all(is.na(summary_data$vision_line_change_bucket))) {
-        line_change_bucket_tbl <- summary_data %>%
-            filter(!is.na(vision_line_change_bucket)) %>%
-            select(treatment_group, vision_line_change_bucket) %>%
-            tbl_summary(
-                missing = "no",
-                by = treatment_group,
-                type = list(vision_line_change_bucket ~ "categorical"),
-                statistic = list(all_categorical() ~ "{n} ({p}%)"),
-                digits = list(all_categorical() ~ 1),
-                label = list(vision_line_change_bucket ~ "Snellen Line Change Distribution")
-            ) %>%
-            add_p(
-                test = list(
-                    all_categorical() ~ "fisher.test"
-                ),
-                test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))
+        line_change_bucket_tbl <- with_preserved_rng_seed(
+            OBJECTIVE2_SIMULATED_FISHER_SEED,
+            summary_data %>%
+                filter(!is.na(vision_line_change_bucket)) %>%
+                select(treatment_group, vision_line_change_bucket) %>%
+                tbl_summary(
+                    missing = "no",
+                    by = treatment_group,
+                    type = list(vision_line_change_bucket ~ "categorical"),
+                    statistic = list(all_categorical() ~ "{n} ({p}%)"),
+                    digits = list(all_categorical() ~ 1),
+                    label = list(vision_line_change_bucket ~ "Snellen Line Change Distribution")
+                ) %>%
+                safe_add_p_to_summary(
+                    context_label = "Snellen bucket line-change summary",
+                    test = list(
+                        all_categorical() ~ "fisher.test"
+                    ),
+                    test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))
+                )
             ) %>%
             add_overall() %>%
             format_count_percent_columns() %>%
@@ -452,7 +653,8 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             digits = list(vision_change ~ 1),
             label = list(vision_change ~ "Vision Change (logMAR)")
         ) %>%
-        add_p(
+        safe_add_p_to_summary(
+            context_label = "Snellen line-change continuous summary",
             test = list(
                 all_continuous() ~ "wilcox.test"
             )
@@ -580,10 +782,6 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
     line_change_ordinal_tbl <- line_change_ordinal_result$table
 
     logmar_summary <- build_grouped_continuous_summary(summary_data, "vision_change", digits = 1)
-    logmar_p_value <- tryCatch(
-        stats::wilcox.test(vision_change ~ treatment_group, data = summary_data)$p.value,
-        error = function(e) NA_real_
-    )
 
     snellen_summary_strings <- convert_logmar_summary_stat_to_line_summary(unname(logmar_summary$display_stats))
     names(snellen_summary_strings) <- names(logmar_summary$display_stats)
@@ -623,7 +821,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             n_outcome_non_missing = logmar_summary$n_outcome_non_missing,
             data_source = "Displayed descriptive summary",
             model_status = "DESCRIPTIVE",
-            notes = build_summary_note(logmar_summary$display_stats, logmar_p_value)
+            notes = build_summary_note(logmar_summary$display_stats, logmar_p_value, suffix = vision_change_contract_note)
         ),
         summarize_effect_model(
             model = logmar_unadjusted_model,
@@ -633,7 +831,8 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             group_var = "treatment_group",
             data_source_label = "Filtered vision-change dataset without covariates",
             effect_measure = "MD",
-            outcome_var = "vision_change"
+            outcome_var = "vision_change",
+            notes = vision_change_contract_note
         ) %||% create_effect_summary_rows(
             dataset_name = dataset_name %||% "vision_safety",
             analysis_label = "LogMAR Vision Change",
@@ -646,7 +845,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             n_outcome_non_missing = sum(!is.na(vision_model_data$vision_change)),
             data_source = "Filtered vision-change dataset without covariates",
             model_status = "SKIPPED",
-            notes = "Unadjusted linear model could not be fit."
+            notes = paste("Unadjusted linear model could not be fit.", vision_change_contract_note)
         ),
         summarize_effect_model(
             model = vision_lm,
@@ -656,7 +855,8 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             group_var = "treatment_group",
             data_source_label = "Filtered vision-change dataset with confounders",
             effect_measure = "MD",
-            outcome_var = "vision_change"
+            outcome_var = "vision_change",
+            notes = vision_change_contract_note
         ) %||% create_effect_summary_rows(
             dataset_name = dataset_name %||% "vision_safety",
             analysis_label = "LogMAR Vision Change",
@@ -669,7 +869,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             n_outcome_non_missing = sum(!is.na(vision_model_data$vision_change)),
             data_source = "Filtered vision-change dataset with confounders",
             model_status = "SKIPPED",
-            notes = as.character(vision_result$diagnostics$raw_model_output %||% "Adjusted linear model could not be fit.")
+            notes = paste(as.character(vision_result$diagnostics$raw_model_output %||% "Adjusted linear model could not be fit."), vision_change_contract_note)
         ),
         create_effect_summary_rows(
             dataset_name = dataset_name %||% "vision_safety",
@@ -684,7 +884,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             n_outcome_non_missing = logmar_summary$n_outcome_non_missing,
             data_source = "Displayed descriptive summary converted from logMAR",
             model_status = "DESCRIPTIVE",
-            notes = build_summary_note(snellen_summary_strings, logmar_p_value)
+            notes = build_summary_note(snellen_summary_strings, logmar_p_value, suffix = vision_change_contract_note)
         ),
         summarize_effect_model(
             model = snellen_line_unadjusted_model,
@@ -694,7 +894,8 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             group_var = "treatment_group",
             data_source_label = "Filtered Snellen line-change dataset without covariates",
             effect_measure = "MD",
-            outcome_var = "vision_line_change"
+            outcome_var = "vision_line_change",
+            notes = vision_change_contract_note
         ) %||% create_effect_summary_rows(
             dataset_name = dataset_name %||% "vision_safety",
             analysis_label = "Snellen Line Change",
@@ -707,7 +908,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             n_outcome_non_missing = sum(!is.na(line_change_model_data$vision_line_change)),
             data_source = "Filtered Snellen line-change dataset without covariates",
             model_status = "SKIPPED",
-            notes = "Unadjusted Snellen line-change model could not be fit."
+            notes = paste("Unadjusted Snellen line-change model could not be fit.", vision_change_contract_note)
         ),
         summarize_effect_model(
             model = line_change_lm,
@@ -717,7 +918,8 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             group_var = "treatment_group",
             data_source_label = "Filtered Snellen line-change dataset with confounders",
             effect_measure = "MD",
-            outcome_var = "vision_line_change"
+            outcome_var = "vision_line_change",
+            notes = vision_change_contract_note
         ) %||% create_effect_summary_rows(
             dataset_name = dataset_name %||% "vision_safety",
             analysis_label = "Snellen Line Change",
@@ -730,7 +932,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             n_outcome_non_missing = sum(!is.na(line_change_model_data$vision_line_change)),
             data_source = "Filtered Snellen line-change dataset with confounders",
             model_status = "SKIPPED",
-            notes = as.character(line_change_result$diagnostics$raw_model_output %||% "Adjusted Snellen line-change model could not be fit.")
+            notes = paste(as.character(line_change_result$diagnostics$raw_model_output %||% "Adjusted Snellen line-change model could not be fit."), vision_change_contract_note)
         ),
         create_effect_summary_rows(
             dataset_name = dataset_name %||% "vision_safety",
@@ -747,7 +949,8 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             notes = build_distribution_note(
                 summary_data,
                 category_var = "vision_line_change_bucket",
-                detail_file_label = paste0(prefix, "snellen_line_change_distribution_summary.xlsx")
+                detail_file_label = paste0(prefix, "snellen_line_change_distribution_summary.xlsx"),
+                suffix = ordinal_assumption_note
             )
         ),
         summarize_effect_model(
@@ -758,7 +961,8 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             group_var = "treatment_group",
             data_source_label = "Filtered Snellen line-change distribution dataset without covariates",
             effect_measure = "OR",
-            outcome_var = "vision_line_change_bucket"
+            outcome_var = "vision_line_change_bucket",
+            notes = ordinal_assumption_note
         ) %||% create_effect_summary_rows(
             dataset_name = dataset_name %||% "vision_safety",
             analysis_label = "Snellen Line Change Distribution",
@@ -771,7 +975,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             n_outcome_non_missing = sum(!is.na(ordinal_model_data$vision_line_change_bucket)),
             data_source = "Filtered Snellen line-change distribution dataset without covariates",
             model_status = "SKIPPED",
-            notes = "Unadjusted ordinal Snellen distribution model could not be fit."
+            notes = paste("Unadjusted ordinal Snellen distribution model could not be fit.", ordinal_assumption_note)
         ),
         summarize_effect_model(
             model = line_change_ordinal_model,
@@ -781,7 +985,8 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             group_var = "treatment_group",
             data_source_label = "Filtered Snellen line-change distribution dataset with confounders",
             effect_measure = "OR",
-            outcome_var = "vision_line_change_bucket"
+            outcome_var = "vision_line_change_bucket",
+            notes = ordinal_assumption_note
         ) %||% create_effect_summary_rows(
             dataset_name = dataset_name %||% "vision_safety",
             analysis_label = "Snellen Line Change Distribution",
@@ -794,7 +999,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             n_outcome_non_missing = sum(!is.na(ordinal_model_data$vision_line_change_bucket)),
             data_source = "Filtered Snellen line-change distribution dataset with confounders",
             model_status = "SKIPPED",
-            notes = as.character(line_change_ordinal_result$diagnostics$raw_model_output %||% "Adjusted ordinal Snellen distribution model could not be fit.")
+            notes = paste(as.character(line_change_ordinal_result$diagnostics$raw_model_output %||% "Adjusted ordinal Snellen distribution model could not be fit."), ordinal_assumption_note)
         )
     )
 
@@ -961,6 +1166,11 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
         nvg = "Neovascular Glaucoma",
         srd = "Serous Retinal Detachment"
     )
+    outcome_var <- resolve_objective2_toxicity_burden_field(sequela_type)
+    burden_estimand_note <- sprintf(
+        "Recorded toxicity burden by available follow-up from Objective 0-validated field '%s'; not time-to-toxicity incidence.",
+        outcome_var
+    )
 
     collapse_binary_summary_to_cases <- function(tbl) {
         tbl %>%
@@ -1009,6 +1219,7 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
 
     # Ensure consistent factor contrasts for modeling
     data <- enforce_unordered_factors(data)
+    assert_valid_objective2_toxicity_burden_field(data, outcome_var, sequela_type)
 
     # Retain a copy without additional filtering for descriptive outputs
     summary_data <- data
@@ -1032,38 +1243,11 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
     }
 
     model_data <- exclusion_result$data
-
-    # Check if outcome variable exists
-    outcome_var <- sequela_type
-    if (!outcome_var %in% names(data)) {
-        stop(sprintf(
-            "Missing required variable for %s analysis: %s",
-            sequela_type, outcome_var
-        ))
-    }
+    assert_valid_objective2_toxicity_burden_field(model_data, outcome_var, sequela_type)
 
     logger::log_info(sprintf("Analyzing %s rates (binary outcome)", toupper(sequela_type)))
 
-    # Convert to binary if needed and ensure it's numeric for glm
-    model_data <- model_data %>%
-        mutate(
-            !!outcome_var := case_when(
-                .data[[outcome_var]] == "Y" ~ 1,
-                .data[[outcome_var]] == "N" ~ 0,
-                is.na(.data[[outcome_var]]) ~ 0,
-                TRUE ~ 0
-            )
-        )
-
-    summary_rates_data <- summary_data %>%
-        mutate(
-            !!outcome_var := case_when(
-                .data[[outcome_var]] == "Y" ~ 1,
-                .data[[outcome_var]] == "N" ~ 0,
-                is.na(.data[[outcome_var]]) ~ 0,
-                TRUE ~ 0
-            )
-        )
+    summary_rates_data <- summary_data
 
     # Calculate rates by treatment group
     sequela_rates <- summary_rates_data %>%
@@ -1073,15 +1257,21 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
             n_events = sum(.data[[outcome_var]] == 1, na.rm = TRUE),
             rate_percent = round(100 * n_events / n_total, 1),
             .groups = "drop"
+        ) %>%
+        mutate(
+            endpoint = sequela_label,
+            analysis_field = outcome_var,
+            estimand = "Recorded toxicity burden by available follow-up",
+            notes = burden_estimand_note,
+            .before = treatment_group
         )
 
     # Determine output directory
     output_dir <- switch(sequela_type,
         "retinopathy" = output_dirs$obj2_retinopathy,
         "nvg" = output_dirs$obj2_nvg,
-        "srd" = output_dirs$obj2_srd,
-        output_dirs$obj2_retinopathy
-    ) # fallback to retinopathy folder
+        "srd" = output_dirs$obj2_srd
+    )
 
     # Save rates summary
     write_readable_xlsx(
@@ -1089,27 +1279,42 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
         file.path(output_dir, paste0(prefix, sequela_type, "_rates_summary.xlsx"))
     )
 
+    display_outcome_var <- paste0(outcome_var, "_display")
+    summary_table_data <- summary_data %>%
+        mutate(
+            !!display_outcome_var := factor(
+                dplyr::if_else(.data[[outcome_var]] == 1, "Yes", "No"),
+                levels = c("No", "Yes")
+            )
+        )
+    summary_labels <- get_variable_labels()
+    summary_labels[[display_outcome_var]] <- paste(sequela_label, "Recorded Burden")
+
     # Create summary table
-    tbl_summary_obj <- summary_data %>%
-        select(treatment_group, all_of(outcome_var)) %>%
-        tbl_summary(
-            by = treatment_group,
-            missing = "no",
-            label = get_variable_labels(),
-            statistic = list(
-                all_continuous() ~ "{median} ({min}, {max})",
-                all_categorical() ~ "{n} ({p}%)"
-            ),
-            digits = list(all_continuous() ~ 1, all_categorical() ~ 0)
-        ) %>%
-        add_overall() %>%
-        add_p(
-            test = list(
-                all_categorical() ~ "fisher.test",
-                all_continuous() ~ "wilcox.test"
-            ),
-            test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))
-        ) %>%
+    tbl_summary_obj <- with_preserved_rng_seed(
+        OBJECTIVE2_SIMULATED_FISHER_SEED,
+        summary_table_data %>%
+            select(treatment_group, all_of(display_outcome_var)) %>%
+            tbl_summary(
+                by = treatment_group,
+                missing = "no",
+                label = summary_labels,
+                statistic = list(
+                    all_continuous() ~ "{median} ({min}, {max})",
+                    all_categorical() ~ "{n} ({p}%)"
+                ),
+                digits = list(all_continuous() ~ 1, all_categorical() ~ 0)
+            ) %>%
+            add_overall() %>%
+            safe_add_p_to_summary(
+                context_label = paste(sequela_label, "recorded burden summary"),
+                test = list(
+                    all_categorical() ~ "fisher.test",
+                    all_continuous() ~ "wilcox.test"
+                ),
+                test.args = list(all_categorical() ~ list(simulate.p.value = TRUE))
+            )
+    ) %>%
         bold_labels() %>%
         modify_header(
             label = "**Characteristic**",
@@ -1118,14 +1323,14 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
             stat_2 = "**GKSRS**\nN = {n}",
             p.value = "**p-value**"
         ) %>%
-        modify_caption(paste("Rates of", tools::toTitleCase(sequela_type), "by Treatment Group")) %>%
+        modify_caption(paste("Recorded burden of", tools::toTitleCase(sequela_label), "by Treatment Group")) %>%
         collapse_binary_summary_to_cases()
 
     # Convert to gt table and save
     tbl <- tbl_summary_obj %>%
         as_gt() %>%
         tab_source_note(
-            source_note = md("Summary table generated automatically.")
+            source_note = md(burden_estimand_note)
         )
 
     # Save summary table
@@ -1141,15 +1346,14 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
     logistic_analysis_name <- paste0(sequela_type, "_logistic")
     if (sum(model_data[[outcome_var]] == 1, na.rm = TRUE) >= MINIMUM_ADJUSTED_LOGISTIC_EVENTS) {
 
-        # Use the unified table generation system for logistic regression
-        # Use standardized confounders from centralized configuration
-        srd_confounders <- confounders_for_model
+        # Use the unified table generation system and centralized confounders.
+        sequela_confounders <- confounders_for_model
 
         regression_result <- generate_regression_table(
             data = model_data,
             outcome_var = outcome_var,
             predictor_vars = "treatment_group",
-            confounders = srd_confounders,
+            confounders = sequela_confounders,
             model_type = "logistic",
             effect_measure = "OR",
             analysis_name = logistic_analysis_name,
@@ -1215,9 +1419,9 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
             n_patients = nrow(summary_rates_data),
             n_events = sum(summary_rates_data[[outcome_var]] == 1, na.rm = TRUE),
             n_outcome_non_missing = sum(!is.na(summary_rates_data[[outcome_var]])),
-            data_source = "Displayed descriptive rates summary",
+            data_source = "Displayed Objective 0-validated recorded-burden summary",
             model_status = "DESCRIPTIVE",
-            notes = build_binary_rate_note(summary_rates_data, outcome_var)
+            notes = build_binary_rate_note(summary_rates_data, outcome_var, suffix = burden_estimand_note)
         ),
         summarize_effect_model(
             model = unadjusted_model,
@@ -1225,9 +1429,10 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
             analysis_label = sequela_label,
             model_label = "Unadjusted logistic",
             group_var = "treatment_group",
-            data_source_label = "Filtered sequela dataset without covariates",
+            data_source_label = "Filtered Objective 0-validated recorded-burden dataset without covariates",
             effect_measure = "OR",
-            outcome_var = outcome_var
+            outcome_var = outcome_var,
+            notes = burden_estimand_note
         ) %||% create_effect_summary_rows(
             dataset_name = dataset_name %||% "unspecified_dataset",
             analysis_label = sequela_label,
@@ -1239,9 +1444,9 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
             n_patients = nrow(model_data),
             n_events = sum(model_data[[outcome_var]] == 1, na.rm = TRUE),
             n_outcome_non_missing = sum(!is.na(model_data[[outcome_var]])),
-            data_source = "Filtered sequela dataset without covariates",
+            data_source = "Filtered Objective 0-validated recorded-burden dataset without covariates",
             model_status = "SKIPPED",
-            notes = "Unadjusted logistic model could not be fit."
+            notes = paste("Unadjusted logistic model could not be fit.", burden_estimand_note)
         ),
         summarize_effect_model(
             model = model_result,
@@ -1249,9 +1454,10 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
             analysis_label = sequela_label,
             model_label = "Adjusted logistic",
             group_var = "treatment_group",
-            data_source_label = "Filtered sequela dataset with confounders",
+            data_source_label = "Filtered Objective 0-validated recorded-burden dataset with confounders",
             effect_measure = "OR",
-            outcome_var = outcome_var
+            outcome_var = outcome_var,
+            notes = burden_estimand_note
         ) %||% create_effect_summary_rows(
             dataset_name = dataset_name %||% "unspecified_dataset",
             analysis_label = sequela_label,
@@ -1263,12 +1469,12 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
             n_patients = nrow(model_data),
             n_events = sum(model_data[[outcome_var]] == 1, na.rm = TRUE),
             n_outcome_non_missing = sum(!is.na(model_data[[outcome_var]])),
-            data_source = "Filtered sequela dataset with confounders",
+            data_source = "Filtered Objective 0-validated recorded-burden dataset with confounders",
             model_status = "SKIPPED",
             notes = if (is.list(safety_diagnostics) && !is.null(safety_diagnostics$raw_model_output)) {
-                paste(as.character(safety_diagnostics$raw_model_output), collapse = " ")
+                paste(paste(as.character(safety_diagnostics$raw_model_output), collapse = " "), burden_estimand_note)
             } else {
-                "Adjusted logistic model could not be fit."
+                paste("Adjusted logistic model could not be fit.", burden_estimand_note)
             }
         )
     )

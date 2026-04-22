@@ -144,7 +144,39 @@ build_validation_result <- function(findings,
     )
 }
 
-read_existing_reconciliation_summary <- function(general_dir, cohort_key) {
+#' Append findings and detail tables to a structured validation result
+#'
+#' Rebuilds a validation result after late validation checks, preserving
+#' metadata and validated-cohort state while recomputing success/hard-error
+#' fields from the combined findings.
+#'
+#' @param validation_result Existing structured validation result.
+#' @param findings Additional validation findings.
+#' @param detail_tables Additional detail rows.
+#' @return Updated structured validation result.
+append_validation_result_components <- function(validation_result,
+                                                findings = NULL,
+                                                detail_tables = NULL) {
+    build_validation_result(
+        findings = dplyr::bind_rows(
+            validation_result$validation_findings %||% empty_validation_findings(),
+            findings %||% empty_validation_findings()
+        ),
+        detail_tables = dplyr::bind_rows(
+            validation_result$detail_tables %||% empty_validation_detail_table(),
+            detail_tables %||% empty_validation_detail_table()
+        ),
+        validated_cohorts = validation_result$validated_cohorts %||% character(),
+        metadata = validation_result$metadata %||% list()
+    )
+}
+
+#' Locate the persisted event-date reconciliation workbook for a cohort
+#'
+#' @param general_dir Objective 0 `00_General` directory for a cohort.
+#' @param cohort_key Short cohort key such as `full_cohort`.
+#' @return Character path or `NA_character_` when unavailable.
+find_existing_reconciliation_workbook <- function(general_dir, cohort_key) {
     preferred_path <- file.path(general_dir, sprintf("%s_event_data_reconcilitation.xlsx", cohort_key))
     candidate_paths <- c(
         preferred_path,
@@ -157,23 +189,182 @@ read_existing_reconciliation_summary <- function(general_dir, cohort_key) {
     candidate_paths <- unique(candidate_paths[file.exists(candidate_paths)])
 
     if (length(candidate_paths) == 0) {
-        return(empty_event_date_audit_summary())
+        return(NA_character_)
+    }
+
+    candidate_paths[[1]]
+}
+
+#' Read one sheet from a persisted Objective 0 reconciliation workbook
+#'
+#' @param general_dir Objective 0 `00_General` directory for a cohort.
+#' @param cohort_key Short cohort key such as `full_cohort`.
+#' @param sheet_name Workbook sheet to read.
+#' @param empty_table Zero-row tibble returned when the workbook/sheet is absent.
+#' @return Tibble containing the recovered sheet data.
+read_existing_reconciliation_sheet <- function(general_dir,
+                                               cohort_key,
+                                               sheet_name,
+                                               empty_table) {
+    workbook_path <- find_existing_reconciliation_workbook(general_dir, cohort_key)
+    if (is.na(workbook_path)) {
+        return(empty_table)
     }
 
     tryCatch(
         {
-            summary_sheet <- readxl::read_xlsx(candidate_paths[[1]], sheet = "Reconciliation_Summary")
-            tibble::as_tibble(summary_sheet)
+            if (!sheet_name %in% readxl::excel_sheets(workbook_path)) {
+                return(empty_table)
+            }
+            tibble::as_tibble(readxl::read_xlsx(workbook_path, sheet = sheet_name))
         },
         error = function(e) {
             logger::log_warn(sprintf(
-                "Unable to read existing reconciliation summary for %s from %s: %s",
+                "Unable to read existing reconciliation sheet %s for %s from %s: %s",
+                sheet_name,
                 cohort_key,
-                candidate_paths[[1]],
+                workbook_path,
                 conditionMessage(e)
             ))
-            empty_event_date_audit_summary()
+            empty_table
         }
+    )
+}
+
+#' Read a persisted reconciliation summary for validation-bundle reuse
+#'
+#' @param general_dir Objective 0 `00_General` directory for a cohort.
+#' @param cohort_key Short cohort key such as `full_cohort`.
+#' @return Reconciliation summary tibble.
+read_existing_reconciliation_summary <- function(general_dir, cohort_key) {
+    read_existing_reconciliation_sheet(
+        general_dir = general_dir,
+        cohort_key = cohort_key,
+        sheet_name = "Reconciliation_Summary",
+        empty_table = empty_event_date_audit_summary()
+    )
+}
+
+#' Read persisted manual date corrections for validation-bundle reuse
+#'
+#' @param general_dir Objective 0 `00_General` directory for a cohort.
+#' @param cohort_key Short cohort key such as `full_cohort`.
+#' @return Manual date correction audit tibble.
+read_existing_manual_date_corrections <- function(general_dir, cohort_key) {
+    read_existing_reconciliation_sheet(
+        general_dir = general_dir,
+        cohort_key = cohort_key,
+        sheet_name = "Manual_Date_Corrections",
+        empty_table = empty_manual_date_correction_audit_rows()
+    )
+}
+
+#' Rehydrate persisted Objective 0 audit state during reload-mode runs
+#'
+#' Recovers existing reconciliation and manual-correction sheets so reload-mode
+#' validation bundles do not erase audit details that were created during the
+#' original raw-data recreation pass.
+#'
+#' @param output_dirs Objective output directory list from `build_objective_0_output_dirs()`.
+#' @return List with `audit_by_cohort`, validation `findings`, and `details`.
+rehydrate_objective0_audit_state <- function(output_dirs) {
+    findings <- empty_validation_findings()
+    details <- empty_validation_detail_table()
+    audit_by_cohort <- list()
+
+    for (cohort_key in names(output_dirs)) {
+        cohort_dirs <- output_dirs[[cohort_key]]
+        if (is.null(cohort_dirs) || !"baseline_characteristics" %in% names(cohort_dirs)) {
+            next
+        }
+
+        cohort_dataset_name <- cohort_key_to_dataset_name(cohort_key)
+        general_dir <- dirname(cohort_dirs$baseline_characteristics)
+        workbook_path <- find_existing_reconciliation_workbook(general_dir, cohort_key)
+
+        if (is.na(workbook_path)) {
+            findings <- dplyr::bind_rows(
+                findings,
+                new_validation_finding(
+                    check_id = "objective0_reload_reconciliation_workbook_present",
+                    finding_group = "objective0_reload_audit",
+                    scope = "cohort",
+                    cohort = cohort_dataset_name,
+                    severity = "warning",
+                    status = "warn",
+                    metric = "missing_reconciliation_workbook",
+                    value = file.path(general_dir, sprintf("%s_event_data_reconcilitation.xlsx", cohort_key)),
+                    message = "Reload-mode Objective 0 could not find the persisted event/date reconciliation workbook; reconciliation audit sheets will be empty.",
+                    affected_n = 1L
+                )
+            )
+            audit_by_cohort[[cohort_key]] <- list(
+                reconciliation_summary = empty_event_date_audit_summary(),
+                reconciled_changes = empty_event_date_audit_rows(),
+                manual_date_corrections = empty_manual_date_correction_audit_rows()
+            )
+            next
+        }
+
+        workbook_sheets <- tryCatch(readxl::excel_sheets(workbook_path), error = function(e) character())
+        expected_sheets <- c("Reconciliation_Summary", "Reconciled_Changes", "Manual_Date_Corrections")
+        missing_sheets <- setdiff(expected_sheets, workbook_sheets)
+        if (length(missing_sheets) > 0) {
+            findings <- dplyr::bind_rows(
+                findings,
+                new_validation_finding(
+                    check_id = "objective0_reload_reconciliation_sheets_present",
+                    finding_group = "objective0_reload_audit",
+                    scope = "cohort",
+                    cohort = cohort_dataset_name,
+                    severity = "warning",
+                    status = "warn",
+                    metric = "missing_reconciliation_sheets",
+                    value = paste(missing_sheets, collapse = ", "),
+                    message = sprintf(
+                        "Reload-mode Objective 0 found %s but it is missing sheet(s): %s.",
+                        basename(workbook_path),
+                        paste(missing_sheets, collapse = ", ")
+                    ),
+                    affected_n = length(missing_sheets)
+                )
+            )
+        }
+
+        reconciliation_summary <- read_existing_reconciliation_sheet(
+            general_dir, cohort_key, "Reconciliation_Summary", empty_event_date_audit_summary()
+        )
+        reconciled_changes <- read_existing_reconciliation_sheet(
+            general_dir, cohort_key, "Reconciled_Changes", empty_event_date_audit_rows()
+        )
+        manual_date_corrections <- read_existing_reconciliation_sheet(
+            general_dir, cohort_key, "Manual_Date_Corrections", empty_manual_date_correction_audit_rows()
+        )
+
+        audit_by_cohort[[cohort_key]] <- list(
+            reconciliation_summary = reconciliation_summary,
+            reconciled_changes = reconciled_changes,
+            manual_date_corrections = manual_date_corrections
+        )
+
+        if (nrow(reconciled_changes) > 0) {
+            details <- dplyr::bind_rows(
+                details,
+                new_validation_detail_table(
+                    detail_sheet = "Event_Date_Reconciliations",
+                    data = reconciled_changes,
+                    scope = "cohort",
+                    cohort = cohort_dataset_name,
+                    check_id = "objective0_reload_reconciled_changes_rehydrated"
+                )
+            )
+        }
+    }
+
+    list(
+        audit_by_cohort = audit_by_cohort,
+        findings = findings,
+        details = details
     )
 }
 
@@ -199,10 +390,32 @@ build_validation_summary_table <- function(findings, cohort_dataset_name) {
         dplyr::arrange(dplyr::desc(severity_rank(.data$severity)), .data$finding_group, .data$status)
 }
 
+#' Convert validation metadata into a compact provenance table
+#'
+#' @param validation_result Structured validation result.
+#' @return Two-column tibble suitable for workbook output.
+build_validation_provenance_table <- function(validation_result) {
+    metadata <- validation_result$metadata %||% list()
+    if (length(metadata) == 0) {
+        return(tibble::tibble(field = "provenance", value = "not recorded"))
+    }
+
+    tibble::tibble(
+        field = names(metadata),
+        value = vapply(metadata, function(value) {
+            if (length(value) == 0 || is.null(value)) {
+                return(NA_character_)
+            }
+            paste(as.character(value), collapse = ", ")
+        }, character(1))
+    )
+}
+
 render_validation_summary_text <- function(cohort_label,
                                            cohort_dataset_name,
                                            findings,
-                                           summary_table) {
+                                           summary_table,
+                                           provenance_table = NULL) {
     relevant_findings <- findings %>%
         dplyr::filter(
             is.na(.data$cohort) |
@@ -223,6 +436,13 @@ render_validation_summary_text <- function(cohort_label,
         sprintf("Warnings: %d", nrow(warnings)),
         ""
     )
+
+    if (!is.null(provenance_table) && nrow(provenance_table) > 0) {
+        provenance_lines <- provenance_table %>%
+            dplyr::mutate(line = sprintf("  - %s: %s", .data$field, .data$value)) %>%
+            dplyr::pull(.data$line)
+        summary_lines <- c(summary_lines, "Provenance:", provenance_lines, "")
+    }
 
     summary_lines <- c(summary_lines, "Grouped counts:")
     grouped_lines <- summary_table %>%
@@ -262,13 +482,15 @@ render_validation_summary_text <- function(cohort_label,
 
 write_objective0_validation_artifacts <- function(validation_result,
                                                   output_dirs,
-                                                  reconciliation_audit = NULL) {
+                                                  reconciliation_audit = NULL,
+                                                  rehydrated_audit = NULL) {
     if (is.null(output_dirs) || length(output_dirs) == 0) {
         return(invisible(list()))
     }
 
     findings <- validation_result$validation_findings %||% empty_validation_findings()
     detail_tables <- validation_result$detail_tables %||% empty_validation_detail_table()
+    provenance_table <- build_validation_provenance_table(validation_result)
     written_paths <- list()
 
     for (cohort_key in names(output_dirs)) {
@@ -286,7 +508,8 @@ write_objective0_validation_artifacts <- function(validation_result,
             cohort_label = gsub("_cohort$", "", cohort_key),
             cohort_dataset_name = cohort_dataset_name,
             findings = findings,
-            summary_table = summary_table
+            summary_table = summary_table,
+            provenance_table = provenance_table
         )
 
         relevant_findings <- findings %>%
@@ -296,9 +519,14 @@ write_objective0_validation_artifacts <- function(validation_result,
                     .data$scope %in% c("global", "cross_cohort")
             )
 
+        cohort_rehydrated_audit <- rehydrated_audit[[cohort_key]] %||% NULL
+
         reconciliation_summary <- if (!is.null(reconciliation_audit) &&
             !is.null(reconciliation_audit$audit_summary)) {
             reconciliation_audit$audit_summary
+        } else if (!is.null(cohort_rehydrated_audit) &&
+            !is.null(cohort_rehydrated_audit$reconciliation_summary)) {
+            cohort_rehydrated_audit$reconciliation_summary
         } else {
             read_existing_reconciliation_summary(general_dir, cohort_key)
         }
@@ -306,21 +534,25 @@ write_objective0_validation_artifacts <- function(validation_result,
         manual_date_corrections <- if (!is.null(reconciliation_audit) &&
             !is.null(reconciliation_audit$manual_date_corrections)) {
             tibble::as_tibble(reconciliation_audit$manual_date_corrections)
+        } else if (!is.null(cohort_rehydrated_audit) &&
+            !is.null(cohort_rehydrated_audit$manual_date_corrections)) {
+            tibble::as_tibble(cohort_rehydrated_audit$manual_date_corrections)
         } else {
-            empty_manual_date_correction_audit_rows()
+            read_existing_manual_date_corrections(general_dir, cohort_key)
         }
 
         workbook_sheets <- list(
             Validation_Summary = summary_table,
+            Validation_Provenance = provenance_table,
             Validation_Findings = relevant_findings,
             Critical_Variable_Checks = relevant_findings %>%
                 dplyr::filter(.data$finding_group == "critical_variables"),
             Factor_Level_Checks = relevant_findings %>%
                 dplyr::filter(.data$finding_group == "factor_levels"),
             Cohort_Rule_Checks = relevant_findings %>%
-                dplyr::filter(.data$finding_group %in% c("cohort_rules", "cross_cohort", "raw_input")),
+                dplyr::filter(.data$finding_group %in% c("cohort_rules", "cross_cohort", "raw_input", "downstream_input_contract")),
             Data_Quality_Checks = relevant_findings %>%
-                dplyr::filter(.data$finding_group %in% c("data_quality", "date_checks", "derived_ranges", "structure")),
+                dplyr::filter(.data$finding_group %in% c("data_quality", "date_checks", "derived_ranges", "structure", "endpoint_chronology", "objective0_reload_audit")),
             Reconciliation_Summary = reconciliation_summary,
             Manual_Date_Corrections = manual_date_corrections
         )

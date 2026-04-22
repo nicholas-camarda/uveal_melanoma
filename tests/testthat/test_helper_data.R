@@ -140,6 +140,18 @@ create_test_dataset <- function() {
       rep("Y", 5), rep("N", 5),
       rep("Y", 6), rep("N", 4)
     ),
+    retinopathy_burden_event = c(
+      rep(1L, 6), rep(0L, 4),
+      rep(1L, 6), rep(0L, 4)
+    ),
+    nvg_burden_event = c(
+      rep(1L, 3), rep(0L, 7),
+      rep(1L, 2), rep(0L, 8)
+    ),
+    srd_burden_event = c(
+      rep(1L, 5), rep(0L, 5),
+      rep(1L, 6), rep(0L, 4)
+    ),
 
     # Toxicity variables
     toxicity_grade = sample(0:4, 20, replace = TRUE, prob = c(0.4, 0.3, 0.2, 0.08, 0.02)),

@@ -167,9 +167,9 @@ Vision loss is **expected** after radiation treatment due to:
 1. `*_vision_changes.html` — combined HTML with the descriptive logMAR summary, converted Snellen summary row, and Snellen distribution tables.
 2. `*_logmar_vision_change_adjusted_lm.html` and `*_logmar_vision_change_adjusted_diagnostics.xlsx` — adjusted linear regression for continuous logMAR change.
 3. `*_snellen_line_change_adjusted_lm.html` and `*_snellen_line_change_adjusted_diagnostics.xlsx` — adjusted linear regression for the exact integer `Snellen Line Change` outcome.
-4. `*_snellen_line_change_distribution_adjusted_polr.html` and `*_snellen_line_change_distribution_adjusted_diagnostics.xlsx` — adjusted ordinal logistic regression for the 7-level `Snellen Line Change Distribution`.
+4. `*_snellen_line_change_distribution_adjusted_polr.html` and `*_snellen_line_change_distribution_adjusted_diagnostics.xlsx` — adjusted ordinal logistic regression for the 7-level `Snellen Line Change Distribution`; the diagnostics workbook records that the proportional-odds assumption is not formally tested.
 5. `*_snellen_line_change_descriptive_summary.html`, `*_snellen_line_change_integer_distribution.xlsx`, and `*_snellen_line_change_distribution_summary.xlsx` — descriptive Snellen outputs for manuscript QA and supplements.
-6. `*_vision_effect_summary.xlsx` — one-sheet effect summary workbook combining descriptive, unadjusted, and adjusted rows for logMAR Vision Change, Snellen Line Change, and Snellen Line Change Distribution. Workbook inference conventions follow the fitted model family: linear rows use mean differences with Wald CIs/p-values, logistic rows use ORs with model-based Wald CIs and the pipeline's standard term-level p-values, Cox rows use HRs with native Cox CIs/p-values, and ordinal rows use proportional-odds ORs with 95% Wald CIs plus likelihood-ratio-test p-values.
+6. `*_vision_effect_summary.xlsx` — one-sheet effect summary workbook combining descriptive, unadjusted, and adjusted rows for logMAR Vision Change, Snellen Line Change, and Snellen Line Change Distribution. Workbook inference conventions follow the fitted model family: linear rows use mean differences with Wald CIs/p-values, logistic rows use ORs with model-based Wald CIs and the pipeline's standard term-level p-values, Cox rows use HRs with native Cox CIs/p-values, and ordinal rows use proportional-odds ORs with 95% Wald CIs plus likelihood-ratio-test p-values. Vision rows state that the model uses the implemented change score and does not add baseline vision as a separate covariate.
 
 For reader-facing interpretation of these outputs, see [INTERPRETATION_GUIDE.md](INTERPRETATION_GUIDE.md#understanding-regression-outputs).
 
@@ -195,8 +195,8 @@ tt_recurrence_months = case_when(
 
 **Sign Convention:**
 
-- Always positive (time cannot be negative)
-- Negative values are set to 0 via `tt_recurrence_months_analysis`
+- Non-negative values are required for downstream event-time analyses.
+- Negative values remain visible in `tt_recurrence_months_analysis` and trigger an Objective 0 hard-error validation finding instead of being clamped.
 
 ---
 
@@ -250,6 +250,7 @@ tt_pfs_months_analysis = pmin(tt_recurrence_months_analysis, tt_death_months_ana
 - Takes the **minimum** time between recurrence and death
 - If recurrence occurs before death, PFS time = time to recurrence
 - If death occurs before recurrence, PFS time = time to death
+- Impossible negative component times are preserved and blocked by Objective 0 validation rather than normalized.
 
 **Example:**
 
@@ -267,16 +268,21 @@ tt_pfs_months_analysis = pmin(tt_recurrence_months_analysis, tt_death_months_ana
 ```r
 # For patients with recurrence who received salvage treatment
 tt_pfs2_months = case_when(
-    recurrence2 == "Y" ~ interval(recurrence1_treatment_date, recurrence2_date) / months(1),
+    recurrence2 == "Y" & !is.na(recurrence2_date) & (is.na(dod) | recurrence2_date <= dod) ~
+        interval(recurrence1_treatment_date, recurrence2_date) / months(1),
+    !is.na(dod) ~
+        interval(recurrence1_treatment_date, dod) / months(1),
     TRUE ~ interval(recurrence1_treatment_date, last_known_alive_date) / months(1)
 )
+pfs2_event = 1 only when second local recurrence is observed before death
 ```
 
 **Components:**
 
 - **Starting point:** Date of salvage treatment (not primary treatment)
 - **Event:** Second local recurrence
-- **Censoring:** Death or last known alive without second local recurrence
+- **Censoring:** Death before second local recurrence, or last known alive without second local recurrence
+- **Validation contract:** Objective 0 checks `pfs2_event`, `tt_pfs2_months`, `tt_pfs2_years`, and `recurrence1_treatment_clean` against `recurrence1`, `recurrence1_treatment`, `recurrence1_treatment_date`, `recurrence2`, `recurrence2_date`, `dod`, and `last_known_alive_date`
 
 **Clinical Interpretation:**
 

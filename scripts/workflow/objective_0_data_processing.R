@@ -131,6 +131,17 @@ run_objective_0 <- function() {
             validated_cohorts = names(analytic_result$analytic_data %||% list()),
             validation_errors = character()
         )
+        validation_result$metadata <- c(
+            validation_result$metadata %||% list(),
+            list(
+                objective0_dataset_mode = "recreate_from_raw",
+                recreate_analytic_datasets = RECREATE_ANALYTIC_DATASETS,
+                raw_data_dir = RAW_DATA_DIR,
+                processed_data_dir = PROCESSED_DATA_DIR,
+                output_dir = OUTPUT_DIR,
+                input_filename = INPUT_FILENAME
+            )
+        )
 
         write_objective0_validation_artifacts(
             validation_result = validation_result,
@@ -183,6 +194,8 @@ run_objective_0 <- function() {
             )
         }
 
+        reload_audit_state <- rehydrate_objective0_audit_state(temp_output_dirs_by_cohort)
+
         validation_result <- if (length(existing_data$cohort_data) == length(expected_cohorts)) {
             validate_processing_pipeline(
                 existing_data$cohort_data,
@@ -199,11 +212,28 @@ run_objective_0 <- function() {
                 detail_tables = empty_validation_detail_table()
             )
         }
+        validation_result$metadata <- c(
+            validation_result$metadata %||% list(),
+            list(
+                objective0_dataset_mode = "reload_existing_processed",
+                recreate_analytic_datasets = RECREATE_ANALYTIC_DATASETS,
+                raw_data_dir = RAW_DATA_DIR,
+                processed_data_dir = PROCESSED_DATA_DIR,
+                output_dir = OUTPUT_DIR,
+                input_filename = INPUT_FILENAME
+            )
+        )
+        validation_result <- append_validation_result_components(
+            validation_result = validation_result,
+            findings = reload_audit_state$findings,
+            detail_tables = reload_audit_state$details
+        )
 
         write_objective0_validation_artifacts(
             validation_result = validation_result,
             output_dirs = temp_output_dirs_by_cohort,
-            reconciliation_audit = NULL
+            reconciliation_audit = NULL,
+            rehydrated_audit = reload_audit_state$audit_by_cohort
         )
         documentation_refresh <- refresh_generated_study_docs(validation_result)
 

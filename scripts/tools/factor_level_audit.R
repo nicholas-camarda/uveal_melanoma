@@ -104,7 +104,7 @@ get_canonical_factor_level_expectations <- function() {
                 "Class_1A_PRAME_negative", "Class_1A_PRAME_positive", "Class_1A_PRAME_not_reported",
                 "Class_1B_PRAME_negative", "Class_1B_PRAME_positive",
                 "Class_2_PRAME_negative", "Class_2_PRAME_positive", "Class_2_PRAME_Unknown", "Class_2_PRAME_not_reported",
-                "Failed", "Unknown", "Class_1A_PRAME_discordant", "Other", "No"
+                "Failed", "Unknown", "Class_1A_PRAME_discordant", "No"
             ),
             reference = "Class_1A_PRAME_negative",
             critical = FALSE

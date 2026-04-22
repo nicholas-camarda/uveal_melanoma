@@ -1018,7 +1018,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         paste0("Surv(", time_var, ", ", event_var, ") ~ ", model_group_var)
     )
 
-    # Select relevant columns for KM/RMST analysis (retain "Other" rows)
+    # KM/RMST display data intentionally remains separate from model-only sparse-level filtering.
     km_data <- fix_event_data %>%
         dplyr::select(all_of(c(time_var, event_var, plot_group_var)))
 

@@ -44,8 +44,8 @@ create_analytic_dataset <- function(output_dirs = NULL, validate_after_saving = 
 
         cohort_filters <- list(
             full_cohort = function(df) df,
-            restricted_cohort = function(df) df %>% dplyr::filter(consort_group == "eligible_both"),
-            gksrs_only_cohort = function(df) df %>% dplyr::filter(consort_group == "gksrs_only")
+            restricted_cohort = function(df) df %>% dplyr::filter(consort_group == CONSORT_GROUP_ELIGIBLE_BOTH),
+            gksrs_only_cohort = function(df) df %>% dplyr::filter(consort_group == CONSORT_GROUP_GKSRS_ONLY)
         )
 
         for (cohort_key in names(output_dirs)) {

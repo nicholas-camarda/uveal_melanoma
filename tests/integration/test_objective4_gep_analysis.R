@@ -158,10 +158,10 @@ test_that("restore_gep_display_variables restores only protected GEP display col
 
     collapsed_data <- precollapse_data %>%
         mutate(
-            biopsy1_gep = factor(c("Class 1 PRAME Negative", "Other")),
-            gep_class_simple = factor(c("Class 1", "Other")),
-            prame_status = factor(c("Negative", "Other")),
-            gep12_prame_status = factor(c("Negative", "Other")),
+            biopsy1_gep = factor(c("Class 1 PRAME Negative", "GEP Not Tested")),
+            gep_class_simple = factor(c("Class 1", "GEP Not Tested")),
+            prame_status = factor(c("Negative", "Unknown")),
+            gep12_prame_status = factor(c("Negative", "Unknown")),
             unchanged_var = c("keep_a", "changed")
         )
 
@@ -193,10 +193,10 @@ test_that("restore_gep_display_variables aligns subsetted rows by id", {
 
     subset_data <- tibble::tibble(
         id = c(103, 101),
-        biopsy1_gep = factor(c("Other", "Class 1 PRAME Negative")),
-        gep_class_simple = factor(c("Other", "Class 1")),
-        prame_status = factor(c("Other", "Negative")),
-        gep12_prame_status = factor(c("Other", "Negative")),
+        biopsy1_gep = factor(c("GEP Not Tested", "Class 1 PRAME Negative")),
+        gep_class_simple = factor(c("GEP Not Tested", "Class 1")),
+        prame_status = factor(c("Unknown", "Negative")),
+        gep12_prame_status = factor(c("Unknown", "Negative")),
         unchanged_var = c("keep_c", "keep_a")
     )
 
@@ -236,10 +236,10 @@ test_that("simple GEP validation restores protected display labels when precolla
     )
 
     test_data <- tibble::tibble(
-        biopsy1_gep = factor(c("Class 1", "Other")),
-        gep_class_simple = factor(c("Class 1", "Other")),
-        prame_status = factor(c("Negative", "Other")),
-        gep12_prame_status = factor(c("Negative", "Other")),
+        biopsy1_gep = factor(c("Class 1", "GEP Not Tested")),
+        gep_class_simple = factor(c("Class 1", "GEP Not Tested")),
+        prame_status = factor(c("Negative", "Unknown")),
+        gep12_prame_status = factor(c("Negative", "Unknown")),
         biopsy1_gep_mfs = c(0.80, 0.20),
         biopsy1_gep_mss = c(0.85, 0.15),
         expected_mfs_5yr = c(0.80, 0.20),
@@ -271,7 +271,7 @@ test_that("survival helper can separate KM display groups from Cox model groups"
         tt_mets_months = c(12, 24, 18, 30),
         mets_event = c(0, 1, 0, 1),
         biopsy1_gep = factor(c("Class 1", "Class 1", "GEP Failed/Indeterminate", "GEP Failed/Indeterminate")),
-        biopsy1_gep_model = factor(c("Class 1", "Class 1", "Other", "Other"))
+        biopsy1_gep_model = factor(c("Class 1", "Class 1", "GEP Failed/Indeterminate", "GEP Failed/Indeterminate"))
     )
 
     result <- analyze_time_to_event_outcomes(
@@ -289,7 +289,7 @@ test_that("survival helper can separate KM display groups from Cox model groups"
     )
 
     expect_true(any(grepl("GEP Failed/Indeterminate", names(result$fit$strata))))
-    expect_false(any(grepl("Other", names(result$fit$strata))))
+    expect_null(result$cox_model)
     expect_match(result$diagnostics$raw_model_output, "After sparse-level exclusions")
     expect_match(result$diagnostics$raw_model_output, "requires at least two non-missing")
 })
@@ -1789,17 +1789,17 @@ test_that("Eligibility filters properly exclude invalid data", {
             "Class 1 PRAME Negative",
             "Class 2 PRAME Positive",
             "GEP Failed/Indeterminate",
-            "Other",
+            "GEP Failed/Indeterminate",
             "GEP Not Tested"
         ),
         biopsy1_gep_raw = c(
             "Class_1A_PRAME_negative",
             "Class_2_PRAME_positive",
             "Class_1A_PRAME_not_reported",
-            "Other",
+            "Unknown",
             "No"
         ),
-        gep_class_simple = c("Class 1", "Class 2", "Class 1", "Class 2", "GEP Not Tested"),
+        gep_class_simple = c("Class 1", "Class 2", "Class 1", "GEP Failed/Indeterminate", "GEP Not Tested"),
         biopsy1_gep_mfs = c(0.8, 0.4, 0.6, 0.5, 0.7),
         biopsy1_gep_mss = c(0.9, 0.6, 0.7, 0.8, 0.8),
         tt_mets_months = c(24, 36, 18, 12, 48),
@@ -1822,7 +1822,7 @@ test_that("Eligibility filters properly exclude invalid data", {
         info = "Class 1 not reported should be excluded from MFS analysis"
     )
     expect_false(refreshed_data$mfs_analysis_eligible[4],
-        info = "Collapsed Other rows should be excluded from MFS analysis"
+        info = "Unknown raw GEP rows should be excluded from MFS analysis"
     )
     expect_false(refreshed_data$mfs_analysis_eligible[5],
         info = "GEP not tested rows should be excluded from MFS analysis"
@@ -1838,14 +1838,14 @@ test_that("Eligibility filters properly exclude invalid data", {
         info = "Class 1 not reported should be excluded from MSS analysis"
     )
     expect_false(refreshed_data$mss_analysis_eligible[4],
-        info = "Collapsed Other rows should be excluded from MSS analysis"
+        info = "Unknown raw GEP rows should be excluded from MSS analysis"
     )
     expect_false(refreshed_data$mss_analysis_eligible[5],
         info = "GEP not tested rows should be excluded from MSS analysis"
     )
 })
 
-test_that("Objective 4 eligibility refresh removes failed and other rows from cohort analyses", {
+test_that("Objective 4 eligibility refresh removes failed rows from cohort analyses", {
     cohort_names <- c(
         "uveal_melanoma_full_cohort",
         "uveal_melanoma_restricted_cohort",
@@ -1860,11 +1860,11 @@ test_that("Objective 4 eligibility refresh removes failed and other rows from co
         mfs_data <- display_data %>% filter(mfs_analysis_eligible)
         mss_data <- display_data %>% filter(mss_analysis_eligible)
 
-        expect_false(any(as.character(mfs_data$biopsy1_gep) %in% c("GEP Failed/Indeterminate", "GEP Not Tested", "Other")),
-            info = sprintf("MFS-eligible rows should exclude failed and other labels for %s", dataset_name)
+        expect_false(any(as.character(mfs_data$biopsy1_gep) %in% c("GEP Failed/Indeterminate", "GEP Not Tested")),
+            info = sprintf("MFS-eligible rows should exclude failed and not-tested labels for %s", dataset_name)
         )
-        expect_false(any(as.character(mss_data$biopsy1_gep) %in% c("GEP Failed/Indeterminate", "GEP Not Tested", "Other")),
-            info = sprintf("MSS-eligible rows should exclude failed and other labels for %s", dataset_name)
+        expect_false(any(as.character(mss_data$biopsy1_gep) %in% c("GEP Failed/Indeterminate", "GEP Not Tested")),
+            info = sprintf("MSS-eligible rows should exclude failed and not-tested labels for %s", dataset_name)
         )
         expect_true(all(as.character(mfs_data$gep_class_simple) %in% GEP_DEFINITIVE_SIMPLE_LEVELS),
             info = sprintf("MFS-eligible rows should retain only definitive simple classes for %s", dataset_name)
@@ -1877,10 +1877,15 @@ test_that("Objective 4 eligibility refresh removes failed and other rows from co
 
 test_that("Canonical GEP variables retain original levels without cohort-wide collapse", {
     actual_data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
+    precollapse_data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort_derived_precollapse.rds"))
 
     expect_false(file.exists(file.path(PROCESSED_DATA_DIR, "other_map.rds")))
     expect_true(all(c("biopsy1_gep_raw", GEP_DISPLAY_VARIABLES, "location") %in% names(actual_data)))
     expect_false("Other" %in% levels(actual_data$location))
+    expect_false("Other" %in% levels(actual_data$biopsy1_gep_raw))
+    expect_false("Other" %in% levels(precollapse_data$biopsy1_gep_raw))
+    expect_false(any(as.character(actual_data$biopsy1_gep_raw) == "Other", na.rm = TRUE))
+    expect_false(any(as.character(precollapse_data$biopsy1_gep_raw) == "Other", na.rm = TRUE))
     expect_true(any(as.character(actual_data$location) == "Cilio-Choroidal"))
     expect_true(any(as.character(actual_data$biopsy1_gep) == "GEP Not Tested"))
 })
@@ -1888,7 +1893,7 @@ test_that("Canonical GEP variables retain original levels without cohort-wide co
 test_that("Eligibility depends on definitive raw labels even when text raw retains definitive class", {
     test_data <- tibble::tibble(
         biopsy1_gep = factor(c("Class 1 PRAME Positive", "Class 1 PRAME Positive")),
-        biopsy1_gep_raw = factor(c("Other", "Class_1A_PRAME_positive")),
+        biopsy1_gep_raw = factor(c("Unknown", "Class_1A_PRAME_positive")),
         biopsy1_gep_text_raw = c("Class_1A_PRAME_positive", "Class_1A_PRAME_positive"),
         gep_class_simple = factor(c("Class 1", "Class 1")),
         biopsy1_gep_mfs = c(0.80, 0.80),

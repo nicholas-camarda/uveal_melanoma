@@ -37,6 +37,54 @@ normalize_recurrence_indicator_columns <- function(data) {
         ))
 }
 
+#' Normalize Objective 2 toxicity indicator columns before burden derivation
+#'
+#' Applies canonical Y/N normalization to the recorded toxicity endpoint source
+#' fields used by Objective 2. Unrecognized non-missing values are preserved so
+#' Objective 0 validation can surface them instead of silently recoding them.
+#'
+#' @param data Data frame that may contain Objective 2 toxicity source fields.
+#' @return Data frame with available toxicity indicator columns normalized.
+normalize_objective2_toxicity_indicator_columns <- function(data) {
+    toxicity_columns <- intersect(OBJECTIVE2_TOXICITY_ENDPOINTS$source_field, names(data))
+    if (length(toxicity_columns) == 0) {
+        return(data)
+    }
+
+    data %>%
+        dplyr::mutate(dplyr::across(
+            dplyr::all_of(toxicity_columns),
+            normalize_raw_or_display_binary_indicator
+        ))
+}
+
+#' Derive Objective 2 recorded toxicity burden event fields
+#'
+#' Creates binary burden fields from Objective 2 toxicity source fields after
+#' Y/N normalization. Missing or nonstandard source values remain `NA` in the
+#' derived field so Objective 0 validation can block included analytic rows.
+#'
+#' @param data Data frame containing normalized toxicity source fields.
+#' @return Data frame with available Objective 2 toxicity burden fields added.
+derive_objective2_toxicity_burden_fields <- function(data) {
+    for (endpoint_index in seq_len(nrow(OBJECTIVE2_TOXICITY_ENDPOINTS))) {
+        source_field <- OBJECTIVE2_TOXICITY_ENDPOINTS$source_field[[endpoint_index]]
+        analysis_field <- OBJECTIVE2_TOXICITY_ENDPOINTS$analysis_field[[endpoint_index]]
+
+        if (!source_field %in% names(data)) {
+            next
+        }
+
+        data[[analysis_field]] <- dplyr::case_when(
+            data[[source_field]] == "Y" ~ 1L,
+            data[[source_field]] == "N" ~ 0L,
+            TRUE ~ NA_integer_
+        )
+    }
+
+    data
+}
+
 #' Create derived variables for the full dataset
 #'
 #' Adds derived variables (dates, follow-up, time-to-event, event indicators, etc.) to the full data frame.
@@ -50,9 +98,12 @@ normalize_recurrence_indicator_columns <- function(data) {
 create_derived_variables <- function(data) {
     logger::log_info("Creating derived variables")
 
-    data <- normalize_recurrence_indicator_columns(data)
-
     old_variables <- colnames(data)
+
+    data <- data %>%
+        normalize_recurrence_indicator_columns() %>%
+        normalize_objective2_toxicity_indicator_columns() %>%
+        derive_objective2_toxicity_burden_fields()
 
     new_data <- data %>%
         mutate(
@@ -151,9 +202,11 @@ create_derived_variables <- function(data) {
             mets_before_treatment = tt_mets_months < 0,
             recurrence_before_treatment = tt_recurrence_months < 0,
             death_before_treatment = tt_death_months < 0,
-            tt_mets_months_analysis = if_else(tt_mets_months < 0, 0, tt_mets_months),
-            tt_recurrence_months_analysis = if_else(tt_recurrence_months < 0, 0, tt_recurrence_months),
-            tt_death_months_analysis = if_else(tt_death_months < 0, 0, tt_death_months),
+            # Keep impossible event times visible for Objective 0 validation;
+            # downstream analysis is blocked by hard-error chronology findings.
+            tt_mets_months_analysis = tt_mets_months,
+            tt_recurrence_months_analysis = tt_recurrence_months,
+            tt_death_months_analysis = tt_death_months,
             tt_pfs_months_analysis = pmin(tt_recurrence_months_analysis, tt_death_months_analysis, na.rm = FALSE),
             # Tumor height change: Per project goals 1e
             # Formula: last_height - initial_tumor_height (or recurrence1_pretreatment_height - initial)

@@ -1,11 +1,17 @@
-## ADDED Requirements
+# objective0-chronology-failure-enforcement Specification
 
+## Purpose
+TBD - created by archiving change p5-harden-objective0-validation-contracts. Update Purpose after archive.
+## Requirements
 ### Requirement: Objective 0 SHALL hard-fail impossible chronology that changes analytic endpoint timing
 Objective 0 MUST NOT silently clamp or normalize impossible chronology when that chronology changes a derived analytic time-to-event or event-status field used by downstream objectives.
+
+Endpoint-altering fields MUST include recurrence, metastasis, death, PFS, PFS-2, and GEP MFS/MSS event-time/status constructs derived from those timings.
 
 #### Scenario: Impossible chronology affects derived survival time
 - **WHEN** source dates imply a negative or impossible interval for a derived analytic endpoint
 - **THEN** Objective 0 stops the affected cohort from being treated as validation-successful and publishes an explicit hard failure or stop artifact
+- **AND** downstream objectives do not run against that affected cohort as validation-successful
 
 #### Scenario: Warning-only behavior is reserved for non-analytic chronology gaps
 - **WHEN** a chronology issue does not alter any downstream analytic endpoint and remains purely documentary
@@ -17,3 +23,5 @@ Objective 0 chronology failures MUST be accompanied by review artifacts that ide
 #### Scenario: Chronology failure artifact includes impacted fields
 - **WHEN** Objective 0 blocks a cohort because of impossible chronology
 - **THEN** the published diagnostics identify the row or record key, the source fields, and the derived endpoint fields affected
+- **AND** the diagnostics are written through the existing Objective 0 validation bundle unless that surface cannot represent the row-level detail
+

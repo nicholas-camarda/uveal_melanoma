@@ -138,12 +138,11 @@ The additional files in `~/ProjectsRuntime/uveal_melanoma/Analytic Dataset/` sup
 | Supporting file | What it contains | Why it is saved |
 |-----------------|------------------|-----------------|
 | `*_derived_precollapse.rds` | Cohort-specific analytic data before sparse factor levels are collapsed for modeling | Preserves original factor levels so merged baseline tables and review outputs can stay aligned with cohort-specific tables |
-| `other_map.rds` | Mapping of original category levels that were collapsed into `Other` | Documents exactly what was collapsed and supports transparent downstream reporting and diagnostics |
 
 For semantically meaningful GEP fields such as `biopsy1_gep`, `gep_class_simple`, `prame_status`, and `gep12_prame_status`, the pipeline now uses a two-layer contract:
 
 - Post-collapse cohort `.rds` files remain the model-facing artifacts used for sparse-category protection.
-- Reader-facing outputs restore those GEP variables from the matching `*_derived_precollapse.rds` artifact when it exists, so plots, workbooks, and simple QC tables show the canonical GEP labels rather than a synthetic `Other` bucket.
+- Reader-facing outputs restore those GEP variables from the matching `*_derived_precollapse.rds` artifact when it exists, so plots, workbooks, and simple QC tables show the canonical GEP labels.
 
 Construction happens in a fixed order:
 
@@ -152,7 +151,7 @@ Construction happens in a fixed order:
 3. Apply global exclusions before cohort assignment.
 4. Save the full cohort.
 5. Split that parent cohort into the restricted and GKSRS-only datasets using the predefined eligibility rules above.
-6. Save supporting `*_derived_precollapse.rds` and `other_map.rds` artifacts for output consistency.
+6. Save supporting `*_derived_precollapse.rds` artifacts for output consistency.
 
 ### Vital Status and Follow-up Classification
 
@@ -194,8 +193,7 @@ Analysis outputs follow a **cohort → objective → sub-objective** structure:
 │   ├── uveal_melanoma_full_cohort.rds
 │   ├── uveal_melanoma_restricted_cohort.rds
 │   ├── uveal_melanoma_gksrs_only_cohort.rds
-│   ├── *_derived_precollapse.rds
-│   └── other_map.rds
+│   └── *_derived_precollapse.rds
 ├── Analysis/                       # Runtime analysis outputs by cohort
 │   ├── uveal_full/                 # Full cohort runtime outputs
 │   │   ├── 00_General/
@@ -316,7 +314,6 @@ scripts/
 4. **Save Datasets** 
    - Store processed RDS files
    - Save pre-collapsed factor levels
-   - Store other_map for reference
    - Write `cohort_summary.tsv` and `cohort_summary.txt` into each cohort's `00_General/` directory
    - Write `{cohort_name}_validation_summary.txt` and `{cohort_name}_validation_bundle.xlsx` into each cohort's `00_General/` directory
    - Refresh generated study docs when Objective 0 finishes without hard validation errors
@@ -366,12 +363,15 @@ See [README.md](../README.md) for the top-level execution entry points and outpu
 - Range checks for continuous variables
 - Consistency checks across related fields
 - Structured Objective 0 findings classified as `hard_error`, `warning`, or `info`
+- Endpoint chronology hard errors preserve impossible negative event times in diagnostics rather than silently clamping them
+- Objective 1-4 input readiness is checked from a centralized Objective 0 downstream-variable registry
+- Reload-mode validation reuses persisted reconciliation and manual-date-correction audit sheets when raw recreation is skipped
 - Cohort-level validation bundles published into `00_General/` for reviewer audit
 
 **Factor Level Management:**
 - Consistent handling of categorical variables
 - Centralized level labels in `config_constants.R`
-- Automatic cleanup of factor levels
+- Objective 0 owns canonical factor construction; downstream code may preserve, restore, or drop levels for display, but model-facing ad hoc factor coercion is rejected by the factor-level audit
 - Pre-collapse data preservation for baseline tables
 
 **Cohort Assignment:**
@@ -426,7 +426,7 @@ The analysis pipeline includes robust error handling for situations where data l
 #### Objective 4 (GEP Validation) Denominator Constraints
 
 - Main MFS/MSS validation subsets include only definitive raw DecisionDx Class 1 / Class 2 labels with valid endpoint-specific imported GEP probabilities.
-- Nondefinitive labels (`Failed`, `Unknown`, `Other`, discordant, and not-reported patterns) are intentionally excluded from primary Objective 4 denominators.
+- Nondefinitive labels (`Failed`, `Unknown`, discordant, and not-reported patterns) are intentionally excluded from primary Objective 4 denominators.
 - Sparse definitive-label distributions can limit some horizon-specific summary metrics or PRAME comparisons in smaller cohorts; the pipeline writes explanatory outputs rather than silently dropping sections.
 
 ### Automatic Error Handling
@@ -440,10 +440,9 @@ The analysis pipeline includes robust error handling for situations where data l
 - Logistic regression requires adequate observations per category
 
 **Rare Category Management:**
-- Categories with <5 observations automatically collapsed
-- Variables with insufficient levels after collapsing excluded from models
-- Other_map tracks all collapsed categories
-- For GEP display variables, `Other` is treated as a model-side convenience bucket rather than a presentation label; reporting layers should restore canonical pre-collapse labels when the precollapse artifact is available
+- Sparse or explicitly excluded levels are removed from model-specific analysis copies and documented in diagnostics.
+- Variables with insufficient levels after sparse-level handling are excluded from affected models.
+- GEP display variables use canonical labels; `Other` is not a valid raw or display GEP label in current artifacts.
 
 **Graceful Degradation:**
 - When full analyses cannot be completed, summary statistics still generated
@@ -489,15 +488,15 @@ Legacy exploratory note: recurrence-stratified and metastasis-stratified OS/PFS 
 | Sub-objective | Method | Implementation | Outputs | Location |
 |---------------|--------|----------------|---------|----------|
 | **2a. Vision Changes** | Descriptive logMAR/Snellen reporting plus adjusted linear and ordinal regression | `analyze_visual_acuity_changes()` | `vision_changes.html`, descriptive Snellen summary/distribution workbooks, adjusted LogMAR linear model (.html + diagnostics), adjusted Snellen Line Change linear model (.html + diagnostics), adjusted Snellen Line Change Distribution ordinal model (.html + diagnostics), and `vision_effect_summary.xlsx` | `{cohort}/02_Safety/a_vision_changes/` |
-| **2b. Radiation Retinopathy** | Binary outcome analysis with logistic regression | `analyze_radiation_complications()` | Complication rates (.xlsx), adjusted logistic model (.html + diagnostics), `retinopathy_effect_summary.xlsx`, or explicit skip artifact when model not fit | `{cohort}/02_Safety/b_retinopathy/` |
-| **2c. Neovascular Glaucoma** | Binary outcome analysis with logistic regression | `analyze_radiation_complications()` | Complication rates (.xlsx), adjusted logistic model (.html + diagnostics), `neovascular_glaucoma_effect_summary.xlsx`, or explicit skip artifact when model not fit | `{cohort}/02_Safety/c_neovascular_glaucoma/` |
-| **2d. Serous Retinal Detachment** | Binary outcome analysis (all recorded SRD causes in the published implementation) | `analyze_radiation_complications()` | Complication rates (.xlsx), adjusted logistic model (.html + diagnostics), `serous_retinal_detachment_effect_summary.xlsx`, or explicit skip artifact when model not fit | `{cohort}/02_Safety/d_serous_retinal_detachment/` |
+| **2b. Radiation Retinopathy** | Recorded burden-by-follow-up logistic analysis | `analyze_radiation_complications()` | Complication rates (.xlsx), adjusted logistic model (.html + diagnostics), `retinopathy_effect_summary.xlsx`, or explicit skip artifact when model not fit | `{cohort}/02_Safety/b_retinopathy/` |
+| **2c. Neovascular Glaucoma** | Recorded burden-by-follow-up logistic analysis | `analyze_radiation_complications()` | Complication rates (.xlsx), adjusted logistic model (.html + diagnostics), `neovascular_glaucoma_effect_summary.xlsx`, or explicit skip artifact when model not fit | `{cohort}/02_Safety/c_neovascular_glaucoma/` |
+| **2d. Serous Retinal Detachment** | Recorded burden-by-follow-up logistic analysis (all recorded SRD causes in the published implementation) | `analyze_radiation_complications()` | Complication rates (.xlsx), adjusted logistic model (.html + diagnostics), `serous_retinal_detachment_effect_summary.xlsx`, or explicit skip artifact when model not fit | `{cohort}/02_Safety/d_serous_retinal_detachment/` |
 
-Effect-summary workbooks follow model-family-specific inference conventions and should match the corresponding HTML tables: linear rows report mean differences with Wald CIs/p-values, logistic rows report ORs with model-based Wald CIs and the pipeline's standard term-level p-values, Cox rows report HRs with native Cox CIs/p-values, and ordinal rows report proportional-odds ORs with 95% Wald CIs and likelihood-ratio-test p-values.
+Effect-summary workbooks follow model-family-specific inference conventions and should match the corresponding HTML tables: linear rows report mean differences with Wald CIs/p-values, logistic rows report ORs with model-based Wald CIs and the pipeline's standard term-level p-values, Cox rows report HRs with native Cox CIs/p-values, and ordinal rows report proportional-odds ORs with 95% Wald CIs and likelihood-ratio-test p-values. Objective 2 toxicity rows consume Objective 0-prepared burden fields (`retinopathy_burden_event`, `nvg_burden_event`, `srd_burden_event`) and label them as recorded burden by available follow-up, not time-to-toxicity incidence.
 
 **Objective 2 output convention:** adjusted analyses now always live inside their own side-effect subfolder. When an adjusted model is skipped because of insufficient events, no usable variation, or fit failure, the pipeline writes a `_SKIPPED.html` explanation file plus the diagnostics workbook instead of leaving the folder without an adjusted-analysis artifact.
 
-**Objective 2d scope note:** earlier docs used radiation-induced-only wording for SRD. The collaborator-aligned published implementation keeps all recorded SRD causes, including mass-induced SRD when present, and the documentation now follows that published scope.
+**Objective 2d scope:** SRD outputs keep all recorded SRD causes, including mass-induced SRD when present.
 
 ### Objective 3: Repeat Radiation Efficacy (COMPLETE)
 
@@ -614,12 +613,24 @@ Filtering logic implemented in `subgroup_data_prep.R`:
 ### Key Configuration Files
 
 **`scripts/utils/config_constants.R`**
-- Input filename
-- Analysis settings
-- Variable lists for baseline tables
-- Continuous variable specifications
-- Factor level labels
-- Confounder lists
+- Public configuration entry point sourced by `scripts/load_all.R`
+- Deterministically sources private modules under `scripts/config/`
+- Exposes paths, data-processing policy, modeling policy, Objective 0 contracts, display labels, and GEP policy as the same global objects consumed by downstream code
+
+Private config modules under `scripts/config/`:
+- `project_paths.R`: project roots, runtime/export paths, publish artifact registry, and path helpers
+- `data_processing_policy.R`: source workbook filename, manual exclusions, manual date corrections, date/time constants, and data-quality thresholds
+- `modeling_policy.R`: treatment/factor levels, confounders, subgroup variables, sparse-level policy, and model feasibility thresholds
+- `gep_policy.R`: Objective 4 GEP constants, definitive-label policy, and grouping specifications
+- `objective0_contracts.R`: Objective 0 structural requirements, derived-output manifest, downstream input contract, Objective 2 toxicity mapping, Objective 3 PFS-2 contract, and Objective 4 GEP derivation contract
+- `labels_display.R`: table labels, display labels, baseline table variables, plot dimensions, and vision line-change display policy
+
+Objective 0 contract responsibilities:
+- `OBJECTIVE0_GLOBAL_REQUIRED_VARIABLES` checks global structural fields that must exist before objective-specific validation.
+- `OBJECTIVE0_DERIVED_OUTPUT_MANIFEST` checks fields created by Objective 0 data derivation.
+- `OBJECTIVE0_DOWNSTREAM_INPUT_CONTRACT` checks important Objective 1-4 endpoint, eligibility, adjustment, and prediction inputs before downstream scripts consume them.
+- `OBJECTIVE2_TOXICITY_ENDPOINTS` maps toxicity source fields to Objective 0 burden fields consumed by Objective 2.
+- `OBJECTIVE3_PFS2_DERIVATION_CONTRACT` and `OBJECTIVE4_GEP_DERIVATION_CONTRACT` protect row-wise source-derived endpoint logic that presence/domain checks alone cannot prove.
 
 **Key Settings:**
 ```r

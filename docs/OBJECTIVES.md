@@ -61,16 +61,13 @@ Key sub-objectives:
 
 - `2a. Vision change`: evaluate change in vision from `initial_vision` to `last_vision`
 - retreatment vision context: when local progression occurs and the eye is retreated, the source planning document specifies the corresponding pretreatment-to-retreatment comparison using `initial_vision - recurrence1_pretreatment_vision`
-- `2b. Radiation retinopathy`: compare rates of `retinopathy`
-- `2c. Neovascular glaucoma`: compare rates of `nvg`
-- `2d. Serous retinal detachment`: compare rates of `srd` regardless of attributed cause in the current published implementation, including mass-induced cases when present
+- `2b. Radiation retinopathy`: compare recorded burden using `retinopathy_burden_event`
+- `2c. Neovascular glaucoma`: compare recorded burden using `nvg_burden_event`
+- `2d. Serous retinal detachment`: compare recorded burden using `srd_burden_event` regardless of attributed cause in the current published implementation, including mass-induced cases when present
 
-This objective is about toxicity burden, not just treatment efficacy. The current pipeline documents the implemented model families and output structure in [TECHNICAL.md](TECHNICAL.md#objective-2-safetytoxicity-analysis-complete).
+This objective is about toxicity burden, not just treatment efficacy. Objective 2 toxicity endpoints are recorded burden-by-available-follow-up fields prepared and validated during Objective 0, not time-to-toxicity incidence endpoints. The current pipeline documents the implemented model families and output structure in [TECHNICAL.md](TECHNICAL.md#objective-2-safetytoxicity-analysis-complete).
 
-Documentation alignment note:
-
-- Earlier repository docs described Objective 2d as radiation-induced-only SRD.
-- The collaborator-aligned published implementation is broader and intentionally retains all recorded SRD causes; this page now reflects that published scope.
+Objective 2d retains all recorded SRD causes, including mass-induced cases when present.
 
 ## Objective 3: Efficacy of Repeat Radiation
 

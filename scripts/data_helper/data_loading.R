@@ -316,6 +316,40 @@ collect_raw_input_audit <- function(raw_data, cleaned_data, source_workbook) {
     )
 }
 
+#' Identify iris-tumor optic-nerve non-applicability rows
+#'
+#' Finds raw rows where `optic_nerve` is recorded as `N/A` for an iris tumor.
+#' In this project, that raw state means optic nerve abutment is not applicable,
+#' but the row remains a full-cohort-only special case rather than a restricted
+#' or GKSRS-only cohort member.
+#'
+#' @param raw_data Data frame read directly from the source workbook.
+#' @return Tibble with row-level special-case audit fields.
+collect_iris_optic_nerve_special_cases <- function(raw_data) {
+    required_fields <- c("id", "location", "optic_nerve")
+    if (!all(required_fields %in% names(raw_data))) {
+        return(tibble::tibble(
+            id = numeric(),
+            raw_location = character(),
+            raw_optic_nerve = character(),
+            special_case = character(),
+            interpretation = character()
+        ))
+    }
+
+    raw_data %>%
+        dplyr::transmute(
+            id = .data$id,
+            raw_location = as.character(.data$location),
+            raw_optic_nerve = as.character(.data$optic_nerve)
+        ) %>%
+        dplyr::filter(.data$raw_location == "Iris", .data$raw_optic_nerve == "N/A") %>%
+        dplyr::mutate(
+            special_case = IRIS_OPTIC_NERVE_SPECIAL_CASE,
+            interpretation = "Iris tumor: raw optic_nerve=N/A interpreted as non-abutment/not applicable; retained in full cohort only."
+        )
+}
+
 #' Write runtime reconciliation artifacts for loader-side event/date repairs
 #'
 #' @param audit_rows Row-level reconciliation audit rows
@@ -533,6 +567,9 @@ load_and_clean_data <- function(filename) {
     ) %>%
         dplyr::select(-contains("..."))
 
+    iris_optic_nerve_special_cases <- collect_iris_optic_nerve_special_cases(raw_data)
+    iris_optic_nerve_special_case_ids <- iris_optic_nerve_special_cases$id
+
     cleaned_data_pre_distinct <- raw_data %>%
         mutate(across(everything(), ~ {
             if (is.character(.)) {
@@ -548,6 +585,18 @@ load_and_clean_data <- function(filename) {
             location = case_when(
                 location %in% c("Cilio_Choroidal", "Cilio_choroidal") ~ "Cilio_Choroidal",
                 TRUE ~ location
+            ),
+            cohort_assignment_special_case = dplyr::case_when(
+                id %in% iris_optic_nerve_special_case_ids ~ IRIS_OPTIC_NERVE_SPECIAL_CASE,
+                TRUE ~ NA_character_
+            ),
+            cohort_assignment_note = dplyr::case_when(
+                id %in% iris_optic_nerve_special_case_ids ~ "Iris tumor: raw optic_nerve=N/A interpreted as non-abutment/not applicable; retained in full cohort only.",
+                TRUE ~ NA_character_
+            ),
+            optic_nerve = dplyr::case_when(
+                id %in% iris_optic_nerve_special_case_ids ~ "N",
+                TRUE ~ optic_nerve
             )
         ) %>%
         filter(!if_all(everything(), is.na))
@@ -557,13 +606,14 @@ load_and_clean_data <- function(filename) {
         mutate(
             consort_group = case_when(
                 !is.na(initial_gk) | !is.na(initial_plaque) ~ case_when(
+                    cohort_assignment_special_case == IRIS_OPTIC_NERVE_SPECIAL_CASE ~ CONSORT_GROUP_FULL_ONLY_SPECIAL_CASE,
                     initial_tumor_diameter <= TUMOR_DIAMETER_THRESHOLD &
                         initial_tumor_height <= TUMOR_HEIGHT_THRESHOLD &
-                        optic_nerve == "N" ~ "eligible_both",
+                        optic_nerve == "N" ~ CONSORT_GROUP_ELIGIBLE_BOTH,
                     initial_tumor_diameter > TUMOR_DIAMETER_THRESHOLD |
                         initial_tumor_height > TUMOR_HEIGHT_THRESHOLD |
-                        optic_nerve == "Y" ~ "gksrs_only",
-                    TRUE ~ "other"
+                        optic_nerve == "Y" ~ CONSORT_GROUP_GKSRS_ONLY,
+                    TRUE ~ CONSORT_GROUP_UNCLASSIFIED_FIELDS
                 ),
                 TRUE ~ NA_character_
             )
@@ -574,18 +624,22 @@ load_and_clean_data <- function(filename) {
         cleaned_data = cleaned_data,
         source_workbook = filename
     )
+    raw_input_audit$iris_optic_nerve_special_cases <- iris_optic_nerve_special_cases
 
     logger::log_info("eligible_both: initial_tumor_diameter <= 20mm, initial_tumor_height <= 10mm, optic_nerve == 'N'")
     logger::log_info("gksrs_only: initial_tumor_diameter > 20mm, initial_tumor_height > 10mm, optic_nerve == 'Y'")
-    logger::log_info("other: catch-all for any other cases")
+    logger::log_info("full_cohort_only_special_case: audited records retained in the full cohort but excluded from restricted and GKSRS-only subcohorts")
+    logger::log_info("unclassified_cohort_fields: treated rows with unresolved cohort-defining fields; removed or reported before analysis")
     message("\n")
     logger::log_info(sprintf("Found %d patients in full cohort", nrow(cleaned_data)))
     logger::log_info(sprintf("Found %d patients in restricted cohort", nrow(cleaned_data %>% filter(consort_group == "eligible_both"))))
     logger::log_info(sprintf("Found %d patients in GKSRS-only cohort", nrow(cleaned_data %>% filter(consort_group == "gksrs_only"))))
-    other_count <- nrow(cleaned_data %>% filter(consort_group == "other"))
-    logger::log_info(sprintf("Found %d patients in other cohort", other_count))
-    if (other_count > 0) {
-        logger::log_warn("Patients fell into the catch-all 'other' cohort. Review aggregate cohort assignment diagnostics if this count is unexpected.")
+    special_case_count <- nrow(cleaned_data %>% filter(consort_group == CONSORT_GROUP_FULL_ONLY_SPECIAL_CASE))
+    unclassified_count <- nrow(cleaned_data %>% filter(consort_group == CONSORT_GROUP_UNCLASSIFIED_FIELDS))
+    logger::log_info(sprintf("Found %d full-cohort-only special-case patients", special_case_count))
+    logger::log_info(sprintf("Found %d patients with unresolved cohort-defining fields", unclassified_count))
+    if (unclassified_count > 0) {
+        logger::log_warn("Patients have unresolved cohort-defining fields and will be removed or reported before analytic cohorts are finalized.")
     }
     message("\n")
     logger::log_info("NOTE: NOT splitting into cohorts yet!")

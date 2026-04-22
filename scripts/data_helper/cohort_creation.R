@@ -44,45 +44,14 @@ apply_criteria <- function(data) {
     ))
     logger::log_info(sprintf("Remaining after Stage IV exclusion: %d of %d patients", nrow(data_no_stage_iv), total_before))
 
-    # Remove records with missing cohort-defining fields
-    before_missing_filter <- nrow(data_no_stage_iv)
-    data_after_missing <- data_no_stage_iv %>%
-        filter(!is.na(consort_group)) %>%
-        filter(!is.na(treatment_group))
-    num_missing_removed <- before_missing_filter - nrow(data_after_missing)
-    if (num_missing_removed > 0) {
-        missing_ids <- setdiff(data_no_stage_iv$id, data_after_missing$id)
-        missing_records <- data_no_stage_iv %>%
-            filter(id %in% missing_ids) %>%
-            mutate(
-                removal_reason = "Missing consort_group or treatment_group",
-                removal_step = "missing_cohort_fields",
-                consort_group = as.character(consort_group),
-                treatment_group = as.character(treatment_group),
-                initial_overall_stage = as.character(initial_overall_stage)
-            ) %>%
-            select(id, removal_reason, removal_step, consort_group, treatment_group, initial_overall_stage)
-
-        removal_details <- dplyr::bind_rows(removal_details, missing_records)
-
-        logger::log_info(sprintf(
-            "Missing consort/treatment filter removed %d patients (IDs: %s)",
-            num_missing_removed,
-            paste(missing_ids, collapse = ", ")
-        ))
-    } else {
-        logger::log_info("No patients removed for missing consort_group or treatment_group")
-    }
-    logger::log_info(sprintf("Remaining after consort/treatment filter: %d patients", nrow(data_after_missing)))
-
     # Remove any specifically excluded IDs
-    before_specific_excl <- nrow(data_after_missing)
-    data_after_specific <- data_after_missing %>%
+    before_specific_excl <- nrow(data_no_stage_iv)
+    data_after_specific <- data_no_stage_iv %>%
         filter(!(id %in% SPECIFIC_PATIENTS_TO_EXCLUDE) | is.na(id))
     num_specific_removed <- before_specific_excl - nrow(data_after_specific)
     if (num_specific_removed > 0) {
-        specific_ids <- setdiff(data_after_missing$id, data_after_specific$id)
-        specific_records <- data_after_missing %>%
+        specific_ids <- setdiff(data_no_stage_iv$id, data_after_specific$id)
+        specific_records <- data_no_stage_iv %>%
             filter(id %in% specific_ids) %>%
             mutate(
                 removal_reason = "Excluded per SPECIFIC_PATIENTS_TO_EXCLUDE configuration",
@@ -105,18 +74,50 @@ apply_criteria <- function(data) {
     }
     logger::log_info(sprintf("Remaining after specific exclusions: %d patients", nrow(data_after_specific)))
 
+    # Remove records that still lack explicit analyzable cohort assignment.
+    before_missing_filter <- nrow(data_after_specific)
+    data_after_missing <- data_after_specific %>%
+        filter(!is.na(consort_group)) %>%
+        filter(consort_group != CONSORT_GROUP_UNCLASSIFIED_FIELDS) %>%
+        filter(!is.na(treatment_group))
+    num_missing_removed <- before_missing_filter - nrow(data_after_missing)
+    if (num_missing_removed > 0) {
+        missing_ids <- setdiff(data_after_specific$id, data_after_missing$id)
+        missing_records <- data_after_specific %>%
+            filter(id %in% missing_ids) %>%
+            mutate(
+                removal_reason = "Missing or unresolved cohort-defining fields",
+                removal_step = "missing_cohort_fields",
+                consort_group = as.character(consort_group),
+                treatment_group = as.character(treatment_group),
+                initial_overall_stage = as.character(initial_overall_stage)
+            ) %>%
+            select(id, removal_reason, removal_step, consort_group, treatment_group, initial_overall_stage)
+
+        removal_details <- dplyr::bind_rows(removal_details, missing_records)
+
+        logger::log_info(sprintf(
+            "Missing/unresolved cohort-field filter removed %d patients (IDs: %s)",
+            num_missing_removed,
+            paste(missing_ids, collapse = ", ")
+        ))
+    } else {
+        logger::log_info("No patients removed for missing or unresolved cohort-defining fields")
+    }
+    logger::log_info(sprintf("Remaining after consort/treatment filter: %d patients", nrow(data_after_missing)))
+
     total_removed <- nrow(removal_details)
     logger::log_info(sprintf("Total patients removed prior to cohort assignment: %d", total_removed))
 
-    full_cohort <- data_after_specific %>%
+    full_cohort <- data_after_missing %>%
         mutate(cohort = "All Patients")
 
     restricted_cohort <- full_cohort %>%
-        filter(consort_group == "eligible_both") %>%
+        filter(consort_group == CONSORT_GROUP_ELIGIBLE_BOTH) %>%
         mutate(cohort = "Restricted Cohort (Eligible for Both Treatments)")
 
     gksrs_only_cohort <- full_cohort %>%
-        filter(consort_group == "gksrs_only") %>%
+        filter(consort_group == CONSORT_GROUP_GKSRS_ONLY) %>%
         mutate(cohort = "GKSRS-Only Cohort (Ineligible for PBT)")
 
     factored_filtered_data <- list(
@@ -192,7 +193,7 @@ prepare_factor_levels <- function(data) {
                     "Class_1A_PRAME_negative", "Class_1A_PRAME_positive", "Class_1A_PRAME_not_reported",
                     "Class_1B_PRAME_negative", "Class_1B_PRAME_positive",
                     "Class_2_PRAME_negative", "Class_2_PRAME_positive", "Class_2_PRAME_Unknown", "Class_2_PRAME_not_reported",
-                    "Failed", "Unknown", "Class_1A_PRAME_discordant", "Other", "No"
+                    "Failed", "Unknown", "Class_1A_PRAME_discordant", "No"
                 ), ordered = FALSE
             ),
             # More user-friendly GEP display combining class and PRAME status
@@ -205,7 +206,7 @@ prepare_factor_levels <- function(data) {
                     biopsy1_gep_raw %in% c("No", "N/A") | is.na(biopsy1_gep_raw) ~ "GEP Not Tested",
                     biopsy1_gep_raw %in% c(
                         "Failed", "Class_1A_PRAME_not_reported", "Class_2_PRAME_not_reported",
-                        "Class_2_PRAME_Unknown", "Class_1A_PRAME_discordant", "Unknown", "Other"
+                        "Class_2_PRAME_Unknown", "Class_1A_PRAME_discordant", "Unknown"
                     ) ~ "GEP Failed/Indeterminate",
                     TRUE ~ NA_character_
                 ),

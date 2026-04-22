@@ -46,10 +46,8 @@ skip_if_local_data_unavailable()
     test_data_dir <- file.path(TEST_OUTPUT_DIR, "test_data")
     dir.create(test_data_dir, recursive = TRUE, showWarnings = FALSE)
     data_path <- file.path(test_data_dir, paste0(dataset_name, ".rds"))
-    other_map_path <- file.path(test_data_dir, "other_map.rds")
     df <- make_processed_dataset(40)
     saveRDS(df, data_path)
-    saveRDS(list(treatment_group_map = c("Plaque" = "Plaque", "GKSRS" = "GKSRS")), other_map_path)
   }
 
   parse_nonempty_json_lines <- function(path) {

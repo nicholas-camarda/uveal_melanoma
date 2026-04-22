@@ -150,6 +150,8 @@ test_that("Objective 2 writes adjusted outputs in each side-effect subfolder", {
         "Adjusted ordinal logistic"
     ) %in% vision_effect_summary$model_label))
     expect_true(all(c("model_formula", "covariates_used") %in% names(vision_effect_summary)))
+    expect_false(any(grepl("baseline_vision", vision_effect_summary$model_formula %||% "")))
+    expect_true(any(grepl("implemented change score", vision_effect_summary$notes, fixed = TRUE)))
 
     ordinal_rows <- subset(
         vision_effect_summary,
@@ -170,6 +172,12 @@ test_that("Objective 2 writes adjusted outputs in each side-effect subfolder", {
         ordinal_rows$covariates_used[ordinal_rows$model_label == "Adjusted ordinal logistic"],
         "age_at_diagnosis"
     )
+    expect_true(all(grepl("Proportional-odds assumption was not formally tested", ordinal_rows$notes, fixed = TRUE)))
+
+    ordinal_diagnostics_sheets <- readxl::excel_sheets(
+        file.path(output_dirs$obj2_vision, "test_snellen_line_change_distribution_adjusted_diagnostics.xlsx")
+    )
+    expect_true("Assumption_status" %in% ordinal_diagnostics_sheets)
 
     ordinal_html <- readLines(
         file.path(output_dirs$obj2_vision, "test_snellen_line_change_distribution_adjusted_polr.html"),
@@ -189,6 +197,69 @@ test_that("Objective 2 writes adjusted outputs in each side-effect subfolder", {
 
     nvg_effect_summary <- readxl::read_xlsx(file.path(output_dirs$obj2_nvg, "test_neovascular_glaucoma_effect_summary.xlsx"))
     expect_true(any(nvg_effect_summary$model_status == "SKIPPED"))
+
+    retinopathy_rates <- readxl::read_xlsx(file.path(output_dirs$obj2_retinopathy, "test_retinopathy_rates_summary.xlsx"))
+    expect_true(all(c("endpoint", "analysis_field", "estimand", "notes") %in% names(retinopathy_rates)))
+    expect_true(all(retinopathy_rates$analysis_field == "retinopathy_burden_event"))
+    expect_true(all(grepl("not time-to-toxicity incidence", retinopathy_rates$notes, fixed = TRUE)))
+
+    retinopathy_effect_summary <- readxl::read_xlsx(file.path(output_dirs$obj2_retinopathy, "test_retinopathy_effect_summary.xlsx"))
+    expect_true(any(grepl("Objective 0-validated recorded-burden", retinopathy_effect_summary$data_source, fixed = TRUE)))
+    expect_true(any(grepl("not time-to-toxicity incidence", retinopathy_effect_summary$notes, fixed = TRUE)))
+})
+
+test_that("Objective 2 toxicity analysis consumes prepared burden fields only", {
+    test_data <- create_test_dataset()
+    test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective2_burden_contract_test")
+    output_dirs <- build_objective2_output_dirs(test_output_dir)
+    dir.create(test_output_dir, recursive = TRUE, showWarnings = FALSE)
+    for (dir_path in output_dirs) {
+        dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
+    }
+    withr::defer(unlink(test_output_dir, recursive = TRUE), envir = parent.frame())
+
+    test_data$retinopathy <- "Not used by Objective 2"
+    test_data$retinopathy_burden_event <- c(rep(1L, 2), rep(0L, nrow(test_data) - 2))
+
+    result <- analyze_radiation_complications(
+        data = test_data,
+        sequela_type = "retinopathy",
+        confounders = "age_at_diagnosis",
+        dataset_name = "test_cohort",
+        output_dirs = output_dirs,
+        prefix = "contract_"
+    )
+
+    expect_equal(sum(result$rates$n_events), 2)
+    expect_true(all(result$rates$analysis_field == "retinopathy_burden_event"))
+
+    test_data$retinopathy_burden_event[1] <- NA_integer_
+    expect_error(
+        analyze_radiation_complications(
+            data = test_data,
+            sequela_type = "retinopathy",
+            confounders = "age_at_diagnosis",
+            dataset_name = "test_cohort",
+            output_dirs = output_dirs,
+            prefix = "contract_"
+        ),
+        "Objective 0-validated toxicity burden field"
+    )
+})
+
+test_that("Objective 2 simulated Fisher p-values are locally seeded", {
+    test_data <- create_test_dataset()
+    set.seed(99)
+    previous_seed <- .Random.seed
+
+    note_one <- build_binary_rate_note(test_data, "retinopathy_burden_event")
+    seed_after_first_note <- .Random.seed
+    note_two <- build_binary_rate_note(test_data, "retinopathy_burden_event")
+    seed_after_second_note <- .Random.seed
+
+    expect_identical(seed_after_first_note, previous_seed)
+    expect_identical(seed_after_second_note, previous_seed)
+    expect_identical(note_one, note_two)
 })
 
 test_that("Merged adverse events table converts the displayed logMAR summary row to Snellen lines", {

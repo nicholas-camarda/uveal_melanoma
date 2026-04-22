@@ -320,11 +320,13 @@ outcome ~ treatment + age_at_diagnosis + sex + location + optic_nerve
 |---------|---------------|----------|
 | **Local Recurrence** | Binary (yes/no) | Objective 1a |
 | **Metastatic Progression** | Binary (yes/no) | Objective 1b |
-| **Radiation Retinopathy** | Binary (yes/no) | Objective 2b |
-| **Neovascular Glaucoma** | Binary (yes/no) | Objective 2c |
-| **Serous Retinal Detachment (all recorded causes in the published implementation)** | Binary (yes/no) | Objective 2d |
+| **Radiation Retinopathy** | Recorded toxicity burden by available follow-up | Objective 2b |
+| **Neovascular Glaucoma** | Recorded toxicity burden by available follow-up | Objective 2c |
+| **Serous Retinal Detachment (all recorded causes in the published implementation)** | Recorded toxicity burden by available follow-up | Objective 2d |
 
-Objective 2d scope note: earlier repository docs described radiation-induced-only SRD. The current published implementation intentionally includes all recorded SRD causes, including mass-induced SRD when present, and the methods documentation now reflects that broader endpoint.
+Objective 2d includes all recorded SRD causes, including mass-induced SRD when present.
+
+Objective 2 toxicity endpoints are analyzed as recorded burden fields prepared during Objective 0 (`retinopathy_burden_event`, `nvg_burden_event`, `srd_burden_event`). They are descriptive binary burden-by-follow-up endpoints, not time-to-toxicity incidence endpoints. Objective 0 validation requires complete canonical source values and complete binary 0/1 burden fields in included analytic rows before Objective 2 consumes them.
 
 ### Assumptions
 
@@ -368,7 +370,7 @@ outcome_change ~ treatment + baseline_value + confounders
 | Outcome | Primary Analysis | Sensitivity Analysis | Location |
 |---------|------------------|---------------------|----------|
 | **Tumor Height Change** | Unadjusted | Baseline-adjusted | Objective 1e, 1f |
-| **Vision Change (logMAR)** | Unadjusted | Baseline-adjusted linear regression | Objective 2a |
+| **Vision Change (logMAR)** | Unadjusted | Adjusted linear regression on the implemented change score; baseline vision is not added as a separate covariate | Objective 2a |
 | **Snellen Line Change (exact integer lines)** | Descriptive converted summary row | Adjusted linear regression | Objective 2a |
 
 ### Interpretation
@@ -389,6 +391,8 @@ outcome_change ~ treatment + baseline_value + confounders
 - Independent observations
 
 For practical reading of linear-regression outputs, see [Linear Regression Tables (Continuous Outcomes)](INTERPRETATION_GUIDE.md#linear-regression-tables-continuous-outcomes).
+
+Objective 2 vision models use the precomputed `vision_change` endpoint (`initial_vision - last_vision`, or `initial_vision - recurrence1_pretreatment_vision` for patients with local recurrence). The adjusted rows include the central confounder set but do not include a separate baseline-vision covariate.
 
 ---
 
@@ -427,7 +431,7 @@ ordered_outcome ~ treatment + confounders
 ### Assumptions
 
 - Ordered outcome categories are clinically meaningful
-- Proportional odds assumption is acceptable
+- Proportional odds assumption is not formally tested in the pipeline and should be treated as an interpretation assumption
 - Independent observations
 - Adequate observations across outcome levels
 
@@ -438,6 +442,10 @@ For Objective 2 vision, ordinal modeling is reserved for the 7-level `Snellen Li
 For avoidance of doubt, the stable distribution level is the exact `0-line` category after nearest-line rounding with halves away from zero. Small non-zero logMAR deltas with absolute magnitude below 0.05 therefore round to `0` and are reported as stable rather than as 1-line gain or loss.
 
 For consistency across the ordinal HTML tables and the effect-summary workbooks, ordinal (`polr`) treatment effects are reported as proportional-odds ORs with 95% Wald confidence intervals and likelihood-ratio-test p-values. Other model families retain their standard reporting conventions: linear models report mean differences with Wald CIs/p-values, logistic models report odds ratios with model-based Wald CIs and the pipeline's standard term-level p-values, and Cox models report hazard ratios with the native Cox confidence intervals and Cox-model p-values.
+
+Objective 2 categorical descriptive summaries that require simulated Fisher p-values use the local seed `20260422`. The seed is restored after each calculation so these p-value notes are reproducible without changing unrelated random-number state.
+
+Model-facing factors use Objective 0 canonical levels or shared level-preserving helpers. Ordered factors are converted to unordered factors before regression when needed so treatment contrasts remain stable while preserving the explicit level order.
 
 ---
 
@@ -531,13 +539,13 @@ For workbook-first reading order and plain-language interpretation, start with [
 
 In Objective 4, the starting predictions are externally supplied patient-level GEP survival probabilities that are already present in the analytic dataset: `biopsy1_gep_mfs` for metastasis-free survival and `biopsy1_gep_mss` for melanoma-specific survival. The pipeline copies those lab-reported 5-year survival values into the 5-year `expected_*` columns, then derives the 7- and 10-year survival values from the same 5-year probabilities during preprocessing using an exponential-decay extrapolation: $S(7) = S(5)^{7/5}$ and $S(10) = S(5)^{10/5}$. This is an exponential constant-hazard assumption rather than an independently imported assay output. The pipeline then converts survival to event risk as $1 - S(t)$ whenever a validation metric needs predicted event probability rather than predicted survival. Objective 4 therefore validates imported GEP predictions at 5 years and assumption-checked extrapolations at 7 and 10 years; it does not fit a new prognostic model to generate the base GEP probabilities.
 
-The analyzable Objective 4 subset is narrower than “any row with a GEP-related field.” MFS and MSS validation require a definitive raw DecisionDx label, valid endpoint-specific imported GEP probabilities, and the required observed outcome fields. Definitive raw labels are `Class_1A_PRAME_negative`, `Class_1A_PRAME_positive`, `Class_1B_PRAME_negative`, `Class_1B_PRAME_positive`, `Class_2_PRAME_negative`, and `Class_2_PRAME_positive`. Nondefinitive labels such as `*_not_reported`, `Class_2_PRAME_Unknown`, `Class_1A_PRAME_discordant`, `Failed`, `Unknown`, `Other`, and `No` are excluded from `mfs_analysis_eligible` and `mss_analysis_eligible`. Objective 4 entry points refresh these flags before analysis so the definitive-label rule is applied consistently.
+The analyzable Objective 4 subset is narrower than “any row with a GEP-related field.” MFS and MSS validation require a definitive raw DecisionDx label, valid endpoint-specific imported GEP probabilities, and the required observed outcome fields. Definitive raw labels are `Class_1A_PRAME_negative`, `Class_1A_PRAME_positive`, `Class_1B_PRAME_negative`, `Class_1B_PRAME_positive`, `Class_2_PRAME_negative`, and `Class_2_PRAME_positive`. Nondefinitive labels such as `*_not_reported`, `Class_2_PRAME_Unknown`, `Class_1A_PRAME_discordant`, `Failed`, `Unknown`, and `No` are excluded from `mfs_analysis_eligible` and `mss_analysis_eligible`. Objective 4 entry points refresh these flags before analysis so the definitive-label rule is applied consistently.
 
 #### GEP validation eligibility
 
-Objective 0 creates `gep_validation_set` as Objective 4 eligibility metadata. Patients are labeled `Eligible` when they have analyzable imported GEP data for the validation workflow: non-missing `biopsy1_gep_mfs`, non-missing `biopsy1_gep_mss`, and a definitive simplified GEP class in `GEP_DEFINITIVE_SIMPLE_LEVELS` (`Class 1` or `Class 2`). Everyone else is labeled `No GEP Data`.
+Objective 0 creates `gep_validation_set` as Objective 4 eligibility metadata. Patients are labeled `Eligible` when they have analyzable imported GEP data for the validation workflow: non-missing `biopsy1_gep_mfs`, non-missing `biopsy1_gep_mss`, a definitive simplified GEP class in `GEP_DEFINITIVE_SIMPLE_LEVELS` (`Class 1` or `Class 2`), and a definitive raw DecisionDx label when the raw field is available. Everyone else is labeled `No GEP Data`.
 
-Objective 4 validates imported GEP probabilities directly. It does not train a new molecular prognostic model from the analytic cohort, so `gep_validation_set` is not a model-training partition and is not used as a primary validation mechanism. Objective 0 validates count consistency between `Eligible`, `No GEP Data`, and the rows with analyzable imported GEP probabilities.
+Objective 4 validates imported GEP probabilities directly. It does not train a new molecular prognostic model from the analytic cohort, so `gep_validation_set` is not a model-training partition and is not used as a primary validation mechanism. Objective 0 validates the source-derived contract for `gep_validation_set`, expected survival, predicted risk, horizon event/type/time fields, and endpoint-specific eligibility flags before Objective 4 consumes those fields.
 
 **Analyses:**
 1. **Observed vs Expected / Calibration:** Agreement between lab-reported and realized event rates

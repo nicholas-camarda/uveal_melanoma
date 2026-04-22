@@ -11,6 +11,11 @@ skip_if_local_data_unavailable()
   logger::log_info(sprintf("Loaded %d rows of raw data", nrow(raw_data)))
 
   expect_true(nrow(raw_data) == 264)
+  id247 <- raw_data %>% dplyr::filter(.data$id == 247)
+  expect_equal(nrow(id247), 1)
+  expect_equal(as.character(id247$consort_group), CONSORT_GROUP_FULL_ONLY_SPECIAL_CASE)
+  expect_equal(as.character(id247$cohort_assignment_special_case), IRIS_OPTIC_NERVE_SPECIAL_CASE)
+  expect_equal(as.character(id247$optic_nerve), "N")
 
   logger::log_info("Creating derived variables")
   derived_data <- create_derived_variables(raw_data)
@@ -34,12 +39,18 @@ skip_if_local_data_unavailable()
   expect_true(identical(levels(factored_data$location), c("Choroidal", "Ciliary Body", "Cilio-Choroidal", "Conjunctival", "Irido-Ciliary", "Iris")))
   expect_true(identical(levels(factored_data$internal_reflectivity), c("Very Low", "Low", "Low-Medium", "Medium", "Medium-High", "High", "Unknown")))
   expect_true(identical(levels(factored_data$srf), c("No", "Yes")))
+  expect_false("Other" %in% levels(factored_data$biopsy1_gep_raw))
   expect_true(identical(levels(factored_data$gep_class_simple), c("Class 1", "Class 2", "GEP Failed/Indeterminate", "GEP Not Tested")))
   expect_false(identical(levels(factored_data$initial_tumor_height_binned), c("< 10 mm", "≥ 10 mm")))
   expect_true(identical(levels(factored_data$initial_tumor_height_binned), c("≤ 3 mm", "3.1-6 mm", "6.1-9 mm", "9.1-12 mm", "12.1-15 mm", "> 15 mm")))
 
   logger::log_info("Applying inclusion/exclusion criteria")
   factored_filtered_data <- apply_criteria(factored_data)
+  cohorts <- factored_filtered_data$cohorts
+  expect_false(any(as.character(cohorts$uveal_melanoma_full_cohort$consort_group) == "other"))
+  expect_false(247 %in% cohorts$uveal_melanoma_restricted_cohort$id)
+  expect_false(247 %in% cohorts$uveal_melanoma_gksrs_only_cohort$id)
+  expect_true(247 %in% cohorts$uveal_melanoma_full_cohort$id)
 
       
     
