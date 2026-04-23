@@ -295,7 +295,7 @@ write_readable_xlsx <- function(x,
 #' @param cohort_dir Base directory for this specific cohort
 #' @return List of created directory paths
 #' @examples
-#' create_output_structure("final_data/Analysis/full_cohort")
+#' create_output_structure("~/ProjectsRuntime/uveal_melanoma/Analysis/uveal_full")
 create_output_structure <- function(cohort_dir) {
     # Define cohort-specific objective-based directory structure
     dirs <- list(
@@ -795,7 +795,7 @@ apply_precollapse_levels <- function(data, dataset_name = NULL) {
 #' @return Invisibly returns NULL
 #'
 #' @examples
-#' merge_cohort_tables(full_data, restricted_data, "final_data/Analysis/merged_tables/")
+#' merge_cohort_tables(full_data, restricted_data, "~/ProjectsRuntime/uveal_melanoma/Analysis/merged_tables/")
 merge_cohort_tables <- function(full_cohort_data, restricted_cohort_data, output_path = NULL, dataset_names = list()) {
     logger::log_info("=== STARTING TABLE MERGING: Full and Restricted Cohorts ===")
 
@@ -1019,7 +1019,7 @@ merge_full_vs_gksrs_baseline_tables <- function(full_cohort_data,
 #' @return List of created plots and tables
 #'
 #' @examples
-#' create_all_combined_forest_plots("final_data", c("full", "restricted"))
+#' create_all_combined_forest_plots("~/ProjectsRuntime/uveal_melanoma", c("full", "restricted"))
 create_all_combined_forest_plots <- function(base_dir, cohort_names = c("full", "restricted")) {
     logger::log_info("Creating all combined forest plots and summary tables")
 
@@ -1235,7 +1235,7 @@ write_analysis_diagnostics_excel <- function(diagnostics, file_path) {
 #' @return Invisibly returns NULL
 #'
 #' @examples
-#' merge_recurrence_metastatic_progression_tables(full_data, restricted_data, "final_data/Analysis/merged_tables/")
+#' merge_recurrence_metastatic_progression_tables(full_data, restricted_data, "~/ProjectsRuntime/uveal_melanoma/Analysis/merged_tables/")
 merge_recurrence_metastatic_progression_tables <- function(full_cohort_data, restricted_cohort_data, output_path = NULL) {
     logger::log_info("=== STARTING TABLE MERGING: Recurrence and Metastatic Progression ===")
 
@@ -1374,7 +1374,7 @@ merge_recurrence_metastatic_progression_tables <- function(full_cohort_data, res
 #' @return Invisibly returns NULL
 #'
 #' @examples
-#' merge_adverse_events_tables(full_data, restricted_data, "final_data/Analysis/merged_tables/")
+#' merge_adverse_events_tables(full_data, restricted_data, "~/ProjectsRuntime/uveal_melanoma/Analysis/merged_tables/")
 #' Format count (n) and percent strings without trailing decimals
 format_count_percent_stat <- function(values) {
     if (is.null(values)) {
@@ -1461,7 +1461,7 @@ collapse_binary_outcomes_to_cases <- function(tbl) {
 #' @return Invisibly returns NULL
 #'
 #' @examples
-#' merge_adverse_events_tables(full_data, restricted_data, "final_data/Analysis/merged_tables/")
+#' merge_adverse_events_tables(full_data, restricted_data, "~/ProjectsRuntime/uveal_melanoma/Analysis/merged_tables/")
 merge_adverse_events_tables <- function(full_cohort_data, restricted_cohort_data, output_path = NULL) {
     logger::log_info("=== STARTING TABLE MERGING: Adverse Events ===")
 
@@ -1718,7 +1718,7 @@ merge_adverse_events_tables <- function(full_cohort_data, restricted_cohort_data
 #' @return Invisibly returns NULL
 #'
 #' @examples
-#' export_repeat_treatment_descriptive_stats(full_data, restricted_data, "final_data/Analysis/")
+#' export_repeat_treatment_descriptive_stats(full_data, restricted_data, "~/ProjectsRuntime/uveal_melanoma/Analysis/")
 export_repeat_treatment_descriptive_stats <- function(full_cohort_data, restricted_cohort_data, output_path = NULL) {
     logger::log_info("=== EXPORTING REPEAT TREATMENT DESCRIPTIVE STATISTICS ===")
 

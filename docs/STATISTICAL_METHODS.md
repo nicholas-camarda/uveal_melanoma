@@ -1079,8 +1079,8 @@ The standalone no-GEP exploratory report lives under `04_GEP_Validation/d_explor
 
 This workflow keeps `GEP Failed/Indeterminate` and `GEP Not Tested` separate in the main summaries. It builds three modeling populations:
 
-- definitive-GEP training set: `Class 1` and `Class 2` only
-- no-GEP prediction set: `GEP Failed/Indeterminate` and `GEP Not Tested`
+- definitive-GEP reference set: `Class 1` and `Class 2` only
+- no-GEP scoring cohort: `GEP Failed/Indeterminate` and `GEP Not Tested`
 - direct-risk modeling sets for 5-year MFS and 5-year MSS
 
 #### Data preparation and verification
@@ -1155,7 +1155,7 @@ In addition, the workflow fits a pre-specified parsimonious direct-model sensiti
 
 The coefficient tables in this report are ridge-shrunken design-matrix coefficients at `lambda.min`. They are included for directionality and relative contribution ranking, not p-value-based inference.
 
-For clarity, the surrogate model is not trying to reconstruct the molecular assay itself. It uses patients with known definitive GEP labels as a teaching set, learns what the observed baseline clinicopathologic patterns of the Class 1 and Class 2 groups look like in this cohort, and then outputs for each no-GEP patient the probability that their baseline profile more closely resembles the observed Class 2 pattern than the observed Class 1 pattern. This is best interpreted as a clinical resemblance score anchored to the known definitive-GEP patients.
+For clarity, the surrogate model is not trying to reconstruct the molecular assay itself. It uses patients with known definitive GEP labels as a definitive-GEP reference set, learns what the observed baseline clinicopathologic patterns of the Class 1 and Class 2 groups look like in this cohort, and then outputs for each no-GEP patient the probability that their baseline profile more closely resembles the observed Class 2 pattern than the observed Class 1 pattern. This is best interpreted as a clinical resemblance score anchored to the known definitive-GEP patients.
 
 Because the surrogate is a binary logistic model, the reported `surrogate_class2_probability` is mathematically:
 
@@ -1169,7 +1169,7 @@ $$
 1 - P(\text{Class 2-like} \mid \text{baseline features}) = P(\text{Class 1-like} \mid \text{baseline features})
 $$
 
-within this two-class surrogate framework. That complement may therefore be read as a `Class 1-like` clinical resemblance probability, but it must not be described as the probability of a true molecular `Class 1` assay result. Symmetrically, `surrogate_class2_probability` must not be described as the probability of a true molecular `Class 2` assay result. Both quantities are only probabilities of resembling one of the two definitive-GEP clinical-pattern reference groups used to train the surrogate.
+within this two-class surrogate framework. That complement may therefore be read as a `Class 1-like` clinical resemblance probability, but it must not be described as the probability of a true molecular `Class 1` assay result. Symmetrically, `surrogate_class2_probability` must not be described as the probability of a true molecular `Class 2` assay result. Both quantities are only probabilities of resembling one of the two definitive-GEP clinical-pattern reference groups used to fit the surrogate.
 
 #### Prediction summaries
 

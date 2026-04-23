@@ -54,7 +54,7 @@ GEP_MIN_BOOTSTRAP_SAMPLE <- 30 # Minimum sample size for bootstrap analysis
 GEP_MAX_BOOTSTRAP_ITERATIONS <- 1000 # Maximum bootstrap iterations for production runs
 GEP_MISSING_DATA_THRESHOLD <- 10 # Minimum patients needed for missing data analysis
 GEP_RECOMMENDED_VALIDATION_SAMPLE <- 100 # Recommended minimum for robust validation
-GEP_RECOMMENDED_TESTING_SAMPLE <- 30 # Recommended minimum for testing set
+GEP_RECOMMENDED_SCORING_SAMPLE <- 30 # Recommended minimum for the no-GEP scoring cohort
 
 GEP_DEFINITIVE_SIMPLE_LEVELS <- c("Class 1", "Class 2")
 GEP_CLASS_1_DEFINITIVE_RAW_LEVELS <- c(

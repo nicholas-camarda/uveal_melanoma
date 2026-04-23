@@ -4,7 +4,7 @@ skip_if_local_data_unavailable()
 # Tests for exploratory no-GEP reporting
 library(dplyr)
 
-test_that("exploratory no-GEP dataset preparation isolates training and prediction sets", {
+test_that("exploratory no-GEP dataset preparation isolates reference and scoring cohorts", {
     actual_data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
 
     prepared <- prepare_exploratory_no_gep_data(actual_data)
@@ -16,10 +16,10 @@ test_that("exploratory no-GEP dataset preparation isolates training and predicti
     expect_identical(levels(prepared$full_data$internal_reflectivity), levels(actual_data$internal_reflectivity))
     expect_identical(levels(prepared$full_data$srf), levels(actual_data$srf))
 
-    expect_true(all(prepared$definitive_training$exploratory_gep_group %in% c("Class 1", "Class 2")))
-    expect_true(all(prepared$no_gep_prediction$exploratory_gep_group %in% c("GEP Failed/Indeterminate", "GEP Not Tested")))
-    expect_true(all(unique(prepared$no_gep_prediction$no_gep_group) %in% c("GEP Failed/Indeterminate", "GEP Not Tested")))
-    expect_true(all(prepared$predictors %in% names(prepared$definitive_training)))
+    expect_true(all(prepared$definitive_reference$exploratory_gep_group %in% c("Class 1", "Class 2")))
+    expect_true(all(prepared$no_gep_scoring$exploratory_gep_group %in% c("GEP Failed/Indeterminate", "GEP Not Tested")))
+    expect_true(all(unique(prepared$no_gep_scoring$no_gep_group) %in% c("GEP Failed/Indeterminate", "GEP Not Tested")))
+    expect_true(all(prepared$predictors %in% names(prepared$definitive_reference)))
     expect_true(any(prepared$full_data$ciliary_involvement == 1, na.rm = TRUE))
 
     cilio_rows <- prepared$full_data %>%
@@ -237,7 +237,7 @@ test_that("exploratory no-GEP report writes workbook, summary, and plots", {
     expect_match(summary_text, "descriptive only", fixed = TRUE)
     expect_match(summary_text, "homogeneous intermediate-risk group", fixed = TRUE)
     expect_match(summary_text, "## Follow-Up Context", fixed = TRUE)
-    expect_match(summary_text, "no-GEP prediction subset", fixed = TRUE)
+    expect_match(summary_text, "no-GEP scoring cohort", fixed = TRUE)
     expect_match(summary_text, "## Key Findings at 5 Years", fixed = TRUE)
     expect_match(summary_text, "95% repeated-CV interval", fixed = TRUE)
     expect_match(summary_text, "## Parsimonious Sensitivity Check", fixed = TRUE)

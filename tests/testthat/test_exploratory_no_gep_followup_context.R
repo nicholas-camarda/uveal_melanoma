@@ -25,12 +25,12 @@ test_that("Exploratory no-GEP follow-up block summarizes follow-up and operation
         )
 
     block <- build_exploratory_no_gep_followup_block(
-        prepared_data = list(no_gep_prediction = test_data),
+        prepared_data = list(no_gep_scoring = test_data),
         dataset_name = "uveal_melanoma_full_cohort"
     )
 
     expect_true(any(grepl("## Follow-Up Context", block, fixed = TRUE)))
-    expect_true(any(grepl("no-GEP prediction subset", block, fixed = TRUE)))
+    expect_true(any(grepl("no-GEP scoring cohort", block, fixed = TRUE)))
     expect_true(any(grepl("reached at least 5 years", block, fixed = TRUE)))
     expect_true(any(grepl("Operational view:", block, fixed = TRUE)))
     expect_true(any(grepl("By no-GEP group:", block, fixed = TRUE)))

@@ -560,7 +560,7 @@ export_derived_variables_to_excel <- function(output_file = NULL, include_timest
 #' Generate and Export Derived Variables Documentation
 #'
 #' Main function to generate comprehensive documentation and export to Excel
-#' in the final_data/Analytic Dataset folder.
+#' in the configured tool output directory.
 #'
 #' @param dataset_name Analytic dataset to validate against.
 #' @param output_dir Directory where documentation artifacts will be written.
