@@ -192,14 +192,74 @@ test_that("Simple MFS plot surfaces cohort and class event annotations", {
 
     plot_obj <- build_simple_gep_plot(
         results$mfs_results,
-        "5-Year MFS: Expected vs Actual Rates",
+        "Observed vs Predicted 5-Year MFS",
         cohort_label = "Full Cohort"
     )
     expect_match(plot_obj$labels$subtitle, "Full Cohort")
-    expect_gte(as.numeric(plot_obj$theme$plot.margin[[3]]), 20)
+    expect_equal(plot_obj$labels$x, "Predicted 5-year survival")
+    expect_equal(plot_obj$labels$y, "Observed 5-year survival")
+    expect_equal(plot_obj$labels$colour, "GEP class")
+    expect_match(plot_obj$labels$caption, "Dashed diagonal: observed = predicted 5-year survival", fixed = TRUE)
+    expect_match(plot_obj$labels$caption, "Treatment mix among MFS-eligible rows", fixed = TRUE)
+    expect_true(is.null(plot_obj$labels$linetype))
+
+    point_label_layer <- plot_obj$layers[[5]]
+    point_label_values <- point_label_layer$data$point_label
+    expect_true(all(grepl("^Class [12]\\n5-year mets: \\d+/\\d+$", point_label_values)))
+
+    linetype_scales <- Filter(function(scale) "linetype" %in% scale$aesthetics, plot_obj$scales$scales)
+    expect_length(linetype_scales, 0)
+})
+
+test_that("Three-cohort simple MFS plot uses fixed comparable axes", {
+    panel_data <- data.frame(
+        cohort_label = rep(c("Full Cohort", "Restricted Cohort", "GKSRS-Only Cohort"), each = 2),
+        gep_class_simple = rep(c("Class 1", "Class 2"), times = 3),
+        n = c(58, 27, 38, 19, 19, 8),
+        expected_rate = c(0.92, 0.53, 0.92, 0.55, 0.93, 0.53),
+        actual_rate = c(0.97, 0.46, 0.96, 0.42, 1.00, 0.58),
+        class_event_label = c(
+            "5-year mets: 1/58",
+            "5-year mets: 13/27",
+            "5-year mets: 1/38",
+            "5-year mets: 10/19",
+            "5-year mets: 0/19",
+            "5-year mets: 3/8"
+        ),
+        treatment_mix = c(
+            "PBT=30, GKSRS=28",
+            "PBT=13, GKSRS=14",
+            "PBT=28, GKSRS=10",
+            "PBT=12, GKSRS=7",
+            "PBT=1, GKSRS=18",
+            "PBT=1, GKSRS=7"
+        ),
+        stringsAsFactors = FALSE
+    )
+
+    plot_obj <- build_objective4_simple_mfs_three_panel_plot(
+        panel_data = panel_data,
+        fixed_limits = c(0.35, 1.01)
+    )
 
     x_scale <- Filter(function(scale) "x" %in% scale$aesthetics, plot_obj$scales$scales)[[1]]
-    expect_true(any(grepl("5-year mets:", unname(x_scale$labels), fixed = TRUE)))
+    y_scale <- Filter(function(scale) "y" %in% scale$aesthetics, plot_obj$scales$scales)[[1]]
+    expect_equal(x_scale$limits, c(0.35, 1.01))
+    expect_equal(y_scale$limits, c(0.35, 1.01))
+    expect_match(plot_obj$labels$caption, "Fixed x/y axes across panels", fixed = TRUE)
+    expect_true(inherits(plot_obj$coordinates, "CoordFixed"))
+
+    report_dir <- file.path(TEST_OUTPUT_DIR, "objective4_three_panel_report")
+    withr::defer(unlink(report_dir, recursive = TRUE), envir = parent.frame())
+    report <- create_objective4_simple_mfs_three_panel_report(
+        panel_data = panel_data,
+        output_dir = report_dir,
+        fixed_limits = c(0.35, 1.01),
+        save_pdf = FALSE
+    )
+    expect_true(file.exists(report$paths$png))
+    expect_true(file.exists(report$paths$treatment_mix))
+    expect_true(file.exists(report$paths$report))
 })
 
 test_that("MFS calibration caption includes cohort and class event counts", {

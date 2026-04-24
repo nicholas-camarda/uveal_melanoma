@@ -100,6 +100,8 @@ test_that("resolve_config_path rejects relative runtime or export overrides", {
 test_that("artifact registry allowlists only explicit publishable outputs", {
     expect_true(is_publishable_relative_artifact("01_Efficacy/summary.xlsx", "cohort"))
     expect_true(is_publishable_relative_artifact("merged_tables/final_table.csv", "merged_tables"))
+    expect_true(is_publishable_relative_artifact("merged_tables/objective4_poster_figures/three_panel.png", "merged_tables"))
+    expect_true(is_publishable_relative_artifact("merged_tables/objective4_poster_figures/three_panel_report.md", "merged_tables"))
     expect_true(is_publishable_relative_artifact("04_GEP_Validation/unified_summary/full_cohort_simple_gep_validation_report.md", "cohort"))
     expect_false(is_publishable_relative_artifact("01_Efficacy/model.rds", "cohort"))
     expect_false(is_publishable_relative_artifact("01_Efficacy/summary_diagnostics.xlsx", "cohort"))

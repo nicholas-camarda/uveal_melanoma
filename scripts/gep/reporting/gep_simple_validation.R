@@ -1,6 +1,35 @@
 # Simple GEP Validation (Project Goals)
 # Computes expected vs actual 5-year MFS/MSS by GEP class and saves outputs
 
+#' Build simple validation caption text
+#'
+#' @param results_df Data frame of class-level expected and actual rates.
+#'
+#' @return Character scalar caption explaining reference marks and, when
+#'   available, treatment composition.
+build_simple_gep_plot_caption <- function(results_df) {
+    caption_lines <- c(
+        "Dashed diagonal: observed = predicted 5-year survival.",
+        "Gray vertical segments: observed-predicted gap."
+    )
+
+    if ("treatment_mix" %in% names(results_df)) {
+        treatment_rows <- results_df %>%
+            dplyr::filter(!is.na(.data$treatment_mix) & nzchar(.data$treatment_mix)) %>%
+            dplyr::arrange(.data$gep_class_simple)
+
+        if (nrow(treatment_rows) > 0) {
+            caption_lines <- c(
+                caption_lines,
+                "Treatment mix among MFS-eligible rows:",
+                sprintf("%s: %s", treatment_rows$gep_class_simple, treatment_rows$treatment_mix)
+            )
+        }
+    }
+
+    paste(caption_lines, collapse = "\n")
+}
+
 #' Build a reader-facing simple GEP validation plot
 #'
 #' Build a side-by-side expected vs actual 5-year survival point plot for a
@@ -11,80 +40,175 @@
 #' @param cohort_label Optional subtitle identifying the cohort.
 #' @return A `ggplot` object.
 build_simple_gep_plot <- function(results_df, title_text, cohort_label = NULL) {
-    x_label_map <- if ("plot_x_label" %in% names(results_df)) {
-        stats::setNames(results_df$plot_x_label, results_df$gep_class_simple)
+    class_palette <- get_gep_class_palette(results_df$gep_class_simple)
+    rate_range <- range(c(results_df$expected_rate, results_df$actual_rate), na.rm = TRUE)
+    lower_limit <- max(0, floor((rate_range[1] - 0.03) * 20) / 20)
+    upper_limit <- min(1.01, ceiling((rate_range[2] + 0.02) * 20) / 20)
+    axis_span <- max(upper_limit - lower_limit, 0.15)
+    label_offset_x <- min(0.014, axis_span * 0.04)
+    label_offset_y <- min(0.014, axis_span * 0.04)
+    point_label <- if ("class_event_label" %in% names(results_df)) {
+        sprintf(
+            "%s\n%s",
+            results_df$gep_class_simple,
+            results_df$class_event_label
+        )
+    } else if ("observed_melanoma_deaths_by_horizon" %in% names(results_df)) {
+        sprintf(
+            "%s\n5-year melanoma deaths: %d/%d",
+            results_df$gep_class_simple,
+            results_df$observed_melanoma_deaths_by_horizon,
+            results_df$n
+        )
+    } else if ("n" %in% names(results_df)) {
+        sprintf("%s\nn=%d", results_df$gep_class_simple, results_df$n)
     } else {
-        waiver()
+        results_df$gep_class_simple
     }
 
-    rate_range <- range(c(results_df$expected_rate, results_df$actual_rate), na.rm = TRUE)
-    y_padding <- max(diff(rate_range) * 0.2, 0.03)
-    y_min <- max(0, rate_range[1] - y_padding)
-    y_max <- min(1, rate_range[2] + y_padding)
+    annotation_df <- results_df %>%
+        dplyr::mutate(
+            point_label = point_label,
+            horizontal_direction = dplyr::if_else(
+                .data$expected_rate >= stats::median(.data$expected_rate, na.rm = TRUE),
+                -1,
+                1
+            ),
+            vertical_direction = dplyr::if_else(
+                .data$actual_rate >= stats::median(.data$actual_rate, na.rm = TRUE),
+                -1,
+                1
+            ),
+            label_x = .data$expected_rate + (.data$horizontal_direction * label_offset_x),
+            label_y = .data$actual_rate + (.data$vertical_direction * label_offset_y),
+            label_x = pmin(upper_limit - 0.008, pmax(lower_limit + 0.008, .data$label_x)),
+            label_y = pmin(upper_limit - 0.008, pmax(lower_limit + 0.008, .data$label_y)),
+            label_hjust = dplyr::if_else(.data$horizontal_direction < 0, 1, 0),
+            label_vjust = dplyr::if_else(.data$vertical_direction < 0, 1, 0),
+            connector_x = .data$expected_rate + (.data$horizontal_direction * label_offset_x * 0.8),
+            connector_y = .data$actual_rate + (.data$vertical_direction * label_offset_y * 0.8),
+            connector_x = pmin(upper_limit - 0.008, pmax(lower_limit + 0.008, .data$connector_x)),
+            connector_y = pmin(upper_limit - 0.008, pmax(lower_limit + 0.008, .data$connector_y))
+        )
 
-    ggplot(results_df, aes(x = gep_class_simple)) +
+    if (nrow(annotation_df) > 1) {
+        overlap_mask <- abs(annotation_df$label_y - dplyr::lag(annotation_df$label_y)) < (label_offset_y * 0.85)
+        overlap_mask[is.na(overlap_mask)] <- FALSE
+        if (any(overlap_mask)) {
+            annotation_df$label_y[overlap_mask] <- pmin(
+                upper_limit - 0.008,
+                pmax(
+                    lower_limit + 0.008,
+                    annotation_df$label_y[overlap_mask] + (label_offset_y * 0.5 * annotation_df$vertical_direction[overlap_mask])
+                )
+            )
+        }
+    }
+
+    ggplot(results_df, aes(x = expected_rate, y = actual_rate, color = gep_class_simple)) +
+        geom_abline(
+            slope = 1,
+            intercept = 0,
+            linetype = "dashed",
+            linewidth = 0.9,
+            color = "gray65",
+            show.legend = FALSE
+        ) +
         geom_segment(
             aes(
-                x = gep_class_simple, xend = gep_class_simple,
-                y = expected_rate, yend = actual_rate
+                x = .data$expected_rate,
+                xend = .data$expected_rate,
+                y = .data$expected_rate,
+                yend = .data$actual_rate
             ),
+            inherit.aes = FALSE,
             linetype = "dashed",
             linewidth = 0.8,
-            alpha = 0.6,
-            color = "gray45"
+            alpha = 0.7,
+            color = "gray60"
         ) +
-        geom_point(aes(y = expected_rate, color = "Expected"), size = 4.5) +
-        geom_point(aes(y = actual_rate, color = "Actual"), size = 4.5) +
+        geom_point(size = 5.3) +
+        geom_segment(
+            data = annotation_df,
+            aes(
+                x = .data$expected_rate,
+                y = .data$actual_rate,
+                xend = .data$connector_x,
+                yend = .data$connector_y
+            ),
+            inherit.aes = FALSE,
+            linewidth = 0.5,
+            color = "gray55",
+            show.legend = FALSE
+        ) +
+        geom_label(
+            data = annotation_df,
+            aes(
+                x = .data$label_x,
+                y = .data$label_y,
+                label = .data$point_label,
+                hjust = .data$label_hjust,
+                vjust = .data$label_vjust
+            ),
+            inherit.aes = FALSE,
+            color = "gray25",
+            fill = "white",
+            label.size = 0.18,
+            label.padding = grid::unit(0.1, "lines"),
+            label.r = grid::unit(0.05, "lines"),
+            size = 3.3,
+            lineheight = 0.95,
+            show.legend = FALSE
+        ) +
         labs(
             title = title_text,
             subtitle = cohort_label,
-            x = "GEP Class",
-            y = "Survival Rate",
-            color = "Rate Type"
+            x = "Predicted 5-year survival",
+            y = "Observed 5-year survival",
+            color = "GEP class",
+            caption = build_simple_gep_plot_caption(results_df)
+        ) +
+        scale_x_continuous(
+            limits = c(lower_limit, upper_limit),
+            labels = scales::label_percent(accuracy = 1),
+            expand = expansion(mult = c(0.03, 0.04))
         ) +
         scale_y_continuous(
-            limits = c(y_min, y_max),
-            expand = expansion(mult = c(0.01, 0.02))
+            limits = c(lower_limit, upper_limit),
+            labels = scales::label_percent(accuracy = 1),
+            expand = expansion(mult = c(0.03, 0.06))
         ) +
-        scale_x_discrete(
-            labels = x_label_map,
-            expand = expansion(mult = c(0.2, 0.25))
+        scale_color_manual(values = class_palette) +
+        guides(
+            color = guide_legend(order = 1, override.aes = list(size = 5.2))
         ) +
-        scale_color_manual(
-            values = {
-                pal <- get_qualitative_palette(2)
-                names(pal) <- c("Expected", "Actual")
-                pal
-            },
-            breaks = c("Actual", "Expected")
-        ) +
-        guides(color = guide_legend(override.aes = list(size = 5))) +
-        theme_classic(base_size = 18) +
+        theme_classic(base_size = 15) +
         theme(
             plot.background = element_rect(fill = "white", color = NA),
             panel.background = element_rect(fill = "white", color = NA),
-            plot.title = element_text(size = 22, face = "bold", margin = margin(b = 10)),
-            plot.subtitle = element_text(size = 17, margin = margin(b = 8)),
-            axis.title = element_text(size = 19),
-            axis.text = element_text(size = 16),
-            axis.text.x = element_text(lineheight = 0.95),
+            plot.title = element_text(size = 18, face = "bold", margin = margin(b = 8)),
+            plot.subtitle = element_text(size = 14, margin = margin(b = 8)),
+            axis.title = element_text(size = 16),
+            axis.text = element_text(size = 13),
+            plot.caption = element_text(size = 10.5, hjust = 0, color = "gray35", lineheight = 1.05, margin = margin(t = 12)),
             legend.position = "top",
+            legend.box = "vertical",
             legend.direction = "horizontal",
-            legend.title = element_text(size = 17, face = "bold"),
-            legend.text = element_text(size = 15),
+            legend.title = element_text(size = 14, face = "bold"),
+            legend.text = element_text(size = 13),
             legend.margin = margin(),
             legend.box.margin = margin(b = 2),
-            plot.margin = margin(8, 18, 26, 8),
+            plot.margin = margin(8, 14, 18, 8),
             axis.line = element_line(linewidth = 0.9),
             axis.ticks = element_line(linewidth = 0.9)
         ) +
-        coord_cartesian(clip = "off")
+        coord_equal(clip = "off")
 }
 
 #' Save simple GEP validation plots
 #'
 #' Write the expected-vs-actual MFS and MSS validation plots to disk with
-#' enough vertical space for the multi-line x-axis labels.
+#' enough space for point annotations and the explanatory caption.
 #'
 #' @param mfs_results Data frame of MFS class-level expected/actual rates.
 #' @param mss_results Data frame of MSS class-level expected/actual rates.
@@ -96,15 +220,15 @@ build_simple_gep_plot <- function(results_df, title_text, cohort_label = NULL) {
 create_simple_gep_plots <- function(mfs_results, mss_results, mfs_output_dir, mss_output_dir, prefix, dataset_name = NULL) {
     cohort_label <- format_objective4_gep_cohort_label(dataset_name)
 
-    simple_plot_width <- 10
-    simple_plot_height <- 7
+    simple_plot_width <- 8.2
+    simple_plot_height <- 6.4
 
     validation_mfs_dir <- ensure_output_dir(mfs_output_dir)
     validation_mss_dir <- ensure_output_dir(mss_output_dir)
 
     mfs_plot <- build_simple_gep_plot(
         mfs_results,
-        "5-Year MFS: Expected vs Actual Rates",
+        "Observed vs Predicted 5-Year MFS",
         cohort_label = cohort_label
     )
 
@@ -115,7 +239,7 @@ create_simple_gep_plots <- function(mfs_results, mss_results, mfs_output_dir, ms
 
     mss_plot <- build_simple_gep_plot(
         mss_results,
-        "5-Year MSS: Expected vs Actual Rates",
+        "Observed vs Predicted 5-Year MSS",
         cohort_label = cohort_label
     )
 
@@ -181,6 +305,377 @@ create_simple_gep_report <- function(mfs_results, mss_results, overall_summary, 
         md_bullet("Values close to 0 indicate good predictive accuracy.")
     )
     writeLines(report_content, file.path(output_dir, paste0(prefix, "simple_gep_validation_report.md")))
+}
+
+#' Get default cohort sources for the three-panel Objective 4 MFS figure
+#'
+#' @return Data frame describing runtime simple-validation workbooks for the
+#'   full, restricted, and GKSRS-only cohorts.
+get_objective4_simple_mfs_three_panel_sources <- function() {
+    data.frame(
+        dataset_name = c(
+            "uveal_melanoma_full_cohort",
+            "uveal_melanoma_restricted_cohort",
+            "uveal_melanoma_gksrs_only_cohort"
+        ),
+        cohort_dir = c("uveal_full", "uveal_restricted", "gksrs"),
+        prefix = c("full_cohort_", "restricted_cohort_", "gksrs_only_cohort_"),
+        cohort_label = c("Full Cohort", "Restricted Cohort", "GKSRS-Only Cohort"),
+        stringsAsFactors = FALSE
+    )
+}
+
+#' Read simple MFS validation rows for the three-panel Objective 4 figure
+#'
+#' @param cohort_sources Data frame with `cohort_dir`, `prefix`, and
+#'   `cohort_label` columns. Defaults to the three Objective 4 poster cohorts.
+#' @param runtime_output_dir Runtime analysis root containing cohort outputs.
+#'
+#' @return Data frame with MFS simple-validation rows and cohort metadata.
+read_objective4_simple_mfs_three_panel_data <- function(cohort_sources = get_objective4_simple_mfs_three_panel_sources(),
+                                                        runtime_output_dir = OUTPUT_DIR) {
+    required_source_cols <- c("cohort_dir", "prefix", "cohort_label")
+    missing_source_cols <- setdiff(required_source_cols, names(cohort_sources))
+    if (length(missing_source_cols) > 0) {
+        stop(
+            sprintf("Three-panel source table is missing columns: %s", paste(missing_source_cols, collapse = ", ")),
+            call. = FALSE
+        )
+    }
+
+    panel_rows <- lapply(seq_len(nrow(cohort_sources)), function(row_index) {
+        source_row <- cohort_sources[row_index, , drop = FALSE]
+        workbook_path <- file.path(
+            runtime_output_dir,
+            source_row$cohort_dir,
+            "04_GEP_Validation",
+            "unified_summary",
+            paste0(source_row$prefix, "simple_gep_validation.xlsx")
+        )
+
+        if (!file.exists(workbook_path)) {
+            stop(
+                sprintf("Missing simple GEP validation workbook for %s: %s", source_row$cohort_label, workbook_path),
+                call. = FALSE
+            )
+        }
+
+        mfs_rows <- readxl::read_excel(workbook_path, sheet = "MFS_By_Class") %>%
+            dplyr::mutate(dplyr::across(where(is.factor), as.character)) %>%
+            as.data.frame(stringsAsFactors = FALSE)
+
+        required_mfs_cols <- c("gep_class_simple", "n", "expected_rate", "actual_rate")
+        missing_mfs_cols <- setdiff(required_mfs_cols, names(mfs_rows))
+        if (length(missing_mfs_cols) > 0) {
+            stop(
+                sprintf(
+                    "Workbook %s is missing MFS columns: %s",
+                    workbook_path,
+                    paste(missing_mfs_cols, collapse = ", ")
+                ),
+                call. = FALSE
+            )
+        }
+
+        if (!"class_event_label" %in% names(mfs_rows)) {
+            mfs_rows$class_event_label <- sprintf("n=%d", mfs_rows$n)
+        }
+        if (!"treatment_mix" %in% names(mfs_rows)) {
+            mfs_rows$treatment_mix <- NA_character_
+        }
+
+        mfs_rows$dataset_name <- source_row$dataset_name %||% source_row$cohort_dir
+        mfs_rows$cohort_dir <- source_row$cohort_dir
+        mfs_rows$cohort_label <- source_row$cohort_label
+        mfs_rows$cohort_order <- row_index
+        mfs_rows$source_workbook <- workbook_path
+        mfs_rows
+    })
+
+    dplyr::bind_rows(panel_rows) %>%
+        dplyr::mutate(
+            cohort_label = factor(.data$cohort_label, levels = unique(cohort_sources$cohort_label)),
+            gep_class_simple = as.character(.data$gep_class_simple),
+            expected_rate = as.numeric(.data$expected_rate),
+            actual_rate = as.numeric(.data$actual_rate)
+        )
+}
+
+#' Build annotation rows for the three-panel Objective 4 MFS figure
+#'
+#' @param panel_data Combined MFS validation data with cohort labels.
+#' @param fixed_limits Numeric length-two axis limits shared by all panels.
+#'
+#' @return Data frame with point-label coordinates and connector endpoints.
+build_objective4_simple_mfs_three_panel_annotations <- function(panel_data, fixed_limits) {
+    lower_limit <- fixed_limits[[1]]
+    upper_limit <- fixed_limits[[2]]
+    axis_span <- max(upper_limit - lower_limit, 0.15)
+    label_offset_x <- min(0.018, axis_span * 0.035)
+    label_offset_y <- min(0.018, axis_span * 0.035)
+
+    split(panel_data, as.character(panel_data$cohort_label)) %>%
+        lapply(function(cohort_data) {
+            point_label <- if ("class_event_label" %in% names(cohort_data)) {
+                sprintf("%s\n%s", cohort_data$gep_class_simple, cohort_data$class_event_label)
+            } else {
+                sprintf("%s\nn=%d", cohort_data$gep_class_simple, cohort_data$n)
+            }
+
+            cohort_data %>%
+                dplyr::mutate(
+                    point_label = point_label,
+                    horizontal_direction = dplyr::if_else(
+                        .data$expected_rate >= stats::median(.data$expected_rate, na.rm = TRUE),
+                        -1,
+                        1
+                    ),
+                    vertical_direction = dplyr::if_else(
+                        .data$actual_rate >= stats::median(.data$actual_rate, na.rm = TRUE),
+                        -1,
+                        1
+                    ),
+                    label_x = .data$expected_rate + (.data$horizontal_direction * label_offset_x),
+                    label_y = .data$actual_rate + (.data$vertical_direction * label_offset_y),
+                    label_x = pmin(upper_limit - 0.006, pmax(lower_limit + 0.006, .data$label_x)),
+                    label_y = pmin(upper_limit - 0.006, pmax(lower_limit + 0.006, .data$label_y)),
+                    label_hjust = dplyr::if_else(.data$horizontal_direction < 0, 1, 0),
+                    label_vjust = dplyr::if_else(.data$vertical_direction < 0, 1, 0),
+                    connector_x = .data$expected_rate + (.data$horizontal_direction * label_offset_x * 0.8),
+                    connector_y = .data$actual_rate + (.data$vertical_direction * label_offset_y * 0.8),
+                    connector_x = pmin(upper_limit - 0.006, pmax(lower_limit + 0.006, .data$connector_x)),
+                    connector_y = pmin(upper_limit - 0.006, pmax(lower_limit + 0.006, .data$connector_y))
+                )
+        }) %>%
+        dplyr::bind_rows()
+}
+
+#' Build the three-panel Objective 4 simple MFS validation plot
+#'
+#' @param panel_data Combined MFS validation data with one row per cohort/class.
+#' @param fixed_limits Optional numeric length-two limits used for both x and y
+#'   axes. When `NULL`, limits are computed once across all panels.
+#'
+#' @return A `ggplot` object with fixed axes across cohort panels.
+build_objective4_simple_mfs_three_panel_plot <- function(panel_data, fixed_limits = NULL) {
+    if (is.null(panel_data) || nrow(panel_data) == 0) {
+        stop("Three-panel MFS plot requires non-empty panel_data.", call. = FALSE)
+    }
+
+    if (is.null(fixed_limits)) {
+        rate_range <- range(c(panel_data$expected_rate, panel_data$actual_rate), na.rm = TRUE)
+        lower_limit <- max(0, floor((rate_range[[1]] - 0.03) * 20) / 20)
+        upper_limit <- min(1.01, max(1, ceiling((rate_range[[2]] + 0.02) * 20) / 20))
+        fixed_limits <- c(lower_limit, upper_limit)
+    }
+
+    if (!is.numeric(fixed_limits) || length(fixed_limits) != 2 || fixed_limits[[1]] >= fixed_limits[[2]]) {
+        stop("fixed_limits must be a numeric length-two vector with increasing values.", call. = FALSE)
+    }
+
+    annotation_df <- build_objective4_simple_mfs_three_panel_annotations(
+        panel_data = panel_data,
+        fixed_limits = fixed_limits
+    )
+    class_palette <- get_gep_class_palette(panel_data$gep_class_simple)
+    axis_breaks <- seq(0, 1, by = 0.2)
+    axis_breaks <- axis_breaks[axis_breaks >= fixed_limits[[1]] & axis_breaks <= fixed_limits[[2]]]
+    if (!1 %in% axis_breaks && fixed_limits[[2]] >= 1) {
+        axis_breaks <- sort(unique(c(axis_breaks, 1)))
+    }
+
+    ggplot(panel_data, aes(x = expected_rate, y = actual_rate, color = gep_class_simple)) +
+        geom_abline(
+            slope = 1,
+            intercept = 0,
+            linetype = "dashed",
+            linewidth = 0.8,
+            color = "gray65",
+            show.legend = FALSE
+        ) +
+        geom_segment(
+            aes(
+                x = .data$expected_rate,
+                xend = .data$expected_rate,
+                y = .data$expected_rate,
+                yend = .data$actual_rate
+            ),
+            inherit.aes = FALSE,
+            linetype = "dashed",
+            linewidth = 0.7,
+            alpha = 0.7,
+            color = "gray60"
+        ) +
+        geom_point(size = 4.1) +
+        geom_segment(
+            data = annotation_df,
+            aes(
+                x = .data$expected_rate,
+                y = .data$actual_rate,
+                xend = .data$connector_x,
+                yend = .data$connector_y
+            ),
+            inherit.aes = FALSE,
+            linewidth = 0.4,
+            color = "gray55",
+            show.legend = FALSE
+        ) +
+        geom_label(
+            data = annotation_df,
+            aes(
+                x = .data$label_x,
+                y = .data$label_y,
+                label = .data$point_label,
+                hjust = .data$label_hjust,
+                vjust = .data$label_vjust
+            ),
+            inherit.aes = FALSE,
+            color = "gray25",
+            fill = "white",
+            label.size = 0.16,
+            label.padding = grid::unit(0.08, "lines"),
+            label.r = grid::unit(0.04, "lines"),
+            size = 2.8,
+            lineheight = 0.95,
+            show.legend = FALSE
+        ) +
+        facet_wrap(~cohort_label, nrow = 1) +
+        labs(
+            title = "Observed vs Predicted 5-Year MFS",
+            x = "Predicted 5-year survival",
+            y = "Observed 5-year survival",
+            color = "GEP class",
+            caption = paste(
+                "Fixed x/y axes across panels for direct cohort comparison.",
+                "Dashed diagonal: observed = predicted 5-year survival.",
+                "Gray vertical segments: observed-predicted gap.",
+                sep = "\n"
+            )
+        ) +
+        scale_x_continuous(
+            limits = fixed_limits,
+            breaks = axis_breaks,
+            labels = scales::label_percent(accuracy = 1),
+            expand = expansion(mult = c(0.03, 0.04))
+        ) +
+        scale_y_continuous(
+            limits = fixed_limits,
+            breaks = axis_breaks,
+            labels = scales::label_percent(accuracy = 1),
+            expand = expansion(mult = c(0.03, 0.05))
+        ) +
+        scale_color_manual(values = class_palette) +
+        theme_classic(base_size = 13) +
+        theme(
+            plot.background = element_rect(fill = "white", color = NA),
+            panel.background = element_rect(fill = "white", color = NA),
+            plot.title = element_text(size = 18, face = "bold", margin = margin(b = 8)),
+            axis.title = element_text(size = 14),
+            axis.text = element_text(size = 11),
+            strip.background = element_blank(),
+            strip.text = element_text(size = 13, face = "bold", margin = margin(b = 6)),
+            plot.caption = element_text(size = 9.5, hjust = 0, color = "gray35", lineheight = 1.05, margin = margin(t = 10)),
+            legend.position = "none",
+            panel.spacing.x = grid::unit(0.55, "lines"),
+            plot.margin = margin(8, 12, 12, 8),
+            axis.line = element_line(linewidth = 0.8),
+            axis.ticks = element_line(linewidth = 0.8)
+        ) +
+        coord_equal(clip = "off")
+}
+
+#' Write a three-cohort Objective 4 simple MFS validation report
+#'
+#' @param panel_data Optional combined MFS validation data. When `NULL`, data
+#'   are read from the three cohort simple-validation workbooks.
+#' @param output_dir Directory for the combined poster figure and support files.
+#' @param filename_stem Filename stem for generated artifacts.
+#' @param fixed_limits Optional numeric length-two fixed axis limits for both
+#'   x and y axes.
+#' @param save_pdf Logical indicating whether to also write a PDF figure.
+#'
+#' @return List with paths, data, plot object, and fixed axis limits.
+create_objective4_simple_mfs_three_panel_report <- function(panel_data = NULL,
+                                                            output_dir = file.path(MERGED_TABLES_DIR, "objective4_poster_figures"),
+                                                            filename_stem = "objective4_three_cohort_simple_mfs_validation",
+                                                            fixed_limits = NULL,
+                                                            save_pdf = TRUE) {
+    if (is.null(panel_data)) {
+        panel_data <- read_objective4_simple_mfs_three_panel_data()
+    }
+
+    if (is.null(fixed_limits)) {
+        rate_range <- range(c(panel_data$expected_rate, panel_data$actual_rate), na.rm = TRUE)
+        fixed_limits <- c(
+            max(0, floor((rate_range[[1]] - 0.03) * 20) / 20),
+            min(1.01, max(1, ceiling((rate_range[[2]] + 0.02) * 20) / 20))
+        )
+    }
+
+    if (!dir.exists(output_dir)) {
+        dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+
+    plot_obj <- build_objective4_simple_mfs_three_panel_plot(
+        panel_data = panel_data,
+        fixed_limits = fixed_limits
+    )
+
+    png_path <- file.path(output_dir, paste0(filename_stem, ".png"))
+    pdf_path <- file.path(output_dir, paste0(filename_stem, ".pdf"))
+    treatment_mix_path <- file.path(output_dir, paste0(filename_stem, "_treatment_mix.csv"))
+    report_path <- file.path(output_dir, paste0(filename_stem, "_report.md"))
+
+    ggsave(png_path, plot_obj, width = 12, height = 5.4, dpi = PLOT_DPI, bg = "white")
+    if (isTRUE(save_pdf)) {
+        ggsave(pdf_path, plot_obj, width = 12, height = 5.4, bg = "white")
+    } else {
+        pdf_path <- NA_character_
+    }
+
+    treatment_mix <- panel_data %>%
+        dplyr::transmute(
+            cohort = as.character(.data$cohort_label),
+            gep_class = .data$gep_class_simple,
+            n = .data$n,
+            five_year_mets = .data$class_event_label,
+            treatment_mix = .data$treatment_mix
+        ) %>%
+        dplyr::arrange(.data$cohort, .data$gep_class)
+    utils::write.csv(treatment_mix, treatment_mix_path, row.names = FALSE)
+
+    report_lines <- c(
+        md_heading("Objective 4 Three-Cohort Simple MFS Validation", 1L),
+        "",
+        sprintf("Figure: `%s`", basename(png_path)),
+        "",
+        sprintf(
+            "Fixed axis limits for both x and y: %.0f%% to %.0f%%.",
+            fixed_limits[[1]] * 100,
+            fixed_limits[[2]] * 100
+        ),
+        "",
+        md_bullet("All panels use identical x/y limits and `coord_equal()` so distances from the dashed diagonal are directly comparable."),
+        md_bullet("The dashed diagonal represents observed = predicted 5-year MFS."),
+        md_bullet("Gray vertical segments show the observed-predicted survival gap."),
+        md_bullet("Treatment mix is kept out of the point labels and summarized below to preserve figure readability."),
+        "",
+        md_heading("Treatment Mix", 2L),
+        md_table(as.data.frame(treatment_mix, stringsAsFactors = FALSE))
+    )
+    writeLines(report_lines, report_path)
+
+    list(
+        plot = plot_obj,
+        data = panel_data,
+        fixed_limits = fixed_limits,
+        paths = list(
+            png = png_path,
+            pdf = pdf_path,
+            treatment_mix = treatment_mix_path,
+            report = report_path
+        )
+    )
 }
 
 #' Summarize Simple MSS Actual Survival by GEP Class

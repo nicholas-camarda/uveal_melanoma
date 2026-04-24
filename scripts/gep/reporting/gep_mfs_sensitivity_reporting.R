@@ -1008,6 +1008,7 @@ build_objective4_simple_mfs_plot_annotations <- function(mfs_data) {
             gep_class_simple = character(),
             plot_x_label = character(),
             class_event_label = character(),
+            treatment_mix = character(),
             stringsAsFactors = FALSE
         ))
     }
@@ -1016,6 +1017,7 @@ build_objective4_simple_mfs_plot_annotations <- function(mfs_data) {
         dplyr::transmute(
             gep_class_simple = .data$gep_class_simple,
             class_event_label = sprintf("5-year mets: %d/%d", .data$observed_events_5yr, .data$n),
+            treatment_mix = .data$treatment_mix,
             plot_x_label = sprintf(
                 "%s\n5-year mets: %d/%d\nTx mix: %s",
                 .data$gep_class_simple,

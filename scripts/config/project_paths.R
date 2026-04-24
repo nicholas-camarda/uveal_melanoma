@@ -286,7 +286,7 @@ PUBLISH_ARTIFACT_REGISTRY <- list(
         "^04_GEP_Validation/.+\\.(xlsx|html|png|pdf|md|txt|csv|tsv)$"
     ),
     merged_tables = c(
-        "^.+\\.(xlsx|html|csv|tsv|txt)$"
+        "^.+\\.(xlsx|html|png|pdf|md|csv|tsv|txt)$"
     ),
     excluded = c(
         "(^|/)(logs|cache|caches|tools_output|test_output|tmp|temp)(/|$)",
@@ -315,4 +315,3 @@ is_publishable_relative_artifact <- function(relative_path, root_kind = c("cohor
 
     any(vapply(PUBLISH_ARTIFACT_REGISTRY[[root_kind]], grepl, logical(1), x = relative_path, perl = TRUE))
 }
-

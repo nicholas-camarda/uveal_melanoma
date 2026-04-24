@@ -658,6 +658,19 @@ main_execution <- function() {
         logger::log_error(formatted(sprintf("Error merging baseline tables: %s", e$message)))
     })
 
+    # Generate cross-cohort Objective 4 poster figures after all cohort-level
+    # simple-validation workbooks have been refreshed.
+    tryCatch({
+        create_objective4_simple_mfs_three_panel_report()
+        logger::log_info(sprintf(
+            "Objective 4 three-cohort poster figure saved under: %s",
+            file.path(MERGED_TABLES_DIR, "objective4_poster_figures")
+        ))
+    }, error = function(e) {
+        warning_issues <<- append_issue(warning_issues, sprintf("objective4_three_panel_mfs:%s", e$message))
+        logger::log_warn(formatted(sprintf("Objective 4 three-cohort poster figure failed: %s", e$message)))
+    })
+
     # Summary banner
     set_log_context(replace = TRUE)
     run_state <- determine_run_state(unique(fatal_issues), unique(warning_issues))
