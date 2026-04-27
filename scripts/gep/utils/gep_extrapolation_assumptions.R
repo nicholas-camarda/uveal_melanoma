@@ -577,14 +577,19 @@ evaluate_gep_extrapolation_assumption <- function(analysis_data,
                     x = "Follow-up (years)",
                     y = "Cumulative hazard"
                 ) +
-                ggplot2::theme_minimal(base_size = 11)
+                ggplot2::theme_minimal(base_size = 11) +
+                ggplot2::theme(
+                    plot.background = ggplot2::element_rect(fill = "white", color = NA),
+                    panel.background = ggplot2::element_rect(fill = "white", color = NA)
+                )
 
             ggplot2::ggsave(
                 filename = file.path(output_dir, paste0(prefix, endpoint_config$file_stub, "_extrapolation_cumhaz_diagnostic.png")),
                 plot = diagnostic_plot,
                 width = 7,
                 height = 5,
-                dpi = 300
+                dpi = 300,
+                bg = "white"
             )
         }
 
