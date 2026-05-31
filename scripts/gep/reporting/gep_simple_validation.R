@@ -205,6 +205,144 @@ build_simple_gep_plot <- function(results_df, title_text, cohort_label = NULL) {
         coord_equal(clip = "off")
 }
 
+#' Build a Poster-Ready Simple GEP MFS Validation Plot
+#'
+#' Creates a compact observed-vs-predicted MFS panel for poster placement. The
+#' plot removes the long explanatory caption and labels classes directly so the
+#' panel can be placed below KM curves without shrinking unreadably.
+#'
+#' @param results_df Data frame of MFS class-level expected and actual rates.
+#' @param cohort_label Optional cohort label used as the panel title.
+#' @param fixed_limits Numeric length-two axis limits shared across poster panels.
+#' @return A `ggplot` object.
+build_simple_gep_poster_mfs_plot <- function(results_df,
+                                             cohort_label = NULL,
+                                             fixed_limits = NULL) {
+    if (is.null(results_df) || nrow(results_df) == 0) {
+        stop("Poster simple MFS validation plot requires non-empty results.", call. = FALSE)
+    }
+    if (is.null(fixed_limits)) {
+        rate_range <- range(c(results_df$expected_rate, results_df$actual_rate), na.rm = TRUE)
+        fixed_limits <- c(
+            min(0.35, max(0, floor((rate_range[[1]] - 0.03) * 20) / 20)),
+            min(1.01, max(1, ceiling((rate_range[[2]] + 0.02) * 20) / 20))
+        )
+    }
+    if (!is.numeric(fixed_limits) || length(fixed_limits) != 2 || fixed_limits[[1]] >= fixed_limits[[2]]) {
+        stop("fixed_limits must be a numeric length-two vector with increasing values.", call. = FALSE)
+    }
+
+    class_palette <- get_gep_class_palette(results_df$gep_class_simple)
+    axis_span <- fixed_limits[[2]] - fixed_limits[[1]]
+    label_offset <- min(0.035, axis_span * 0.06)
+
+    point_label <- if ("class_event_label" %in% names(results_df)) {
+        sprintf("%s\n%s", results_df$gep_class_simple, results_df$class_event_label)
+    } else if ("n" %in% names(results_df)) {
+        sprintf("%s\nn=%d", results_df$gep_class_simple, results_df$n)
+    } else {
+        results_df$gep_class_simple
+    }
+
+    annotation_df <- results_df %>%
+        dplyr::mutate(
+            point_label = point_label,
+            horizontal_direction = dplyr::if_else(
+                .data$expected_rate >= stats::median(.data$expected_rate, na.rm = TRUE),
+                -1,
+                1
+            ),
+            vertical_direction = dplyr::if_else(
+                .data$actual_rate >= stats::median(.data$actual_rate, na.rm = TRUE),
+                -1,
+                1
+            ),
+            label_x = .data$expected_rate + (.data$horizontal_direction * label_offset),
+            label_y = .data$actual_rate + (.data$vertical_direction * label_offset),
+            label_x = pmin(fixed_limits[[2]] - 0.01, pmax(fixed_limits[[1]] + 0.01, .data$label_x)),
+            label_y = pmin(fixed_limits[[2]] - 0.01, pmax(fixed_limits[[1]] + 0.01, .data$label_y)),
+            label_hjust = dplyr::if_else(.data$horizontal_direction < 0, 1, 0),
+            label_vjust = dplyr::if_else(.data$vertical_direction < 0, 1, 0)
+        )
+
+    axis_breaks <- seq(0.4, 1.0, by = 0.2)
+    axis_breaks <- axis_breaks[axis_breaks >= fixed_limits[[1]] & axis_breaks <= fixed_limits[[2]]]
+
+    ggplot2::ggplot(results_df, ggplot2::aes(x = .data$expected_rate, y = .data$actual_rate, color = .data$gep_class_simple)) +
+        ggplot2::geom_abline(
+            slope = 1,
+            intercept = 0,
+            linetype = "dashed",
+            linewidth = 0.9,
+            color = "gray65",
+            show.legend = FALSE
+        ) +
+        ggplot2::geom_segment(
+            ggplot2::aes(
+                x = .data$expected_rate,
+                xend = .data$expected_rate,
+                y = .data$expected_rate,
+                yend = .data$actual_rate
+            ),
+            inherit.aes = FALSE,
+            linetype = "dashed",
+            linewidth = 0.7,
+            alpha = 0.65,
+            color = "gray60"
+        ) +
+        ggplot2::geom_point(size = 5.8) +
+        ggplot2::geom_label(
+            data = annotation_df,
+            ggplot2::aes(
+                x = .data$label_x,
+                y = .data$label_y,
+                label = .data$point_label,
+                hjust = .data$label_hjust,
+                vjust = .data$label_vjust
+            ),
+            inherit.aes = FALSE,
+            color = "gray20",
+            fill = "white",
+            label.size = 0.18,
+            label.padding = grid::unit(0.12, "lines"),
+            label.r = grid::unit(0.04, "lines"),
+            size = 4.2,
+            lineheight = 0.95,
+            show.legend = FALSE
+        ) +
+        ggplot2::labs(
+            title = cohort_label %||% "Simple GEP MFS validation",
+            x = "Predicted 5-year MFS",
+            y = "Observed 5-year MFS",
+            color = "GEP class"
+        ) +
+        ggplot2::scale_x_continuous(
+            limits = fixed_limits,
+            breaks = axis_breaks,
+            labels = scales::label_percent(accuracy = 1),
+            expand = ggplot2::expansion(mult = c(0.03, 0.04))
+        ) +
+        ggplot2::scale_y_continuous(
+            limits = fixed_limits,
+            breaks = axis_breaks,
+            labels = scales::label_percent(accuracy = 1),
+            expand = ggplot2::expansion(mult = c(0.03, 0.04))
+        ) +
+        ggplot2::scale_color_manual(values = class_palette, guide = "none") +
+        ggplot2::theme_classic(base_size = 16) +
+        ggplot2::theme(
+            plot.background = ggplot2::element_rect(fill = "white", color = NA),
+            panel.background = ggplot2::element_rect(fill = "white", color = NA),
+            plot.title = ggplot2::element_text(size = 20, face = "bold", margin = ggplot2::margin(b = 6)),
+            axis.title = ggplot2::element_text(size = 18, face = "bold"),
+            axis.text = ggplot2::element_text(size = 15, color = "gray25"),
+            plot.margin = ggplot2::margin(6, 12, 8, 6),
+            axis.line = ggplot2::element_line(linewidth = 0.9),
+            axis.ticks = ggplot2::element_line(linewidth = 0.9)
+        ) +
+        ggplot2::coord_equal(clip = "off")
+}
+
 #' Save simple GEP validation plots
 #'
 #' Write the expected-vs-actual MFS and MSS validation plots to disk with
@@ -235,6 +373,16 @@ create_simple_gep_plots <- function(mfs_results, mss_results, mfs_output_dir, ms
     ggsave(file.path(validation_mfs_dir, paste0(prefix, "simple_mfs_validation.png")),
         mfs_plot,
         width = simple_plot_width, height = simple_plot_height, dpi = PLOT_DPI, bg = "white"
+    )
+
+    mfs_poster_plot <- build_simple_gep_poster_mfs_plot(
+        mfs_results,
+        cohort_label = cohort_label
+    )
+
+    ggsave(file.path(validation_mfs_dir, paste0(prefix, "poster_simple_mfs_validation.png")),
+        mfs_poster_plot,
+        width = 7.4, height = 3.4, dpi = PLOT_DPI, bg = "white"
     )
 
     mss_plot <- build_simple_gep_plot(
@@ -323,6 +471,19 @@ get_objective4_simple_mfs_three_panel_sources <- function() {
         cohort_label = c("Full Cohort", "Restricted Cohort", "GKSRS-Only Cohort"),
         stringsAsFactors = FALSE
     )
+}
+
+#' Get default cohort sources for the two-panel Objective 4 MFS poster figure
+#'
+#' @return Data frame describing runtime simple-validation workbooks for the
+#'   full and GKSRS-only cohorts.
+get_objective4_simple_mfs_two_panel_sources <- function() {
+    sources <- get_objective4_simple_mfs_three_panel_sources()
+    sources[
+        sources$dataset_name %in% c("uveal_melanoma_full_cohort", "uveal_melanoma_gksrs_only_cohort"),
+        ,
+        drop = FALSE
+    ]
 }
 
 #' Read simple MFS validation rows for the three-panel Objective 4 figure
@@ -644,8 +805,15 @@ create_objective4_simple_mfs_three_panel_report <- function(panel_data = NULL,
         dplyr::arrange(.data$cohort, .data$gep_class)
     utils::write.csv(treatment_mix, treatment_mix_path, row.names = FALSE)
 
+    cohort_count_label <- switch(
+        as.character(length(unique(as.character(panel_data$cohort_label)))),
+        `2` = "Two-Cohort",
+        `3` = "Three-Cohort",
+        "Multi-Cohort"
+    )
+
     report_lines <- c(
-        md_heading("Objective 4 Three-Cohort Simple MFS Validation", 1L),
+        md_heading(sprintf("Objective 4 %s Simple MFS Validation", cohort_count_label), 1L),
         "",
         sprintf("Figure: `%s`", basename(png_path)),
         "",
@@ -675,6 +843,32 @@ create_objective4_simple_mfs_three_panel_report <- function(panel_data = NULL,
             treatment_mix = treatment_mix_path,
             report = report_path
         )
+    )
+}
+
+#' Write a two-cohort Objective 4 simple MFS validation report
+#'
+#' @param output_dir Directory for the combined poster figure and support files.
+#' @param filename_stem Filename stem for generated artifacts.
+#' @param fixed_limits Optional numeric length-two fixed axis limits for both
+#'   x and y axes.
+#' @param save_pdf Logical indicating whether to also write a PDF figure.
+#'
+#' @return List with paths, data, plot object, and fixed axis limits.
+create_objective4_simple_mfs_two_panel_report <- function(output_dir = file.path(MERGED_TABLES_DIR, "objective4_poster_figures"),
+                                                          filename_stem = "objective4_two_cohort_simple_mfs_validation",
+                                                          fixed_limits = NULL,
+                                                          save_pdf = TRUE) {
+    panel_data <- read_objective4_simple_mfs_three_panel_data(
+        cohort_sources = get_objective4_simple_mfs_two_panel_sources()
+    )
+
+    create_objective4_simple_mfs_three_panel_report(
+        panel_data = panel_data,
+        output_dir = output_dir,
+        filename_stem = filename_stem,
+        fixed_limits = fixed_limits,
+        save_pdf = save_pdf
     )
 }
 

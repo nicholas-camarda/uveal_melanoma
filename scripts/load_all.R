@@ -164,6 +164,7 @@ source(here("scripts", "gep", "utils", "gep_extrapolation_assumptions.R"))
 source(here("scripts", "gep", "cores", "gep_evaluation_core_mfs.R"))
 source(here("scripts", "gep", "cores", "gep_evaluation_core_mss.R"))
 source(here("scripts", "gep", "reporting", "gep_mfs_sensitivity_reporting.R"))
+source(here("scripts", "gep", "visualization", "gep_poster_km_plots.R"))
 source(here("scripts", "gep", "visualization", "gep_visuals.R"))
 
 # Source the GEP reporting script

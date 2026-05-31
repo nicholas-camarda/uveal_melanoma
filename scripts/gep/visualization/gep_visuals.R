@@ -1359,6 +1359,19 @@ create_mfs_simple_binary_survival_analysis <- function(data, output_dir, prefix,
         logger::log_warn("Binary simple-GEP MFS survival analysis returned no plot")
     }
 
+    poster_km_dir <- ensure_output_dir(resolve_obj4_output_dir(resolved_output_dirs, output_dir, "km"))
+    poster_km_path <- write_mfs_simple_binary_poster_km_panel(
+        data = plot_data,
+        output_dir = poster_km_dir,
+        prefix = prefix,
+        dataset_name = dataset_name
+    )
+    logger::log_info(sprintf("Poster-ready simple-GEP MFS KM panel saved: %s", poster_km_path))
+
+    if (!is.null(binary_result)) {
+        binary_result$poster_plot_paths <- list(individual = poster_km_path)
+    }
+
     invisible(binary_result)
 }
 
@@ -1508,7 +1521,7 @@ create_mfs_collapsed_survival_curves <- function(data, output_dir, prefix, datas
             name = "Metastasis-Free Survival Probability (%)"
         ) +
         ggplot2::labs(x = "Time (months)") +
-        ggplot2::geom_hline(yintercept = 0.5, linetype = "solid", color = "black", linewidth = 0.9)
+        ggplot2::geom_hline(yintercept = 0.5, linetype = "solid", color = "black", linewidth = 0.9, alpha = 0.35)
 
     surv_plot$table <- surv_plot$table +
         ggplot2::theme_minimal() +

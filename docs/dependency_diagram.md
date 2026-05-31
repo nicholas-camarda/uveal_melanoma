@@ -145,6 +145,7 @@ flowchart LR
 - `gep_missing_data_analysis.R`
 - `gep_model_evaluation_metrics.R`
 - `gep_output_consolidation.R`
+- `gep_poster_km_plots.R`
 - `gep_reporting_core.R`
 - `gep_simple_validation.R`
 - `gep_summary_generation.R`

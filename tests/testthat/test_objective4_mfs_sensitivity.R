@@ -262,6 +262,43 @@ test_that("Three-cohort simple MFS plot uses fixed comparable axes", {
     expect_true(file.exists(report$paths$report))
 })
 
+test_that("Two-cohort simple MFS report keeps only full and GKSRS panels", {
+    panel_data <- data.frame(
+        cohort_label = rep(c("Full Cohort", "Restricted Cohort", "GKSRS-Only Cohort"), each = 2),
+        gep_class_simple = rep(c("Class 1", "Class 2"), times = 3),
+        n = c(58, 27, 38, 19, 19, 8),
+        expected_rate = c(0.92, 0.53, 0.92, 0.55, 0.93, 0.53),
+        actual_rate = c(0.97, 0.46, 0.96, 0.42, 1.00, 0.58),
+        class_event_label = c(
+            "5-year mets: 1/58",
+            "5-year mets: 13/27",
+            "5-year mets: 1/38",
+            "5-year mets: 10/19",
+            "5-year mets: 0/19",
+            "5-year mets: 3/8"
+        ),
+        treatment_mix = "PBT=1, GKSRS=1",
+        stringsAsFactors = FALSE
+    )
+    panel_data <- panel_data[panel_data$cohort_label %in% c("Full Cohort", "GKSRS-Only Cohort"), , drop = FALSE]
+    panel_data$cohort_label <- factor(panel_data$cohort_label, levels = c("Full Cohort", "GKSRS-Only Cohort"))
+
+    report_dir <- file.path(TEST_OUTPUT_DIR, "objective4_two_panel_report")
+    withr::defer(unlink(report_dir, recursive = TRUE), envir = parent.frame())
+    report <- create_objective4_simple_mfs_three_panel_report(
+        panel_data = panel_data,
+        output_dir = report_dir,
+        filename_stem = "objective4_two_cohort_simple_mfs_validation",
+        fixed_limits = c(0.35, 1.01),
+        save_pdf = FALSE
+    )
+
+    expect_true(file.exists(report$paths$png))
+    expect_setequal(as.character(unique(report$data$cohort_label)), c("Full Cohort", "GKSRS-Only Cohort"))
+    expect_false("Restricted Cohort" %in% as.character(report$data$cohort_label))
+    expect_match(paste(readLines(report$paths$report), collapse = "\n"), "Two-Cohort Simple MFS Validation", fixed = TRUE)
+})
+
 test_that("MFS calibration caption includes cohort and class event counts", {
     caption <- build_objective4_mfs_calibration_caption(
         results = list(

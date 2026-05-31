@@ -662,13 +662,21 @@ main_execution <- function() {
     # simple-validation workbooks have been refreshed.
     tryCatch({
         create_objective4_simple_mfs_three_panel_report()
+        create_objective4_simple_mfs_two_panel_report()
+        if (!is.null(cohort_data[["uveal_melanoma_full_cohort"]]) && !is.null(cohort_data[["uveal_melanoma_gksrs_only_cohort"]])) {
+            write_mfs_simple_binary_poster_km_stack(
+                full_data = cohort_data[["uveal_melanoma_full_cohort"]],
+                gksrs_data = cohort_data[["uveal_melanoma_gksrs_only_cohort"]],
+                output_dir = file.path(MERGED_TABLES_DIR, "objective4_poster_figures")
+            )
+        }
         logger::log_info(sprintf(
-            "Objective 4 three-cohort poster figure saved under: %s",
+            "Objective 4 poster figures saved under: %s",
             file.path(MERGED_TABLES_DIR, "objective4_poster_figures")
         ))
     }, error = function(e) {
-        warning_issues <<- append_issue(warning_issues, sprintf("objective4_three_panel_mfs:%s", e$message))
-        logger::log_warn(formatted(sprintf("Objective 4 three-cohort poster figure failed: %s", e$message)))
+        warning_issues <<- append_issue(warning_issues, sprintf("objective4_poster_mfs:%s", e$message))
+        logger::log_warn(formatted(sprintf("Objective 4 poster figure generation failed: %s", e$message)))
     })
 
     # Summary banner

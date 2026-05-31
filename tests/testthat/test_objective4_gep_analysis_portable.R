@@ -40,6 +40,28 @@ test_that("Objective 4 writes expected simple validation workbook", {
     expect_true(file.exists(workbook_path))
 })
 
+test_that("Objective 4 writes poster-ready simple MFS validation plot", {
+    test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective4_poster_simple_mfs_validation")
+    output_dirs <- build_objective4_output_dirs(test_output_dir)
+    output_dirs$obj4_mfs_validation <- file.path(output_dirs$obj4_mfs, "04_validation")
+
+    dir.create(test_output_dir, recursive = TRUE, showWarnings = FALSE)
+    for (dir_path in output_dirs) {
+        dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
+    }
+    withr::defer(unlink(test_output_dir, recursive = TRUE), envir = parent.frame())
+
+    simple_gep_validation(
+        create_test_dataset(),
+        output_dirs,
+        "poster_",
+        dataset_name = "uveal_melanoma_full_cohort"
+    )
+
+    poster_path <- file.path(output_dirs$obj4_mfs_validation, "poster_poster_simple_mfs_validation.png")
+    expect_true(file.exists(poster_path))
+})
+
 test_that("Simple GEP validation keeps endpoint-specific eligible patients", {
     test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective4_endpoint_specific_filtering")
     output_dirs <- build_objective4_output_dirs(test_output_dir)
@@ -105,6 +127,48 @@ test_that("Simple GEP validation uses KM-adjusted MFS at 5 years", {
     expect_equal(class1_mfs, 0)
     expect_equal(class2_mfs, 1)
     expect_equal(overall_mfs, 2 / 3)
+})
+
+test_that("Simple binary MFS analysis writes poster-ready KM panel", {
+    test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective4_simple_binary_poster_km")
+    output_dirs <- build_objective4_output_dirs(test_output_dir)
+    output_dirs$obj4_mfs_km <- file.path(output_dirs$obj4_mfs, "01_km_curves")
+
+    dir.create(test_output_dir, recursive = TRUE, showWarnings = FALSE)
+    for (dir_path in output_dirs) {
+        dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
+    }
+    withr::defer(unlink(test_output_dir, recursive = TRUE), envir = parent.frame())
+
+    result <- suppressWarnings(create_mfs_simple_binary_survival_analysis(
+        data = create_test_dataset(),
+        output_dir = output_dirs$obj4_mfs,
+        prefix = "test_",
+        dataset_name = "Poster Test Cohort",
+        output_dirs = output_dirs
+    ))
+
+    expected_path <- file.path(
+        output_dirs$obj4_mfs_km,
+        "test_poster_simple_gep_binary_mfs_km_120mo.png"
+    )
+    expect_true(file.exists(expected_path))
+    expect_equal(result$poster_plot_paths$individual, expected_path)
+})
+
+test_that("Two-cohort MFS poster KM stack writer saves combined panel", {
+    output_dir <- file.path(TEST_OUTPUT_DIR, "objective4_simple_binary_poster_km_stack")
+    withr::defer(unlink(output_dir, recursive = TRUE), envir = parent.frame())
+
+    paths <- write_mfs_simple_binary_poster_km_stack(
+        full_data = create_test_dataset(),
+        gksrs_data = create_test_dataset(),
+        output_dir = output_dir,
+        filename = "test_stack.png"
+    )
+
+    expect_true(file.exists(paths$png))
+    expect_equal(basename(paths$png), "test_stack.png")
 })
 
 test_that("MSS decision curve analysis respects month-based horizons", {
