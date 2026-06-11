@@ -3,6 +3,7 @@ scripts/.DS_Store
 
 # ignore raw data files
 data/
+outputs/
 Original Files/
 Analysis/
 Analytic Dataset/
