@@ -103,7 +103,7 @@ summarize_peer_review_radiation_availability <- function(data) {
             reviewer_use = dplyr::case_when(
                 .data$field == "optic_nerve" ~ "Proximity/abutment eligibility and subgroup descriptor.",
                 grepl("dose|isodose|shots|isocenters|distance|macula|fovea", .data$field) ~
-                    "Reviewer-requested dosimetry/proximity detail; absent here if present=FALSE.",
+                    "Quantitative proximity/dosimetry detail; if absent from the curated analytic dataset, new chart review or physics-plan abstraction is required.",
                 TRUE ~ "Treatment detail available for descriptive context if non-missing."
             )
         )
@@ -156,43 +156,70 @@ summarize_restricted_cohort_eligibility <- function(data) {
     )
 }
 
-#' Read available source workbook columns without loading full source data
+#' Read curated active input workbook columns without loading full source data
 #'
-#' @param raw_data_dir Directory containing source workbooks.
-#' @return Tibble with workbook, sheet, and column metadata.
-read_peer_review_source_columns <- function(raw_data_dir = RAW_DATA_DIR) {
-    source_files <- list.files(raw_data_dir, pattern = "\\.xlsx$", full.names = TRUE)
-    if (length(source_files) == 0L) {
+#' @param raw_data_dir Directory containing the active curated stats workbook.
+#' @param input_filename Active curated stats workbook filename.
+#' @return Tibble with active workbook, sheet, and column metadata.
+read_curated_input_workbook_columns <- function(raw_data_dir = RAW_DATA_DIR, input_filename = INPUT_FILENAME) {
+    source_file <- file.path(raw_data_dir, input_filename)
+    if (!file.exists(source_file)) {
         return(tibble::tibble(
+            input_role = character(),
             source_file = character(),
             sheet = character(),
             column_name = character()
         ))
     }
 
-    purrr::map_dfr(source_files, function(source_file) {
-        sheets <- tryCatch(openxlsx::getSheetNames(source_file), error = function(e) character())
-        purrr::map_dfr(sheets, function(sheet) {
-            columns <- tryCatch(
-                names(openxlsx::read.xlsx(source_file, sheet = sheet, rows = 1, colNames = TRUE)),
-                error = function(e) character()
-            )
-            tibble::tibble(
-                source_file = basename(source_file),
-                sheet = sheet,
-                column_name = columns
-            )
-        })
+    sheets <- tryCatch(openxlsx::getSheetNames(source_file), error = function(e) character())
+    purrr::map_dfr(sheets, function(sheet) {
+        columns <- tryCatch(
+            names(openxlsx::read.xlsx(source_file, sheet = sheet, rows = 1, colNames = TRUE)),
+            error = function(e) character()
+        )
+        tibble::tibble(
+            input_role = "active_curated_stats_workbook",
+            source_file = basename(source_file),
+            sheet = sheet,
+            column_name = columns
+        )
     })
+}
+
+#' Define evidence boundaries for peer-review availability statements
+#'
+#' @param input_filename Active curated stats workbook filename.
+#' @return Tibble describing evidence sources and excluded source classes.
+build_peer_review_evidence_boundary <- function(input_filename = INPUT_FILENAME) {
+    tibble::tibble(
+        evidence_source = c(
+            "analytic_dataset",
+            "active_curated_stats_workbook",
+            "other_raw_folder_workbooks"
+        ),
+        included_in_audit = c(TRUE, TRUE, FALSE),
+        interpretation = c(
+            "Fields available for modeled or summarized peer-review analyses.",
+            sprintf("Curated source workbook for this revision: %s.", input_filename),
+            "Not treated as evidence for this manuscript unless explicitly reconciled into the curated stats dataset."
+        ),
+        implication = c(
+            "Absent quantitative proximity/dosimetry fields cannot be analyzed without new abstraction.",
+            "Column availability here supports statements about what was systematically collected for the curated dataset.",
+            "Do not cite these files as available data in reviewer responses without a separate reconciliation/chart-review task."
+        )
+    )
 }
 
 #' Build peer-review follow-up and data availability audit tables
 #'
 #' @param data Analytic cohort data.
 #' @param cohort_name Short cohort label for workbook output.
-#' @param raw_data_dir Directory containing source workbooks.
+#' @param raw_data_dir Directory containing the active curated stats workbook.
+#' @param input_filename Active curated stats workbook filename.
 #' @return Named list of audit tables.
-build_peer_review_followup_audit <- function(data, cohort_name, raw_data_dir = RAW_DATA_DIR) {
+build_peer_review_followup_audit <- function(data, cohort_name, raw_data_dir = RAW_DATA_DIR, input_filename = INPUT_FILENAME) {
     latest_va_months <- if (all(c("treatment_date", "last_followup") %in% names(data))) {
         as.numeric(difftime(data$last_followup, data$treatment_date, units = "days")) / 30.4375
     } else {
@@ -209,11 +236,12 @@ build_peer_review_followup_audit <- function(data, cohort_name, raw_data_dir = R
     )
 
     list(
+        evidence_boundary = build_peer_review_evidence_boundary(input_filename),
         data_profile = data_profile,
         followup_availability = summarize_peer_review_followup(data),
         radiation_availability = summarize_peer_review_radiation_availability(data),
         restricted_eligibility_check = summarize_restricted_cohort_eligibility(data),
-        source_workbook_columns = read_peer_review_source_columns(raw_data_dir)
+        curated_input_workbook_columns = read_curated_input_workbook_columns(raw_data_dir, input_filename)
     )
 }
 

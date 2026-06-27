@@ -72,24 +72,39 @@ test_that("peer-review follow-up audit writes expected workbook sheets", {
     dir.create(raw_dir, recursive = TRUE)
     openxlsx::write.xlsx(
         list(Sheet1 = data.frame(last_followup = as.Date("2021-01-01"), last_vision = 0.3)),
-        file.path(raw_dir, "source.xlsx")
+        file.path(raw_dir, "active_stats.xlsx")
+    )
+    openxlsx::write.xlsx(
+        list(Sheet1 = data.frame(Distance.of.Tumor.from.Optic.Nerve = "2DD")),
+        file.path(raw_dir, "non_authoritative_old_file.xlsx")
     )
 
-    audit <- build_peer_review_followup_audit(data, "test", raw_data_dir = raw_dir)
+    audit <- build_peer_review_followup_audit(
+        data,
+        "test",
+        raw_data_dir = raw_dir,
+        input_filename = "active_stats.xlsx"
+    )
     path <- file.path(TEST_OUTPUT_DIR, "peer_review_followup_audit.xlsx")
     write_peer_review_followup_audit(audit, path)
 
     expect_workbook_has_sheets(
         path,
         c(
+            "evidence_boundary",
             "data_profile",
             "followup_availability",
             "radiation_availability",
             "restricted_eligibility_check",
-            "source_workbook_columns"
+            "curated_input_workbook_columns"
         )
     )
-    expect_true("last_followup" %in% audit$source_workbook_columns$column_name)
+    expect_true("last_followup" %in% audit$curated_input_workbook_columns$column_name)
+    expect_false("Distance.of.Tumor.from.Optic.Nerve" %in% audit$curated_input_workbook_columns$column_name)
+    expect_true(any(audit$evidence_boundary$evidence_source == "other_raw_folder_workbooks"))
+    expect_false(audit$evidence_boundary$included_in_audit[
+        audit$evidence_boundary$evidence_source == "other_raw_folder_workbooks"
+    ])
 })
 
 test_that("peer-review on-demand audit tools are not sourced by load_all", {
