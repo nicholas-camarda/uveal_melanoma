@@ -210,6 +210,7 @@ Raw input files remain canonical and shared under `/Users/ncamarda/Library/Cloud
 - `01_Efficacy/b_metastatic_progression/*metastasis_free_survival_probability_proportional_hazards_*`
 - `01_Efficacy/c_overall_survival/*overall_survival_probability_5yr_capped_effect_summary.xlsx`
 - `01_Efficacy/d_progression_free_survival/*progression_free_survival_probability_5yr_capped_effect_summary.xlsx`
+- `01_Efficacy/*/*_km.png` figures should display through 15 years / 180 months. This is a display cap only; Cox models, RMST summaries, and survival tables continue to use available follow-up according to their existing estimands.
 - `peer_review_revision_audits/*followup_and_data_availability.xlsx`
 - `02_Safety/a_vision_changes/*vision_followup_sensitivity.xlsx` (latest-VA follow-up threshold using treatment-to-`last_followup` timing)
 - `01_Efficacy/e_tumor_height_primary/*tumor_height_timing_summary.xlsx`
@@ -573,6 +574,29 @@ test_that("Objective 1 writes five-year capped OS and PFS Cox sensitivity summar
     }
     expect_true(length(os_hits) > 0, info = "Capped OS model must write PH diagnostics or an explicit skip artifact.")
     expect_true(length(pfs_hits) > 0, info = "Capped PFS model must write PH diagnostics or an explicit skip artifact.")
+})
+
+test_that("Objective 1 KM figures use 15-year display cap without changing follow-up data", {
+    expect_equal(SURVIVAL_XAXIS_MAX_MONTHS, 180)
+
+    data <- create_test_dataset()
+    data$tt_recurrence_months[1] <- 187
+    data$recurrence_event[1] <- 1
+    data$tt_pfs_months[1] <- 187
+    data$pfs_event[1] <- 1
+
+    pipeline <- run_objective1_test(data, output_tag = "peer_review_km_display_cap")
+    withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
+
+    recurrence_plot <- pipeline$results$recurrence_time_to_event$plot$plot
+    pfs_plot <- pipeline$results$pfs_analysis$plot$plot
+    recurrence_x_range <- ggplot2::ggplot_build(recurrence_plot)$layout$panel_params[[1]]$x.range
+    pfs_x_range <- ggplot2::ggplot_build(pfs_plot)$layout$panel_params[[1]]$x.range
+
+    expect_lte(max(recurrence_x_range), 180)
+    expect_lte(max(pfs_x_range), 180)
+    expect_gt(max(data$tt_recurrence_months, na.rm = TRUE), 180)
+    expect_gt(max(data$tt_pfs_months, na.rm = TRUE), 180)
 })
 ```
 
@@ -3025,7 +3049,7 @@ Patients were analyzed in overlapping cohorts derived from the same cleaned anal
 
 Adjusted treatment-effect analyses used a parsimonious prespecified covariate set of continuous age at diagnosis, sex, and tumor location. Local recurrence and metastatic progression were treated as time-dependent endpoints. The lead inferential analyses for these endpoints were Cox proportional-hazards models for time to local recurrence and time to metastatic progression, with proportional-hazards assumptions assessed using scaled Schoenfeld residuals. Descriptive event counts and cumulative-incidence summaries were retained as supportive context.
 
-Overall survival was defined from treatment to death from any cause. [After the Task 3A endpoint decision, insert the exact approved PFS definition here. Under the recommended standard definition, PFS is time from treatment to the first of local recurrence, metastatic progression, or death from any cause.] Kaplan-Meier curves were retained for visualization with numbers at risk, while adjusted Cox models were used as model-based treatment-effect summaries subject to their PH diagnostics. A 5-year administratively censored Cox sensitivity analysis was added for OS and PFS because late risk sets were sparse, particularly in the GKSRS cohort.
+Overall survival was defined from treatment to death from any cause. [After the Task 3A endpoint decision, insert the exact approved PFS definition here. Under the recommended standard definition, PFS is time from treatment to the first of local recurrence, metastatic progression, or death from any cause.] Kaplan-Meier curves were retained for visualization with numbers at risk and displayed through 15 years / 180 months to avoid unstable visual tails when very few patients remained at risk; this is a display cap only and does not administratively censor the Cox models. Adjusted Cox models were used as model-based treatment-effect summaries subject to their PH diagnostics. A 5-year administratively censored Cox sensitivity analysis was added for OS and PFS because late risk sets were sparse, particularly in the GKSRS cohort.
 
 Visual-acuity change was calculated as baseline minus follow-up logMAR so that negative values indicate worsening visual acuity. For patients with local recurrence, the follow-up value was defined as the measurement obtained immediately before salvage treatment in order to isolate the effect of primary therapy. Reviewer-response sensitivity analyses repeated visual-acuity summaries among patients whose latest visual-acuity assessment occurred at least 36 months after treatment, using `last_followup` as the date associated with `last_vision`. The analysis does not evaluate longitudinal visual-field loss.
 

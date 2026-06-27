@@ -1324,15 +1324,37 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     base_by <- if (max_time <= 60) 6 else 12
     x_breaks <- seq(0, ceiling(max_time / base_by) * base_by, by = base_by)
 
+    km_plot_data <- km_data
+    km_plot_cap_months <- max(x_breaks)
+    beyond_plot_cap <- !is.na(km_plot_data[[time_var]]) & km_plot_data[[time_var]] > km_plot_cap_months
+    if (any(beyond_plot_cap)) {
+        km_plot_data[[time_var]][beyond_plot_cap] <- km_plot_cap_months
+        km_plot_data[[event_var]][beyond_plot_cap] <- 0
+    }
+    surv_fit_plot <- survival::survfit(surv_formula, data = km_plot_data)
+    surv_fit_plot$call$formula <- surv_formula
+    logrank_p_label <- tryCatch({
+        logrank_test <- survival::survdiff(surv_formula, data = km_data)
+        logrank_df <- length(logrank_test$n) - 1
+        if (logrank_df > 0) {
+            p_value <- stats::pchisq(logrank_test$chisq, df = logrank_df, lower.tail = FALSE)
+            paste0("p = ", format.pval(p_value, digits = 2, eps = 0.001))
+        } else {
+            FALSE
+        }
+    }, error = function(e) {
+        TRUE
+    })
+
     clean_strata_label <- function(x) {
         x_chr <- as.character(x)
         ifelse(grepl("=", x_chr), sub("^[^=]*=", "", x_chr), x_chr)
     }
 
-    fit_strata_order <- names(surv_fit$strata)
+    fit_strata_order <- names(surv_fit_plot$strata)
     fit_strata_order <- unique(stats::na.omit(clean_strata_label(fit_strata_order)))
     if (length(fit_strata_order) == 0) {
-        fit_strata_order <- unique(stats::na.omit(as.character(km_data[[plot_group_var]])))
+        fit_strata_order <- unique(stats::na.omit(as.character(km_plot_data[[plot_group_var]])))
     }
 
     # Set legend labels and color palette (centralized)
@@ -1454,12 +1476,12 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
 
     # Generate Kaplan-Meier plot with risk table (all sizes scaled proportionally)
     surv_plot <- survminer::ggsurvplot(
-        fit = surv_fit,
-        data = km_data,
+        fit = surv_fit_plot,
+        data = km_plot_data,
         palette = color_palette,
         risk.table = TRUE,
         conf.int = FALSE,
-        pval = TRUE,
+        pval = logrank_p_label,
         pval.size = 6 * plot_scale,       # p-value text (scaled)
         title = paste("Kaplan-Meier Survival Curves", ylab, sep = "\n"),
         subtitle = if (!is.null(dataset_name)) paste("Cohort:", dataset_name) else NULL,
@@ -1482,8 +1504,8 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         size = 1.2 * plot_scale           # survival line thickness (scaled larger)
     )
 
-    surv_plot$plot <- remove_plot_scales(surv_plot$plot, aesthetics = c("colour", "color", "y"))
-    surv_plot$table <- remove_plot_scales(surv_plot$table, aesthetics = c("y"))
+    surv_plot$plot <- remove_plot_scales(surv_plot$plot, aesthetics = c("colour", "color", "x", "y"))
+    surv_plot$table <- remove_plot_scales(surv_plot$table, aesthetics = c("x", "y"))
 
     legend_override <- NULL
     if (length(deemphasised_levels) > 0) {
@@ -1563,6 +1585,11 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         )
     # Format y-axis as percent (keep after theme to preserve colors)
     surv_plot$plot <- surv_plot$plot +
+        ggplot2::scale_x_continuous(
+            breaks = x_breaks,
+            expand = ggplot2::expansion(mult = c(0, 0)),
+            name = "Time (months)"
+        ) +
         ggplot2::scale_y_continuous(
             limits = c(0, 1),
             breaks = seq(0, 1, by = 0.1),
@@ -1570,6 +1597,11 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             name = paste0(ylab, " (%)")
         ) +
         ggplot2::labs(x = "Time (months)") +  # Explicitly set x-axis label with black color via theme
+        ggplot2::coord_cartesian(
+            xlim = c(0, max(x_breaks)),
+            expand = FALSE,
+            clip = "on"
+        ) +
         ggplot2::geom_hline(yintercept = 0.5, linetype = "solid", color = "black", linewidth = 0.9, alpha = 0.35)  # 50% reference line
     # Make risk table text larger and easier to read
     surv_plot$table <- surv_plot$table + theme_minimal() +
@@ -1607,6 +1639,12 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     )
 
     surv_plot$table <- surv_plot$table +
+        ggplot2::scale_x_continuous(
+            limits = c(0, max(x_breaks)),
+            breaks = x_breaks,
+            expand = ggplot2::expansion(mult = c(0, 0)),
+            name = "Time (months)"
+        ) +
         ggplot2::scale_y_discrete(
             limits = rev(display_strata_order),
             expand = ggplot2::expansion(mult = risk_table_y_expand)
