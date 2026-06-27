@@ -98,9 +98,11 @@ Runtime outputs should be limited to analysis artifacts that carry reusable tabu
 - Use these source-path aliases throughout execution:
   - `<CANONICAL_REPO>` = `/Users/ncamarda/Projects/uveal_melanoma`
   - `<PEER_REVIEW_REPO>` = `/Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision`
-  - `<RUNTIME_ROOT>` = `/Users/ncamarda/ProjectsRuntime/uveal_melanoma`
-  - `<OUTPUT_DIR>` = `/Users/ncamarda/ProjectsRuntime/uveal_melanoma/Analysis`
-  - `<PROCESSED_DATA_DIR>` = `/Users/ncamarda/ProjectsRuntime/uveal_melanoma/Analytic Dataset`
+  - `<INPUT_DATA_ROOT>` = `/Users/ncamarda/Library/CloudStorage/OneDrive-Personal/Research/uveal_melanoma/Original Files`
+  - `<RUNTIME_ROOT>` = `/Users/ncamarda/ProjectsRuntime/uveal_melanoma-peer-review-statistical-revision`
+  - `<OUTPUT_DIR>` = `/Users/ncamarda/ProjectsRuntime/uveal_melanoma-peer-review-statistical-revision/Analysis`
+  - `<PROCESSED_DATA_DIR>` = `/Users/ncamarda/ProjectsRuntime/uveal_melanoma-peer-review-statistical-revision/Analytic Dataset`
+  - `<TOOLS_OUTPUT_DIR>` = `/Users/ncamarda/ProjectsRuntime/uveal_melanoma-peer-review-statistical-revision/tools_output`
 - All source, test, and documentation edits in Tasks 2-14 must be made under `<PEER_REVIEW_REPO>`, even when this plan names the canonical repository path for orientation. Do not edit or commit source files on `master` in `<CANONICAL_REPO>` during implementation. Runtime artifacts remain under `<RUNTIME_ROOT>`.
 - Preserve `master` as the current post-submission/pre-peer-review repository state, and preserve the submitted manuscript plus April 27 artifacts as external immutable evidence.
 - Avoid compatibility rescue logic. Prefer one correct reviewer-response analysis path and remove or demote obsolete inferential paths.
@@ -198,7 +200,7 @@ If a goal uncovers a methodological decision that Nick/Tim/Angie must make, reco
 
 The peer-review worktree is the source and response-document workspace. It contains changed R code, tests, and the single coauthor-facing document at `docs/peer_review_revision_response.md`. It does **not** become an output-data root.
 
-Generated workbooks, plots, and diagnostic files remain runtime artifacts under `/Users/ncamarda/ProjectsRuntime/uveal_melanoma/Analysis/`, exactly as required by the repository's configured path model. They are not committed to Git and are not copied into the worktree. Do not add new scattered prose note files to runtime output folders for this revision; the single response document records the reviewer-relevant interpretation and links to the exact runtime artifacts that support each checklist item. Synced/published output remains a deliberate later export to `/Users/ncamarda/Library/CloudStorage/OneDrive-Personal/Research/uveal_melanoma/Analysis/`.
+Raw input files remain canonical and shared under `/Users/ncamarda/Library/CloudStorage/OneDrive-Personal/Research/uveal_melanoma/Original Files/`. Generated analytic datasets, workbooks, plots, diagnostics, logs, and tool outputs must be isolated under `/Users/ncamarda/ProjectsRuntime/uveal_melanoma-peer-review-statistical-revision/`. They are not committed to Git and are not copied into the worktree. Do not add new scattered prose note files to runtime output folders for this revision; the single response document records the reviewer-relevant interpretation and links to the exact runtime artifacts that support each checklist item. Synced/published output remains a deliberate later export step and must not be used as the default full-workflow output target during the revision.
 
 - `01_Efficacy/a_recurrence/*local_recurrence_free_probability_effect_summary.xlsx`
 - `01_Efficacy/a_recurrence/*local_recurrence_free_probability_km.png`

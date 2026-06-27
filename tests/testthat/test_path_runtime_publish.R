@@ -2,6 +2,16 @@ test_that("project slug matches project root basename", {
     expect_equal(PROJECT_SLUG, basename(PROJECT_ROOT))
 })
 
+test_that("raw inputs use canonical data slug while runtime follows source slug", {
+    expect_equal(INPUT_DATA_SLUG, "uveal_melanoma")
+    expect_equal(basename(INPUT_EXPORT_ROOT), INPUT_DATA_SLUG)
+    expect_equal(RAW_DATA_DIR, file.path(INPUT_EXPORT_ROOT, "Original Files"))
+    expect_equal(DATA_DIR, INPUT_EXPORT_ROOT)
+    expect_equal(PROCESSED_DATA_DIR, file.path(RUNTIME_ROOT, "Analytic Dataset"))
+    expect_equal(OUTPUT_DIR, file.path(RUNTIME_ROOT, "Analysis"))
+    expect_equal(TOOLS_OUTPUT_DIR, file.path(RUNTIME_ROOT, "tools_output"))
+})
+
 test_that("initialize_runtime_dirs creates configured runtime directories", {
     tmp_root <- tempfile("runtime-init-")
     runtime_root <- file.path(tmp_root, "runtime")

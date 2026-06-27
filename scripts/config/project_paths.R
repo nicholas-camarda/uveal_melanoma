@@ -1,21 +1,26 @@
 # =============================================================================
 # CORE DATA PATHS AND DIRECTORIES
 # =============================================================================
-# CRITICAL: Enforce three-location architecture with one canonical slug:
+# CRITICAL: Enforce three-location architecture with separate source/runtime
+# and input-data slugs:
 # - Code root (source controlled): PROJECT_ROOT / CODE_ROOT
 # - Runtime root (local non-synced): RUNTIME_ROOT
 # - Export parent (synced): EXPORT_PARENT_DIR
 # - Project export root (synced): EXPORT_ROOT = EXPORT_PARENT_DIR / PROJECT_SLUG
+# - Input export root (synced): INPUT_EXPORT_ROOT = EXPORT_PARENT_DIR / INPUT_DATA_SLUG
 # - Published analysis root (synced): EXPORT_ANALYSIS_DIR = EXPORT_ROOT / Analysis
 # This repository's synced research home follows:
 # ~/Library/CloudStorage/OneDrive-Personal/Research/<slug>
 PROJECT_ROOT <- here::here()
 PROJECT_SLUG <- basename(PROJECT_ROOT)
+CANONICAL_INPUT_DATA_SLUG <- "uveal_melanoma"
+INPUT_DATA_SLUG <- Sys.getenv("OCULAR_INPUT_DATA_SLUG", unset = CANONICAL_INPUT_DATA_SLUG)
 CODE_ROOT <- PROJECT_ROOT
 DEFAULT_RUNTIME_PARENT_DIR <- "~/ProjectsRuntime"
 DEFAULT_RUNTIME_ROOT <- file.path(DEFAULT_RUNTIME_PARENT_DIR, PROJECT_SLUG)
 DEFAULT_EXPORT_PARENT_DIR <- "~/Library/CloudStorage/OneDrive-Personal/Research"
 DEFAULT_EXPORT_ROOT <- file.path(DEFAULT_EXPORT_PARENT_DIR, PROJECT_SLUG)
+DEFAULT_INPUT_EXPORT_ROOT <- file.path(DEFAULT_EXPORT_PARENT_DIR, INPUT_DATA_SLUG)
 
 #' Resolve a configured filesystem path with fallback behavior
 #'
@@ -114,11 +119,12 @@ export_root_config <- resolve_export_root_config()
 EXPORT_PARENT_DIR <- export_root_config$export_parent_dir
 EXPORT_ROOT <- normalizePath(export_root_config$export_root, winslash = "/", mustWork = FALSE)
 EXPORT_ANALYSIS_DIR <- file.path(EXPORT_ROOT, "Analysis")
+INPUT_EXPORT_ROOT <- normalizePath(file.path(EXPORT_PARENT_DIR, INPUT_DATA_SLUG), winslash = "/", mustWork = FALSE)
 
 # Export-backed raw input paths (authoritative source files)
 RAW_DATA_DIR <- resolve_config_path(
     Sys.getenv("RAW_DATA_DIR", unset = ""),
-    file.path(EXPORT_ROOT, "Original Files")
+    file.path(INPUT_EXPORT_ROOT, "Original Files")
 )
 DATA_DICTIONARY_PATH <- resolve_config_path(
     Sys.getenv("DATA_DICTIONARY_PATH", unset = ""),
@@ -152,7 +158,7 @@ MERGED_TABLES_DIR <- resolve_config_path(
 )
 
 # Deprecated compatibility alias retained for transition code paths only.
-DATA_DIR <- EXPORT_ROOT
+DATA_DIR <- INPUT_EXPORT_ROOT
 
 #' Create runtime directories required for analysis execution
 #'
@@ -213,7 +219,7 @@ assert_required_input_paths <- function(input_filename = INPUT_FILENAME, require
             paste(
                 "Required raw input path checks failed:",
                 paste(paste0("- ", path_issues), collapse = "\n"),
-                sprintf("Configured export root: %s", EXPORT_ROOT),
+                sprintf("Configured input export root: %s", INPUT_EXPORT_ROOT),
                 sep = "\n"
             ),
             call. = FALSE
