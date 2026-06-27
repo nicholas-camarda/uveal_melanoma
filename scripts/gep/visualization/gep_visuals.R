@@ -1214,7 +1214,8 @@ create_mfs_survival_curves <- function(data, output_dir, prefix, confounders = N
                 dataset_name = dataset_name,
                 legend_labels = legend_labels,
                 output_dirs = resolved_output_dirs,
-                prefix = prefix
+                prefix = prefix,
+                route_key = "obj4_mfs"
             )
         },
         error = function(e) {
@@ -1344,7 +1345,8 @@ create_mfs_simple_binary_survival_analysis <- function(data, output_dir, prefix,
                 dataset_name = binary_dataset_name,
                 legend_labels = c("Class 1", "Class 2"),
                 output_dirs = resolved_output_dirs,
-                prefix = binary_prefix
+                prefix = binary_prefix,
+                route_key = "obj4_mfs"
             )
         },
         error = function(e) {

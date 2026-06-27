@@ -44,9 +44,9 @@ write_objective1_interpretation_note <- function(output_dirs, dataset_name, pref
         paste0("Cohort role: ", cohort_note$cohort_interpretation_role),
         paste0("Interpretation: ", cohort_note$interpretation),
         "",
-        "Recurrence and metastatic-progression endpoints use co-primary estimands:",
-        "- Binary ever-observed event/rate comparisons over available follow-up.",
-        "- Competing-risk cumulative incidence by time horizon, with death before the event treated as a competing event.",
+        "Recurrence and metastatic-progression endpoints use Cox-led time-to-event inference:",
+        "- Adjusted Cox models are the lead reviewer-response treatment-effect summaries.",
+        "- Ever-observed event counts and competing-risk cumulative incidence are descriptive support.",
         "",
         "Cox survival summaries use graded PH interpretation:",
         "- Cox-forward when PH diagnostics do not show concern.",
@@ -267,8 +267,8 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         indent = 1
     ))
 
-    # 1a. Rates of recurrence (post-treatment only)
-    logger::log_info(formatted("Executing analyze_binary_outcome_rates: Local recurrence rates analysis (post-treatment only)", indent = 1))
+    # 1a. Local recurrence: descriptive support plus Cox-led time-to-event analysis
+    logger::log_info(formatted("Executing recurrence event-support summary and Cox time-to-local-recurrence analysis", indent = 1))
     recurrence_rates <- analyze_binary_outcome_rates(
         data,
         outcome_var = "recurrence1",
@@ -280,7 +280,39 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         output_dirs = output_dirs,
         prefix = prefix
     )
-    logger::log_info(formatted("Local recurrence analysis completed", indent = 1))
+    recurrence_time_to_event <- analyze_time_to_event_outcomes(
+        data,
+        time_var = "tt_recurrence_months",
+        event_var = "recurrence_event",
+        group_var = "treatment_group",
+        confounders = confounders,
+        ylab = "Local Recurrence-Free Probability",
+        analysis_type = "post_treatment_only",
+        dataset_name = dataset_name,
+        output_dirs = output_dirs,
+        prefix = prefix,
+        route_key = "obj1_recurrence"
+    )
+    recurrence_time_to_event$ph_diagnostics <- run_or_skip_proportional_hazards_diagnostics(
+        cox_model = recurrence_time_to_event$cox_model,
+        outcome_name = "Local Recurrence-Free Probability",
+        output_dir = output_dirs$obj1_recurrence,
+        file_prefix = paste0(prefix, "local_recurrence_free_probability_"),
+        dataset_name = dataset_name,
+        data = data,
+        time_var = "tt_recurrence_months",
+        event_var = "recurrence_event",
+        variables = unique(c("treatment_group", confounders)),
+        reason = "Local recurrence proportional hazards diagnostics were not run because no Cox model was fit."
+    )
+    annotate_objective1_survival_effect_summary(
+        output_dir = output_dirs$obj1_recurrence,
+        prefix = prefix,
+        outcome_label = "Local Recurrence-Free Probability",
+        ph_diagnostics = recurrence_time_to_event$ph_diagnostics,
+        rmst_results = recurrence_time_to_event$rmst_analysis
+    )
+    logger::log_info(formatted("Local recurrence Cox time-to-event analysis completed", indent = 1))
 
     # 1a1. Overall survival stratified by local recurrence status
     logger::log_warn(formatted(
@@ -318,8 +350,8 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     )
     logger::log_info(formatted("Recurrence-stratified progression-free survival completed", indent = 1))
 
-    # 1b. Rates of metastatic progression (post-treatment only)
-    logger::log_info(formatted("Executing analyze_binary_outcome_rates: Metastatic progression rates analysis (post-treatment only)", indent = 1))
+    # 1b. Metastatic progression: descriptive support plus Cox-led time-to-event analysis
+    logger::log_info(formatted("Executing metastasis event-support summary and Cox time-to-metastasis analysis", indent = 1))
     mets_rates <- analyze_binary_outcome_rates(
         data,
         outcome_var = "mets_progression",
@@ -331,7 +363,39 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         output_dirs = output_dirs,
         prefix = prefix
     )
-    logger::log_info(formatted("Metastatic progression analysis completed", indent = 1))
+    mets_time_to_event <- analyze_time_to_event_outcomes(
+        data,
+        time_var = "tt_mets_months",
+        event_var = "mets_event",
+        group_var = "treatment_group",
+        confounders = confounders,
+        ylab = "Metastasis-Free Survival Probability",
+        analysis_type = "post_treatment_only",
+        dataset_name = dataset_name,
+        output_dirs = output_dirs,
+        prefix = prefix,
+        route_key = "obj1_mets"
+    )
+    mets_time_to_event$ph_diagnostics <- run_or_skip_proportional_hazards_diagnostics(
+        cox_model = mets_time_to_event$cox_model,
+        outcome_name = "Metastasis-Free Survival Probability",
+        output_dir = output_dirs$obj1_mets,
+        file_prefix = paste0(prefix, "metastasis_free_survival_probability_"),
+        dataset_name = dataset_name,
+        data = data,
+        time_var = "tt_mets_months",
+        event_var = "mets_event",
+        variables = unique(c("treatment_group", confounders)),
+        reason = "Metastasis proportional hazards diagnostics were not run because no Cox model was fit."
+    )
+    annotate_objective1_survival_effect_summary(
+        output_dir = output_dirs$obj1_mets,
+        prefix = prefix,
+        outcome_label = "Metastasis-Free Survival Probability",
+        ph_diagnostics = mets_time_to_event$ph_diagnostics,
+        rmst_results = mets_time_to_event$rmst_analysis
+    )
+    logger::log_info(formatted("Metastasis Cox time-to-event analysis completed", indent = 1))
 
     # 2a1. Overall survival stratified by metastatic progression status
     logger::log_warn(formatted(
@@ -381,7 +445,8 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         analysis_type = "post_treatment_only",
         dataset_name = dataset_name,
         output_dirs = output_dirs,
-        prefix = prefix
+        prefix = prefix,
+        route_key = "obj1_os"
     )
     logger::log_info(formatted("Overall survival analysis completed", indent = 1))
 
@@ -410,6 +475,18 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         ph_diagnostics = os_analysis$ph_diagnostics,
         rmst_results = os_analysis$rmst_analysis
     )
+    os_5yr_capped <- fit_capped_cox_sensitivity(
+        data = data,
+        time_var = "tt_death_months",
+        event_var = "death_event",
+        horizon_months = 60,
+        group_var = "treatment_group",
+        confounders = confounders,
+        output_dir = output_dirs$obj1_os,
+        prefix = prefix,
+        analysis_label = "Overall Survival Probability",
+        dataset_name = dataset_name
+    )
 
     # 1d. Progression Free Survival (includes both progression AND death)
     logger::log_info(formatted("Executing analyze_time_to_event_outcomes: Progression-free survival analysis (progression OR death)", indent = 1))
@@ -423,7 +500,8 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         analysis_type = "post_treatment_only",
         dataset_name = dataset_name,
         output_dirs = output_dirs,
-        prefix = prefix
+        prefix = prefix,
+        route_key = "obj1_pfs"
     )
     logger::log_info(formatted("Progression-free survival analysis completed", indent = 1))
 
@@ -451,6 +529,18 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         outcome_label = "Progression-Free Survival Probability",
         ph_diagnostics = pfs_analysis$ph_diagnostics,
         rmst_results = pfs_analysis$rmst_analysis
+    )
+    pfs_5yr_capped <- fit_capped_cox_sensitivity(
+        data = data,
+        time_var = "tt_pfs_months",
+        event_var = "pfs_event",
+        horizon_months = 60,
+        group_var = "treatment_group",
+        confounders = confounders,
+        output_dir = output_dirs$obj1_pfs,
+        prefix = prefix,
+        analysis_label = "Progression-Free Survival Probability",
+        dataset_name = dataset_name
     )
 
     # 1e. Tumor height changes
@@ -937,13 +1027,17 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
 
     return(list(
         recurrence_rates = recurrence_rates,
+        recurrence_time_to_event = recurrence_time_to_event,
         recurrence_os = recurrence_os,
         recurrence_pfs = recurrence_pfs,
         mets_rates = mets_rates,
+        mets_time_to_event = mets_time_to_event,
         metastasis_os = metastasis_os,
         metastasis_pfs = metastasis_pfs,
         os_analysis = os_analysis,
+        os_5yr_capped = os_5yr_capped,
         pfs_analysis = pfs_analysis,
+        pfs_5yr_capped = pfs_5yr_capped,
         height_changes = height_changes,
         primary_subgroup_results = primary_subgroup_results,
         sensitivity_subgroup_results = sensitivity_subgroup_results

@@ -504,8 +504,8 @@ get_objective0_contract_allowed_values <- function(domain) {
 #' Validate Objective 1 source-derived endpoint invariants
 #'
 #' Checks that Objective 0 recurrence, metastasis, death, and PFS fields match
-#' source indicators. The PFS invariant deliberately preserves local recurrence
-#' or death as the composite endpoint, not metastasis or death.
+#' source indicators. Objective 1 PFS is the first local recurrence, metastatic
+#' progression, or death from any cause.
 #'
 #' @param data Data frame for a single analytic cohort.
 #' @param cohort_name Character scalar identifying the cohort under validation.
@@ -516,7 +516,7 @@ validate_objective1_endpoint_invariants <- function(data, cohort_name) {
     required_fields <- c(
         "recurrence1", "mets_progression", "dod",
         "recurrence_event", "mets_event", "death_event", "pfs_event",
-        "tt_recurrence_months", "tt_death_months", "tt_pfs_months"
+        "tt_recurrence_months", "tt_mets_months", "tt_death_months", "tt_pfs_months"
     )
     missing_fields <- setdiff(required_fields, names(data))
 
@@ -545,9 +545,9 @@ validate_objective1_endpoint_invariants <- function(data, cohort_name) {
         recurrence_event = ifelse(normalize_yes_no_value(data$recurrence1) %in% TRUE, 1L, 0L),
         mets_event = ifelse(normalize_yes_no_value(data$mets_progression) %in% TRUE, 1L, 0L),
         death_event = ifelse(!is.na(data$dod), 1L, 0L),
-        tt_pfs_months = pmin(data$tt_recurrence_months, data$tt_death_months, na.rm = FALSE)
+        tt_pfs_months = pmin(data$tt_recurrence_months, data$tt_mets_months, data$tt_death_months, na.rm = FALSE)
     ) %>%
-        dplyr::mutate(pfs_event = ifelse(.data$recurrence_event == 1L | .data$death_event == 1L, 1L, 0L))
+        dplyr::mutate(pfs_event = ifelse(.data$recurrence_event == 1L | .data$mets_event == 1L | .data$death_event == 1L, 1L, 0L))
 
     mismatch_rows <- purrr::map_dfr(c("recurrence_event", "mets_event", "death_event", "pfs_event", "tt_pfs_months"), function(field_name) {
         observed <- suppressWarnings(as.numeric(as.character(data[[field_name]])))
@@ -574,7 +574,7 @@ validate_objective1_endpoint_invariants <- function(data, cohort_name) {
             metric = "source_derived_endpoint_mismatches",
             value = nrow(mismatch_rows),
             message = if (nrow(mismatch_rows) > 0) {
-                "Objective 1 source-derived endpoint invariants failed; PFS must remain local recurrence/death rather than metastasis/death."
+                "Objective 1 source-derived endpoint invariants failed; PFS must be the first local recurrence, metastatic progression, or death."
             } else {
                 "Objective 1 recurrence, metastasis, death, and local-recurrence/death PFS invariants passed."
             },

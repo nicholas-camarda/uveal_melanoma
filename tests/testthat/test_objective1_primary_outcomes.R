@@ -56,35 +56,35 @@ test_that("Objective 1 pipeline returns expected top-level analyses", {
     expect_true(file.exists(file.path(pipeline$output_dirs$obj1_pfs, "test_progression_free_survival_probability_effect_summary.xlsx")))
 })
 
-test_that("Objective 1 recurrence and metastasis rate summaries include co-primary cumulative incidence", {
+test_that("Objective 1 recurrence and metastasis event-support summaries include cumulative incidence", {
     pipeline <- run_objective1_test(create_test_dataset(), output_tag = "objective1_cumulative_incidence_test")
     withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
 
-    recurrence_summary_path <- file.path(pipeline$output_dirs$obj1_recurrence, "test_recurrence1_rates_summary.xlsx")
-    mets_summary_path <- file.path(pipeline$output_dirs$obj1_mets, "test_mets_progression_rates_summary.xlsx")
+    recurrence_summary_path <- file.path(pipeline$output_dirs$obj1_recurrence, "test_recurrence1_event_support_summary.xlsx")
+    mets_summary_path <- file.path(pipeline$output_dirs$obj1_mets, "test_mets_progression_event_support_summary.xlsx")
 
     for (summary_path in c(recurrence_summary_path, mets_summary_path)) {
         expect_true(file.exists(summary_path))
         expect_true(all(c(
-            "binary_rates",
+            "descriptive_event_counts",
             "cumulative_incidence",
             "competing_risk_support",
             "estimand_notes"
         ) %in% readxl::excel_sheets(summary_path)))
 
-        binary_rates <- readxl::read_xlsx(summary_path, sheet = "binary_rates")
+        descriptive_counts <- readxl::read_xlsx(summary_path, sheet = "descriptive_event_counts")
         cumulative_incidence <- readxl::read_xlsx(summary_path, sheet = "cumulative_incidence")
         estimand_notes <- readxl::read_xlsx(summary_path, sheet = "estimand_notes")
 
-        expect_true(all(binary_rates$estimand == "binary_ever_observed"))
-        expect_true(any(grepl("not a censoring-aware", binary_rates$notes, fixed = TRUE)))
+        expect_true(all(descriptive_counts$estimand == "descriptive_ever_observed"))
+        expect_true(any(grepl("adjusted Cox models are the lead", descriptive_counts$notes, fixed = TRUE)))
         expect_true(any(cumulative_incidence$status == "completed"))
         expect_true(any(grepl("competing event", cumulative_incidence$notes, fixed = TRUE)))
         expect_true("gray_test_global_curve_p_value" %in% names(cumulative_incidence))
         expect_false("gray_test_p_value" %in% names(cumulative_incidence))
         expect_true(any(grepl("not a per-horizon p-value", cumulative_incidence$notes, fixed = TRUE)))
-        expect_true(all(c("binary_ever_observed", "competing_risk_cumulative_incidence") %in% estimand_notes$estimand))
-        expect_true(all(estimand_notes$role == "co-primary"))
+        expect_true(all(c("descriptive_ever_observed", "competing_risk_cumulative_incidence") %in% estimand_notes$estimand))
+        expect_false(any(estimand_notes$role == "co-primary"))
     }
 
     expect_false(is.null(pipeline$results$recurrence_rates$cumulative_incidence))
@@ -279,7 +279,9 @@ test_that("Objective 1 centralized interpretation and subgroup contract notes ar
 
     expect_true(file.exists(obj1_note))
     expect_true(file.exists(subgroup_note))
-    expect_true(any(grepl("co-primary estimands", readLines(obj1_note, warn = FALSE), fixed = TRUE)))
+    note_lines <- readLines(obj1_note, warn = FALSE)
+    expect_true(any(grepl("Cox-led time-to-event inference", note_lines, fixed = TRUE)))
+    expect_true(any(grepl("descriptive support", note_lines, fixed = TRUE)))
     expect_true(any(grepl("consolidated multi-sheet Excel", readLines(subgroup_note, warn = FALSE), fixed = TRUE)))
 })
 

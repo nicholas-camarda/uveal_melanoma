@@ -241,21 +241,30 @@ tt_death_months = case_when(
 **Formula:**
 
 ```r
-tt_pfs_months_analysis = pmin(tt_recurrence_months_analysis, tt_death_months_analysis, na.rm = FALSE)
+tt_pfs_months_analysis = pmin(
+    tt_recurrence_months_analysis,
+    tt_mets_months_analysis,
+    tt_death_months_analysis,
+    na.rm = FALSE
+)
+pfs_event = recurrence_event == 1 | mets_event == 1 | death_event == 1
 ```
 
 **Definition:**
 
-- **Composite endpoint:** First occurrence of either local recurrence OR death
-- Takes the **minimum** time between recurrence and death
+- **Composite endpoint:** First occurrence of local recurrence, metastatic progression, or death from any cause
+- Takes the **minimum** time among recurrence, metastasis, and death component times
 - If recurrence occurs before death, PFS time = time to recurrence
-- If death occurs before recurrence, PFS time = time to death
+- If metastatic progression occurs before recurrence or death, PFS time = time to metastatic progression
+- If death occurs before recurrence or metastatic progression, PFS time = time to death
 - Impossible negative component times are preserved and blocked by Objective 0 validation rather than normalized.
 
 **Example:**
 
 - Patient has recurrence at 24 months, death at 60 months
 - **PFS time = 24 months** (first event)
+- Patient has metastatic progression at 10 months, recurrence at 24 months, and death at 60 months
+- **PFS time = 10 months** (first event)
 
 ---
 
@@ -393,9 +402,9 @@ age_at_diagnosis_general_pop_median = factor(
 
 **Key Details:**
 
-- `GENERAL_POP_MEDIAN_AGE_CUTOFF` is defined in `config_constants.R` and currently equals **63**; changing it there automatically updates the derivation.
+- `GENERAL_POP_MEDIAN_AGE_CUTOFF` is defined in `config_constants.R` and currently equals **63**; changing it there automatically updates the derived descriptive/subgroup field.
 - Output labels always render as “< 63 years” and “≥ 63 years” to match manuscript wording.
-- Used anywhere we need a dichotomous age term: baseline tables, subgroup forest plots (see `age_at_diagnosis_general_pop_median` rows), or model covariate adjustments meant to mimic “younger vs older” splits.
+- In the peer-review revision, adjusted treatment-effect models use continuous `age_at_diagnosis`; `age_at_diagnosis_general_pop_median` is retained for descriptive and exploratory subgroup displays only.
 
 ---
 
