@@ -143,6 +143,7 @@ test_that("Objective 2 writes adjusted outputs in each side-effect subfolder", {
     vision_effect_summary <- readxl::read_xlsx(file.path(output_dirs$obj2_vision, "test_vision_effect_summary.xlsx"))
     expect_true(all(c(
         "LogMAR Vision Change",
+        "Latest LogMAR Vision",
         "Snellen Line Change",
         "Snellen Line Change Distribution"
     ) %in% vision_effect_summary$analysis_label))
@@ -150,12 +151,19 @@ test_that("Objective 2 writes adjusted outputs in each side-effect subfolder", {
         "Descriptive",
         "Unadjusted linear",
         "Adjusted linear",
+        "Reviewer-predictor adjusted linear sensitivity",
         "Unadjusted ordinal logistic",
         "Adjusted ordinal logistic"
     ) %in% vision_effect_summary$model_label))
     expect_true(all(c("model_formula", "covariates_used") %in% names(vision_effect_summary)))
     expect_false(any(grepl("baseline_vision", vision_effect_summary$model_formula %||% "")))
     expect_true(any(grepl("visual-acuity change score", vision_effect_summary$notes, fixed = TRUE)))
+    latest_va_rows <- subset(vision_effect_summary, analysis_label == "Latest LogMAR Vision")
+    expect_equal(nrow(latest_va_rows), 1)
+    expect_match(latest_va_rows$model_formula, "^last_vision ~ treatment_group")
+    expect_match(latest_va_rows$covariates_used, "initial_vision", fixed = TRUE)
+    expect_match(latest_va_rows$covariates_used, "last_vision_followup_months_explicit", fixed = TRUE)
+    expect_match(latest_va_rows$notes, "ANCOVA-style reviewer-response sensitivity", fixed = TRUE)
 
     ordinal_rows <- subset(
         vision_effect_summary,
@@ -233,6 +241,8 @@ test_that("visual-acuity minimum-follow-up sensitivity reruns treatment-effect m
             "available_proxy_va_timing",
             "timing_source_counts",
             "treatment_effect_model",
+            "latest_va_reviewer_model",
+            "reviewer_predictor_availability",
             "toxicity_scope",
             "limitation"
         )
@@ -246,9 +256,16 @@ test_that("visual-acuity minimum-follow-up sensitivity reruns treatment-effect m
     explicit_followup <- readxl::read_xlsx(sensitivity_path, sheet = "available_explicit_va_timing")
     proxy_followup <- readxl::read_xlsx(sensitivity_path, sheet = "available_proxy_va_timing")
     timing_sources <- readxl::read_xlsx(sensitivity_path, sheet = "timing_source_counts")
+    latest_va_model <- readxl::read_xlsx(sensitivity_path, sheet = "latest_va_reviewer_model")
+    predictor_availability <- readxl::read_xlsx(sensitivity_path, sheet = "reviewer_predictor_availability")
     expect_true(all(c("mean_months", "median_months") %in% names(explicit_followup)))
     expect_true(all(c("mean_months", "median_months") %in% names(proxy_followup)))
     expect_true("last_height_date_comparison" %in% timing_sources$timing_definition)
+    expect_equal(latest_va_model$model_status, "completed")
+    expect_match(latest_va_model$model, "^last_vision ~ treatment_group")
+    expect_true(all(c("reviewer_predictor", "field", "included_in_latest_va_model", "exclusion_reason") %in% names(predictor_availability)))
+    expect_true(any(predictor_availability$reviewer_predictor == "Baseline visual acuity" & predictor_availability$included_in_latest_va_model))
+    expect_true(any(predictor_availability$reviewer_predictor == "Macular or foveal proximity" & !predictor_availability$included_in_latest_va_model))
     followup_12 <- readxl::read_xlsx(sensitivity_path, sheet = "explicit_min_followup_12mo")
     expect_true(all(c(
         "timing_definition",

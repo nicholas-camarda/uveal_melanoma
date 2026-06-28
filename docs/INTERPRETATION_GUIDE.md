@@ -279,7 +279,8 @@ Age (per year)          0.98    0.96, 1.00      0.071
 **Effect Summary Workbooks**
 
 - `*_effect_summary.xlsx` files are flat one-sheet workbooks that combine descriptive, unadjusted, and adjusted rows for the corresponding analysis folder.
-- In `a_vision_changes`, use `analysis_label` to distinguish `LogMAR Vision Change`, `Snellen Line Change`, and `Snellen Line Change Distribution`.
+- In `a_vision_changes`, use `analysis_label` to distinguish `LogMAR Vision Change`, `Latest LogMAR Vision`, `Snellen Line Change`, and `Snellen Line Change Distribution`.
+- `Latest LogMAR Vision` is the reviewer-response sensitivity model for final/latest logMAR VA. It adjusts for baseline VA, explicit latest-VA follow-up duration, viable reviewer-requested baseline predictors, and the shared confounder set. Interpret it as sensitivity evidence only; missing macular/foveal proximity and radiation-dose fields still limit causal claims about visual-acuity preservation.
 - `model_status = "DESCRIPTIVE"` marks summary rows, `model_status = "FIT"` marks modeled rows, and `model_status = "SKIPPED"` documents analyses that could not be fit.
 - Workbook methods are model-family specific and match the reader-facing HTML tables: linear rows use mean differences with Wald CIs/p-values, logistic rows use ORs with model-based Wald CIs and the pipeline's standard term-level p-values, Cox rows use HRs with native Cox CIs/p-values, and ordinal rows use proportional-odds ORs with 95% Wald CIs plus likelihood-ratio-test p-values.
 - **Clinical meaning:** the outcome distribution is shifted toward more improvement or less loss

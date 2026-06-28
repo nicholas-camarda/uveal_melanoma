@@ -67,7 +67,7 @@ This revision spans multiple related surfaces, but they are not independent subs
 - `ARO - UM - ANONYMIZED MANUSCRIPT (4-27-26)-FINAL.docx` is the manuscript submitted to *Advances in Radiation Oncology* on May 3, 2026. The submission-status email thread and the attachment supplied with the editorial decision identify it as the reviewed manuscript. It is not a JCO submission.
 - Git commit `7465447` is a June 11, 2026 post-submission repository state. It must be preserved as the current pre-peer-review analysis baseline, but it must not be labelled as the submitted manuscript baseline. The submitted Word document and the dated `/Analysis/2026-04-27/` artifacts are the evidence for what reviewers saw.
 - The submitted analysis already generated Schoenfeld-residual/`cox.zph()` diagnostics for OS and PFS. The April 27 restricted-cohort OS model had no global PH signal (`p = 0.1094`); the PFS model had a global PH warning (`p = 0.0241`) despite no individual treatment-term warning. The revision must report this rather than claim that all existing Cox models fulfilled PH. New recurrence/metastasis and 5-year capped Cox models still require their own diagnostics.
-- The current analytic `last_vision` field is a numeric visual-acuity value. Latest-VA minimum-follow-up sensitivity now reports explicit treatment-to-`last_followup` timing as the primary conservative timing surface and a separately labeled proxy surface that uses derived general `follow_up_months` when explicit timing is missing. Tumor-height timing is summarized separately and is not used as the VA timing proxy.
+- The current analytic `last_vision` field is a numeric visual-acuity value. Latest-VA minimum-follow-up sensitivity now reports explicit treatment-to-`last_followup` timing as the primary conservative timing surface and a separately labeled proxy surface that uses derived general `follow_up_months` when explicit timing is missing. A separate latest-VA reviewer-predictor sensitivity models `last_vision` with baseline VA, explicit latest-VA follow-up timing, viable reviewer-requested baseline predictors, and the shared confounder set. Tumor-height timing is summarized separately and is not used as the VA timing proxy.
 
 ## Reuse And Reduction Rule
 
@@ -167,7 +167,7 @@ If a goal uncovers a methodological decision that Nick/Tim/Angie must make, reco
 - `<PEER_REVIEW_REPO>/scripts/analysis/vision_safety_analysis.R`
   - Add a minimum-follow-up sensitivity for visual acuity with explicit treatment-to-`last_followup` timing and separately labeled proxy general-follow-up timing.
   - Add reviewer-facing feasibility notes explaining which suggested visual predictors are available, which are absent, and which were checked only in derived runtime data versus raw/source files.
-  - Include baseline vision in the main adjusted visual-acuity model if model support remains adequate after data checks.
+  - Add a separate ANCOVA-style latest-VA sensitivity model if model support remains adequate after data checks; do not add baseline vision as an ordinary covariate to the change-score model.
   - Clarify SRD/SRG toxicity scope: derive radiation-induced endpoints if source fields support it, otherwise label current SRD/SRG outputs as all-cause recorded burden and do not present them as radiation-induced events.
 - `<PEER_REVIEW_REPO>/scripts/analysis/tumor_height_analysis.R`
   - Add timing from treatment to height assessment.
@@ -254,7 +254,7 @@ Raw input files remain canonical and shared under `/Users/ncamarda/Library/Cloud
 - PFS-2 endpoint decision: for this reviewer-response branch, protect Objective 3 from accidental contradiction or breakage caused by Objective 1 PFS changes. Do not perform a full Objective 3 PFS-2 reanalysis unless Tim/Angie explicitly request it. If PFS-2 remains visible in reviewer-facing materials, its label must match its implementation precisely: either true post-salvage second progression-free survival if rederived, or time from salvage treatment to second local recurrence if the current implementation is retained.
 - Whether propensity score diagnostics are good enough to report as a sensitivity analysis or only as an attempted feasibility assessment.
 - Whether tumor-height reduction remains an analysis endpoint or becomes descriptive/secondary due to timing confounding.
-- Whether visual acuity should include baseline vision in the primary adjusted model or be presented as a sensitivity model if model support is thin.
+- Whether visual acuity should include baseline vision in the primary adjusted model or be presented as a sensitivity model if model support is thin. Resolved in implementation: baseline VA is included in a separate latest-VA sensitivity model, not in the change-score model.
 - Whether OS/PFS plots keep log-rank p-values visibly printed. Reviewer 2 suggested demoting log-rank; the safer path is to keep KM curves and risk tables but remove visible log-rank p-values from manuscript figures.
 
 ---
@@ -585,7 +585,7 @@ test_that("Objective 1 writes five-year capped OS and PFS Cox sensitivity summar
     expect_true(length(pfs_hits) > 0, info = "Capped PFS model must write PH diagnostics or an explicit skip artifact.")
 })
 
-test_that("Objective 1 KM figures preserve observed follow-up without display-time censoring", {
+test_that("Objective 1 KM figures cap display at SURVIVAL_XAXIS_MAX_MONTHS while Cox models keep full follow-up", {
     data <- create_test_dataset()
     data$tt_recurrence_months[1] <- 187
     data$recurrence_event[1] <- 1
@@ -600,10 +600,12 @@ test_that("Objective 1 KM figures preserve observed follow-up without display-ti
     recurrence_x_range <- ggplot2::ggplot_build(recurrence_plot)$layout$panel_params[[1]]$x.range
     pfs_x_range <- ggplot2::ggplot_build(pfs_plot)$layout$panel_params[[1]]$x.range
 
-    expect_gt(max(recurrence_x_range), 180)
-    expect_gt(max(pfs_x_range), 180)
-    expect_gt(max(data$tt_recurrence_months, na.rm = TRUE), 180)
-    expect_gt(max(data$tt_pfs_months, na.rm = TRUE), 180)
+    axis_cap_tolerance <- SURVIVAL_XAXIS_MAX_MONTHS * 0.05
+
+    expect_lte(max(recurrence_x_range), SURVIVAL_XAXIS_MAX_MONTHS + axis_cap_tolerance)
+    expect_lte(max(pfs_x_range), SURVIVAL_XAXIS_MAX_MONTHS + axis_cap_tolerance)
+    expect_gt(max(data$tt_recurrence_months, na.rm = TRUE), SURVIVAL_XAXIS_MAX_MONTHS)
+    expect_gt(max(data$tt_pfs_months, na.rm = TRUE), SURVIVAL_XAXIS_MAX_MONTHS)
 })
 ```
 
@@ -3026,6 +3028,7 @@ The current data can support:
 - PH assumption reporting.
 - Follow-up duration by treatment arm.
 - Visual-acuity minimum-follow-up sensitivity with explicit treatment-to-`last_followup` timing and separately labeled proxy general-follow-up timing.
+- Latest-VA reviewer-predictor sensitivity including viable baseline predictors requested by the reviewer: `initial_vision`, explicit latest-VA follow-up duration, `initial_tumor_height`, `initial_tumor_diameter`, `initial_t_stage_simple`, `srf`, `optic_nerve` where variable, centered treatment year, and the shared confounder set.
 - Tumor-height imaging timing summaries.
 - PBT descriptive treatment details for radionuclide, plaque size, and notched plaque use.
 - Restricted-cohort cutoff verification for diameter <=20 mm and height <=10 mm.
@@ -3041,7 +3044,7 @@ The current data cannot support without new chart or plan review:
 
 - Add available treatment details and follow-up summaries.
 - State missing dosimetry/proximity/visual-field data as explicit limitations.
-- Avoid firm modality-comparison conclusions for visual acuity because treatment selection, tumor geometry, dose, and follow-up timing remain incompletely captured.
+- Avoid firm modality-comparison conclusions for visual acuity because treatment selection, tumor geometry, dose, and follow-up timing remain incompletely captured. The latest-VA reviewer-predictor sensitivity attenuated the apparent change-score association: full cohort MD -0.200 logMAR (95% CI -0.462 to 0.063; p = 0.135; n = 208) and restricted cohort MD -0.126 logMAR (95% CI -0.429 to 0.177; p = 0.411; n = 126).
 - Frame the study as observational outcome reporting from routine clinical care, not as equivalence, noninferiority, or causal superiority evidence.
 ```
 
@@ -3083,7 +3086,7 @@ Adjusted treatment-effect analyses used a parsimonious prespecified covariate se
 
 Overall survival was defined from treatment to death from any cause. [After the Task 3A endpoint decision, insert the exact approved PFS definition here. Under the recommended standard definition, PFS is time from treatment to the first of local recurrence, metastatic progression, or death from any cause.] Kaplan-Meier curves were retained for visualization with numbers at risk and preserve observed follow-up; unstable late tails should be addressed in figure selection, captioning, or explicitly approved sensitivity analyses rather than by silently changing plotted event/censoring data. Adjusted Cox models were used as model-based treatment-effect summaries subject to their PH diagnostics. A 5-year administratively censored Cox sensitivity analysis was added for OS and PFS because late risk sets were sparse, particularly in the GKSRS cohort.
 
-Visual-acuity change was calculated as baseline minus follow-up logMAR so that negative values indicate worsening visual acuity. For patients with local recurrence, the follow-up value was defined as the measurement obtained immediately before salvage treatment in order to isolate the effect of primary therapy. Reviewer-response sensitivity analyses repeated visual-acuity summaries among patients meeting minimum follow-up thresholds using explicit treatment-to-`last_followup` timing and a separately labeled proxy general-follow-up timing surface. The analysis does not evaluate longitudinal visual-field loss.
+Visual-acuity change was calculated as baseline minus follow-up logMAR so that negative values indicate worsening visual acuity. For patients with local recurrence, the follow-up value was defined as the measurement obtained immediately before salvage treatment in order to isolate the effect of primary therapy. Reviewer-response sensitivity analyses repeated visual-acuity summaries among patients meeting minimum follow-up thresholds using explicit treatment-to-`last_followup` timing and a separately labeled proxy general-follow-up timing surface. A separate latest-VA sensitivity model used follow-up logMAR as the outcome and adjusted for baseline logMAR, explicit latest-VA follow-up duration, viable reviewer-requested baseline predictors, and the shared covariate set. The analysis does not evaluate longitudinal visual-field loss and cannot adjust for unavailable macular/foveal proximity or radiation-dose fields.
 
 Tumor-height change was defined as follow-up height minus baseline height, such that negative values indicate tumor shrinkage; for recurrent cases, the follow-up measurement was the pre-salvage height. Reviewer-response outputs summarize time from treatment to follow-up height measurement, and treatment-effect interpretation is limited by unequal imaging follow-up.
 

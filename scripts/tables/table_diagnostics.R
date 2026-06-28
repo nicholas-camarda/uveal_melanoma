@@ -329,7 +329,9 @@ create_model_diagnostics_tab <- function(model_fit, dataset_name, analysis_name,
     if (!is.null(model_fit) && "polr" %in% class(model_fit) && !is.null(model_fit$convergence) && model_fit$convergence != 0) {
         model_warnings <- c(model_warnings, "Model did not converge")
     }
-    if (!is.null(extreme_diagnostics) && length(extreme_diagnostics) > 0) {
+    if (!is.null(extreme_diagnostics) &&
+        !is.null(extreme_diagnostics$extreme_terms) &&
+        length(extreme_diagnostics$extreme_terms) > 0) {
         model_warnings <- c(model_warnings, "Extreme estimates detected")
     }
     if (!is.null(filtered_variables) && length(filtered_variables) > 0) {
