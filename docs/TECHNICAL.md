@@ -647,8 +647,7 @@ Standard confounders used across analyses:
 confounders <- c(
     "age_at_diagnosis",
     "sex",
-    "location",
-    "optic_nerve"
+    "location"
 )
 ```
 

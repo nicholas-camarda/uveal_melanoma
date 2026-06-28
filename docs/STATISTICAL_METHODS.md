@@ -65,7 +65,7 @@ For practical reading of survival curves, see [Kaplan-Meier Plots](INTERPRETATIO
 
 **Model Formula:**
 ```r
-Surv(time, event) ~ treatment + age_at_diagnosis + sex + location + optic_nerve
+Surv(time, event) ~ treatment + age_at_diagnosis + sex + location
 ```
 
 **Outputs:**
@@ -301,7 +301,7 @@ For practical reading of cumulative-incidence outputs, see [Cumulative Incidence
 
 **Model Formula:**
 ```r
-outcome ~ treatment + age_at_diagnosis + sex + location + optic_nerve
+outcome ~ treatment + age_at_diagnosis + sex + location
 ```
 
 **Outputs:**
@@ -392,7 +392,7 @@ outcome_change ~ treatment + baseline_value + confounders
 
 For practical reading of linear-regression outputs, see [Linear Regression Tables (Continuous Outcomes)](INTERPRETATION_GUIDE.md#linear-regression-tables-continuous-outcomes).
 
-Objective 2 vision models use the precomputed `vision_change` endpoint (`initial_vision - last_vision`, or `initial_vision - recurrence1_pretreatment_vision` for patients with local recurrence). The adjusted rows include the central confounder set but do not include a separate baseline-vision covariate. Latest-VA minimum-follow-up sensitivity outputs report explicit treatment-to-`last_followup` timing as the primary timing surface and a separately labeled proxy surface that uses derived general `follow_up_months` when explicit timing is missing.
+Objective 2 vision models use the precomputed `vision_change` endpoint (`initial_vision - last_vision`, or `initial_vision - recurrence1_pretreatment_vision` for patients with local recurrence). The adjusted rows include the central confounder set (`age_at_diagnosis`, `sex`, and `location`) but do not include a separate baseline-vision covariate. Latest-VA minimum-follow-up sensitivity outputs report explicit treatment-to-`last_followup` timing as the primary timing surface and a separately labeled proxy surface that uses derived general `follow_up_months` when explicit timing is missing.
 
 ---
 
