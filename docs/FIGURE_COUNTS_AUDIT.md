@@ -4,25 +4,22 @@ This file is generated from canonical runtime artifacts and centralized config c
 
 ## Canonical sources
 
-- `<RUNTIME_ROOT>/Analytic Dataset/cohort_summary_statistics.json`
-- `<OUTPUT_DIR>/uveal_full/00_General/removed_patients_summary.tsv`
+- `/Users/ncamarda/ProjectsRuntime/uveal_melanoma-peer-review-statistical-revision/Analytic Dataset/cohort_summary_statistics.json`
+- `/Users/ncamarda/ProjectsRuntime/uveal_melanoma-peer-review-statistical-revision/Analysis/uveal_full/00_General/removed_patients_summary.tsv`
 - `scripts/utils/cohort_summary_export.R`
 - `scripts/utils/config_constants.R`
 
 ## Current exclusion summary
 
-- Total exclusions: **4**
-- Stage IV exclusions: **3**
-- Manual exclusions: **1**
+- Total exclusions: **0**
+- Stage IV exclusions: **0**
+- Manual exclusions: **0**
 
 ### Removed patients
 
 | ID | Reason | Step | Consort group | Treatment |
 |---:|---|---|---|---|
-| 116 | Stage IV disease excluded per protocol | stage_iv_exclusion | gksrs_only | GKSRS |
-| 262 | Stage IV disease excluded per protocol | stage_iv_exclusion | eligible_both | PBT |
-| 271 | Excluded per SPECIFIC_PATIENTS_TO_EXCLUDE configuration | manual_exclusion | unclassified_cohort_fields | PBT |
-|   7 | Stage IV disease excluded per protocol | stage_iv_exclusion | eligible_both | GKSRS |
+| No recorded removals available |  |  |  |  |
 
 ## Current cohort counts used for figure-facing summaries
 
