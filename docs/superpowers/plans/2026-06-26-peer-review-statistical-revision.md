@@ -3508,7 +3508,7 @@ Completed and verified:
 - Durable method/interpretation updates were placed in existing baseline documentation, including `docs/TECHNICAL.md`, `docs/STATISTICAL_METHODS.md`, and `docs/FIGURE_COUNTS_AUDIT.md`.
 - The provenance plan remains commit-eligible and explicitly records that the response tracker and forensic audit are working notes, not deliverable commit artifacts.
 - Full and restricted runtime evidence files exist for recurrence/metastasis effect summaries, 5-year OS/PFS sensitivity summaries, follow-up/data-availability audits, propensity-score feasibility audits, and tumor-height timing summaries.
-- Visual spot-check opened the full and restricted local-recurrence and PFS KM plots. The plots are readable, have risk tables, omit visible log-rank p-values, and display observed follow-up under the configured 216-month maximum cap. The visible tick range ends at 192 months for those files because the plotting helper uses 216 months as a maximum cap and rounds the observed KM maximum to the next 12-month tick when the observed display range is shorter.
+- Visual spot-check opened the full and restricted local-recurrence and PFS KM plots. The plots are readable, have risk tables, omit visible log-rank p-values, and display observed follow-up under the configured 180-month maximum cap.
 - Targeted verification passed with exit code 0:
   - `tests/testthat/test_doc_contract_alignment.R`
   - `tests/testthat/test_peer_review_artifact_verification.R`

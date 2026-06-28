@@ -236,7 +236,7 @@ SURVIVAL_PLOT_WIDTH <- 16 # inches (prefer a wider KM layout so long legends/tit
 SURVIVAL_PLOT_HEIGHT <- 9.5 # inches (base height lowered so standard KM figures save wider than tall)
 PFS2_PLOT_HEIGHT <- 11.5 # inches (PFS-2 still needs extra vertical room for the risk table)
 # KM x-axis cap (months) to match legacy visual range and avoid empty tails
-SURVIVAL_XAXIS_MAX_MONTHS <- 216
+SURVIVAL_XAXIS_MAX_MONTHS <- 180
 # Dynamic sizing for KM plots based on number of strata (groups)
 KM_BASE_HEIGHT <- SURVIVAL_PLOT_HEIGHT       # base height for ~2 strata
 KM_HEIGHT_PER_STRATUM <- 0.4                 # extra inches per stratum beyond 2
