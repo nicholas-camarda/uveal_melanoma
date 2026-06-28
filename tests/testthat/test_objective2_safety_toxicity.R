@@ -20,6 +20,10 @@ test_that("Snellen conversion rounds to the nearest line away from zero", {
         convert_logmar_summary_stat_to_line_summary("-0.2 (-3.0, 1.0)"),
         "-2 (-30, 10)"
     )
+    expect_equal(
+        convert_logmar_summary_stat_to_line_summary("-0.2 (-3.0, 1.0); mean -0.3"),
+        "-2 (-30, 10); mean -3"
+    )
 })
 
 test_that("Snellen line-change buckets keep sub-half-line deltas in the stable 0-line category", {
@@ -233,6 +237,15 @@ test_that("visual-acuity minimum-follow-up sensitivity reruns treatment-effect m
     expect_true(all(c("min_followup_months", "model_status", "model", "subset", "threshold_rationale") %in% names(model_status)))
     expect_equal(sort(model_status$min_followup_months), c(12, 36, 60))
     expect_true(all(model_status$model_status %in% c("completed", "skipped")))
+    available_followup <- readxl::read_xlsx(sensitivity_path, sheet = "available_last_vision_followup")
+    expect_true(all(c("mean_months", "median_months") %in% names(available_followup)))
+    followup_12 <- readxl::read_xlsx(sensitivity_path, sheet = "minimum_followup_12_months")
+    expect_true(all(c(
+        "mean_last_vision_followup_months",
+        "median_last_vision_followup_months",
+        "mean_vision_change",
+        "median_vision_change"
+    ) %in% names(followup_12)))
     expect_equal(sort(model_status$subset), c(
         "last_vision_followup_months >= 12",
         "last_vision_followup_months >= 36",

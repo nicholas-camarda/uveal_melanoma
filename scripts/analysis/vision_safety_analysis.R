@@ -41,10 +41,11 @@ format_continuous_summary_string <- function(values, digits = 1) {
     }
 
     sprintf(
-        paste0("%.", digits, "f (%.", digits, "f, %.", digits, "f)"),
+        paste0("%.", digits, "f (%.", digits, "f, %.", digits, "f); mean %.", digits, "f"),
         stats::median(values),
         min(values),
-        max(values)
+        max(values),
+        mean(values)
     )
 }
 
@@ -313,13 +314,14 @@ build_binary_rate_note <- function(data, outcome_var, suffix = NULL) {
 #' Safely summarize numeric timing values
 #'
 #' @param values Numeric vector.
-#' @return Named numeric vector with median/min/max, using NA when no values exist.
+#' @return Named numeric vector with mean/median/min/max, using NA when no values exist.
 safe_numeric_range_summary <- function(values) {
     values <- values[!is.na(values)]
     if (length(values) == 0) {
-        return(c(median = NA_real_, min = NA_real_, max = NA_real_))
+        return(c(mean = NA_real_, median = NA_real_, min = NA_real_, max = NA_real_))
     }
     c(
+        mean = mean(values),
         median = stats::median(values),
         min = min(values),
         max = max(values)
@@ -359,6 +361,7 @@ summarize_vision_followup_by_group <- function(data, value_var = "last_vision_fo
             variable = value_var,
             n_rows = dplyr::n(),
             n_nonmissing = sum(!is.na(.data[[value_var]])),
+            mean_months = safe_numeric_range_summary(.data[[value_var]])[["mean"]],
             median_months = safe_numeric_range_summary(.data[[value_var]])[["median"]],
             min_months = safe_numeric_range_summary(.data[[value_var]])[["min"]],
             max_months = safe_numeric_range_summary(.data[[value_var]])[["max"]],
@@ -384,7 +387,9 @@ build_visual_acuity_min_followup_sensitivity <- function(data, min_followup_mont
         dplyr::summarise(
             min_followup_months = min_followup_months,
             n = dplyr::n(),
+            mean_last_vision_followup_months = safe_numeric_range_summary(.data$last_vision_followup_months)[["mean"]],
             median_last_vision_followup_months = safe_numeric_range_summary(.data$last_vision_followup_months)[["median"]],
+            mean_vision_change = safe_numeric_range_summary(.data$vision_change)[["mean"]],
             median_vision_change = safe_numeric_range_summary(.data$vision_change)[["median"]],
             min_vision_change = safe_numeric_range_summary(.data$vision_change)[["min"]],
             max_vision_change = safe_numeric_range_summary(.data$vision_change)[["max"]],
@@ -649,7 +654,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             missing = "no",
             by = treatment_group,
             type = list(vision_change ~ "continuous"),
-            statistic = list(vision_change ~ "{median} ({min}, {max})"),
+            statistic = list(vision_change ~ "{median} ({min}, {max}); mean {mean}"),
             digits = list(all_continuous() ~ 1, all_categorical() ~ 0),
             label = list(vision_change ~ "Vision Change (logMAR)")
         ) %>%
@@ -746,7 +751,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             missing = "no",
             by = treatment_group,
             type = list(vision_change ~ "continuous"),
-            statistic = list(vision_change ~ "{median} ({min}, {max})"),
+            statistic = list(vision_change ~ "{median} ({min}, {max}); mean {mean}"),
             digits = list(vision_change ~ 1),
             label = list(vision_change ~ "Vision Change (logMAR)")
         ) %>%
@@ -912,7 +917,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             term = "summary",
             model_formula = "Descriptive summary",
             covariates_used = "None",
-            effect_measure = "Median (Min, Max)",
+            effect_measure = "Median (Min, Max); Mean",
             estimate = logmar_summary$overall_estimate,
             n_patients = nrow(summary_data),
             n_outcome_non_missing = logmar_summary$n_outcome_non_missing,
@@ -975,7 +980,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             term = "summary",
             model_formula = "Descriptive summary",
             covariates_used = "None",
-            effect_measure = "Median (Min, Max)",
+            effect_measure = "Median (Min, Max); Mean",
             estimate = snellen_overall_estimate,
             n_patients = nrow(summary_data),
             n_outcome_non_missing = logmar_summary$n_outcome_non_missing,

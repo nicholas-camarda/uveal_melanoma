@@ -31,9 +31,10 @@
 safe_tumor_numeric_range_summary <- function(values) {
     values <- values[!is.na(values)]
     if (length(values) == 0) {
-        return(c(median = NA_real_, min = NA_real_, max = NA_real_))
+        return(c(mean = NA_real_, median = NA_real_, min = NA_real_, max = NA_real_))
     }
     c(
+        mean = mean(values),
         median = stats::median(values),
         min = min(values),
         max = max(values)
@@ -73,6 +74,7 @@ build_tumor_height_timing_audit <- function(data) {
             variable = "last_height_followup_months",
             n_rows = dplyr::n(),
             n_nonmissing = sum(!is.na(.data$last_height_followup_months)),
+            mean_months = safe_tumor_numeric_range_summary(.data$last_height_followup_months)[["mean"]],
             median_months = safe_tumor_numeric_range_summary(.data$last_height_followup_months)[["median"]],
             min_months = safe_tumor_numeric_range_summary(.data$last_height_followup_months)[["min"]],
             max_months = safe_tumor_numeric_range_summary(.data$last_height_followup_months)[["max"]],
@@ -149,7 +151,7 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders)
             missing = "no",
             label = get_variable_labels(),
             statistic = list(
-                all_continuous() ~ "{median} ({min}, {max})",
+                all_continuous() ~ "{median} ({min}, {max}); mean {mean}",
                 all_categorical() ~ "{n} ({p}%)"
             ),
             digits = list(all_continuous() ~ 1, all_categorical() ~ 0)

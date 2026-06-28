@@ -114,6 +114,7 @@ test_that("Objective 1 tumor-height analysis writes timing summary", {
     expect_true(all(c("timing_summary", "negative_interval_detail") %in% readxl::excel_sheets(timing_path)))
     timing_rows <- readxl::read_xlsx(timing_path, sheet = "timing_summary")
     expect_true("variable" %in% names(timing_rows))
+    expect_true(all(c("mean_months", "median_months") %in% names(timing_rows)))
     expect_true(any(timing_rows$variable == "last_height_followup_months"))
 
     negative_rows <- readxl::read_xlsx(timing_path, sheet = "negative_interval_detail")
