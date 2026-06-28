@@ -35,6 +35,16 @@ test_that("peer-review audit records radiation details and absent dosimetry fiel
     expect_false(radiation$present[radiation$field == "dose_to_optic_nerve"])
 })
 
+test_that("peer-review audit formats one or more local paths as markdown file links", {
+    paths <- file.path(TEST_OUTPUT_DIR, c("first workbook.xlsx", "second workbook.xlsx"))
+
+    links <- format_markdown_file_link(paths)
+
+    expect_length(links, 2)
+    expect_true(all(grepl("^\\[.*\\]\\(file://", links)))
+    expect_true(any(grepl("first%20workbook\\.xlsx", links)))
+})
+
 test_that("restricted-cohort audit includes optic nerve abutment check", {
     data <- create_test_dataset() %>%
         dplyr::mutate(
@@ -83,7 +93,9 @@ test_that("peer-review follow-up audit writes expected workbook sheets", {
         data,
         "test",
         raw_data_dir = raw_dir,
-        input_filename = "active_stats.xlsx"
+        input_filename = "active_stats.xlsx",
+        cohort_path = file.path(TEST_OUTPUT_DIR, "test_cohort.rds"),
+        output_path = file.path(TEST_OUTPUT_DIR, "peer_review_followup_audit.xlsx")
     )
     path <- file.path(TEST_OUTPUT_DIR, "peer_review_followup_audit.xlsx")
     write_peer_review_followup_audit(audit, path)
@@ -93,7 +105,9 @@ test_that("peer-review follow-up audit writes expected workbook sheets", {
         c(
             "evidence_boundary",
             "data_profile",
+            "clickable_paths",
             "followup_availability",
+            "followup_by_treatment_arm",
             "radiation_availability",
             "restricted_eligibility_check",
             "curated_input_workbook_columns"
@@ -105,6 +119,9 @@ test_that("peer-review follow-up audit writes expected workbook sheets", {
     expect_false(audit$evidence_boundary$included_in_audit[
         audit$evidence_boundary$evidence_source == "other_raw_folder_workbooks"
     ])
+    expect_true(all(c("path_role", "path", "markdown_link") %in% names(audit$clickable_paths)))
+    expect_true(any(grepl("^\\[.*\\]\\(file://", audit$clickable_paths$markdown_link)))
+    expect_true(any(audit$clickable_paths$path_role == "audit_workbook_output"))
 })
 
 test_that("peer-review on-demand audit tools are not sourced by load_all", {

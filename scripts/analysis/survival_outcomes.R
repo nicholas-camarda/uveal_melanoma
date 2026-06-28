@@ -1318,7 +1318,8 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     surv_fit <- survival::survfit(surv_formula, data = km_data)
     surv_fit$call$formula <- surv_formula
 
-    # Set up time axis breaks (in months) with legacy cap to avoid extreme tails
+    # Set up time axis breaks (in months) with display cap to avoid extreme tails.
+    # Cox models use full follow-up; KM plots cap display at SURVIVAL_XAXIS_MAX_MONTHS.
     raw_max_time <- max(km_data[[time_var]], na.rm = TRUE)
     max_time <- min(raw_max_time, SURVIVAL_XAXIS_MAX_MONTHS)
     base_by <- if (max_time <= 60) 6 else 12
@@ -1333,18 +1334,6 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     }
     surv_fit_plot <- survival::survfit(surv_formula, data = km_plot_data)
     surv_fit_plot$call$formula <- surv_formula
-    logrank_p_label <- tryCatch({
-        logrank_test <- survival::survdiff(surv_formula, data = km_data)
-        logrank_df <- length(logrank_test$n) - 1
-        if (logrank_df > 0) {
-            p_value <- stats::pchisq(logrank_test$chisq, df = logrank_df, lower.tail = FALSE)
-            paste0("p = ", format.pval(p_value, digits = 2, eps = 0.001))
-        } else {
-            FALSE
-        }
-    }, error = function(e) {
-        TRUE
-    })
 
     clean_strata_label <- function(x) {
         x_chr <- as.character(x)
@@ -1474,15 +1463,16 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         )
     }
 
-    # Generate Kaplan-Meier plot with risk table (all sizes scaled proportionally)
+    # Generate Kaplan-Meier plot with risk table. Do not display log-rank
+    # p-values on reviewer-facing KM plots; Cox models are the inferential
+    # treatment-comparison surface for this revision.
     surv_plot <- survminer::ggsurvplot(
         fit = surv_fit_plot,
         data = km_plot_data,
         palette = color_palette,
         risk.table = TRUE,
         conf.int = FALSE,
-        pval = logrank_p_label,
-        pval.size = 6 * plot_scale,       # p-value text (scaled)
+        pval = FALSE,
         title = paste("Kaplan-Meier Survival Curves", ylab, sep = "\n"),
         subtitle = if (!is.null(dataset_name)) paste("Cohort:", dataset_name) else NULL,
         xlab = "Time (months)",
@@ -1581,27 +1571,24 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             axis.ticks = ggplot2::element_blank(),     # Remove tick marks
             plot.title = ggplot2::element_text(size = 18 * plot_scale, face = "bold"),
             plot.subtitle = ggplot2::element_text(size = 14 * plot_scale),
-            plot.margin = ggplot2::margin(t = 8, r = 8, b = 0, l = 0)
+            plot.margin = ggplot2::margin(t = 10, r = 18, b = 10, l = 24)
         )
     # Format y-axis as percent (keep after theme to preserve colors)
     surv_plot$plot <- surv_plot$plot +
         ggplot2::scale_x_continuous(
             breaks = x_breaks,
-            expand = ggplot2::expansion(mult = c(0, 0)),
+            expand = ggplot2::expansion(mult = c(0.01, 0.03)),
             name = "Time (months)"
         ) +
         ggplot2::scale_y_continuous(
             limits = c(0, 1),
             breaks = seq(0, 1, by = 0.1),
             labels = function(x) x * 100,
+            expand = ggplot2::expansion(mult = c(0, 0.02)),
             name = paste0(ylab, " (%)")
         ) +
-        ggplot2::labs(x = "Time (months)") +  # Explicitly set x-axis label with black color via theme
-        ggplot2::coord_cartesian(
-            xlim = c(0, max(x_breaks)),
-            expand = FALSE,
-            clip = "on"
-        ) +
+        ggplot2::labs(x = "Time (months)") +
+        ggplot2::coord_cartesian(clip = "off") +
         ggplot2::geom_hline(yintercept = 0.5, linetype = "solid", color = "black", linewidth = 0.9, alpha = 0.35)  # 50% reference line
     # Make risk table text larger and easier to read
     surv_plot$table <- surv_plot$table + theme_minimal() +
@@ -1610,7 +1597,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             axis.text.y = ggplot2::element_text(size = 12 * plot_scale, color = "black"),
             axis.text.x = ggplot2::element_text(size = 12 * plot_scale, color = "black"),
             strip.text = ggplot2::element_text(size = 12 * plot_scale, color = "black"),
-            plot.margin = ggplot2::margin(t = 8, r = 8, b = 0, l = 8)
+            plot.margin = ggplot2::margin(t = 10, r = 18, b = 10, l = 24)
         )
     
     # Increase the size of the actual numbers in the risk table
@@ -1642,9 +1629,10 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         ggplot2::scale_x_continuous(
             limits = c(0, max(x_breaks)),
             breaks = x_breaks,
-            expand = ggplot2::expansion(mult = c(0, 0)),
+            expand = ggplot2::expansion(mult = c(0.01, 0.03)),
             name = "Time (months)"
         ) +
+        ggplot2::coord_cartesian(clip = "off") +
         ggplot2::scale_y_discrete(
             limits = rev(display_strata_order),
             expand = ggplot2::expansion(mult = risk_table_y_expand)
@@ -1663,6 +1651,8 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             align = "v",
             rel_heights = risk_table_rel_heights
         )
+        combined_km <- cowplot::ggdraw() +
+            cowplot::draw_plot(combined_km, x = 0.02, y = 0, width = 0.96, height = 1)
         # Dynamic height scaling: base on number of strata in the KM fit
         n_groups <- tryCatch(
             {

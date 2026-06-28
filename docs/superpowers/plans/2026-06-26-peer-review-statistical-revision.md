@@ -1,12 +1,20 @@
 # Peer Review Statistical Revision Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for verified completion tracking. Leave a step unchecked when draft text or code exists but the required runtime artifacts, exact evidence aliases, Markdown/path validation, or final interpretation review remain incomplete.
 
 **Goal:** Refactor the uveal melanoma manuscript analysis pipeline and documentation into a reviewer-responsive, Cox-focused, time-aware, de-escalated post-submission revision while preserving the submitted pre-review work as a baseline.
 
 **Architecture:** Execute in a separate peer-review branch/worktree from the current post-submission code state. Begin each task by tracing the submission-era artifact to its existing code and runtime implementation; reuse that infrastructure when it already answers the reviewer. Add only the narrow missing analysis or reporting surface, then remove redundant reviewer-facing inference rather than maintaining parallel old and new paths. Treat adjusted Cox models and transparent feasibility audits as the primary revision surface; demote binary/logistic, RMST/log-rank, subgroup, visual-acuity, tumor-height, and dosimetry claims where the data cannot support stronger inference.
 
+**Reviewer-facing cohort scope:** This peer-review response and manuscript revision deal only with the full and restricted cohorts. Internal GKSRS-only runtime outputs may exist for other project purposes, but they are not part of the reviewer-facing response plan for this paper.
+
 **Tech Stack:** R, tidyverse, survival, survminer, cmprsk, gtsummary, readxl/openxlsx, testthat, existing project helpers loaded through `<PEER_REVIEW_REPO>/scripts/load_all.R`.
+
+## 2026-06-28 Completion Policy Correction
+
+Nick clarified at final review that `docs/peer_review_revision_response.md` and `docs/PR_VS_ORIGINAL_RESULTS_AUDIT.md` are not deliverable commit artifacts for this branch. They may be used as working notes during review, but they must not be committed with this revision. Durable method, endpoint, limitation, and interpretation changes from those working notes belong in the existing baseline documentation that is already part of the repository, especially `README.md`, `docs/TECHNICAL.md`, `docs/CALCULATIONS.md`, `docs/STATISTICAL_METHODS.md`, `docs/INTERPRETATION_GUIDE.md`, and the relevant objective-specific docs/tests.
+
+This superpowers plan remains commit-eligible as operator provenance for the large peer-review revision. Because it is operator-facing, it may retain absolute local paths under the explicit clickable-path exception below; that exception does not apply to reviewer-facing or baseline documentation.
 
 ---
 
@@ -104,6 +112,7 @@ Runtime outputs should be limited to analysis artifacts that carry reusable tabu
   - `<PROCESSED_DATA_DIR>` = `/Users/ncamarda/ProjectsRuntime/uveal_melanoma-peer-review-statistical-revision/Analytic Dataset`
   - `<TOOLS_OUTPUT_DIR>` = `/Users/ncamarda/ProjectsRuntime/uveal_melanoma-peer-review-statistical-revision/tools_output`
 - All source, test, and documentation edits in Tasks 2-14 must be made under `<PEER_REVIEW_REPO>`, even when this plan names the canonical repository path for orientation. Do not edit or commit source files on `master` in `<CANONICAL_REPO>` during implementation. Runtime artifacts remain under `<RUNTIME_ROOT>`.
+- Clickable-path exception: this internal implementation plan may include absolute local paths because it is an operator-facing execution document. On-demand audit tools, especially `scripts/tools/peer_review_followup_audit.R`, may also emit absolute `file://` Markdown links or absolute path columns in audit workbooks so Nick can click directly into runtime artifacts. Do not extend this exception to reviewer-facing or coauthor-facing narrative docs unless Nick explicitly asks for that document to become operator-facing.
 - Preserve `master` as the current post-submission/pre-peer-review repository state, and preserve the submitted manuscript plus April 27 artifacts as external immutable evidence.
 - Avoid compatibility rescue logic. Prefer one correct reviewer-response analysis path and remove or demote obsolete inferential paths.
 - Do not treat successful code execution as enough. Verify data availability, estimand alignment, model output, manuscript methods wording, and reviewer-response wording.
@@ -188,7 +197,7 @@ If a goal uncovers a methodological decision that Nick/Tim/Angie must make, reco
 ### Files To Create
 
 - `<PEER_REVIEW_REPO>/scripts/tools/peer_review_followup_audit.R`
-  - New explicit reviewer-response audit tool for follow-up distributions, candidate latest-VA timing fields, height-imaging timing, treatment-detail availability, restricted-cohort cutoff verification, and dose/proximity field availability/absence across derived runtime data and raw/source files. This is run on demand and is not sourced by `scripts/load_all.R`.
+  - New explicit reviewer-response audit tool for follow-up distributions, candidate latest-VA timing fields, height-imaging timing, treatment-detail availability, restricted-cohort cutoff verification, and dose/proximity field availability/absence across derived runtime data and raw/source files. This is run on demand and is not sourced by `scripts/load_all.R`. Because this workbook is an internal inspection artifact, it may include a `clickable_paths` sheet with absolute paths and Markdown `file://` links to the source RDS, active curated workbook, and generated audit workbook.
 - `<PEER_REVIEW_REPO>/scripts/tools/propensity_score_feasibility.R`
   - New explicit reviewer-response feasibility tool for propensity-score overlap diagnostics. This is run on demand and is not sourced by `scripts/load_all.R`; promote any reportable sensitivity model into the workflow only after feasibility is reviewed.
 - `<PEER_REVIEW_REPO>/tests/testthat/test_peer_review_revision_contract.R`
@@ -200,7 +209,7 @@ If a goal uncovers a methodological decision that Nick/Tim/Angie must make, reco
 
 The peer-review worktree is the source and response-document workspace. It contains changed R code, tests, and the single coauthor-facing document at `docs/peer_review_revision_response.md`. It does **not** become an output-data root.
 
-Raw input files remain canonical and shared under `/Users/ncamarda/Library/CloudStorage/OneDrive-Personal/Research/uveal_melanoma/Original Files/`. Generated analytic datasets, workbooks, plots, diagnostics, logs, and tool outputs must be isolated under `/Users/ncamarda/ProjectsRuntime/uveal_melanoma-peer-review-statistical-revision/`. They are not committed to Git and are not copied into the worktree. Do not add new scattered prose note files to runtime output folders for this revision; the single response document records the reviewer-relevant interpretation and links to the exact runtime artifacts that support each checklist item. Synced/published output remains a deliberate later export step and must not be used as the default full-workflow output target during the revision.
+Raw input files remain canonical and shared under `/Users/ncamarda/Library/CloudStorage/OneDrive-Personal/Research/uveal_melanoma/Original Files/`. Generated analytic datasets, workbooks, plots, diagnostics, logs, and tool outputs must be isolated under `/Users/ncamarda/ProjectsRuntime/uveal_melanoma-peer-review-statistical-revision/`. They are not committed to Git and are not copied into the worktree. Do not add new scattered prose note files to runtime output folders for this revision; the single response document records the reviewer-relevant interpretation and cites exact runtime artifacts with stable aliases. Internal audit workbooks may include absolute clickable path metadata for operator inspection. Synced/published output remains a deliberate later export step and must not be used as the default full-workflow output target during the revision.
 
 - `01_Efficacy/a_recurrence/*local_recurrence_free_probability_effect_summary.xlsx`
 - `01_Efficacy/a_recurrence/*local_recurrence_free_probability_km.png`
@@ -210,7 +219,7 @@ Raw input files remain canonical and shared under `/Users/ncamarda/Library/Cloud
 - `01_Efficacy/b_metastatic_progression/*metastasis_free_survival_probability_proportional_hazards_*`
 - `01_Efficacy/c_overall_survival/*overall_survival_probability_5yr_capped_effect_summary.xlsx`
 - `01_Efficacy/d_progression_free_survival/*progression_free_survival_probability_5yr_capped_effect_summary.xlsx`
-- `01_Efficacy/*/*_km.png` figures should display through 15 years / 180 months. This is a display cap only; Cox models, RMST summaries, and survival tables continue to use available follow-up according to their existing estimands.
+- `01_Efficacy/*/*_km.png` figures should preserve observed follow-up; do not create a separate capped plotting dataset or administratively censor KM display data solely to improve appearance. If late tails are unstable, handle that in figure selection/captioning or with an explicitly approved sensitivity analysis, not by silently changing plotted event/censoring data.
 - `peer_review_revision_audits/*followup_and_data_availability.xlsx`
 - `02_Safety/a_vision_changes/*vision_followup_sensitivity.xlsx` (latest-VA follow-up threshold using treatment-to-`last_followup` timing)
 - `01_Efficacy/e_tumor_height_primary/*tumor_height_timing_summary.xlsx`
@@ -576,16 +585,14 @@ test_that("Objective 1 writes five-year capped OS and PFS Cox sensitivity summar
     expect_true(length(pfs_hits) > 0, info = "Capped PFS model must write PH diagnostics or an explicit skip artifact.")
 })
 
-test_that("Objective 1 KM figures use 15-year display cap without changing follow-up data", {
-    expect_equal(SURVIVAL_XAXIS_MAX_MONTHS, 180)
-
+test_that("Objective 1 KM figures preserve observed follow-up without display-time censoring", {
     data <- create_test_dataset()
     data$tt_recurrence_months[1] <- 187
     data$recurrence_event[1] <- 1
     data$tt_pfs_months[1] <- 187
     data$pfs_event[1] <- 1
 
-    pipeline <- run_objective1_test(data, output_tag = "peer_review_km_display_cap")
+    pipeline <- run_objective1_test(data, output_tag = "peer_review_km_export_padding")
     withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
 
     recurrence_plot <- pipeline$results$recurrence_time_to_event$plot$plot
@@ -593,8 +600,8 @@ test_that("Objective 1 KM figures use 15-year display cap without changing follo
     recurrence_x_range <- ggplot2::ggplot_build(recurrence_plot)$layout$panel_params[[1]]$x.range
     pfs_x_range <- ggplot2::ggplot_build(pfs_plot)$layout$panel_params[[1]]$x.range
 
-    expect_lte(max(recurrence_x_range), 180)
-    expect_lte(max(pfs_x_range), 180)
+    expect_gt(max(recurrence_x_range), 180)
+    expect_gt(max(pfs_x_range), 180)
     expect_gt(max(data$tt_recurrence_months, na.rm = TRUE), 180)
     expect_gt(max(data$tt_pfs_months, na.rm = TRUE), 180)
 })
@@ -2906,12 +2913,12 @@ Execute Goal Group 5 from docs/superpowers/plans/2026-06-26-peer-review-statisti
 
 - [ ] **Step 1: Create the reviewer checklist document**
 
-Create `<PEER_REVIEW_REPO>/docs/peer_review_revision_response.md`:
+Create `<PEER_REVIEW_REPO>/docs/peer_review_revision_response.md` as a Tim-comment-indexed working response document. The document must be organized first around the requests Tim directed to Nick in the June 24 shared Google Doc, not around internal analysis modules. Each Tim-directed item must preserve enough Google Doc context to let Nick answer Tim without re-opening scattered notes: reviewer source, Tim comment/request, adjacent reviewer concern, current status, planned/implemented analysis, result, manuscript/response action, limitation, and exact runtime evidence alias.
 
 ```markdown
 # Peer Review Revision Response And Results
 
-This is the only coauthor-facing document for the response to Tim. Each reviewer or Tim checklist item is completed here with the request, exact method, result, manuscript change, limitation, owner, and a supporting artifact path expressed as a project path alias such as `<OUTPUT_DIR>/peer_review_revision_audits/...` or `<PROCESSED_DATA_DIR>/...`. Do not create a separate action matrix, data-availability memo, or results summary.
+This is the only coauthor-facing document for the response to Tim. It is built around Tim-directed Google Doc to-dos for Nick. Each item includes the Google Doc context, Tim's request, the analysis or documentation action, current status, result when available, manuscript/response change, limitation, owner, and a supporting artifact path expressed as a project path alias such as `<OUTPUT_DIR>/peer_review_revision_audits/...` or `<PROCESSED_DATA_DIR>/...`. Do not create a separate action matrix, data-availability memo, or results summary.
 
 ## Source Packet
 
@@ -2921,20 +2928,45 @@ This is the only coauthor-facing document for the response to Tim. Each reviewer
 - Shared Google Doc created June 24, 2026 by Tim for coauthor review and response drafting.
 - Pasted statistical memo: de-escalation and refocusing, Cox-led inference, follow-up centrality, weakened claims.
 
-## Statistical Checklist
+## Tim-Directed Nick To-Do Index
 
-| Source | Request | Method and runtime evidence | Result and manuscript response | Limitation / owner |
-| --- | --- | --- | --- | --- |
-| Reviewer 2 / Tim comment | Re-run local recurrence and metastasis as Cox regression only | `scripts/workflow/objective_1_primary_outcomes.R`; `scripts/analysis/survival_outcomes.R`; Objective 1 recurrence/metastasis effect summaries | Use adjusted Cox HRs as lead inference; logistic removed | Nick |
-| Reviewer 2 / Tim comment | Confirm PH assumption checks | Objective 1 PH diagnostic workbooks and summary text | Report `cox.zph()` Schoenfeld residual tests and any cautions | Nick |
-| Reviewer 2 / Tim comment | Leave continuous variables continuous | `scripts/config/modeling_policy.R`; docs methods | Adjusted models use continuous age; dichotomized age only exploratory/descriptive | Nick |
-| Reviewer 1 / Tim comment | Clarify PFS definition and death handling | Task 3A endpoint decision; `docs/CALCULATIONS.md`; methods docs; response text | Do not retain the PFS label unless the code and manuscript use one identical, explicitly stated composite endpoint | Nick |
-| Reviewer 1 / Tim comment | OS/PFS HR at max 5 years while keeping full KM plots | 5-year capped Cox sensitivity workbooks | Sensitivity analysis addresses sparse late risk sets | Nick |
-| Reviewer 1 / Tim comment | Minimum-follow-up visual-acuity sensitivity | Objective 2 `vision_followup_sensitivity.xlsx` | Report whether result persists after adequate follow-up threshold | Nick |
-| Reviewer 1 / 2 / Tim comment | Follow-up duration details | Peer-review audit workbook | Report by treatment arm; eye-exam frequency not in dataset if confirmed absent | Nick |
-| Reviewer 2 / Tim comment | Propensity score for treatment received | Propensity feasibility workbook | Report only if overlap/model support acceptable; cannot simulate randomization | Nick with Angie |
-| Reviewer 1 / Tim comment | Remove PRAME row and T4 subgroup displays | Subgroup config and diagnostics | Subgroups remain exploratory with sparse-support limitations | Nick |
-| Reviewer 1 / 2 | Dose/proximity/visual-field data concerns | Follow-up/data-availability audit workbook | Describe available fields and infeasible missing fields transparently | Nick plus clinical coauthors |
+Every Tim-directed comment for Nick must appear as a separate indexed item using this template. The `Direct answer` field is required because Tim needs a plain answer before the methods/result details.
+
+```markdown
+### T-NICK-XX: Short action title
+
+> **STATUS:** Not started / Implemented pending verification / Pending runtime result / Decision needed / Clinical coauthor input needed / Complete.
+
+**Direct answer:** One or two sentences answering Tim's or the reviewer's actual question before citing artifacts.
+**Google Doc context:** Reviewer source, adjacent reviewer issue, and Tim's comment/request to Nick.
+**Owner:** Nick, or Nick plus named coauthor.
+**Action required:** Analysis, audit, documentation, or manuscript response action.
+**Method / implementation:** Endpoint, model, adjustment set, horizon, feasibility rule, or source-field audit actually used.
+**Result:** Numeric result and diagnostic status when available; otherwise the exact missing result still needed.
+**Response/manuscript language:** Draft response point or exact manuscript change.
+**Limitation / interpretation:** What the result can and cannot support.
+**Evidence:** Project path alias to the runtime artifact or repo file supporting the row.
+```
+
+Minimum required indexed Tim/Nick items:
+
+- `T-NICK-01`: Cox-only local recurrence and metastatic progression reanalysis.
+- `T-NICK-02`: PH assumption confirmation with Schoenfeld residual diagnostics.
+- `T-NICK-03`: Continuous-variable/dichotomization correction, especially continuous age.
+- `T-NICK-04`: PFS definition and death/progression component reconciliation.
+- `T-NICK-05`: Time-to-local-recurrence and time-to-metastasis Cox-led outputs.
+- `T-NICK-06`: Five-year-capped OS/PFS HR sensitivity.
+- `T-NICK-07`: Propensity-score feasibility and decision about whether any PS sensitivity is reportable.
+- `T-NICK-08`: Visual-acuity follow-up timing, minimum-follow-up sensitivity, and adjusted visual-acuity model response.
+- `T-NICK-09`: Follow-up duration summaries and endpoint-specific follow-up evidence.
+- `T-NICK-10`: Tumor-height timing and interpretation guardrail.
+- `T-NICK-11`: PRAME/T4 subgroup removal or demotion.
+- `T-NICK-12`: Dose, proximity, optic nerve, macula/fovea, visual-field, and treatment-detail data-availability audit.
+- `T-NICK-13`: Adverse-event grading/SRD/SRG scope clarification.
+- `T-NICK-14`: Reviewer-response language guardrails: no equivalence, no simulated randomization, no broad vision-preservation claim.
+- `T-NICK-15`: Table 1 p-value handling, explicitly noting Tim planned manual removal if still true.
+
+The document may include a compact clinical-coauthor section after the Tim/Nick index, but the Tim/Nick index remains the primary checklist Nick uses to respond to Tim.
 
 ## Clinical Technique Checklist
 
@@ -3045,11 +3077,11 @@ Expected:
 In `<PEER_REVIEW_REPO>/docs/METHODS_SECTION_PAPER.md`, replace the opening statistical-methods paragraphs with:
 
 ```markdown
-Patients were analyzed in overlapping cohorts derived from the same cleaned analytic dataset: a full treatment cohort, a restricted cohort limited to patients considered eligible for either local therapy, and a GKSRS-only characterization cohort. Baseline characteristics were summarized descriptively by treatment group. Baseline p-values were not used to test comparability because treatment allocation was observational and clinically selected.
+Patients were analyzed in overlapping cohorts derived from the same cleaned analytic dataset: a full treatment cohort and a restricted cohort limited to patients considered eligible for either local therapy. Baseline characteristics were summarized descriptively by treatment group. Baseline p-values were not used to test comparability because treatment allocation was observational and clinically selected.
 
 Adjusted treatment-effect analyses used a parsimonious prespecified covariate set of continuous age at diagnosis, sex, and tumor location. Local recurrence and metastatic progression were treated as time-dependent endpoints. The lead inferential analyses for these endpoints were Cox proportional-hazards models for time to local recurrence and time to metastatic progression, with proportional-hazards assumptions assessed using scaled Schoenfeld residuals. Descriptive event counts and cumulative-incidence summaries were retained as supportive context.
 
-Overall survival was defined from treatment to death from any cause. [After the Task 3A endpoint decision, insert the exact approved PFS definition here. Under the recommended standard definition, PFS is time from treatment to the first of local recurrence, metastatic progression, or death from any cause.] Kaplan-Meier curves were retained for visualization with numbers at risk and displayed through 15 years / 180 months to avoid unstable visual tails when very few patients remained at risk; this is a display cap only and does not administratively censor the Cox models. Adjusted Cox models were used as model-based treatment-effect summaries subject to their PH diagnostics. A 5-year administratively censored Cox sensitivity analysis was added for OS and PFS because late risk sets were sparse, particularly in the GKSRS cohort.
+Overall survival was defined from treatment to death from any cause. [After the Task 3A endpoint decision, insert the exact approved PFS definition here. Under the recommended standard definition, PFS is time from treatment to the first of local recurrence, metastatic progression, or death from any cause.] Kaplan-Meier curves were retained for visualization with numbers at risk and preserve observed follow-up; unstable late tails should be addressed in figure selection, captioning, or explicitly approved sensitivity analyses rather than by silently changing plotted event/censoring data. Adjusted Cox models were used as model-based treatment-effect summaries subject to their PH diagnostics. A 5-year administratively censored Cox sensitivity analysis was added for OS and PFS because late risk sets were sparse, particularly in the GKSRS cohort.
 
 Visual-acuity change was calculated as baseline minus follow-up logMAR so that negative values indicate worsening visual acuity. For patients with local recurrence, the follow-up value was defined as the measurement obtained immediately before salvage treatment in order to isolate the effect of primary therapy. Reviewer-response sensitivity analyses repeated visual-acuity summaries among patients whose latest visual-acuity assessment occurred at least 36 months after treatment, using `last_followup` as the date associated with `last_vision`. The analysis does not evaluate longitudinal visual-field loss.
 
@@ -3123,7 +3155,7 @@ cat("Markdown/path contract check passed\n")
 RS
 ```
 
-If a local Markdown renderer is available, preview the touched docs and confirm that tables, code fences, and reviewer checklist formatting render correctly. Do not add absolute local paths to committed reviewer-facing docs; use `<OUTPUT_DIR>`, `<PROCESSED_DATA_DIR>`, or repo-relative paths. The verification script may still inspect absolute runtime paths locally.
+If a local Markdown renderer is available, preview the touched docs and confirm that tables, code fences, and reviewer checklist formatting render correctly. Do not add absolute local paths to committed reviewer-facing docs such as `docs/peer_review_revision_response.md`; use `<OUTPUT_DIR>`, `<PROCESSED_DATA_DIR>`, or repo-relative paths there. The exception is operator-facing material: this implementation plan and internal audit workbook sheets such as `clickable_paths` may use absolute local paths or Markdown `file://` links to make runtime artifacts easy to open.
 
 Expected:
 
@@ -3157,16 +3189,21 @@ Expected:
 
 - [ ] **Step 1: Populate every checklist row from verified runtime evidence**
 
-After the restricted-cohort run, complete each row in `docs/peer_review_revision_response.md` with these six labelled fields, in this order:
+After the restricted-cohort run, complete every `T-NICK-XX` item in `docs/peer_review_revision_response.md` with these labelled fields, in this order. Do not use `Complete` until the row has exact evidence aliases and the final response-document validation has passed.
 
 ```markdown
-### [Checklist item]
+### T-NICK-XX: [Tim-directed checklist item]
 
-**Request:** Exact reviewer or Tim request.
-**Method:** Endpoint definition, model, adjustment set, horizon, and PH/feasibility condition actually used.
+> **STATUS:** Not started / Implemented pending verification / Pending runtime result / Decision needed / Clinical coauthor input needed / Complete.
+
+**Direct answer:** One or two sentences answering Tim's or the reviewer's actual question before citing artifacts.
+**Google Doc context:** Reviewer source, adjacent reviewer issue, and Tim's comment/request to Nick.
+**Owner:** Nick, or Nick plus named coauthor.
+**Action required:** Analysis, audit, documentation, or manuscript response action.
+**Method / implementation:** Endpoint definition, model, adjustment set, horizon, PH/feasibility rule, and source-field audit actually used.
 **Result:** Cohort, event count, effect estimate, 95% CI, p-value if reportable, and the exact diagnostic result that qualifies interpretation.
-**Manuscript change:** Exact methods/results/discussion or response-document revision required.
-**Limitation:** Data, estimand, model-support, or interpretation constraint.
+**Response/manuscript language:** Exact methods/results/discussion or response-document revision required.
+**Limitation / interpretation:** Data, estimand, model-support, or interpretation constraint.
 **Evidence:** Project path alias to the one or two runtime artifacts that support this row, for example `<OUTPUT_DIR>/peer_review_revision_audits/restricted_followup_and_data_availability.xlsx`.
 ```
 
@@ -3174,7 +3211,7 @@ Do not bulk-append a filesystem inventory. Runtime workbooks remain evidence, no
 
 - [ ] **Step 2: Verify the document is complete and singular**
 
-Before sharing the document with Tim, verify that it has a completed section for: recurrence, metastasis, PH assumptions, continuous age, PFS definition, five-year OS/PFS, follow-up, visual acuity, tumor height, propensity score, subgroups, radiation details/dosimetry, adverse-event grading, optic-nerve/proximity, and manuscript-language changes. Confirm no `peer_review_revision_action_matrix.md`, `peer_review_revision_data_availability.md`, or `peer_review_revision_results_summary.md` has been created.
+Before sharing the document with Tim, verify that every `T-NICK-XX` item listed in Task 11 is present and has a non-placeholder status, result or missing-result statement, response/manuscript action, limitation, and evidence alias. The completed document must cover recurrence, metastasis, PH assumptions, continuous age, PFS definition, five-year OS/PFS, follow-up, visual acuity, tumor height, propensity score, subgroups, radiation details/dosimetry, adverse-event grading, SRD/SRG scope, optic-nerve/proximity, Table 1 p-values, and manuscript-language changes. Confirm no `peer_review_revision_action_matrix.md`, `peer_review_revision_data_availability.md`, or `peer_review_revision_results_summary.md` has been created.
 
 - [ ] **Step 3: Rerun response-document path and Markdown validation**
 
@@ -3459,6 +3496,36 @@ Expected:
 - [ ] Every regenerated reviewer-facing figure has been opened in an image viewer, visually inspected for the intended changes, and recorded in the execution summary.
 - [ ] Methods, calculations, statistical methods, and interpretation docs no longer describe recurrence/metastasis logistic regression as primary inference.
 - [ ] Manuscript response language avoids "same efficacy", "preferred modality", "simulate randomization", and broad "vision preservation".
+
+## 2026-06-28 Completion Audit
+
+This branch is complete for Nick-side code, runtime artifact, test, and baseline-documentation work after the final policy correction above.
+
+Completed and verified:
+
+- `docs/peer_review_revision_response.md` was restored to baseline and is not part of the final diff.
+- `docs/PR_VS_ORIGINAL_RESULTS_AUDIT.md` was removed from the worktree and is not part of the final diff.
+- Durable method/interpretation updates were placed in existing baseline documentation, including `docs/TECHNICAL.md`, `docs/STATISTICAL_METHODS.md`, and `docs/FIGURE_COUNTS_AUDIT.md`.
+- The provenance plan remains commit-eligible and explicitly records that the response tracker and forensic audit are working notes, not deliverable commit artifacts.
+- Full and restricted runtime evidence files exist for recurrence/metastasis effect summaries, 5-year OS/PFS sensitivity summaries, follow-up/data-availability audits, propensity-score feasibility audits, and tumor-height timing summaries.
+- Visual spot-check opened the full and restricted local-recurrence and PFS KM plots. The plots are readable, have risk tables, omit visible log-rank p-values, and display observed follow-up under the configured 216-month maximum cap. The visible tick range ends at 192 months for those files because the plotting helper uses 216 months as a maximum cap and rounds the observed KM maximum to the next 12-month tick when the observed display range is shorter.
+- Targeted verification passed with exit code 0:
+  - `tests/testthat/test_doc_contract_alignment.R`
+  - `tests/testthat/test_peer_review_artifact_verification.R`
+  - `tests/testthat/test_peer_review_data_availability.R`
+  - `tests/testthat/test_propensity_score_feasibility.R`
+  - `tests/testthat/test_objective3_objective4_scope_protection.R`
+  - `tests/testthat/test_peer_review_revision_contract.R`
+  - `tests/testthat/test_objective1_primary_outcomes.R`
+  - `tests/testthat/test_objective2_safety_toxicity.R`
+
+Known residual items outside Nick-side completion:
+
+- Tim/Angie still choose manuscript emphasis for visual-acuity cutoff reporting.
+- Tim/Angie still choose final manuscript placement and wording for tumor-height analyses.
+- Clinical coauthors still own final GK/PBT technique prose and any treatment-plan details not present in the analytic dataset.
+- Tim owns final manuscript language cleanup and Table 1 p-value removal.
+- A full `testthat::test_dir("tests/testthat")` run was not repeated in this final cleanup pass; the peer-review-specific targeted suite above was repeated after removing the non-deliverable working-note docs.
 
 ## Self-Review
 

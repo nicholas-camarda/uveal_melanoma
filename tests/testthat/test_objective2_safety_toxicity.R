@@ -151,7 +151,7 @@ test_that("Objective 2 writes adjusted outputs in each side-effect subfolder", {
     ) %in% vision_effect_summary$model_label))
     expect_true(all(c("model_formula", "covariates_used") %in% names(vision_effect_summary)))
     expect_false(any(grepl("baseline_vision", vision_effect_summary$model_formula %||% "")))
-    expect_true(any(grepl("implemented change score", vision_effect_summary$notes, fixed = TRUE)))
+    expect_true(any(grepl("visual-acuity change score", vision_effect_summary$notes, fixed = TRUE)))
 
     ordinal_rows <- subset(
         vision_effect_summary,
@@ -206,6 +206,59 @@ test_that("Objective 2 writes adjusted outputs in each side-effect subfolder", {
     retinopathy_effect_summary <- readxl::read_xlsx(file.path(output_dirs$obj2_retinopathy, "test_retinopathy_effect_summary.xlsx"))
     expect_true(any(grepl("Objective 0-validated recorded-burden", retinopathy_effect_summary$data_source, fixed = TRUE)))
     expect_true(any(grepl("not time-to-toxicity incidence", retinopathy_effect_summary$notes, fixed = TRUE)))
+})
+
+test_that("visual-acuity minimum-follow-up sensitivity reruns treatment-effect model", {
+    pipeline <- run_objective2_test(create_test_dataset(), output_tag = "objective2_vision_min_followup")
+    withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
+
+    sensitivity_path <- file.path(
+        pipeline$output_dirs$obj2_vision,
+        "test_vision_followup_sensitivity.xlsx"
+    )
+    expect_workbook_has_sheets(
+        sensitivity_path,
+        c(
+            "minimum_followup_12_months",
+            "minimum_followup_36_months",
+            "minimum_followup_60_months",
+            "available_last_vision_followup",
+            "treatment_effect_model",
+            "toxicity_scope",
+            "limitation"
+        )
+    )
+
+    model_status <- readxl::read_xlsx(sensitivity_path, sheet = "treatment_effect_model")
+    expect_true(all(c("min_followup_months", "model_status", "model", "subset", "threshold_rationale") %in% names(model_status)))
+    expect_equal(sort(model_status$min_followup_months), c(12, 36, 60))
+    expect_true(all(model_status$model_status %in% c("completed", "skipped")))
+    expect_equal(sort(model_status$subset), c(
+        "last_vision_followup_months >= 12",
+        "last_vision_followup_months >= 36",
+        "last_vision_followup_months >= 60"
+    ))
+})
+
+test_that("Objective 2 SRD reviewer-facing output declares radiation-induced versus all-cause scope", {
+    pipeline <- run_objective2_test(create_test_dataset(), output_tag = "objective2_srd_scope")
+    withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
+
+    candidate_files <- list.files(
+        pipeline$output_dirs$obj2_vision,
+        pattern = "(toxicity|vision_followup_sensitivity).*\\.xlsx$",
+        full.names = TRUE
+    )
+    expect_true(length(candidate_files) > 0)
+    scope_files <- candidate_files[vapply(candidate_files, function(path) {
+        "toxicity_scope" %in% readxl::excel_sheets(path)
+    }, logical(1))]
+    expect_true(length(scope_files) > 0)
+
+    scope <- readxl::read_xlsx(scope_files[[1]], sheet = "toxicity_scope")
+    expect_true(all(c("endpoint_family", "scope", "reviewer_label", "limitation") %in% names(scope)))
+    expect_equal(scope$scope[[1]], "recorded_burden_by_available_follow_up")
+    expect_true(grepl("radiation-induced-only SRD", scope$limitation[[1]], fixed = TRUE))
 })
 
 test_that("Objective 2 toxicity analysis consumes prepared burden fields only", {

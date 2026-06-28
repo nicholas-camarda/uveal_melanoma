@@ -199,7 +199,7 @@ write_objective1_subgroup_contract_note <- function(output_dirs, dataset_name, p
 #' @param dataset_name Character dataset/cohort identifier.
 #' @param subgroup_surface Character subgroup output family.
 #' @return Diagnostics data frame with exploratory interpretation columns.
-annotate_objective1_subgroup_diagnostics <- function(diagnostics, dataset_name, subgroup_surface) {
+annotate_objective1_subgroup_diagnostics <- function(diagnostics, dataset_name, subgroup_surface, reviewer_pruning = NULL) {
     if (is.null(diagnostics) || !is.data.frame(diagnostics)) {
         return(diagnostics)
     }
@@ -211,6 +211,27 @@ annotate_objective1_subgroup_diagnostics <- function(diagnostics, dataset_name, 
     diagnostics$analysis_role <- "exploratory_support"
     diagnostics$subgroup_surface <- subgroup_surface
     diagnostics$interpretation_note <- sparse_note
+    diagnostics$reviewer_exclusion_note <- NA_character_
+    diagnostics$reviewer_excluded_level <- NA_character_
+    diagnostics$reviewer_excluded_n <- NA_integer_
+
+    if (!is.null(reviewer_pruning)) {
+        variable_col <- if ("variable" %in% names(diagnostics)) {
+            "variable"
+        } else if ("subgroup_variable" %in% names(diagnostics)) {
+            "subgroup_variable"
+        } else {
+            NULL
+        }
+        if (!is.null(variable_col)) {
+            t4_mask <- diagnostics[[variable_col]] == "initial_t_stage_simple"
+            if (any(t4_mask, na.rm = TRUE)) {
+                diagnostics$reviewer_exclusion_note[t4_mask] <- "T4 excluded from reviewer-facing subgroup displays due to sparse and inconsistent support."
+                diagnostics$reviewer_excluded_level[t4_mask] <- "T4"
+                diagnostics$reviewer_excluded_n[t4_mask] <- reviewer_pruning$t4_excluded_n
+            }
+        }
+    }
     diagnostics
 }
 
@@ -257,6 +278,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     if (length(cohort_forest_variable_order) == 0) {
         cohort_forest_variable_order <- FOREST_PLOT_VARIABLE_ORDER
     }
+    reviewer_subgroup_pruning <- build_reviewer_subgroup_pruning_audit(data)
 
     # Display the confounders that will be used for statistical adjustment
     logger::log_info(formatted(
@@ -745,7 +767,8 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
             df_out <- annotate_objective1_subgroup_diagnostics(
                 diagnostics = df_out,
                 dataset_name = dataset_name,
-                subgroup_surface = "tumor_height_primary"
+                subgroup_surface = "tumor_height_primary",
+                reviewer_pruning = reviewer_subgroup_pruning
             )
             primary_diagnostics_list[[tab_name]] <- df_out
         }
@@ -784,7 +807,8 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
             df_out <- annotate_objective1_subgroup_diagnostics(
                 diagnostics = df_out,
                 dataset_name = dataset_name,
-                subgroup_surface = "tumor_height_sensitivity"
+                subgroup_surface = "tumor_height_sensitivity",
+                reviewer_pruning = reviewer_subgroup_pruning
             )
             sensitivity_diagnostics_list[[tab_name]] <- df_out
         }
@@ -1014,9 +1038,11 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         annotate_objective1_subgroup_diagnostics(
             diagnostics = df,
             dataset_name = dataset_name,
-            subgroup_surface = "primary_outcomes_forest_plots"
+            subgroup_surface = "primary_outcomes_forest_plots",
+            reviewer_pruning = reviewer_subgroup_pruning
         )
     })
+    diagnostics_list_no_interaction[["reviewer_pruning_audit"]] <- reviewer_subgroup_pruning$audit
     write_readable_xlsx(diagnostics_list_no_interaction, consolidated_forest_path)
     logger::log_info(formatted(sprintf("Forest plot diagnostics written to %s with %d tabs", consolidated_forest_path, length(diagnostics_list)), indent = 1))
 

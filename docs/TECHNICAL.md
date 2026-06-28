@@ -473,10 +473,10 @@ The manual-correction sheet includes the corrected field, rationale, confidence 
 
 | Sub-objective | Method | Implementation | Outputs | Location |
 |---------------|--------|----------------|---------|----------|
-| **1a. Local Recurrence** | Binary outcome analysis with logistic regression | `analyze_binary_outcome_rates()` | Event rates (.xlsx), logistic regression models (.html) | `{cohort}/01_Efficacy/a_recurrence/` |
-| **1b. Metastatic Progression** | Binary outcome analysis with logistic regression | `analyze_binary_outcome_rates()` | Event rates (.xlsx), logistic regression models (.html) | `{cohort}/01_Efficacy/b_metastatic_progression/` |
+| **1a. Local Recurrence** | Time-to-event analysis with descriptive event support | `analyze_time_to_event_outcomes()` plus event-support summaries | Cox models/effect summaries (.html/.xlsx), PH diagnostics, KM plots (.png), descriptive event-support workbooks (.xlsx) | `{cohort}/01_Efficacy/a_recurrence/` |
+| **1b. Metastatic Progression** | Time-to-event analysis with descriptive event support | `analyze_time_to_event_outcomes()` plus event-support summaries | Cox models/effect summaries (.html/.xlsx), PH diagnostics, KM plots (.png), descriptive event-support workbooks (.xlsx) | `{cohort}/01_Efficacy/b_metastatic_progression/` |
 | **1c. Overall Survival** | Kaplan-Meier + Cox regression + RMST analysis | `analyze_time_to_event_outcomes()` | Survival tables (.xlsx), Cox models (.html), `overall_survival_probability_effect_summary.xlsx`, survival curves (.png), RMST plots (.png) | `{cohort}/01_Efficacy/c_overall_survival/` |
-| **1d. Progression-Free Survival** | Composite endpoint (recurrence OR death) | `analyze_time_to_event_outcomes()` | Survival tables (.xlsx), Cox models (.html), `progression_free_survival_probability_effect_summary.xlsx`, survival curves (.png), RMST plots (.png) | `{cohort}/01_Efficacy/d_progression_free_survival/` |
+| **1d. Progression-Free Survival** | Composite endpoint (local recurrence, metastatic progression, or death) | `analyze_time_to_event_outcomes()` | Survival tables (.xlsx), Cox models (.html), `progression_free_survival_probability_effect_summary.xlsx`, survival curves (.png), RMST plots (.png) | `{cohort}/01_Efficacy/d_progression_free_survival/` |
 | **1e. Tumor Height (Primary)** | Linear regression without baseline adjustment | `analyze_tumor_height_changes()` | Change summaries (.html), regression models (.html) | `{cohort}/01_Efficacy/e_tumor_height_primary/` |
 | **1f. Tumor Height (Sensitivity)** | Linear regression with baseline adjustment | `analyze_tumor_height_changes()` | Change summaries (.html), regression models (.html) | `{cohort}/01_Efficacy/f_tumor_height_sensitivity/` |
 | **1g. Subgroup Analysis** | Interaction testing across patient subgroups | `analyze_treatment_effect_subgroups_*()` | Subgroup tables (.xlsx), forest plots (.png), diagnostics (.xlsx) | `{cohort}/01_Efficacy/g_subgroup_analysis/` |
@@ -635,7 +635,7 @@ Objective 0 contract responsibilities:
 **Key Settings:**
 ```r
 INPUT_FILENAME <- "your_data_file.xlsx"
-RECREATE_ANALYTIC_DATASETS <- TRUE
+RECREATE_ANALYTIC_DATASETS <- FALSE
 USE_LOGS <- TRUE
 VERBOSE <- TRUE
 ```

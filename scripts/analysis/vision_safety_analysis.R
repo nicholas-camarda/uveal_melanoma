@@ -310,6 +310,101 @@ build_binary_rate_note <- function(data, outcome_var, suffix = NULL) {
     paste(parts, collapse = "; ")
 }
 
+#' Safely summarize numeric timing values
+#'
+#' @param values Numeric vector.
+#' @return Named numeric vector with median/min/max, using NA when no values exist.
+safe_numeric_range_summary <- function(values) {
+    values <- values[!is.na(values)]
+    if (length(values) == 0) {
+        return(c(median = NA_real_, min = NA_real_, max = NA_real_))
+    }
+    c(
+        median = stats::median(values),
+        min = min(values),
+        max = max(values)
+    )
+}
+
+#' Add latest visual-acuity follow-up timing for reviewer-response sensitivity
+#'
+#' @param data Data frame.
+#' @return Data frame with `last_vision_followup_months`.
+add_last_vision_followup_months <- function(data) {
+    if (all(c("treatment_date", "last_followup") %in% names(data))) {
+        data$last_vision_followup_months <- suppressWarnings(lubridate::time_length(
+            lubridate::interval(data$treatment_date, data$last_followup),
+            unit = "months"
+        ))
+    } else if ("follow_up_months" %in% names(data)) {
+        data$last_vision_followup_months <- suppressWarnings(as.numeric(data$follow_up_months))
+    } else {
+        data$last_vision_followup_months <- NA_real_
+    }
+    data
+}
+
+#' Summarize visual-acuity follow-up timing by treatment group
+#'
+#' @param data Data frame.
+#' @param value_var Character scalar timing variable.
+#' @return Tibble with treatment-group timing summary.
+summarize_vision_followup_by_group <- function(data, value_var = "last_vision_followup_months") {
+    if (!all(c("treatment_group", value_var) %in% names(data))) {
+        return(tibble::tibble())
+    }
+    data %>%
+        dplyr::group_by(.data$treatment_group) %>%
+        dplyr::summarise(
+            variable = value_var,
+            n_rows = dplyr::n(),
+            n_nonmissing = sum(!is.na(.data[[value_var]])),
+            median_months = safe_numeric_range_summary(.data[[value_var]])[["median"]],
+            min_months = safe_numeric_range_summary(.data[[value_var]])[["min"]],
+            max_months = safe_numeric_range_summary(.data[[value_var]])[["max"]],
+            .groups = "drop"
+        )
+}
+
+#' Build minimum-follow-up visual-acuity sensitivity summary
+#'
+#' @param data Data frame with visual-acuity change and latest-VA follow-up timing.
+#' @param min_followup_months Numeric minimum follow-up threshold.
+#' @return List with filtered data and summary table.
+build_visual_acuity_min_followup_sensitivity <- function(data, min_followup_months = 36) {
+    followup_data <- add_last_vision_followup_months(data)
+    filtered <- followup_data %>%
+        dplyr::filter(
+            !is.na(.data$vision_change),
+            !is.na(.data$last_vision_followup_months),
+            .data$last_vision_followup_months >= min_followup_months
+        )
+    summary <- filtered %>%
+        dplyr::group_by(.data$treatment_group) %>%
+        dplyr::summarise(
+            min_followup_months = min_followup_months,
+            n = dplyr::n(),
+            median_last_vision_followup_months = safe_numeric_range_summary(.data$last_vision_followup_months)[["median"]],
+            median_vision_change = safe_numeric_range_summary(.data$vision_change)[["median"]],
+            min_vision_change = safe_numeric_range_summary(.data$vision_change)[["min"]],
+            max_vision_change = safe_numeric_range_summary(.data$vision_change)[["max"]],
+            .groups = "drop"
+        )
+    list(data = filtered, summary = summary)
+}
+
+#' Declare reviewer-facing toxicity scope for Objective 2 outputs
+#'
+#' @return Tibble describing the supported toxicity endpoint scope.
+objective2_toxicity_scope_note <- function() {
+    tibble::tibble(
+        endpoint_family = "retinal_toxicity",
+        scope = "recorded_burden_by_available_follow_up",
+        reviewer_label = "Retinopathy, neovascular glaucoma, and serous retinal detachment were analyzed as recorded burden by available follow-up, not as standardized graded or time-to-toxicity incidence endpoints.",
+        limitation = "The checked source and derived fields do not provide CTCAE-style grades or dated onset fields for each toxicity. SRD cause is available for records coded as SRD, but the current Objective 2 burden endpoint is not a radiation-induced-only SRD incidence analysis."
+    )
+}
+
 #' Analyze visual acuity changes by treatment group
 #'
 #' Calculates and summarizes changes in visual acuity by treatment group.
@@ -331,6 +426,7 @@ build_binary_rate_note <- function(data, outcome_var, suffix = NULL) {
 #' analyze_visual_acuity_changes(data, output_dirs, prefix)
 analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders = NULL, dataset_name = NULL) {
     data <- normalize_treatment_group_data(data)
+    data <- add_last_vision_followup_months(data)
     # Calculate vision changes (row-level)
     # Vision change is already calculated in data derivation (Objective 0)
     # Positive values = improvement (lower logMAR), negative = worsening
@@ -346,9 +442,10 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             vision_line_change_bucket = assign_line_change_bucket(vision_line_change)
         )
     vision_change_contract_note <- paste(
-        "Vision endpoint is the implemented change score",
+        "Vision endpoint is visual-acuity change score",
         "(initial vision minus final or recurrence-pre-treatment vision);",
-        "no baseline vision covariate is included."
+        "baseline visual acuity and latest-VA follow-up time are reviewer-response sensitivity considerations;",
+        "last_followup is the associated date for last_vision; no separate last_vision_date field is present."
     )
     ordinal_assumption_note <- paste(
         "Proportional-odds assumption was not formally tested;",
@@ -1010,6 +1107,79 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
         analysis_name = "vision"
     )
 
+    minimum_followup_thresholds <- c(12, 36, 60)
+    visual_followup_sensitivities <- list()
+    visual_followup_models <- list()
+    visual_followup_model_status <- list()
+
+    for (threshold_months in minimum_followup_thresholds) {
+        threshold_label <- paste0(threshold_months, "_months")
+        threshold_analysis_name <- paste0("vision_change_minimum_followup_", threshold_label)
+        threshold_prefix <- paste0(prefix, "minimum_followup_", threshold_label, "_")
+        visual_followup_sensitivities[[threshold_label]] <- build_visual_acuity_min_followup_sensitivity(
+            data,
+            min_followup_months = threshold_months
+        )
+        threshold_model_data <- visual_followup_sensitivities[[threshold_label]]$data %>%
+            enforce_unordered_factors()
+        visual_followup_models[[threshold_label]] <- if (
+            nrow(threshold_model_data) > 0 &&
+                dplyr::n_distinct(stats::na.omit(threshold_model_data$treatment_group)) >= 2
+        ) {
+            generate_regression_table(
+                data = threshold_model_data,
+                outcome_var = "vision_change",
+                predictor_vars = "treatment_group",
+                confounders = confounders_for_model,
+                model_type = "linear",
+                effect_measure = "MD",
+                analysis_name = threshold_analysis_name,
+                dataset_name = dataset_name %||% "vision_followup_sensitivity",
+                output_dir = output_dirs$obj2_vision,
+                prefix = threshold_prefix
+            )
+        } else {
+            list(
+                table = NULL,
+                model = NULL,
+                diagnostics = tibble::tibble(
+                    status = "skipped",
+                    reason = sprintf(
+                        "Minimum-follow-up visual-acuity treatment-effect model skipped for the %d-month threshold because the subset did not retain enough treatment-group support.",
+                        threshold_months
+                    )
+                )
+            )
+        }
+        visual_followup_model_status[[threshold_label]] <- tibble::tibble(
+            min_followup_months = threshold_months,
+            model_status = ifelse(is.null(visual_followup_models[[threshold_label]]$model), "skipped", "completed"),
+            model = "vision_change ~ treatment_group + confounders",
+            subset = paste0("last_vision_followup_months >= ", threshold_months),
+            threshold_rationale = "Minimum-follow-up latest-visual-acuity sensitivity using reviewer-suggested 1-, 3-, and 5-year durations as cutoff options; these are not fixed-landmark VA measurements."
+        )
+    }
+
+    visual_followup_workbook <- c(
+        stats::setNames(
+            lapply(visual_followup_sensitivities, `[[`, "summary"),
+            paste0("minimum_followup_", names(visual_followup_sensitivities))
+        ),
+        list(
+            available_last_vision_followup = summarize_vision_followup_by_group(data, "last_vision_followup_months"),
+            treatment_effect_model = dplyr::bind_rows(visual_followup_model_status),
+            toxicity_scope = objective2_toxicity_scope_note(),
+            limitation = tibble::tibble(
+                note = "The latest visual-acuity endpoint uses last_vision as the latest BCVA value and last_followup as its associated follow-up date; no separate last_vision_date column exists. The 12-, 36-, and 60-month sensitivity analyses are minimum-follow-up restrictions on latest VA, not standardized 1-, 3-, or 5-year landmark VA analyses."
+            )
+        )
+    )
+
+    write_readable_xlsx(
+        visual_followup_workbook,
+        file.path(output_dirs$obj2_vision, paste0(prefix, "vision_followup_sensitivity.xlsx"))
+    )
+
     # Note: Table formatting and saving are now handled by the unified table generation system
 
     return(list(
@@ -1028,6 +1198,8 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
         line_change_bucket_regression_model = line_change_ordinal_model,
         line_change_bucket_regression_table = line_change_ordinal_tbl,
         line_change_bucket_regression_diagnostics = line_change_ordinal_result$diagnostics,
+        visual_followup_sensitivity = visual_followup_sensitivities,
+        visual_followup_model = visual_followup_models,
         effect_summary = vision_effect_summary
     ))
 }
@@ -1193,29 +1365,6 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
                 label_rows
             })
     }
-
-    # Historical note: earlier docs described radiation-induced-only SRD, but the
-    # published collaborator-aligned implementation intentionally keeps all recorded
-    # SRD causes. The old filter is retained here commented for provenance only.
-    # if (sequela_type == "srd") {
-    #     logger::log_info("Filtering SRD to only radiation-induced causes")
-    #     original_n <- nrow(data)
-    #     # Check what values exist in srd_cause
-    #     if ("srd_cause" %in% names(data)) {
-    #         logger::log_info("Available srd_cause values:")
-    #         print(table(data$srd_cause, useNA = "ifany"))
-    #     }
-
-    #     # Filter for radiation-induced SRD analysis: exclude patients with mass-induced SRD
-    #     data <- data %>%
-    #         filter(
-    #             # Keep patients without SRD
-    #             srd == "N" | is.na(srd) |
-    #                 # Keep patients with radiation-induced SRD (exclude mass-induced)
-    #                 (srd == "Y" & srd_cause == "Radiation")
-    #         )
-    #     logger::log_info(sprintf("Data filtered for radiation-induced SRD: %d -> %d patients", original_n, nrow(data)))
-    # }
 
     # Ensure consistent factor contrasts for modeling
     data <- enforce_unordered_factors(data)

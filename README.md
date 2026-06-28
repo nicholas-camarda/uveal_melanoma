@@ -191,7 +191,7 @@ Most run-time configuration lives in `scripts/utils/config_constants.R`. Typical
 
 ```r
 INPUT_FILENAME <- "your_data_file.xlsx"
-RECREATE_ANALYTIC_DATASETS <- TRUE
+RECREATE_ANALYTIC_DATASETS <- FALSE
 USE_LOGS <- TRUE
 ```
 

@@ -380,7 +380,7 @@ outcome_change ~ treatment + baseline_value + confounders
 - Negative change = shrinkage (see [CALCULATIONS.md](CALCULATIONS.md))
 
 **Vision Change Coefficient = -0.2 logMAR**
-- Treatment group had 0.2 logMAR less worsening (better vision preservation)
+- Treatment group had 0.2 logMAR less worsening on the implemented visual-acuity change score
 - Negative change = worsening vision (see [CALCULATIONS.md](CALCULATIONS.md))
 
 ### Assumptions

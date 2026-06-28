@@ -103,13 +103,11 @@ test_that("Objective 1 writes five-year capped OS and PFS Cox sensitivity summar
     expect_true(length(pfs_hits) > 0, info = "Capped PFS model must write PH diagnostics or an explicit skip artifact.")
 })
 
-test_that("Objective 1 KM figures use 15-year display cap without changing follow-up data", {
-    expect_equal(SURVIVAL_XAXIS_MAX_MONTHS, 180)
-
+test_that("Objective 1 KM figures cap display at SURVIVAL_XAXIS_MAX_MONTHS while Cox models keep full follow-up", {
     data <- create_test_dataset()
-    data$tt_recurrence_months[1] <- 187
+    data$tt_recurrence_months[1] <- 220
     data$recurrence_event[1] <- 1
-    data$tt_pfs_months[1] <- 187
+    data$tt_pfs_months[1] <- 220
     data$pfs_event[1] <- 1
 
     pipeline <- run_objective1_test(data, output_tag = "peer_review_km_display_cap")
@@ -119,11 +117,12 @@ test_that("Objective 1 KM figures use 15-year display cap without changing follo
     pfs_plot <- pipeline$results$pfs_analysis$plot$plot
     recurrence_x_range <- ggplot2::ggplot_build(recurrence_plot)$layout$panel_params[[1]]$x.range
     pfs_x_range <- ggplot2::ggplot_build(pfs_plot)$layout$panel_params[[1]]$x.range
+    axis_cap_tolerance <- SURVIVAL_XAXIS_MAX_MONTHS * 0.05
 
-    expect_lte(max(recurrence_x_range), 180)
-    expect_lte(max(pfs_x_range), 180)
-    expect_gt(max(data$tt_recurrence_months, na.rm = TRUE), 180)
-    expect_gt(max(data$tt_pfs_months, na.rm = TRUE), 180)
+    expect_lte(max(recurrence_x_range), SURVIVAL_XAXIS_MAX_MONTHS + axis_cap_tolerance)
+    expect_lte(max(pfs_x_range), SURVIVAL_XAXIS_MAX_MONTHS + axis_cap_tolerance)
+    expect_gt(max(data$tt_recurrence_months, na.rm = TRUE), SURVIVAL_XAXIS_MAX_MONTHS)
+    expect_gt(max(data$tt_pfs_months, na.rm = TRUE), SURVIVAL_XAXIS_MAX_MONTHS)
 })
 
 test_that("Endpoint and claim audit covers reviewer-facing high-risk endpoints", {

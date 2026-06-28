@@ -28,8 +28,76 @@
 #'     prefix = "full_cohort_",
 #'     confounders = c("age_at_diagnosis", "sex")
 #' )
+safe_tumor_numeric_range_summary <- function(values) {
+    values <- values[!is.na(values)]
+    if (length(values) == 0) {
+        return(c(median = NA_real_, min = NA_real_, max = NA_real_))
+    }
+    c(
+        median = stats::median(values),
+        min = min(values),
+        max = max(values)
+    )
+}
+
+#' Add tumor-height assessment timing
+#'
+#' @param data Data frame.
+#' @return Data frame with `last_height_followup_months`.
+add_tumor_height_followup_timing <- function(data) {
+    if (all(c("treatment_date", "last_height_date") %in% names(data))) {
+        data$last_height_followup_months <- suppressWarnings(lubridate::time_length(
+            lubridate::interval(data$treatment_date, data$last_height_date),
+            unit = "months"
+        ))
+    } else if ("follow_up_months" %in% names(data)) {
+        data$last_height_followup_months <- suppressWarnings(as.numeric(data$follow_up_months))
+    } else {
+        data$last_height_followup_months <- NA_real_
+    }
+    data
+}
+
+#' Build tumor-height imaging timing audit for reviewer response
+#'
+#' @param data Data frame.
+#' @return List with timing summary and negative-interval detail.
+build_tumor_height_timing_audit <- function(data) {
+    timed_data <- add_tumor_height_followup_timing(data)
+    if (!all(c("treatment_group", "last_height_followup_months") %in% names(timed_data))) {
+        return(list(summary = tibble::tibble(), negative_interval_detail = tibble::tibble()))
+    }
+    summary <- timed_data %>%
+        dplyr::group_by(.data$treatment_group) %>%
+        dplyr::summarise(
+            variable = "last_height_followup_months",
+            n_rows = dplyr::n(),
+            n_nonmissing = sum(!is.na(.data$last_height_followup_months)),
+            median_months = safe_tumor_numeric_range_summary(.data$last_height_followup_months)[["median"]],
+            min_months = safe_tumor_numeric_range_summary(.data$last_height_followup_months)[["min"]],
+            max_months = safe_tumor_numeric_range_summary(.data$last_height_followup_months)[["max"]],
+            n_negative_intervals = sum(.data$last_height_followup_months < 0, na.rm = TRUE),
+            .groups = "drop"
+        )
+    id_col <- pick_sparse_level_id_col(timed_data)
+    negative_detail <- timed_data %>%
+        dplyr::filter(!is.na(.data$last_height_followup_months), .data$last_height_followup_months < 0)
+    if (!is.null(id_col)) {
+        negative_detail <- negative_detail %>%
+            dplyr::mutate(patient_id = as.character(.data[[id_col]])) %>%
+            dplyr::relocate(patient_id)
+    }
+    negative_detail <- negative_detail %>%
+        dplyr::select(dplyr::any_of(c(
+            "patient_id", "treatment_group", "treatment_date", "last_height_date",
+            "last_height_followup_months", "initial_tumor_height", "last_height", "height_change"
+        )))
+    list(summary = summary, negative_interval_detail = negative_detail)
+}
+
 analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders) {
     data <- normalize_treatment_group_data(data)
+    data <- add_tumor_height_followup_timing(data)
     # Use height_change variable that was already calculated in data_processing.R
     data_with_height_change <- enforce_unordered_factors(data)
 
@@ -237,13 +305,23 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders)
     sensitivity_height_lm <- sensitivity_result$model
     sensitivity_height_lm_tbl <- sensitivity_result$table
 
+    tumor_height_timing <- build_tumor_height_timing_audit(data)
+    write_readable_xlsx(
+        list(
+            timing_summary = tumor_height_timing$summary,
+            negative_interval_detail = tumor_height_timing$negative_interval_detail
+        ),
+        file.path(output_dirs$obj1_height_primary, paste0(prefix, "tumor_height_timing_summary.xlsx"))
+    )
+
     return(list(
         changes = height_changes,
         table = tbl_summary_obj,
         primary_regression_model = primary_height_lm,
         primary_regression_table = primary_height_lm_tbl,
         sensitivity_regression_model = sensitivity_height_lm,
-        sensitivity_regression_table = sensitivity_height_lm_tbl
+        sensitivity_regression_table = sensitivity_height_lm_tbl,
+        timing_summary = tumor_height_timing
     ))
 }
 

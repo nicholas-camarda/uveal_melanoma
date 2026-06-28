@@ -71,6 +71,55 @@ get_subgroup_levels <- function(var_name) {
     }
 }
 
+#' Drop reviewer-excluded sparse subgroup levels
+#'
+#' @param data Data frame.
+#' @param subgroup_var Character subgroup variable.
+#' @return List with filtered `data` and integer `reviewer_excluded_n`.
+drop_reviewer_excluded_subgroup_levels <- function(data, subgroup_var) {
+    if (!subgroup_var %in% names(data)) {
+        return(list(data = data, reviewer_excluded_n = 0L))
+    }
+    if (identical(subgroup_var, "initial_t_stage_simple")) {
+        t4_mask <- !is.na(data[[subgroup_var]]) & data[[subgroup_var]] == "T4"
+        reviewer_excluded_n <- sum(t4_mask)
+        data_filtered <- data %>% dplyr::filter(is.na(.data[[subgroup_var]]) | .data[[subgroup_var]] != "T4")
+        return(list(data = data_filtered, reviewer_excluded_n = as.integer(reviewer_excluded_n)))
+    }
+    list(data = data, reviewer_excluded_n = 0L)
+}
+
+#' Build reviewer-facing subgroup pruning audit counts
+#'
+#' @param data Cohort analytic data frame.
+#' @return List with excluded counts and audit data frame.
+build_reviewer_subgroup_pruning_audit <- function(data) {
+    t4_excluded_n <- if ("initial_t_stage_simple" %in% names(data)) {
+        sum(!is.na(data$initial_t_stage_simple) & data$initial_t_stage_simple == "T4", na.rm = TRUE)
+    } else {
+        0L
+    }
+    prame_excluded_n <- if ("gep12_prame_status" %in% names(data)) {
+        sum(!is.na(data$gep12_prame_status), na.rm = TRUE)
+    } else {
+        0L
+    }
+    list(
+        t4_excluded_n = as.integer(t4_excluded_n),
+        prame_excluded_n = as.integer(prame_excluded_n),
+        audit = data.frame(
+            subgroup_var = c("gep12_prame_status", "initial_t_stage_simple"),
+            excluded_level = c("PRAME local-recurrence subgroup surface", "T4"),
+            excluded_n = c(prame_excluded_n, t4_excluded_n),
+            reason = c(
+                "PRAME local-recurrence reviewer-facing subgroup display removed because event support is inadequate.",
+                "T4 reviewer-facing subgroup display removed because support is sparse and inconsistent."
+            ),
+            stringsAsFactors = FALSE
+        )
+    )
+}
+
 #' Process subgroup data (binning & confounders)
 #' @param data Data frame
 #' @param subgroup_var Variable name
@@ -79,6 +128,9 @@ get_subgroup_levels <- function(var_name) {
 #' @return List with processed data and metadata
 process_subgroup_data <- function(data, subgroup_var, confounders, include_baseline_height = FALSE) {
     if (!subgroup_var %in% names(data)) stop(sprintf("Variable '%s' not found in data", subgroup_var))
+    reviewer_exclusion <- drop_reviewer_excluded_subgroup_levels(data, subgroup_var)
+    data <- reviewer_exclusion$data
+    reviewer_excluded_n <- reviewer_exclusion$reviewer_excluded_n
     data <- data %>% dplyr::filter(!is.na(.data[[subgroup_var]]))
     if (nrow(data) == 0) stop(sprintf("No data remaining after removing missing values for '%s'", subgroup_var))
     confounders_to_use <- if (!is.null(confounders)) confounders[confounders != subgroup_var] else NULL
@@ -124,7 +176,14 @@ process_subgroup_data <- function(data, subgroup_var, confounders, include_basel
         }
     }
     processed_data <- enforce_unordered_factors(processed_data)
-    list(data = processed_data, subgroup_var_to_use = subgroup_var_to_use, confounders_to_use = confounders_to_use, was_continuous = was_continuous, cutoff_value = cutoff_value)
+    list(
+        data = processed_data,
+        subgroup_var_to_use = subgroup_var_to_use,
+        confounders_to_use = confounders_to_use,
+        was_continuous = was_continuous,
+        cutoff_value = cutoff_value,
+        reviewer_excluded_n = reviewer_excluded_n
+    )
 }
 
 #' Resolve the outcome column used for subgroup event counts

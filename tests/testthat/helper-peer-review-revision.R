@@ -24,8 +24,8 @@ expect_no_reviewer_facing_paths <- function(path) {
         text,
         value = TRUE
     )
-    expect_length(
-        forbidden,
+    expect_equal(
+        length(forbidden),
         0,
         info = paste("Committed reviewer-facing doc contains source-machine absolute paths:", paste(forbidden, collapse = "\n"))
     )

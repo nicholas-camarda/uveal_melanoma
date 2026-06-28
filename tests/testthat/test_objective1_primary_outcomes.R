@@ -56,6 +56,72 @@ test_that("Objective 1 pipeline returns expected top-level analyses", {
     expect_true(file.exists(file.path(pipeline$output_dirs$obj1_pfs, "test_progression_free_survival_probability_effect_summary.xlsx")))
 })
 
+test_that("reviewer-facing subgroup diagnostics record PRAME and T4 exclusions", {
+    pipeline <- run_objective1_test(create_test_dataset(), output_tag = "objective1_subgroup_reviewer_pruning")
+    withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
+
+    diagnostics_files <- list.files(
+        pipeline$output_dirs$obj1_forest_plots,
+        pattern = "diagnostics.*\\.xlsx$",
+        recursive = TRUE,
+        full.names = TRUE
+    )
+    expect_true(length(diagnostics_files) > 0)
+
+    diagnostics <- purrr::map_dfr(diagnostics_files, function(path) {
+        sheets <- readxl::excel_sheets(path)
+        purrr::map_dfr(sheets, ~ readxl::read_xlsx(path, sheet = .x))
+    })
+    expect_true("reviewer_exclusion_note" %in% names(diagnostics))
+    subgroup_levels <- if ("subgroup_level" %in% names(diagnostics)) diagnostics$subgroup_level else if ("level" %in% names(diagnostics)) diagnostics$level else character()
+    exclusion_notes <- if ("reviewer_exclusion_note" %in% names(diagnostics)) diagnostics$reviewer_exclusion_note else character()
+    expect_false(any(grepl("T4", subgroup_levels, fixed = TRUE) & is.na(exclusion_notes)))
+    expect_true(any(grepl("T4 excluded", exclusion_notes, fixed = TRUE)))
+
+    audit_files <- diagnostics_files[purrr::map_lgl(diagnostics_files, ~ "reviewer_pruning_audit" %in% readxl::excel_sheets(.x))]
+    expect_true(length(audit_files) > 0)
+    pruning_audit <- purrr::map_dfr(audit_files, ~ readxl::read_xlsx(.x, sheet = "reviewer_pruning_audit"))
+    expect_true(any(pruning_audit$subgroup_var == "gep12_prame_status"))
+    expect_true(any(pruning_audit$subgroup_var == "initial_t_stage_simple" & pruning_audit$excluded_level == "T4"))
+    expect_true(all(pruning_audit$excluded_n >= 0, na.rm = TRUE))
+})
+
+test_that("Objective 1 KM plots cap display at SURVIVAL_XAXIS_MAX_MONTHS without log-rank p-values", {
+    source_text <- readLines(testthat::test_path("../../scripts/analysis/survival_outcomes.R"), warn = FALSE)
+    expect_true(any(grepl("SURVIVAL_XAXIS_MAX_MONTHS", source_text, fixed = TRUE)))
+    expect_true(any(grepl("surv_fit_plot", source_text, fixed = TRUE)))
+
+    ggsurvplot_line <- grep("survminer::ggsurvplot\\(", source_text, fixed = FALSE)[1]
+    expect_false(is.na(ggsurvplot_line))
+
+    call_end <- which(seq_along(source_text) > ggsurvplot_line & grepl("^    \\)", source_text))
+    expect_true(length(call_end) > 0)
+
+    ggsurvplot_call <- source_text[ggsurvplot_line:call_end[1]]
+    expect_true(any(grepl("pval = FALSE", ggsurvplot_call, fixed = TRUE)))
+    expect_false(any(grepl("pval = TRUE", ggsurvplot_call, fixed = TRUE)))
+})
+
+test_that("Objective 1 tumor-height analysis writes timing summary", {
+    pipeline <- run_objective1_test(create_test_dataset(), output_tag = "objective1_tumor_height_timing")
+    withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
+
+    timing_path <- file.path(
+        pipeline$output_dirs$obj1_height_primary,
+        "test_tumor_height_timing_summary.xlsx"
+    )
+    expect_true(file.exists(timing_path))
+    expect_true(all(c("timing_summary", "negative_interval_detail") %in% readxl::excel_sheets(timing_path)))
+    timing_rows <- readxl::read_xlsx(timing_path, sheet = "timing_summary")
+    expect_true("variable" %in% names(timing_rows))
+    expect_true(any(timing_rows$variable == "last_height_followup_months"))
+
+    negative_rows <- readxl::read_xlsx(timing_path, sheet = "negative_interval_detail")
+    if (nrow(negative_rows) > 0) {
+        expect_true("patient_id" %in% names(negative_rows))
+    }
+})
+
 test_that("Objective 1 recurrence and metastasis event-support summaries include cumulative incidence", {
     pipeline <- run_objective1_test(create_test_dataset(), output_tag = "objective1_cumulative_incidence_test")
     withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())

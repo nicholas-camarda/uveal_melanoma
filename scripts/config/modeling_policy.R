@@ -65,7 +65,7 @@ subgroup_vars <- c(
     "age_at_diagnosis_general_pop_median", "sex", "location", "initial_t_stage_simple",
     #"initial_t_stage",
     "initial_tumor_height", "initial_tumor_diameter",
-    "initial_overall_stage", "biopsy1_gep", "gep_class_simple", "gep12_prame_status", "optic_nerve"
+    "initial_overall_stage", "biopsy1_gep", "gep_class_simple", "optic_nerve"
 )
 
 # Define which subgroup variables are continuous and need binning

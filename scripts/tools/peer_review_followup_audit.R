@@ -55,6 +55,14 @@ summarize_peer_review_followup <- function(data) {
             if ("follow_up_months" %in% names(data)) suppressWarnings(stats::median(data$follow_up_months, na.rm = TRUE)) else NA_real_,
             if ("follow_up_years" %in% names(data)) suppressWarnings(stats::median(data$follow_up_years, na.rm = TRUE)) else NA_real_
         ),
+        mean_value = c(
+            NA_real_,
+            NA_real_,
+            if ("last_vision" %in% names(data)) suppressWarnings(mean(data$last_vision, na.rm = TRUE)) else NA_real_,
+            suppressWarnings(mean(latest_va_followup_months, na.rm = TRUE)),
+            if ("follow_up_months" %in% names(data)) suppressWarnings(mean(data$follow_up_months, na.rm = TRUE)) else NA_real_,
+            if ("follow_up_years" %in% names(data)) suppressWarnings(mean(data$follow_up_years, na.rm = TRUE)) else NA_real_
+        ),
         max_value = c(
             NA_real_,
             NA_real_,
@@ -75,8 +83,68 @@ summarize_peer_review_followup <- function(data) {
         dplyr::mutate(
             min_value = dplyr::if_else(is.infinite(.data$min_value), NA_real_, .data$min_value),
             median_value = dplyr::if_else(is.infinite(.data$median_value), NA_real_, .data$median_value),
+            mean_value = dplyr::if_else(is.infinite(.data$mean_value), NA_real_, .data$mean_value),
             max_value = dplyr::if_else(is.infinite(.data$max_value), NA_real_, .data$max_value)
         )
+}
+
+#' Summarize a numeric variable by treatment group for reviewer-facing tables
+#'
+#' @param data Data frame.
+#' @param value_var Character scalar numeric variable.
+#' @param group_var Character scalar grouping variable.
+#' @return Tibble with n, nonmissing, mean, median, min, max, and IQR.
+summarize_numeric_by_treatment_group <- function(data, value_var, group_var = "treatment_group") {
+    if (!all(c(value_var, group_var) %in% names(data))) {
+        return(tibble::tibble())
+    }
+
+    data %>%
+        dplyr::mutate(.value = suppressWarnings(as.numeric(.data[[value_var]]))) %>%
+        dplyr::group_by(.data[[group_var]]) %>%
+        dplyr::summarise(
+            variable = value_var,
+            n_rows = dplyr::n(),
+            n_nonmissing = sum(!is.na(.data$.value)),
+            mean = mean(.data$.value, na.rm = TRUE),
+            median = stats::median(.data$.value, na.rm = TRUE),
+            min = min(.data$.value, na.rm = TRUE),
+            max = max(.data$.value, na.rm = TRUE),
+            q1 = stats::quantile(.data$.value, probs = 0.25, na.rm = TRUE, names = FALSE, type = 2),
+            q3 = stats::quantile(.data$.value, probs = 0.75, na.rm = TRUE, names = FALSE, type = 2),
+            .groups = "drop"
+        ) %>%
+        dplyr::rename(treatment_group = 1) %>%
+        dplyr::mutate(
+            iqr = .data$q3 - .data$q1,
+            min = dplyr::if_else(is.infinite(.data$min), NA_real_, .data$min),
+            max = dplyr::if_else(is.infinite(.data$max), NA_real_, .data$max)
+        ) %>%
+        dplyr::select(-"q1", -"q3")
+}
+
+#' Summarize general and latest-VA follow-up by treatment arm
+#'
+#' @param data Analytic cohort data.
+#' @return Tibble with treatment-arm timing summaries.
+summarize_followup_by_treatment_arm <- function(data) {
+    latest_va_followup_months <- if (all(c("treatment_date", "last_followup") %in% names(data))) {
+        as.numeric(difftime(data$last_followup, data$treatment_date, units = "days")) / 30.4375
+    } else {
+        rep(NA_real_, nrow(data))
+    }
+
+    data_with_va_timing <- data
+    data_with_va_timing$latest_vision_followup_months <- latest_va_followup_months
+
+    dplyr::bind_rows(
+        if ("follow_up_months" %in% names(data_with_va_timing)) {
+            summarize_numeric_by_treatment_group(data_with_va_timing, "follow_up_months")
+        } else {
+            tibble::tibble()
+        },
+        summarize_numeric_by_treatment_group(data_with_va_timing, "latest_vision_followup_months")
+    )
 }
 
 #' Summarize radiation detail fields relevant to reviewer comments
@@ -212,14 +280,91 @@ build_peer_review_evidence_boundary <- function(input_filename = INPUT_FILENAME)
     )
 }
 
+#' Format a local filesystem path as a Markdown file link
+#'
+#' @param path Local file or directory path.
+#' @param label Link label. Defaults to the file basename.
+#' @return Markdown link using a `file://` URI for absolute paths.
+format_markdown_file_link <- function(path, label = basename(path)) {
+    if (is.null(path) || length(path) == 0L) {
+        return(character())
+    }
+
+    if (length(label) == 1L && length(path) > 1L) {
+        label <- rep(label, length(path))
+    }
+
+    vapply(seq_along(path), function(i) {
+        current_path <- path[[i]]
+        current_label <- label[[i]]
+        if (is.na(current_path) || !nzchar(current_path)) {
+            return(NA_character_)
+        }
+
+        normalized_path <- normalizePath(current_path, winslash = "/", mustWork = FALSE)
+        safe_label <- gsub("]", "\\\\]", as.character(current_label), fixed = TRUE)
+        path_parts <- strsplit(normalized_path, "/", fixed = TRUE)[[1]]
+        encoded_parts <- vapply(path_parts, utils::URLencode, character(1), reserved = TRUE)
+
+        encoded_path <- if (startsWith(normalized_path, "/")) {
+            paste0("/", paste(encoded_parts[nzchar(encoded_parts)], collapse = "/"))
+        } else {
+            paste(encoded_parts, collapse = "/")
+        }
+        uri <- if (startsWith(normalized_path, "/")) paste0("file://", encoded_path) else encoded_path
+
+        sprintf("[%s](%s)", safe_label, uri)
+    }, character(1))
+}
+
+#' Build clickable path metadata for internal audit inspection
+#'
+#' @param cohort_name Short cohort label.
+#' @param cohort_path Analytic cohort RDS path.
+#' @param output_path Follow-up audit workbook output path.
+#' @param raw_data_dir Directory containing the active curated stats workbook.
+#' @param input_filename Active curated stats workbook filename.
+#' @return Tibble with absolute paths and Markdown links.
+build_peer_review_clickable_paths <- function(cohort_name,
+                                             cohort_path = NULL,
+                                             output_path = NULL,
+                                             raw_data_dir = RAW_DATA_DIR,
+                                             input_filename = INPUT_FILENAME) {
+    source_workbook_path <- file.path(raw_data_dir, input_filename)
+    paths <- tibble::tibble(
+        path_role = c("analytic_cohort_rds", "active_curated_stats_workbook", "audit_workbook_output"),
+        cohort = cohort_name,
+        path = c(cohort_path %||% NA_character_, source_workbook_path, output_path %||% NA_character_),
+        note = c(
+            "Analytic dataset used to build this audit.",
+            "Curated source workbook whose column headers were inspected.",
+            "Generated follow-up/data-availability audit workbook."
+        )
+    ) %>%
+        dplyr::filter(!is.na(.data$path), nzchar(.data$path)) %>%
+        dplyr::mutate(
+            path_exists_at_write_time = file.exists(.data$path),
+            markdown_link = purrr::map_chr(.data$path, format_markdown_file_link)
+        )
+
+    paths
+}
+
 #' Build peer-review follow-up and data availability audit tables
 #'
 #' @param data Analytic cohort data.
 #' @param cohort_name Short cohort label for workbook output.
 #' @param raw_data_dir Directory containing the active curated stats workbook.
 #' @param input_filename Active curated stats workbook filename.
+#' @param cohort_path Optional analytic cohort RDS path for clickable audit metadata.
+#' @param output_path Optional audit workbook output path for clickable audit metadata.
 #' @return Named list of audit tables.
-build_peer_review_followup_audit <- function(data, cohort_name, raw_data_dir = RAW_DATA_DIR, input_filename = INPUT_FILENAME) {
+build_peer_review_followup_audit <- function(data,
+                                             cohort_name,
+                                             raw_data_dir = RAW_DATA_DIR,
+                                             input_filename = INPUT_FILENAME,
+                                             cohort_path = NULL,
+                                             output_path = NULL) {
     latest_va_months <- if (all(c("treatment_date", "last_followup") %in% names(data))) {
         as.numeric(difftime(data$last_followup, data$treatment_date, units = "days")) / 30.4375
     } else {
@@ -238,7 +383,15 @@ build_peer_review_followup_audit <- function(data, cohort_name, raw_data_dir = R
     list(
         evidence_boundary = build_peer_review_evidence_boundary(input_filename),
         data_profile = data_profile,
+        clickable_paths = build_peer_review_clickable_paths(
+            cohort_name = cohort_name,
+            cohort_path = cohort_path,
+            output_path = output_path,
+            raw_data_dir = raw_data_dir,
+            input_filename = input_filename
+        ),
         followup_availability = summarize_peer_review_followup(data),
+        followup_by_treatment_arm = summarize_followup_by_treatment_arm(data),
         radiation_availability = summarize_peer_review_radiation_availability(data),
         restricted_eligibility_check = summarize_restricted_cohort_eligibility(data),
         curated_input_workbook_columns = read_curated_input_workbook_columns(raw_data_dir, input_filename)
@@ -268,8 +421,13 @@ run_peer_review_followup_audits <- function() {
 
     purrr::imap_chr(cohort_paths, function(cohort_path, cohort_name) {
         data <- readRDS(cohort_path)
-        audit <- build_peer_review_followup_audit(data, cohort_name)
         output_path <- file.path(output_dir, paste0(cohort_name, "_followup_and_data_availability.xlsx"))
+        audit <- build_peer_review_followup_audit(
+            data,
+            cohort_name,
+            cohort_path = cohort_path,
+            output_path = output_path
+        )
         write_peer_review_followup_audit(audit, output_path)
         output_path
     })
@@ -282,4 +440,6 @@ if (identical(environment(), globalenv()) && sys.nframe() == 0L) {
     paths <- run_peer_review_followup_audits()
     message("Created peer-review follow-up audit workbooks:")
     message(paste(paths, collapse = "\n"))
+    message("Markdown links:")
+    message(paste(format_markdown_file_link(paths), collapse = "\n"))
 }
