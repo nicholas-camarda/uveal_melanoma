@@ -67,7 +67,7 @@ drop_aliased_propensity_covariates <- function(ps_data, covariates, treatment_va
             )
         ))
     }
-    ps_data[[treatment_var]] <- factor(ps_data[[treatment_var]])
+    ps_data[[treatment_var]] <- coerce_to_factor_preserving_levels(ps_data[[treatment_var]])
 
     formula <- stats::as.formula(paste(treatment_var, "~", paste(covariates, collapse = " + ")))
     model_matrix_formula <- stats::as.formula(paste("~", paste(covariates, collapse = " + ")))
@@ -137,7 +137,7 @@ fit_treatment_propensity_score <- function(data, treatment_var = "treatment_grou
     covariates <- select_propensity_covariates(data)
     selected_data <- data %>%
         dplyr::filter(!is.na(.data[[treatment_var]])) %>%
-        dplyr::mutate("{treatment_var}" := factor(.data[[treatment_var]]))
+        dplyr::mutate("{treatment_var}" := coerce_to_factor_preserving_levels(.data[[treatment_var]]))
 
     treatment_levels <- levels(selected_data[[treatment_var]])
     if (length(treatment_levels) != 2L) {
