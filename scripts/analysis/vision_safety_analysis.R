@@ -331,19 +331,79 @@ safe_numeric_range_summary <- function(values) {
 #' Add latest visual-acuity follow-up timing for reviewer-response sensitivity
 #'
 #' @param data Data frame.
-#' @return Data frame with `last_vision_followup_months`.
+#' @return Data frame with explicit and proxy latest-VA timing fields.
 add_last_vision_followup_months <- function(data) {
+    explicit_months <- rep(NA_real_, nrow(data))
     if (all(c("treatment_date", "last_followup") %in% names(data))) {
-        data$last_vision_followup_months <- suppressWarnings(lubridate::time_length(
+        explicit_months <- suppressWarnings(lubridate::time_length(
             lubridate::interval(data$treatment_date, data$last_followup),
             unit = "months"
         ))
-    } else if ("follow_up_months" %in% names(data)) {
-        data$last_vision_followup_months <- suppressWarnings(as.numeric(data$follow_up_months))
-    } else {
-        data$last_vision_followup_months <- NA_real_
     }
+
+    proxy_months <- explicit_months
+    if ("follow_up_months" %in% names(data)) {
+        follow_up_months <- suppressWarnings(as.numeric(data$follow_up_months))
+        proxy_months <- dplyr::if_else(is.na(proxy_months), follow_up_months, proxy_months)
+    }
+
+    data$last_vision_followup_months_explicit <- explicit_months
+    data$last_vision_followup_months_proxy <- proxy_months
+    data$last_vision_followup_timing_source <- dplyr::case_when(
+        !is.na(explicit_months) ~ "explicit_last_followup",
+        is.na(explicit_months) & !is.na(proxy_months) ~ "proxy_general_recorded_followup",
+        TRUE ~ "missing_timing"
+    )
+    data$last_vision_followup_months <- data$last_vision_followup_months_explicit
     data
+}
+
+#' Summarize latest visual-acuity timing-source availability
+#'
+#' @param data Data frame.
+#' @return Tibble with explicit and proxy timing availability counts.
+summarize_vision_followup_timing_sources <- function(data) {
+    data <- add_last_vision_followup_months(data)
+    last_vision_present <- if ("last_vision" %in% names(data)) !is.na(data$last_vision) else rep(FALSE, nrow(data))
+    explicit_present <- !is.na(data$last_vision_followup_months_explicit)
+    proxy_present <- !is.na(data$last_vision_followup_months_proxy)
+    recovered_by_proxy <- !explicit_present & proxy_present
+
+    height_months <- if (all(c("treatment_date", "last_height_date") %in% names(data))) {
+        suppressWarnings(lubridate::time_length(
+            lubridate::interval(data$treatment_date, data$last_height_date),
+            unit = "months"
+        ))
+    } else {
+        rep(NA_real_, nrow(data))
+    }
+
+    tibble::tibble(
+        timing_definition = c(
+            "explicit_last_followup",
+            "proxy_general_recorded_followup",
+            "recovered_by_proxy_when_explicit_missing",
+            "last_height_date_comparison"
+        ),
+        n_patients = c(
+            sum(explicit_present),
+            sum(proxy_present),
+            sum(recovered_by_proxy),
+            sum(!is.na(height_months))
+        ),
+        n_with_last_vision = c(
+            sum(explicit_present & last_vision_present),
+            sum(proxy_present & last_vision_present),
+            sum(recovered_by_proxy & last_vision_present),
+            sum(!is.na(height_months) & last_vision_present)
+        ),
+        note = c(
+            "Treatment-to-last_followup timing; primary conservative timing field for latest-VA minimum-follow-up sensitivity.",
+            "Uses explicit last_followup timing when available; otherwise uses the derived general follow_up_months field as a proxy for recorded follow-up duration.",
+            "Rows that have latest VA and general follow-up duration but no explicit last_followup date.",
+            "Tumor-height timing is summarized separately and is not used as the latest-VA timing proxy."
+        )
+    )
 }
 
 #' Summarize visual-acuity follow-up timing by treatment group
@@ -373,22 +433,26 @@ summarize_vision_followup_by_group <- function(data, value_var = "last_vision_fo
 #'
 #' @param data Data frame with visual-acuity change and latest-VA follow-up timing.
 #' @param min_followup_months Numeric minimum follow-up threshold.
+#' @param timing_var Character scalar timing variable.
 #' @return List with filtered data and summary table.
-build_visual_acuity_min_followup_sensitivity <- function(data, min_followup_months = 36) {
+build_visual_acuity_min_followup_sensitivity <- function(data,
+                                                         min_followup_months = 36,
+                                                         timing_var = "last_vision_followup_months_explicit") {
     followup_data <- add_last_vision_followup_months(data)
     filtered <- followup_data %>%
         dplyr::filter(
             !is.na(.data$vision_change),
-            !is.na(.data$last_vision_followup_months),
-            .data$last_vision_followup_months >= min_followup_months
+            !is.na(.data[[timing_var]]),
+            .data[[timing_var]] >= min_followup_months
         )
     summary <- filtered %>%
         dplyr::group_by(.data$treatment_group) %>%
         dplyr::summarise(
             min_followup_months = min_followup_months,
+            timing_definition = timing_var,
             n = dplyr::n(),
-            mean_last_vision_followup_months = safe_numeric_range_summary(.data$last_vision_followup_months)[["mean"]],
-            median_last_vision_followup_months = safe_numeric_range_summary(.data$last_vision_followup_months)[["median"]],
+            mean_last_vision_followup_months = safe_numeric_range_summary(.data[[timing_var]])[["mean"]],
+            median_last_vision_followup_months = safe_numeric_range_summary(.data[[timing_var]])[["median"]],
             mean_vision_change = safe_numeric_range_summary(.data$vision_change)[["mean"]],
             median_vision_change = safe_numeric_range_summary(.data$vision_change)[["median"]],
             min_vision_change = safe_numeric_range_summary(.data$vision_change)[["min"]],
@@ -450,7 +514,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
         "Vision endpoint is visual-acuity change score",
         "(initial vision minus final or recurrence-pre-treatment vision);",
         "baseline visual acuity and latest-VA follow-up time are reviewer-response sensitivity considerations;",
-        "last_followup is used as the follow-up date associated with the latest visual-acuity assessment."
+        "minimum-follow-up sensitivity uses explicit last_followup timing as primary and a separately labeled general-follow-up proxy as sensitivity context."
     )
     ordinal_assumption_note <- paste(
         "Proportional-odds assumption was not formally tested;",
@@ -1113,69 +1177,100 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
     )
 
     minimum_followup_thresholds <- c(12, 36, 60)
+    followup_timing_definitions <- list(
+        explicit = list(
+            timing_var = "last_vision_followup_months_explicit",
+            sheet_prefix = "explicit_min_followup",
+            file_prefix = "explicit",
+            label = "Explicit treatment-to-last_followup timing"
+        ),
+        proxy = list(
+            timing_var = "last_vision_followup_months_proxy",
+            sheet_prefix = "proxy_min_followup",
+            file_prefix = "proxy",
+            label = "Proxy timing using explicit last_followup when available, otherwise general follow_up_months"
+        )
+    )
     visual_followup_sensitivities <- list()
     visual_followup_models <- list()
     visual_followup_model_status <- list()
 
-    for (threshold_months in minimum_followup_thresholds) {
-        threshold_label <- paste0(threshold_months, "_months")
-        threshold_analysis_name <- paste0("vision_change_minimum_followup_", threshold_label)
-        threshold_prefix <- paste0(prefix, "minimum_followup_", threshold_label, "_")
-        visual_followup_sensitivities[[threshold_label]] <- build_visual_acuity_min_followup_sensitivity(
-            data,
-            min_followup_months = threshold_months
-        )
-        threshold_model_data <- visual_followup_sensitivities[[threshold_label]]$data %>%
-            enforce_unordered_factors()
-        visual_followup_models[[threshold_label]] <- if (
-            nrow(threshold_model_data) > 0 &&
-                dplyr::n_distinct(stats::na.omit(threshold_model_data$treatment_group)) >= 2
-        ) {
-            generate_regression_table(
-                data = threshold_model_data,
-                outcome_var = "vision_change",
-                predictor_vars = "treatment_group",
-                confounders = confounders_for_model,
-                model_type = "linear",
-                effect_measure = "MD",
-                analysis_name = threshold_analysis_name,
-                dataset_name = dataset_name %||% "vision_followup_sensitivity",
-                output_dir = output_dirs$obj2_vision,
-                prefix = threshold_prefix
+    for (timing_name in names(followup_timing_definitions)) {
+        timing_definition <- followup_timing_definitions[[timing_name]]
+        for (threshold_months in minimum_followup_thresholds) {
+            threshold_label <- paste0(threshold_months, "mo")
+            sensitivity_key <- paste(timing_name, threshold_label, sep = "_")
+            threshold_analysis_name <- paste0("vision_change_", timing_name, "_minimum_followup_", threshold_label)
+            threshold_prefix <- paste0(prefix, timing_definition$file_prefix, "_minimum_followup_", threshold_label, "_")
+            visual_followup_sensitivities[[sensitivity_key]] <- build_visual_acuity_min_followup_sensitivity(
+                data,
+                min_followup_months = threshold_months,
+                timing_var = timing_definition$timing_var
             )
-        } else {
-            list(
-                table = NULL,
-                model = NULL,
-                diagnostics = tibble::tibble(
-                    status = "skipped",
-                    reason = sprintf(
-                        "Minimum-follow-up visual-acuity treatment-effect model skipped for the %d-month threshold because the subset did not retain enough treatment-group support.",
-                        threshold_months
+            threshold_model_data <- visual_followup_sensitivities[[sensitivity_key]]$data %>%
+                enforce_unordered_factors()
+            visual_followup_models[[sensitivity_key]] <- if (
+                nrow(threshold_model_data) > 0 &&
+                    dplyr::n_distinct(stats::na.omit(threshold_model_data$treatment_group)) >= 2
+            ) {
+                generate_regression_table(
+                    data = threshold_model_data,
+                    outcome_var = "vision_change",
+                    predictor_vars = "treatment_group",
+                    confounders = confounders_for_model,
+                    model_type = "linear",
+                    effect_measure = "MD",
+                    analysis_name = threshold_analysis_name,
+                    dataset_name = dataset_name %||% "vision_followup_sensitivity",
+                    output_dir = output_dirs$obj2_vision,
+                    prefix = threshold_prefix
+                )
+            } else {
+                list(
+                    table = NULL,
+                    model = NULL,
+                    diagnostics = tibble::tibble(
+                        status = "skipped",
+                        reason = sprintf(
+                            "Minimum-follow-up visual-acuity treatment-effect model skipped for the %s %d-month threshold because the subset did not retain enough treatment-group support.",
+                            timing_name,
+                            threshold_months
+                        )
                     )
                 )
+            }
+            visual_followup_model_status[[sensitivity_key]] <- tibble::tibble(
+                timing_surface = timing_name,
+                min_followup_months = threshold_months,
+                model_status = ifelse(is.null(visual_followup_models[[sensitivity_key]]$model), "skipped", "completed"),
+                model = "vision_change ~ treatment_group + confounders",
+                subset = paste0(timing_definition$timing_var, " >= ", threshold_months),
+                timing_definition = timing_definition$label,
+                threshold_rationale = "Minimum-follow-up latest-visual-acuity sensitivity using 1-, 3-, and 5-year durations as cutoff options; these are not fixed-landmark VA measurements."
             )
         }
-        visual_followup_model_status[[threshold_label]] <- tibble::tibble(
-            min_followup_months = threshold_months,
-            model_status = ifelse(is.null(visual_followup_models[[threshold_label]]$model), "skipped", "completed"),
-            model = "vision_change ~ treatment_group + confounders",
-            subset = paste0("last_vision_followup_months >= ", threshold_months),
-            threshold_rationale = "Minimum-follow-up latest-visual-acuity sensitivity using reviewer-suggested 1-, 3-, and 5-year durations as cutoff options; these are not fixed-landmark VA measurements."
-        )
     }
 
+    visual_followup_summary_sheets <- purrr::imap(
+        visual_followup_sensitivities,
+        function(sensitivity, sensitivity_key) sensitivity$summary
+    )
+    names(visual_followup_summary_sheets) <- vapply(names(visual_followup_summary_sheets), function(sensitivity_key) {
+        key_parts <- strsplit(sensitivity_key, "_", fixed = TRUE)[[1]]
+        timing_definition <- followup_timing_definitions[[key_parts[[1]]]]
+        paste(timing_definition$sheet_prefix, key_parts[[2]], sep = "_")
+    }, character(1))
+
     visual_followup_workbook <- c(
-        stats::setNames(
-            lapply(visual_followup_sensitivities, `[[`, "summary"),
-            paste0("minimum_followup_", names(visual_followup_sensitivities))
-        ),
+        visual_followup_summary_sheets,
         list(
-            available_last_vision_followup = summarize_vision_followup_by_group(data, "last_vision_followup_months"),
+            available_explicit_va_timing = summarize_vision_followup_by_group(data, "last_vision_followup_months_explicit"),
+            available_proxy_va_timing = summarize_vision_followup_by_group(data, "last_vision_followup_months_proxy"),
+            timing_source_counts = summarize_vision_followup_timing_sources(data),
             treatment_effect_model = dplyr::bind_rows(visual_followup_model_status),
             toxicity_scope = objective2_toxicity_scope_note(),
             limitation = tibble::tibble(
-                note = "The latest visual-acuity endpoint uses last_vision as the latest BCVA value and last_followup as its associated follow-up date. The 12-, 36-, and 60-month sensitivity analyses are minimum-follow-up restrictions on latest VA, not standardized 1-, 3-, or 5-year landmark VA analyses."
+                note = "The primary latest-VA minimum-follow-up sensitivity uses treatment-to-last_followup timing when that date is recorded. A separate proxy surface uses the derived general follow_up_months field when last_followup is missing. Tumor-height timing is not used as the VA timing proxy. The 12-, 36-, and 60-month sensitivity analyses are minimum-follow-up restrictions on latest VA, not standardized 1-, 3-, or 5-year landmark VA analyses."
             )
         )
     )

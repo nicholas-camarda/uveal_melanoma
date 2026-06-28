@@ -10,31 +10,91 @@ normalize_optic_nerve_involvement <- function(x) {
     )
 }
 
+#' Build explicit and proxy latest-VA follow-up timing fields
+#'
+#' @param data Analytic cohort data.
+#' @return Data frame with timing fields in months and timing-source labels.
+add_peer_review_latest_va_timing <- function(data) {
+    treatment_date <- if ("treatment_date" %in% names(data)) data$treatment_date else rep(as.Date(NA), nrow(data))
+    last_followup <- if ("last_followup" %in% names(data)) data$last_followup else rep(as.Date(NA), nrow(data))
+    explicit_months <- as.numeric(difftime(last_followup, treatment_date, units = "days")) / 30.4375
+    proxy_months <- explicit_months
+    if ("follow_up_months" %in% names(data)) {
+        follow_up_months <- suppressWarnings(as.numeric(data$follow_up_months))
+        proxy_months <- dplyr::if_else(is.na(proxy_months), follow_up_months, proxy_months)
+    }
+
+    data$explicit_latest_va_followup_months <- explicit_months
+    data$proxy_latest_va_followup_months <- proxy_months
+    data$latest_va_timing_source <- dplyr::case_when(
+        !is.na(explicit_months) ~ "explicit_last_followup",
+        is.na(explicit_months) & !is.na(proxy_months) ~ "proxy_general_recorded_followup",
+        TRUE ~ "missing_timing"
+    )
+    data
+}
+
+#' Summarize latest-VA timing-source counts
+#'
+#' @param data Analytic cohort data.
+#' @return Tibble with timing-source counts.
+summarize_peer_review_latest_va_timing_sources <- function(data) {
+    data <- add_peer_review_latest_va_timing(data)
+    last_vision_present <- if ("last_vision" %in% names(data)) !is.na(data$last_vision) else rep(FALSE, nrow(data))
+    explicit_present <- !is.na(data$explicit_latest_va_followup_months)
+    proxy_present <- !is.na(data$proxy_latest_va_followup_months)
+
+    tibble::tibble(
+        timing_definition = c(
+            "explicit_last_followup",
+            "proxy_general_recorded_followup",
+            "recovered_by_proxy_when_explicit_missing"
+        ),
+        n_patients = c(
+            sum(explicit_present),
+            sum(proxy_present),
+            sum(!explicit_present & proxy_present)
+        ),
+        n_with_last_vision = c(
+            sum(explicit_present & last_vision_present),
+            sum(proxy_present & last_vision_present),
+            sum(!explicit_present & proxy_present & last_vision_present)
+        ),
+        note = c(
+            "Treatment-to-last_followup timing; primary conservative timing for latest-VA minimum-follow-up sensitivity.",
+            "Uses explicit last_followup timing when available; otherwise uses derived general follow_up_months as a proxy for recorded follow-up duration.",
+            "Rows with latest VA and general follow-up duration but missing explicit last_followup timing."
+        )
+    )
+}
+
 #' Summarize follow-up and latest visual acuity timing fields
 #'
 #' @param data Analytic cohort data.
 #' @return Tibble with availability and timing summaries.
 summarize_peer_review_followup <- function(data) {
+    data <- add_peer_review_latest_va_timing(data)
     treatment_date <- if ("treatment_date" %in% names(data)) data$treatment_date else rep(as.Date(NA), nrow(data))
     last_followup <- if ("last_followup" %in% names(data)) data$last_followup else rep(as.Date(NA), nrow(data))
-    latest_va_followup_months <- as.numeric(difftime(last_followup, treatment_date, units = "days")) / 30.4375
     fields <- c(
         "treatment_date",
         "last_followup",
         "last_vision",
-        "latest_vision_followup_months",
+        "explicit_latest_va_followup_months",
+        "proxy_latest_va_followup_months",
         "follow_up_months",
         "follow_up_years"
     )
 
     tibble::tibble(
         field = fields,
-        present = fields %in% names(data) | fields == "latest_vision_followup_months",
+        present = fields %in% names(data),
         non_missing_n = c(
             sum(!is.na(treatment_date)),
             sum(!is.na(last_followup)),
             if ("last_vision" %in% names(data)) sum(!is.na(data$last_vision)) else 0L,
-            sum(!is.na(latest_va_followup_months)),
+            sum(!is.na(data$explicit_latest_va_followup_months)),
+            sum(!is.na(data$proxy_latest_va_followup_months)),
             if ("follow_up_months" %in% names(data)) sum(!is.na(data$follow_up_months)) else 0L,
             if ("follow_up_years" %in% names(data)) sum(!is.na(data$follow_up_years)) else 0L
         ),
@@ -43,7 +103,8 @@ summarize_peer_review_followup <- function(data) {
             NA_real_,
             NA_real_,
             if ("last_vision" %in% names(data)) suppressWarnings(min(data$last_vision, na.rm = TRUE)) else NA_real_,
-            suppressWarnings(min(latest_va_followup_months, na.rm = TRUE)),
+            suppressWarnings(min(data$explicit_latest_va_followup_months, na.rm = TRUE)),
+            suppressWarnings(min(data$proxy_latest_va_followup_months, na.rm = TRUE)),
             if ("follow_up_months" %in% names(data)) suppressWarnings(min(data$follow_up_months, na.rm = TRUE)) else NA_real_,
             if ("follow_up_years" %in% names(data)) suppressWarnings(min(data$follow_up_years, na.rm = TRUE)) else NA_real_
         ),
@@ -51,7 +112,8 @@ summarize_peer_review_followup <- function(data) {
             NA_real_,
             NA_real_,
             if ("last_vision" %in% names(data)) suppressWarnings(stats::median(data$last_vision, na.rm = TRUE)) else NA_real_,
-            suppressWarnings(stats::median(latest_va_followup_months, na.rm = TRUE)),
+            suppressWarnings(stats::median(data$explicit_latest_va_followup_months, na.rm = TRUE)),
+            suppressWarnings(stats::median(data$proxy_latest_va_followup_months, na.rm = TRUE)),
             if ("follow_up_months" %in% names(data)) suppressWarnings(stats::median(data$follow_up_months, na.rm = TRUE)) else NA_real_,
             if ("follow_up_years" %in% names(data)) suppressWarnings(stats::median(data$follow_up_years, na.rm = TRUE)) else NA_real_
         ),
@@ -59,7 +121,8 @@ summarize_peer_review_followup <- function(data) {
             NA_real_,
             NA_real_,
             if ("last_vision" %in% names(data)) suppressWarnings(mean(data$last_vision, na.rm = TRUE)) else NA_real_,
-            suppressWarnings(mean(latest_va_followup_months, na.rm = TRUE)),
+            suppressWarnings(mean(data$explicit_latest_va_followup_months, na.rm = TRUE)),
+            suppressWarnings(mean(data$proxy_latest_va_followup_months, na.rm = TRUE)),
             if ("follow_up_months" %in% names(data)) suppressWarnings(mean(data$follow_up_months, na.rm = TRUE)) else NA_real_,
             if ("follow_up_years" %in% names(data)) suppressWarnings(mean(data$follow_up_years, na.rm = TRUE)) else NA_real_
         ),
@@ -67,15 +130,17 @@ summarize_peer_review_followup <- function(data) {
             NA_real_,
             NA_real_,
             if ("last_vision" %in% names(data)) suppressWarnings(max(data$last_vision, na.rm = TRUE)) else NA_real_,
-            suppressWarnings(max(latest_va_followup_months, na.rm = TRUE)),
+            suppressWarnings(max(data$explicit_latest_va_followup_months, na.rm = TRUE)),
+            suppressWarnings(max(data$proxy_latest_va_followup_months, na.rm = TRUE)),
             if ("follow_up_months" %in% names(data)) suppressWarnings(max(data$follow_up_months, na.rm = TRUE)) else NA_real_,
             if ("follow_up_years" %in% names(data)) suppressWarnings(max(data$follow_up_years, na.rm = TRUE)) else NA_real_
         ),
         note = c(
             "Treatment anchor used for latest VA follow-up timing.",
-            "Last follow-up date; latest VA is treated as associated with this follow-up.",
+            "Last follow-up date used for the explicit latest-VA timing surface.",
             "Latest visual acuity value, not itself a date.",
-            "Derived as treatment_date to last_followup when both dates are present.",
+            "Treatment-to-last_followup timing when both dates are present.",
+            "Explicit latest-VA timing when available; otherwise derived general follow-up duration as proxy.",
             "Existing total follow-up field.",
             "Existing total follow-up field."
         )
@@ -128,14 +193,7 @@ summarize_numeric_by_treatment_group <- function(data, value_var, group_var = "t
 #' @param data Analytic cohort data.
 #' @return Tibble with treatment-arm timing summaries.
 summarize_followup_by_treatment_arm <- function(data) {
-    latest_va_followup_months <- if (all(c("treatment_date", "last_followup") %in% names(data))) {
-        as.numeric(difftime(data$last_followup, data$treatment_date, units = "days")) / 30.4375
-    } else {
-        rep(NA_real_, nrow(data))
-    }
-
-    data_with_va_timing <- data
-    data_with_va_timing$latest_vision_followup_months <- latest_va_followup_months
+    data_with_va_timing <- add_peer_review_latest_va_timing(data)
 
     dplyr::bind_rows(
         if ("follow_up_months" %in% names(data_with_va_timing)) {
@@ -143,7 +201,8 @@ summarize_followup_by_treatment_arm <- function(data) {
         } else {
             tibble::tibble()
         },
-        summarize_numeric_by_treatment_group(data_with_va_timing, "latest_vision_followup_months")
+        summarize_numeric_by_treatment_group(data_with_va_timing, "explicit_latest_va_followup_months"),
+        summarize_numeric_by_treatment_group(data_with_va_timing, "proxy_latest_va_followup_months")
     )
 }
 
@@ -365,19 +424,18 @@ build_peer_review_followup_audit <- function(data,
                                              input_filename = INPUT_FILENAME,
                                              cohort_path = NULL,
                                              output_path = NULL) {
-    latest_va_months <- if (all(c("treatment_date", "last_followup") %in% names(data))) {
-        as.numeric(difftime(data$last_followup, data$treatment_date, units = "days")) / 30.4375
-    } else {
-        rep(NA_real_, nrow(data))
-    }
+    data <- add_peer_review_latest_va_timing(data)
 
     data_profile <- tibble::tibble(
         cohort = cohort_name,
         n_patients = nrow(data),
         treatment_groups = paste(sort(unique(as.character(data$treatment_group))), collapse = ", "),
-        latest_va_followup_12mo_n = sum(!is.na(latest_va_months) & latest_va_months >= 12),
-        latest_va_followup_36mo_n = sum(!is.na(latest_va_months) & latest_va_months >= 36),
-        latest_va_followup_60mo_n = sum(!is.na(latest_va_months) & latest_va_months >= 60)
+        explicit_latest_va_followup_12mo_n = sum(!is.na(data$explicit_latest_va_followup_months) & data$explicit_latest_va_followup_months >= 12),
+        explicit_latest_va_followup_36mo_n = sum(!is.na(data$explicit_latest_va_followup_months) & data$explicit_latest_va_followup_months >= 36),
+        explicit_latest_va_followup_60mo_n = sum(!is.na(data$explicit_latest_va_followup_months) & data$explicit_latest_va_followup_months >= 60),
+        proxy_latest_va_followup_12mo_n = sum(!is.na(data$proxy_latest_va_followup_months) & data$proxy_latest_va_followup_months >= 12),
+        proxy_latest_va_followup_36mo_n = sum(!is.na(data$proxy_latest_va_followup_months) & data$proxy_latest_va_followup_months >= 36),
+        proxy_latest_va_followup_60mo_n = sum(!is.na(data$proxy_latest_va_followup_months) & data$proxy_latest_va_followup_months >= 60)
     )
 
     list(
@@ -392,6 +450,7 @@ build_peer_review_followup_audit <- function(data,
         ),
         followup_availability = summarize_peer_review_followup(data),
         followup_by_treatment_arm = summarize_followup_by_treatment_arm(data),
+        latest_va_timing_sources = summarize_peer_review_latest_va_timing_sources(data),
         radiation_availability = summarize_peer_review_radiation_availability(data),
         restricted_eligibility_check = summarize_restricted_cohort_eligibility(data),
         curated_input_workbook_columns = read_curated_input_workbook_columns(raw_data_dir, input_filename)

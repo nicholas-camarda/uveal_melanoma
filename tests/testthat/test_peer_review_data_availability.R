@@ -1,6 +1,6 @@
 source(here::here("scripts", "tools", "peer_review_followup_audit.R"))
 
-test_that("peer-review follow-up audit derives latest VA follow-up from last follow-up", {
+test_that("peer-review follow-up audit separates explicit and proxy latest-VA timing", {
     data <- create_test_dataset() %>%
         dplyr::mutate(
             treatment_date = as.Date("2020-01-01"),
@@ -8,16 +8,28 @@ test_that("peer-review follow-up audit derives latest VA follow-up from last fol
             follow_up_months = 48,
             follow_up_years = 4
         )
+    data$last_followup[1] <- NA
 
     audit <- build_peer_review_followup_audit(data, "test", raw_data_dir = RAW_DATA_DIR)
 
     expect_true("followup_availability" %in% names(audit))
-    expect_true("latest_vision_followup_months" %in% audit$followup_availability$field)
+    expect_true("latest_va_timing_sources" %in% names(audit))
+    expect_true("explicit_latest_va_followup_months" %in% audit$followup_availability$field)
+    expect_true("proxy_latest_va_followup_months" %in% audit$followup_availability$field)
     latest_va_row <- audit$followup_availability %>%
-        dplyr::filter(.data$field == "latest_vision_followup_months")
+        dplyr::filter(.data$field == "explicit_latest_va_followup_months")
     expect_true(latest_va_row$present)
     expect_gt(latest_va_row$median_value, 47)
-    expect_equal(audit$data_profile$latest_va_followup_36mo_n, nrow(data))
+    proxy_row <- audit$followup_availability %>%
+        dplyr::filter(.data$field == "proxy_latest_va_followup_months")
+    expect_equal(proxy_row$non_missing_n, nrow(data))
+    expect_equal(
+        audit$latest_va_timing_sources$n_patients[
+            audit$latest_va_timing_sources$timing_definition == "recovered_by_proxy_when_explicit_missing"
+        ],
+        1L
+    )
+    expect_equal(audit$data_profile$proxy_latest_va_followup_36mo_n, nrow(data))
 })
 
 test_that("peer-review audit records radiation details and absent dosimetry fields", {
@@ -108,6 +120,7 @@ test_that("peer-review follow-up audit writes expected workbook sheets", {
             "clickable_paths",
             "followup_availability",
             "followup_by_treatment_arm",
+            "latest_va_timing_sources",
             "radiation_availability",
             "restricted_eligibility_check",
             "curated_input_workbook_columns"

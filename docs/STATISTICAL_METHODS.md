@@ -392,7 +392,7 @@ outcome_change ~ treatment + baseline_value + confounders
 
 For practical reading of linear-regression outputs, see [Linear Regression Tables (Continuous Outcomes)](INTERPRETATION_GUIDE.md#linear-regression-tables-continuous-outcomes).
 
-Objective 2 vision models use the precomputed `vision_change` endpoint (`initial_vision - last_vision`, or `initial_vision - recurrence1_pretreatment_vision` for patients with local recurrence). The adjusted rows include the central confounder set but do not include a separate baseline-vision covariate.
+Objective 2 vision models use the precomputed `vision_change` endpoint (`initial_vision - last_vision`, or `initial_vision - recurrence1_pretreatment_vision` for patients with local recurrence). The adjusted rows include the central confounder set but do not include a separate baseline-vision covariate. Latest-VA minimum-follow-up sensitivity outputs report explicit treatment-to-`last_followup` timing as the primary timing surface and a separately labeled proxy surface that uses derived general `follow_up_months` when explicit timing is missing.
 
 ---
 

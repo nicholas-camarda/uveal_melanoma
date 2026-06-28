@@ -223,10 +223,15 @@ test_that("visual-acuity minimum-follow-up sensitivity reruns treatment-effect m
     expect_workbook_has_sheets(
         sensitivity_path,
         c(
-            "minimum_followup_12_months",
-            "minimum_followup_36_months",
-            "minimum_followup_60_months",
-            "available_last_vision_followup",
+            "explicit_min_followup_12mo",
+            "explicit_min_followup_36mo",
+            "explicit_min_followup_60mo",
+            "proxy_min_followup_12mo",
+            "proxy_min_followup_36mo",
+            "proxy_min_followup_60mo",
+            "available_explicit_va_timing",
+            "available_proxy_va_timing",
+            "timing_source_counts",
             "treatment_effect_model",
             "toxicity_scope",
             "limitation"
@@ -234,22 +239,31 @@ test_that("visual-acuity minimum-follow-up sensitivity reruns treatment-effect m
     )
 
     model_status <- readxl::read_xlsx(sensitivity_path, sheet = "treatment_effect_model")
-    expect_true(all(c("min_followup_months", "model_status", "model", "subset", "threshold_rationale") %in% names(model_status)))
-    expect_equal(sort(model_status$min_followup_months), c(12, 36, 60))
+    expect_true(all(c("timing_surface", "min_followup_months", "model_status", "model", "subset", "timing_definition", "threshold_rationale") %in% names(model_status)))
+    expect_equal(sort(model_status$min_followup_months), rep(c(12, 36, 60), each = 2))
+    expect_equal(sort(unique(model_status$timing_surface)), c("explicit", "proxy"))
     expect_true(all(model_status$model_status %in% c("completed", "skipped")))
-    available_followup <- readxl::read_xlsx(sensitivity_path, sheet = "available_last_vision_followup")
-    expect_true(all(c("mean_months", "median_months") %in% names(available_followup)))
-    followup_12 <- readxl::read_xlsx(sensitivity_path, sheet = "minimum_followup_12_months")
+    explicit_followup <- readxl::read_xlsx(sensitivity_path, sheet = "available_explicit_va_timing")
+    proxy_followup <- readxl::read_xlsx(sensitivity_path, sheet = "available_proxy_va_timing")
+    timing_sources <- readxl::read_xlsx(sensitivity_path, sheet = "timing_source_counts")
+    expect_true(all(c("mean_months", "median_months") %in% names(explicit_followup)))
+    expect_true(all(c("mean_months", "median_months") %in% names(proxy_followup)))
+    expect_true("last_height_date_comparison" %in% timing_sources$timing_definition)
+    followup_12 <- readxl::read_xlsx(sensitivity_path, sheet = "explicit_min_followup_12mo")
     expect_true(all(c(
+        "timing_definition",
         "mean_last_vision_followup_months",
         "median_last_vision_followup_months",
         "mean_vision_change",
         "median_vision_change"
     ) %in% names(followup_12)))
     expect_equal(sort(model_status$subset), c(
-        "last_vision_followup_months >= 12",
-        "last_vision_followup_months >= 36",
-        "last_vision_followup_months >= 60"
+        "last_vision_followup_months_explicit >= 12",
+        "last_vision_followup_months_explicit >= 36",
+        "last_vision_followup_months_explicit >= 60",
+        "last_vision_followup_months_proxy >= 12",
+        "last_vision_followup_months_proxy >= 36",
+        "last_vision_followup_months_proxy >= 60"
     ))
 })
 

@@ -61,6 +61,7 @@ Key sub-objectives:
 
 - `2a. Vision change`: evaluate change in vision from `initial_vision` to `last_vision`
 - retreatment vision context: when local progression occurs and the eye is retreated, the source planning document specifies the corresponding pretreatment-to-retreatment comparison using `initial_vision - recurrence1_pretreatment_vision`
+- latest-VA minimum-follow-up sensitivity: report explicit treatment-to-`last_followup` timing separately from the proxy general-follow-up timing surface
 - `2b. Radiation retinopathy`: compare recorded burden using `retinopathy_burden_event`
 - `2c. Neovascular glaucoma`: compare recorded burden using `nvg_burden_event`
 - `2d. Serous retinal detachment`: compare recorded burden using `srd_burden_event` regardless of attributed cause in the current published implementation, including mass-induced cases when present
