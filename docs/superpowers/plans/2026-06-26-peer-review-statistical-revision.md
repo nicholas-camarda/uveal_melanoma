@@ -3028,7 +3028,7 @@ The current data can support:
 - PH assumption reporting.
 - Follow-up duration by treatment arm.
 - Visual-acuity minimum-follow-up sensitivity with explicit treatment-to-`last_followup` timing and separately labeled proxy general-follow-up timing.
-- Latest-VA reviewer-predictor sensitivity including viable baseline predictors requested by the reviewer: `initial_vision`, explicit latest-VA follow-up duration, `initial_tumor_height`, `initial_tumor_diameter`, `initial_t_stage_simple`, `srf`, `optic_nerve` where variable, centered treatment year, and the shared confounder set.
+- Latest-VA reviewer-predictor sensitivity including viable baseline predictors requested by the reviewer: `initial_vision`, explicit latest-VA follow-up duration, `initial_tumor_height`, `initial_tumor_diameter`, `initial_t_stage_simple`, `srf`, `optic_nerve` where variable, centered treatment year, and the shared confounder set (`age_at_diagnosis`, `sex`, `location`). `initial_overall_stage` was not added alongside `initial_t_stage_simple` because it duplicates stage information and adds model burden. `visual_field_defect` and `vision_loss_blurred_vision` were not used as adjustment covariates; the response should not imply that the analysis evaluates longitudinal visual-field loss or substitutes symptoms for measured baseline logMAR VA.
 - Tumor-height imaging timing summaries.
 - PBT descriptive treatment details for radionuclide, plaque size, and notched plaque use.
 - Restricted-cohort cutoff verification for diameter <=20 mm and height <=10 mm.
