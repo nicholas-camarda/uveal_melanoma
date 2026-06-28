@@ -235,10 +235,10 @@ Baseline tumor height   -0.42   -0.55, -0.29    <0.001
 
 **Baseline tumor height Beta = -0.42:**
 - Each 1 mm increase in baseline height → 0.42 mm greater decrease
-- Larger tumors shrink more (regression to mean)
+- Because baseline height is part of the tumor-height change outcome, this coefficient is partly algebraic and should be treated as a diagnostic sensitivity result
 
 **Clinical Interpretation:**
-In this example, GKSRS is associated with 0.35 mm greater tumor-height reduction compared to PBT (β=-0.35, 95% CI: -0.68 to -0.02, p=0.038), after model adjustment. For reviewer-response tumor-height analyses, this kind of model output must be interpreted with the tumor-height timing audit because baseline-height adjustment does not correct unequal time to follow-up height measurement.
+In this example, GKSRS is associated with 0.35 mm greater tumor-height reduction compared to PBT (β=-0.35, 95% CI: -0.68 to -0.02, p=0.038), after model adjustment. For reviewer-response tumor-height analyses, this kind of model output must be interpreted with the tumor-height timing audit. A model that adds baseline tumor height to a tumor-height change score is not appropriate as the reviewer-facing adjustment because baseline height is already part of the outcome definition. If imaging follow-up differs materially by treatment group, the comparative result should be demoted to descriptive context or omitted from the main response.
 
 For Objective 2 vision there are two different linear outputs:
 - `*_logmar_vision_change_adjusted_lm.html` models continuous logMAR change.

@@ -369,11 +369,11 @@ outcome_change ~ treatment + baseline_value + confounders
 
 | Outcome | Primary Analysis | Sensitivity Analysis | Location |
 |---------|------------------|---------------------|----------|
-| **Tumor Height Change** | Linear regression adjusted for the shared covariate set (`age_at_diagnosis`, `sex`, `location`) | Adds baseline tumor height to the same model specification | Objective 1e, 1f |
+| **Tumor Height Change** | Linear regression adjusted for the shared covariate set (`age_at_diagnosis`, `sex`, `location`) | Internal diagnostic change-score sensitivity that includes baseline tumor height, which is also part of the outcome definition | Objective 1e, 1f |
 | **Vision Change (logMAR)** | Unadjusted | Adjusted linear regression on the implemented change score; baseline vision is not added as a separate covariate | Objective 2a |
 | **Snellen Line Change (exact integer lines)** | Descriptive converted summary row | Adjusted linear regression | Objective 2a |
 
-Tumor-height change remains a secondary/descriptive endpoint for reviewer-response interpretation. The baseline-height sensitivity model addresses baseline size imbalance only; it does not address unequal time from treatment to follow-up height measurement. Tumor-height timing summaries must be reviewed alongside any comparative estimate.
+Tumor-height change remains a secondary/descriptive endpoint for reviewer-response interpretation. Because `height_change` subtracts baseline height, adding `initial_tumor_height` to the change-score model creates algebraic coupling between the covariate and outcome. That sensitivity can be used only as an internal diagnostic for dependence on baseline size; it is not ordinary confounder adjustment, it is not a reviewer-facing solution, and it does not address unequal time from treatment to follow-up height measurement. Tumor-height timing summaries must be reviewed alongside any comparative estimate, and current timing evidence supports demoting rather than emphasizing the comparative tumor-height result.
 
 ### Interpretation
 

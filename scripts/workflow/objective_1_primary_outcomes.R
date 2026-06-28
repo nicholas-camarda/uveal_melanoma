@@ -587,20 +587,20 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     # 1f. Subgroup analysis with interaction terms
     logger::log_info(formatted("Executing analyze_treatment_effect_subgroups_height: Subgroup analysis with interaction terms for tumor height change", indent = 1))
 
-    # PRIMARY ANALYSIS: Without baseline height adjustment
+    # PRIMARY ANALYSIS: without adding baseline height to the change-score subgroup model
     primary_start_time <- Sys.time()
-    logger::log_info(formatted("PRIMARY SUBGROUP ANALYSIS (without baseline height adjustment)", indent = 1))
+    logger::log_info(formatted("PRIMARY SUBGROUP ANALYSIS (without adding baseline height to the change-score model)", indent = 1))
     primary_subgroup_results <- list()
     for (i in seq_along(cohort_subgroup_vars)) {
         subgroup_var <- cohort_subgroup_vars[i]
         logger::log_info(formatted(sprintf(">>> Testing PRIMARY interaction (%d/%d): %s", i, length(cohort_subgroup_vars), subgroup_var)))
 
-        # Test the interaction with confounders but without baseline height
+        # Test the interaction with confounders but without adding baseline height to the change-score outcome
         result <- analyze_treatment_effect_subgroups_height(
             data = data,
             subgroup_var = subgroup_var,
             confounders = confounders, # Pass confounders (will auto-exclude subgroup var)
-            include_baseline_height = FALSE, # PRIMARY: no baseline height adjustment
+            include_baseline_height = FALSE, # PRIMARY: no baseline-in-change-score diagnostic term
             dataset_name = dataset_name
         )
 
@@ -617,20 +617,20 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     }
     logger::log_info(formatted(sprintf(">>> COMPLETED %s (Duration: %.1f seconds)", "PRIMARY SUBGROUP ANALYSIS", as.numeric(difftime(Sys.time(), primary_start_time, units = "secs"))), indent = 1))
 
-    # SENSITIVITY ANALYSIS: With baseline height adjustment
+    # SENSITIVITY ANALYSIS: internal diagnostic baseline-in-change-score subgroup model
     sensitivity_start_time <- Sys.time()
-    logger::log_info(formatted("SENSITIVITY SUBGROUP ANALYSIS (with baseline height adjustment)", indent = 1))
+    logger::log_info(formatted("SENSITIVITY SUBGROUP ANALYSIS (diagnostic baseline-in-change-score model)", indent = 1))
     sensitivity_subgroup_results <- list()
     for (i in seq_along(cohort_subgroup_vars)) {
         subgroup_var <- cohort_subgroup_vars[i]
         logger::log_info(formatted(sprintf(">>> Testing SENSITIVITY interaction (%d/%d): %s", i, length(cohort_subgroup_vars), subgroup_var)))
 
-        # Test the interaction with confounders including baseline height
+        # Test the interaction with baseline height included despite its algebraic link to the change-score outcome
         result <- analyze_treatment_effect_subgroups_height(
             data = data,
             subgroup_var = subgroup_var,
             confounders = confounders, # Pass confounders (will auto-exclude subgroup var)
-            include_baseline_height = TRUE, # SENSITIVITY: include baseline height adjustment
+            include_baseline_height = TRUE, # SENSITIVITY: internal diagnostic baseline-in-change-score term
             dataset_name = dataset_name
         )
 
@@ -670,7 +670,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     # Initialize forest plot diagnostics collector
     diagnostics_list <- list()
 
-    # Forest plot for PRIMARY tumor height subgroup analysis (without baseline height)
+    # Forest plot for PRIMARY tumor height subgroup analysis without baseline-in-change-score term
     primary_height_forest_plot <- create_single_cohort_forest_plot(
         subgroup_results = primary_subgroup_results,
         outcome_name = "Tumor Height Change (Primary Analysis)",
@@ -697,7 +697,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     dev.off()
     logger::log_info(formatted("PRIMARY tumor height forest plot created", indent = 1))
 
-    # Forest plot for SENSITIVITY tumor height subgroup analysis (with baseline height)
+    # Forest plot for SENSITIVITY tumor height subgroup analysis with diagnostic baseline-in-change-score term
     sensitivity_height_forest_plot <- create_single_cohort_forest_plot(
         subgroup_results = sensitivity_subgroup_results,
         outcome_name = "Tumor Height Change (Sensitivity Analysis)",

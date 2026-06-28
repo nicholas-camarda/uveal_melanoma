@@ -23,7 +23,7 @@ Key sub-objectives:
 - `1c. Overall survival`: compare survival after primary treatment
 - `1d. Progression-free survival`: compare progression-free survival in the current pipeline's efficacy framework
 - `1e. Tumor height change (primary)`: evaluate change from `initial_tumor_height` to `last_height` with timing-audit context
-- `1f. Tumor height change (sensitivity)`: retain the same clinical question while adding baseline tumor height to the model; this does not address unequal follow-up height-assessment timing
+- `1f. Tumor height change (sensitivity)`: internal diagnostic change-score sensitivity that includes baseline tumor height even though baseline height is part of the change-score outcome; this is not a reviewer-facing answer to the timing or clinical-relevance concern
 - `1g. Subgroup analysis`: evaluate whether efficacy patterns differ across baseline subgroups
 
 Legacy exploratory note:
@@ -35,7 +35,8 @@ Tumor-height note:
 
 - The source planning document explicitly asks for pretreatment-versus-follow-up tumor-height change.
 - It also states that for retreated local progression, the retreatment context should use `initial_tumor_height - recurrence1_pretreatment_height` when that question is relevant.
-- Reviewer-response interpretation should treat tumor-height change as secondary/descriptive unless the timing audit supports a stronger comparative statement.
+- Reviewer-response interpretation should treat tumor-height change as secondary/descriptive; current timing evidence argues against promoting the comparative regression as a main reviewer-facing result.
+- Because `height_change` subtracts `initial_tumor_height`, adding `initial_tumor_height` to a change-score regression is algebraically coupled to the outcome and should not be framed as ordinary confounder adjustment.
 
 ### Objective 1 Subgroup Scope
 

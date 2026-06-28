@@ -5,7 +5,8 @@
 #' Analyze tumor height reduction
 #'
 #' Calculates and summarizes changes in tumor height by treatment group, returning summary statistics and a table.
-#' Now includes both primary analysis (without baseline height adjustment) and sensitivity analysis (with baseline height adjustment).
+#' Includes a primary change-score model and an internal diagnostic sensitivity model that
+#' includes baseline height even though baseline height is part of the outcome.
 #'
 #'
 #' @param data Data frame containing tumor height variables, including `height_change` and `treatment_group`.
@@ -18,7 +19,7 @@
 #'   - `table`: gtsummary object summarizing tumor height changes.
 #'   - `primary_regression_model`: Linear model (lm) object for primary analysis (unadjusted).
 #'   - `primary_regression_table`: gtsummary object for the primary regression model.
-#'   - `sensitivity_regression_model`: Linear model (lm) object for sensitivity analysis (adjusted for baseline height).
+#'   - `sensitivity_regression_model`: Linear model (lm) object for the internal diagnostic baseline-in-change-score sensitivity.
 #'   - `sensitivity_regression_table`: gtsummary object for the sensitivity regression model.
 #'
 #' @examples
@@ -175,8 +176,8 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders)
         filename = file.path(output_dirs$obj1_height_primary, paste0(prefix, "height_changes.html"))
     )
 
-    # PRIMARY ANALYSIS: Linear regression WITHOUT initial tumor height adjustment
-    logger::log_info("Fitting PRIMARY linear regression model for tumor height changes (without baseline height adjustment)")
+    # PRIMARY ANALYSIS: Linear regression without adding baseline height to the change-score model
+    logger::log_info("Fitting PRIMARY linear regression model for tumor height changes without adding baseline height to the change-score model")
 
     # Use the unified table generation system for primary analysis
     primary_result <- if (sufficient_height_data) {
@@ -241,8 +242,9 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders)
     primary_height_lm <- primary_result$model
     primary_height_lm_tbl <- primary_result$table
 
-    # SENSITIVITY ANALYSIS: Linear regression WITH initial tumor height adjustment
-    logger::log_info("Fitting SENSITIVITY linear regression model for tumor height changes (with baseline height adjustment)")
+    # SENSITIVITY ANALYSIS: internal diagnostic baseline-in-change-score model.
+    # Because height_change subtracts initial_tumor_height, this is not ordinary confounder adjustment.
+    logger::log_info("Fitting internal diagnostic baseline-in-change-score sensitivity model for tumor height changes")
 
     # Use the unified table generation system for sensitivity analysis
     sensitivity_result <- if (sufficient_height_data) {
@@ -282,7 +284,7 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders)
                     "After sparse-level exclusions, %d rows remained for the sensitivity tumor-height model.",
                     nrow(data_model_ready)
                 ),
-                "The sensitivity model adds baseline tumor height, so it is only attempted when the filtered dataset retains enough rows and at least two treatment groups."
+                "The sensitivity model includes baseline tumor height in a change-score model, so it is an internal diagnostic rather than ordinary confounder adjustment and is only attempted when the filtered dataset retains enough rows and at least two treatment groups."
             ),
             sample_size_summary = sensitivity_sample_size_summary,
             skip_summary = build_skip_summary_tab(list(

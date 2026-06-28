@@ -74,7 +74,9 @@ height_change = case_when(
 
 ### **Reviewer-Response Interpretation Limit**
 
-Tumor-height change is not a time-to-event endpoint, and follow-up height measurements are not taken at a standardized post-treatment time. The pipeline writes a tumor-height timing audit using treatment-to-`last_height_date` intervals. Baseline tumor-height adjustment addresses baseline size imbalance only; it does not correct unequal height-assessment timing between treatment groups.
+Tumor-height change is not a time-to-event endpoint, and follow-up height measurements are not taken at a standardized post-treatment time. The pipeline writes a tumor-height timing audit using treatment-to-`last_height_date` intervals. Adding baseline tumor height to the change-score model does not correct unequal height-assessment timing between treatment groups.
+
+Because `height_change` is defined by subtracting `initial_tumor_height`, models that add `initial_tumor_height` back as a covariate are algebraically coupled change-score sensitivities. They can show whether the treatment coefficient is sensitive to baseline size, but they are not appropriate as the reviewer-facing adjustment for this concern. The reviewer-facing answer is the post-treatment imaging timing audit and a limitation/demotion of tumor-height reduction as comparative evidence.
 
 ### **Location in Code**
 
