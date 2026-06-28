@@ -369,14 +369,16 @@ outcome_change ~ treatment + baseline_value + confounders
 
 | Outcome | Primary Analysis | Sensitivity Analysis | Location |
 |---------|------------------|---------------------|----------|
-| **Tumor Height Change** | Unadjusted | Baseline-adjusted | Objective 1e, 1f |
+| **Tumor Height Change** | Linear regression adjusted for the shared covariate set (`age_at_diagnosis`, `sex`, `location`) | Adds baseline tumor height to the same model specification | Objective 1e, 1f |
 | **Vision Change (logMAR)** | Unadjusted | Adjusted linear regression on the implemented change score; baseline vision is not added as a separate covariate | Objective 2a |
 | **Snellen Line Change (exact integer lines)** | Descriptive converted summary row | Adjusted linear regression | Objective 2a |
+
+Tumor-height change remains a secondary/descriptive endpoint for reviewer-response interpretation. The baseline-height sensitivity model addresses baseline size imbalance only; it does not address unequal time from treatment to follow-up height measurement. Tumor-height timing summaries must be reviewed alongside any comparative estimate.
 
 ### Interpretation
 
 **Tumor Height Change Coefficient = -0.5 mm**
-- Treatment group had 0.5 mm greater decrease (more shrinkage) than reference
+- Treatment group had 0.5 mm greater decrease (more shrinkage) than reference within the model specification
 - Negative change = shrinkage (see [CALCULATIONS.md](CALCULATIONS.md))
 
 **Vision Change Coefficient = -0.2 logMAR**

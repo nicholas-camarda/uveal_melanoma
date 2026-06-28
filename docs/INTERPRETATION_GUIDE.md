@@ -231,14 +231,14 @@ Baseline tumor height   -0.42   -0.55, -0.29    <0.001
 
 **GKSRS Beta = -0.35 mm:**
 - GKSRS patients have 0.35 mm greater decrease in tumor height
-- **Clinical meaning:** GKSRS produces more tumor shrinkage
+- **Model meaning:** Within this example model, GKSRS is associated with greater tumor-height decrease
 
 **Baseline tumor height Beta = -0.42:**
 - Each 1 mm increase in baseline height → 0.42 mm greater decrease
 - Larger tumors shrink more (regression to mean)
 
 **Clinical Interpretation:**
-GKSRS treatment results in 0.35 mm greater tumor height reduction compared to PBT (β=-0.35, 95% CI: -0.68 to -0.02, p=0.038), after adjusting for baseline tumor height and other confounders.
+In this example, GKSRS is associated with 0.35 mm greater tumor-height reduction compared to PBT (β=-0.35, 95% CI: -0.68 to -0.02, p=0.038), after model adjustment. For reviewer-response tumor-height analyses, this kind of model output must be interpreted with the tumor-height timing audit because baseline-height adjustment does not correct unequal time to follow-up height measurement.
 
 For Objective 2 vision there are two different linear outputs:
 - `*_logmar_vision_change_adjusted_lm.html` models continuous logMAR change.

@@ -22,8 +22,8 @@ Key sub-objectives:
 - `1b. Metastatic progression`: compare rates of `mets_progression`
 - `1c. Overall survival`: compare survival after primary treatment
 - `1d. Progression-free survival`: compare progression-free survival in the current pipeline's efficacy framework
-- `1e. Tumor height change (primary)`: evaluate change from `initial_tumor_height` to `last_height`
-- `1f. Tumor height change (sensitivity)`: retain the same clinical question with the pipeline's sensitivity-model specification
+- `1e. Tumor height change (primary)`: evaluate change from `initial_tumor_height` to `last_height` with timing-audit context
+- `1f. Tumor height change (sensitivity)`: retain the same clinical question while adding baseline tumor height to the model; this does not address unequal follow-up height-assessment timing
 - `1g. Subgroup analysis`: evaluate whether efficacy patterns differ across baseline subgroups
 
 Legacy exploratory note:
@@ -35,6 +35,7 @@ Tumor-height note:
 
 - The source planning document explicitly asks for pretreatment-versus-follow-up tumor-height change.
 - It also states that for retreated local progression, the retreatment context should use `initial_tumor_height - recurrence1_pretreatment_height` when that question is relevant.
+- Reviewer-response interpretation should treat tumor-height change as secondary/descriptive unless the timing audit supports a stronger comparative statement.
 
 ### Objective 1 Subgroup Scope
 

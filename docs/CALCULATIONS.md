@@ -72,6 +72,10 @@ height_change = case_when(
 - **Positive values:** Tumor growth, indicating treatment failure or progression
 - **Larger negative values:** Greater tumor response to treatment
 
+### **Reviewer-Response Interpretation Limit**
+
+Tumor-height change is not a time-to-event endpoint, and follow-up height measurements are not taken at a standardized post-treatment time. The pipeline writes a tumor-height timing audit using treatment-to-`last_height_date` intervals. Baseline tumor-height adjustment addresses baseline size imbalance only; it does not correct unequal height-assessment timing between treatment groups.
+
 ### **Location in Code**
 
 `scripts/data_helper/data_derivation.R`, lines ~98-103
