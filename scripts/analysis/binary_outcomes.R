@@ -305,6 +305,8 @@ analyze_binary_outcome_rates <- function(
             NULL
         }
         if (!is.null(output_dir)) {
+            route_prefix <- if (outcome_var == "recurrence1") "obj1_recurrence" else "obj1_mets"
+            event_support_dir <- resolve_route_output_dir(output_dirs, route_prefix, "event_support")
             write_readable_xlsx(
                 list(
                     descriptive_event_counts = rates,
@@ -312,7 +314,7 @@ analyze_binary_outcome_rates <- function(
                     competing_risk_support = cumulative_incidence$support,
                     estimand_notes = cumulative_incidence$notes
                 ),
-                path = file.path(output_dir, paste0(prefix, outcome_var, "_event_support_summary.xlsx"))
+                path = file.path(event_support_dir, paste0(prefix, outcome_var, "_event_support_summary.xlsx"))
             )
         }
     }

@@ -16,6 +16,8 @@ Goal: compare efficacy outcomes after the primary treatment modalities used in t
 
 Current pipeline objective: `01_Efficacy/`
 
+**Reading order within each survival endpoint folder:** event support (recurrence/mets only) → KM curves → Cox models and effect summaries → RMST → survival-rate tables → PH diagnostics → capped Cox sensitivity (OS/PFS only). Tumor-height primary outputs use `01_descriptive/` → `02_models/` → `03_timing_audit/`; sensitivity tumor-height outputs remain flat under `f_tumor_height_sensitivity/`.
+
 Key sub-objectives:
 
 - `1a. Local recurrence`: compare rates of `recurrence1`
@@ -59,6 +61,8 @@ Goal: compare treatment-related visual and radiation-toxicity outcomes after the
 
 Current pipeline objective: `02_Safety/`
 
+**Reading order within each safety endpoint folder:** descriptive summaries (`01_descriptive/`) → adjusted models (`02_adjusted_models/`) → effect-summary workbook (`03_effect_summary/`). Vision adds minimum-follow-up and latest-VA sensitivities under `04_sensitivity/`.
+
 Key sub-objectives:
 
 - `2a. Vision change`: evaluate change in vision from `initial_vision` to `last_vision`
@@ -77,6 +81,8 @@ Objective 2d retains all recorded SRD causes, including mass-induced cases when 
 Goal: evaluate outcomes after second-line treatment among patients who develop local progression after primary therapy.
 
 Current pipeline objective: `03_Repeat_Radiation/`
+
+**Reading order within `a_pfs2/`:** cohort support (`01_cohort_support/`) → KM/Cox/RMST/survival-rate folders when modeling runs → PH diagnostics (`06_ph_diagnostics/`). Sparse cohorts may contain only cohort support, Cox skip artifacts, and PH skip artifacts.
 
 Primary sub-objective:
 

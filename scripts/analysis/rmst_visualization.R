@@ -387,7 +387,7 @@ plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dir
         return(combined_plot)
     }
 
-    output_dir <- ensure_output_dir(resolve_obj4_output_dir(output_dirs, output_dir, "rmst"))
+    output_dir <- ensure_output_dir(resolve_endpoint_output_dir(output_dirs, output_dir, "rmst"))
 
     filename <- paste0(prefix, make_filename_safe(outcome_label), "_rmst_pvalue_progression.png")
     if (is.null(filename) || filename == "" || is.na(filename)) {

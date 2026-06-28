@@ -296,56 +296,181 @@ write_readable_xlsx <- function(x,
 #' @return List of created directory paths
 #' @examples
 #' create_output_structure("~/ProjectsRuntime/uveal_melanoma/Analysis/uveal_full")
-create_output_structure <- function(cohort_dir) {
-    # Define cohort-specific objective-based directory structure
-    dirs <- list(
-        # OBJECTIVE 1: Efficacy of PBT vs GKSRS
-        obj1_recurrence = file.path(cohort_dir, "01_Efficacy", "a_recurrence"),
-        obj1_recurrence_1a1 = file.path(cohort_dir, "01_Efficacy", "a_recurrence", "1a1_recurrence_stratified_os"),
-        obj1_recurrence_1a2 = file.path(cohort_dir, "01_Efficacy", "a_recurrence", "1a2_recurrence_stratified_pfs"),
-        obj1_mets = file.path(cohort_dir, "01_Efficacy", "b_metastatic_progression"),
-        obj1_mets_2a1 = file.path(cohort_dir, "01_Efficacy", "b_metastatic_progression", "2a1_metastasis_stratified_os"),
-        obj1_mets_2a2 = file.path(cohort_dir, "01_Efficacy", "b_metastatic_progression", "2a2_metastasis_stratified_pfs"),
-        obj1_os = file.path(cohort_dir, "01_Efficacy", "c_overall_survival"),
-        obj1_pfs = file.path(cohort_dir, "01_Efficacy", "d_progression_free_survival"),
-        obj1_ph_diagnostics = file.path(cohort_dir, "01_Efficacy", "h_proportional_hazards_diagnostics"),
-        obj1_height_primary = file.path(cohort_dir, "01_Efficacy", "e_tumor_height_primary"),
-        obj1_height_sensitivity = file.path(cohort_dir, "01_Efficacy", "f_tumor_height_sensitivity"),
-        obj1_subgroup_primary = file.path(cohort_dir, "01_Efficacy", "g_subgroup_analysis", "tumor_height_primary"),
+ENDPOINT_ARTIFACT_FOLDER_SLUGS <- list(
+    event_support = "event_support",
+    km = "km_curves",
+    cox = "cox_models",
+    rmst = "rmst_analysis",
+    summary = "summary_tables",
+    ph = "ph_diagnostics",
+    sensitivity = "sensitivity",
+    cohort_support = "cohort_support",
+    descriptive = "descriptive",
+    adjusted_models = "adjusted_models",
+    effect_summary = "effect_summary",
+    models = "models",
+    timing_audit = "timing_audit",
+    validation = "validation",
+    cif = "cif_curves",
+    base = ""
+)
+
+ENDPOINT_PROFILES <- list(
+    event_support_survival = c("event_support", "km", "cox", "rmst", "summary", "ph"),
+    capped_survival = c("km", "cox", "rmst", "summary", "ph", "sensitivity"),
+    pfs2_survival = c("cohort_support", "km", "cox", "rmst", "summary", "ph"),
+    safety_vision = c("descriptive", "adjusted_models", "effect_summary", "sensitivity"),
+    safety_toxicity = c("descriptive", "adjusted_models", "effect_summary"),
+    tumor_height_primary = c("descriptive", "models", "timing_audit")
+)
+
+ENDPOINT_PROFILE_BY_ROUTE_PREFIX <- c(
+    obj1_recurrence = "event_support_survival",
+    obj1_mets = "event_support_survival",
+    obj1_os = "capped_survival",
+    obj1_pfs = "capped_survival",
+    obj3_pfs2 = "pfs2_survival",
+    obj2_vision = "safety_vision",
+    obj2_retinopathy = "safety_toxicity",
+    obj2_nvg = "safety_toxicity",
+    obj2_srd = "safety_toxicity",
+    obj1_height_primary = "tumor_height_primary"
+)
+
+#' Build numbered subfolder name for an endpoint profile artifact type
+#'
+#' @param profile_id Profile identifier from `ENDPOINT_PROFILES`.
+#' @param artifact_type Semantic artifact type.
+#' @return Character folder name such as `05_ph_diagnostics`.
+profile_folder_name <- function(profile_id, artifact_type) {
+    profile_types <- ENDPOINT_PROFILES[[profile_id]]
+    if (is.null(profile_types) || !artifact_type %in% profile_types) {
+        return(artifact_type)
+    }
+    idx <- match(artifact_type, profile_types)
+    slug <- ENDPOINT_ARTIFACT_FOLDER_SLUGS[[artifact_type]]
+    sprintf("%02d_%s", idx, slug)
+}
+
+#' Register numbered artifact subdirectories for an endpoint route prefix
+#'
+#' @param dirs Existing output directory list.
+#' @param route_prefix Route key prefix such as `obj1_os`.
+#' @param base_path Endpoint base directory.
+#' @param profile_id Profile identifier from `ENDPOINT_PROFILES`.
+#' @return Updated output directory list.
+append_endpoint_subdirs <- function(dirs, route_prefix, base_path, profile_id) {
+    profile_types <- ENDPOINT_PROFILES[[profile_id]]
+    if (is.null(profile_types)) {
+        return(dirs)
+    }
+    for (artifact_type in profile_types) {
+        folder_name <- profile_folder_name(profile_id, artifact_type)
+        key <- paste0(route_prefix, "_", artifact_type)
+        dirs[[key]] <- file.path(base_path, folder_name)
+    }
+    dirs
+}
+
+#' Resolve a route prefix and artifact type to an output directory
+#'
+#' @param output_dirs Named output directory list.
+#' @param route_prefix Route key such as `obj1_os`.
+#' @param artifact_type Semantic artifact type.
+#' @return Resolved directory path.
+resolve_route_output_dir <- function(output_dirs, route_prefix, artifact_type) {
+    if (is.null(output_dirs) || is.null(route_prefix)) {
+        return(getwd())
+    }
+    base_dir <- output_dirs[[route_prefix]]
+    if (is.null(base_dir)) {
+        return(getwd())
+    }
+    resolve_endpoint_output_dir(output_dirs, base_dir, artifact_type)
+}
+
+#' Define the objective-based directory map for a single cohort
+#'
+#' Returns a named list of directory paths for every endpoint, sub-analysis,
+#' and cross-cutting report before endpoint subdirectory expansion.
+#' Objective 1 (Efficacy), Objective 2 (Safety), Objective 3 (Repeat
+#' Radiation), and Objective 4 (GEP Validation) are all represented, along
+#' with general cross-cutting outputs (baseline, treatment duration).
+#'
+#' @param cohort_dir Base directory for this specific cohort.
+#' @return Named list of canonical directory paths.
+define_objective_directory_map <- function(cohort_dir) {
+    list(
+        # ── Objective 1: Efficacy of PBT vs GKSRS ──────────────────────
+        obj1_recurrence           = file.path(cohort_dir, "01_Efficacy", "a_recurrence"),
+        obj1_recurrence_1a1       = file.path(cohort_dir, "01_Efficacy", "a_recurrence", "1a1_recurrence_stratified_os"),
+        obj1_recurrence_1a2       = file.path(cohort_dir, "01_Efficacy", "a_recurrence", "1a2_recurrence_stratified_pfs"),
+        obj1_mets                 = file.path(cohort_dir, "01_Efficacy", "b_metastatic_progression"),
+        obj1_mets_2a1             = file.path(cohort_dir, "01_Efficacy", "b_metastatic_progression", "2a1_metastasis_stratified_os"),
+        obj1_mets_2a2             = file.path(cohort_dir, "01_Efficacy", "b_metastatic_progression", "2a2_metastasis_stratified_pfs"),
+        obj1_os                   = file.path(cohort_dir, "01_Efficacy", "c_overall_survival"),
+        obj1_pfs                  = file.path(cohort_dir, "01_Efficacy", "d_progression_free_survival"),
+        obj1_height_primary       = file.path(cohort_dir, "01_Efficacy", "e_tumor_height_primary"),
+        obj1_height_sensitivity   = file.path(cohort_dir, "01_Efficacy", "f_tumor_height_sensitivity"),
+        obj1_subgroup_primary     = file.path(cohort_dir, "01_Efficacy", "g_subgroup_analysis", "tumor_height_primary"),
         obj1_subgroup_sensitivity = file.path(cohort_dir, "01_Efficacy", "g_subgroup_analysis", "tumor_height_sensitivity"),
-        # obj1_subgroup_clinical = file.path(cohort_dir, "01_Efficacy", "g_subgroup_analysis", "clinical_outcomes"),
-        obj1_forest_plots = file.path(cohort_dir, "01_Efficacy", "g_subgroup_analysis", "forest_plots"),
+        # obj1_subgroup_clinical   = file.path(cohort_dir, "01_Efficacy", "g_subgroup_analysis", "clinical_outcomes"),
+        obj1_forest_plots         = file.path(cohort_dir, "01_Efficacy", "g_subgroup_analysis", "forest_plots"),
 
-        # OBJECTIVE 2: Safety/Toxicity of PBT vs GKSRS
-        obj2_vision = file.path(cohort_dir, "02_Safety", "a_vision_changes"),
+        # ── Objective 2: Safety / Toxicity of PBT vs GKSRS ─────────────
+        obj2_vision      = file.path(cohort_dir, "02_Safety", "a_vision_changes"),
         obj2_retinopathy = file.path(cohort_dir, "02_Safety", "b_retinopathy"),
-        obj2_nvg = file.path(cohort_dir, "02_Safety", "c_neovascular_glaucoma"),
-        obj2_srd = file.path(cohort_dir, "02_Safety", "d_serous_retinal_detachment"),
+        obj2_nvg         = file.path(cohort_dir, "02_Safety", "c_neovascular_glaucoma"),
+        obj2_srd         = file.path(cohort_dir, "02_Safety", "d_serous_retinal_detachment"),
 
-        # OBJECTIVE 3: Efficacy of Repeat Radiation
+        # ── Objective 3: Efficacy of Repeat Radiation ───────────────────
         obj3_pfs2 = file.path(cohort_dir, "03_Repeat_Radiation", "a_pfs2"),
-        obj3_ph_diagnostics = file.path(cohort_dir, "03_Repeat_Radiation", "b_proportional_hazards_diagnostics"),
 
-        # OBJECTIVE 4: GEP Predictive Accuracy
-        # Base outcome folders (kept for compatibility)
-        obj4_mfs = file.path(cohort_dir, "04_GEP_Validation", "a_metastasis_free_survival"),
-        obj4_mss = file.path(cohort_dir, "04_GEP_Validation", "b_melanoma_specific_survival"),
+        # ── Objective 4: GEP Predictive Accuracy ────────────────────────
+        obj4_mfs            = file.path(cohort_dir, "04_GEP_Validation", "a_metastasis_free_survival"),
+        obj4_mss            = file.path(cohort_dir, "04_GEP_Validation", "b_melanoma_specific_survival"),
         obj4_ph_diagnostics = file.path(cohort_dir, "04_GEP_Validation", "c_proportional_hazards_diagnostics"),
         # MFS-specific subfolders
-        obj4_mfs_km = file.path(cohort_dir, "04_GEP_Validation", "a_metastasis_free_survival", "01_km_curves"),
-        obj4_mfs_cox = file.path(cohort_dir, "04_GEP_Validation", "a_metastasis_free_survival", "02_cox_models"),
-        obj4_mfs_rmst = file.path(cohort_dir, "04_GEP_Validation", "a_metastasis_free_survival", "03_rmst_analysis"),
+        obj4_mfs_km         = file.path(cohort_dir, "04_GEP_Validation", "a_metastasis_free_survival", "01_km_curves"),
+        obj4_mfs_cox        = file.path(cohort_dir, "04_GEP_Validation", "a_metastasis_free_survival", "02_cox_models"),
+        obj4_mfs_rmst       = file.path(cohort_dir, "04_GEP_Validation", "a_metastasis_free_survival", "03_rmst_analysis"),
         obj4_mfs_validation = file.path(cohort_dir, "04_GEP_Validation", "a_metastasis_free_survival", "04_validation"),
-        obj4_mfs_summary = file.path(cohort_dir, "04_GEP_Validation", "a_metastasis_free_survival", "05_summary_tables"),
+        obj4_mfs_summary    = file.path(cohort_dir, "04_GEP_Validation", "a_metastasis_free_survival", "05_summary_tables"),
         # MSS-specific subfolders (intentionally asymmetric with MFS)
-        obj4_mss_cif = file.path(cohort_dir, "04_GEP_Validation", "b_melanoma_specific_survival", "01_cif_curves"),
+        obj4_mss_cif        = file.path(cohort_dir, "04_GEP_Validation", "b_melanoma_specific_survival", "01_cif_curves"),
         obj4_mss_validation = file.path(cohort_dir, "04_GEP_Validation", "b_melanoma_specific_survival", "02_validation"),
-        obj4_mss_summary = file.path(cohort_dir, "04_GEP_Validation", "b_melanoma_specific_survival", "03_summary_tables"),
+        obj4_mss_summary    = file.path(cohort_dir, "04_GEP_Validation", "b_melanoma_specific_survival", "03_summary_tables"),
 
-        # Cross-cutting analyses (baseline characteristics go here for each cohort)
+        # ── Cross-cutting outputs ──────────────────────────────────────
         baseline_characteristics = file.path(cohort_dir, "00_General", "baseline_characteristics"),
-        treatment_duration = file.path(cohort_dir, "00_General", "treatment_duration")
+        treatment_duration       = file.path(cohort_dir, "00_General", "treatment_duration")
     )
+}
+
+#' Create organized output directory structure based on study objectives
+#'
+#' Builds the full directory tree for a cohort — Objective 1–4 endpoints,
+#' endpoint-specific subfolders (KM, Cox, RMST, PH diagnostics, …), and
+#' cross-cutting outputs — then creates any missing directories on disk.
+#'
+#' @param cohort_dir Base directory for this specific cohort.
+#' @return List of all created directory paths.
+#' @examples
+#' create_output_structure("~/ProjectsRuntime/uveal_melanoma/Analysis/uveal_full")
+create_output_structure <- function(cohort_dir) {
+    dirs <- define_objective_directory_map(cohort_dir)
+
+    # Expand numbered artifact subdirectories from endpoint profiles
+    dirs <- append_endpoint_subdirs(dirs, "obj1_recurrence",      dirs$obj1_recurrence,      "event_support_survival")
+    dirs <- append_endpoint_subdirs(dirs, "obj1_mets",            dirs$obj1_mets,            "event_support_survival")
+    dirs <- append_endpoint_subdirs(dirs, "obj1_os",              dirs$obj1_os,              "capped_survival")
+    dirs <- append_endpoint_subdirs(dirs, "obj1_pfs",             dirs$obj1_pfs,             "capped_survival")
+    dirs <- append_endpoint_subdirs(dirs, "obj1_height_primary",  dirs$obj1_height_primary,  "tumor_height_primary")
+    dirs <- append_endpoint_subdirs(dirs, "obj2_vision",          dirs$obj2_vision,          "safety_vision")
+    dirs <- append_endpoint_subdirs(dirs, "obj2_retinopathy",     dirs$obj2_retinopathy,     "safety_toxicity")
+    dirs <- append_endpoint_subdirs(dirs, "obj2_nvg",             dirs$obj2_nvg,             "safety_toxicity")
+    dirs <- append_endpoint_subdirs(dirs, "obj2_srd",             dirs$obj2_srd,             "safety_toxicity")
+    dirs <- append_endpoint_subdirs(dirs, "obj3_pfs2",            dirs$obj3_pfs2,            "pfs2_survival")
 
     # Create all directories
     for (dir_name in names(dirs)) {
@@ -358,10 +483,16 @@ create_output_structure <- function(cohort_dir) {
         }
     }
 
-
-    return(dirs)
+    dirs
 }
 
+#' Normalize a file path safely
+#'
+#' Wraps [base::normalizePath()] with guards against NULL, NA, and empty input.
+#' Always uses forward slashes for cross-platform consistency.
+#'
+#' @param path A file path (character), or NULL/NA.
+#' @return Normalized path string, or `NA_character_` if input is not usable.
 safe_normalize_path <- function(path) {
     if (is.null(path) || is.na(path) || !nzchar(path)) {
         return(NA_character_)
@@ -369,7 +500,28 @@ safe_normalize_path <- function(path) {
     normalizePath(path, winslash = "/", mustWork = FALSE)
 }
 
-resolve_obj4_output_dir <- function(output_dirs, base_dir, artifact_type = c("base", "km", "cox", "rmst", "validation", "summary", "cif")) {
+#' Resolve an artifact-type subdirectory within an endpoint base directory
+#'
+#' Given an endpoint base directory and an artifact type (km, cox, rmst,
+#' summary, ph, sensitivity, etc.), returns the appropriate numbered
+#' subdirectory. Handles special routing for Objective 4 (MFS vs MSS) and
+#' for generic route-prefix endpoints.
+#'
+#' @param output_dirs Named output directory list from [create_output_structure()].
+#' @param base_dir Endpoint base directory.
+#' @param artifact_type Semantic artifact type (km, cox, rmst, summary, ph,
+#'   sensitivity, cohort_support, descriptive, adjusted_models,
+#'   effect_summary, models, timing_audit, validation, cif, base).
+#' @return Resolved output directory path.
+resolve_endpoint_output_dir <- function(
+    output_dirs,
+    base_dir,
+    artifact_type = c(
+        "base", "event_support", "km", "cox", "rmst", "summary", "ph", "sensitivity",
+        "cohort_support", "descriptive", "adjusted_models", "effect_summary", "models",
+        "timing_audit", "validation", "cif"
+    )
+) {
     artifact_type <- match.arg(artifact_type)
 
     if (is.null(output_dirs) || is.null(base_dir)) {
@@ -389,7 +541,7 @@ resolve_obj4_output_dir <- function(output_dirs, base_dir, artifact_type = c("ba
             rmst = "obj4_mfs_rmst",
             validation = "obj4_mfs_validation",
             summary = "obj4_mfs_summary",
-            cif = "obj4_mfs_summary"
+            cif = "obj4_mss_cif"
         )
         return(output_dirs[[key]] %||% base_dir)
     }
@@ -408,9 +560,43 @@ resolve_obj4_output_dir <- function(output_dirs, base_dir, artifact_type = c("ba
         return(output_dirs[[key]] %||% base_dir)
     }
 
+    route_prefixes <- names(ENDPOINT_PROFILE_BY_ROUTE_PREFIX)
+    for (route_prefix in route_prefixes) {
+        route_base <- output_dirs[[route_prefix]] %||% NULL
+        if (is.null(route_base)) {
+            next
+        }
+        if (!identical(safe_normalize_path(route_base), normalized_base)) {
+            next
+        }
+        sub_key <- paste0(route_prefix, "_", artifact_type)
+        if (!is.null(output_dirs[[sub_key]])) {
+            return(output_dirs[[sub_key]])
+        }
+        profile_id <- ENDPOINT_PROFILE_BY_ROUTE_PREFIX[[route_prefix]]
+        return(file.path(base_dir, profile_folder_name(profile_id, artifact_type)))
+    }
+
     base_dir
 }
 
+#' Resolve an Objective-4 output directory (convenience wrapper)
+#'
+#' Calls [resolve_endpoint_output_dir()] with Obj-4-specific artifact types.
+#'
+#' @param output_dirs Named output directory list.
+#' @param base_dir Endpoint base directory.
+#' @param artifact_type One of `"base"`, `"km"`, `"cox"`, `"rmst"`,
+#'   `"validation"`, `"summary"`, or `"cif"`.
+#' @return Resolved output directory path.
+resolve_obj4_output_dir <- function(output_dirs, base_dir, artifact_type = c("base", "km", "cox", "rmst", "validation", "summary", "cif")) {
+    resolve_endpoint_output_dir(output_dirs, base_dir, artifact_type)
+}
+
+#' Ensure a directory exists, creating it if needed
+#'
+#' @param dir_path Directory path to create.
+#' @return The directory path (invisibly).
 ensure_output_dir <- function(dir_path) {
     if (!dir.exists(dir_path)) {
         dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
@@ -455,6 +641,14 @@ format_levels_for_display <- function(data) {
     formatted
 }
 
+#' Format a GEP log-scale p-value to scientific notation
+#'
+#' Converts a natural-log p-value to scientific notation string (e.g.,
+#' `"1.234e-05"`). Handles -Inf → `"0"` and non-finite → `"NA"`.
+#'
+#' @param log_p_value Natural-log p-value.
+#' @param significant_digits Number of significant digits for the mantissa.
+#' @return Character string in scientific notation.
 format_gep_log_p_value <- function(log_p_value, significant_digits = 4) {
     if (is.infinite(log_p_value) && log_p_value < 0) {
         return("0")
@@ -485,6 +679,16 @@ format_gep_log_p_value <- function(log_p_value, significant_digits = 4) {
     sprintf("%se%s%s", mantissa_text, exponent_sign, exponent_text)
 }
 
+#' Compute the natural-log p-value from a chi-squared statistic
+#'
+#' Returns `stats::pchisq(…, log.p = TRUE)` with guards against invalid
+#' inputs (negative statistic, non-positive df, NA).
+#'
+#' @param chisq_statistic Chi-squared test statistic.
+#' @param df Degrees of freedom.
+#' @param max_terms Unused; reserved for future series-expansion cutoff.
+#' @return Natural-log p-value, or `-Inf` when numerically indistinguishable
+#'   from zero.
 calculate_chisq_log_p_value <- function(chisq_statistic, df, max_terms = 12) {
     if (length(chisq_statistic) == 0 || length(df) == 0 || is.na(chisq_statistic) || is.na(df) ||
         !is.finite(chisq_statistic) || !is.finite(df) || chisq_statistic < 0 || df <= 0) {
@@ -499,6 +703,17 @@ calculate_chisq_log_p_value <- function(chisq_statistic, df, max_terms = 12) {
     -Inf
 }
 
+#' Format a GEP p-value for display
+#'
+#' Renders a p-value with a fixed number of decimal places, falling back to
+#' scientific notation when the value is below the decimal threshold.
+#' Optionally accepts a pre-computed log-scale p-value for extra precision.
+#'
+#' @param p_value Numeric p-value.
+#' @param log_p_value Optional natural-log p-value used when `p_value == 0`.
+#' @param decimal_places Decimal places for standard formatting.
+#' @param significant_digits Significant digits for scientific notation.
+#' @return Character string.
 format_gep_p_value <- function(p_value, log_p_value = NULL, decimal_places = 4, significant_digits = 4) {
     if (length(p_value) == 0 || is.na(p_value) || !is.finite(p_value)) {
         if (!is.null(log_p_value) && length(log_p_value) > 0 && !is.na(log_p_value)) {
@@ -522,6 +737,14 @@ format_gep_p_value <- function(p_value, log_p_value = NULL, decimal_places = 4, 
     sprintf(paste0("%.", decimal_places, "f"), p_value)
 }
 
+#' Load pre-collapse derived data for a dataset
+#'
+#' Reads the `*_derived_precollapse.rds` file from the processed-data
+#' directory so that downstream functions can restore pre-collapse factor
+#' levels and derived variables.
+#'
+#' @param dataset_name Dataset identifier (e.g., `"uveal_melanoma_full_cohort"`).
+#' @return A data frame, or `NULL` if the file is unavailable.
 load_precollapse_data <- function(dataset_name = NULL) {
     if (is.null(dataset_name) || !exists("PROCESSED_DATA_DIR", inherits = TRUE)) {
         return(NULL)
@@ -538,6 +761,18 @@ load_precollapse_data <- function(dataset_name = NULL) {
     )
 }
 
+#' Restore pre-collapse versions of selected variables
+#'
+#' Matches rows by patient key (id, patient_id, …) and replaces values in
+#' the current analytic dataset with their pre-collapse originals. When no
+#' key column is available, falls back to column-wise replacement if row
+#' counts match.
+#'
+#' @param data Current analytic data frame.
+#' @param dataset_name Dataset identifier passed to [load_precollapse_data()].
+#' @param variables Optional character vector of variables to restore; if
+#'   `NULL`, all shared columns are restored.
+#' @return Data frame with restored pre-collapse values.
 restore_precollapse_variables <- function(data, dataset_name = NULL, variables = NULL) {
     precollapse_data <- load_precollapse_data(dataset_name)
     if (is.null(precollapse_data)) {
@@ -587,6 +822,17 @@ restore_precollapse_variables <- function(data, dataset_name = NULL, variables =
     data
 }
 
+#' Restore GEP display variables from pre-collapse data
+#'
+#' Convenience wrapper around [restore_precollapse_variables()] that
+#' defaults to restoring GEP-classification columns (`biopsy1_gep`,
+#' `gep_class_simple`, `prame_status`, `gep12_prame_status`).
+#'
+#' @param data Current analytic data frame.
+#' @param dataset_name Dataset identifier.
+#' @param variables Optional character vector of variables to restore; if
+#'   `NULL`, the globals `GEP_DISPLAY_VARIABLES` or a built-in default are used.
+#' @return Data frame with restored GEP display variables.
 restore_gep_display_variables <- function(data, dataset_name = NULL, variables = NULL) {
     if (is.null(variables)) {
         if (exists("GEP_DISPLAY_VARIABLES", inherits = TRUE)) {
@@ -658,6 +904,16 @@ quiet_tbl_stack <- function(tbls) {
     gtsummary::tbl_stack(tbls = harmonized_tbls, quiet = TRUE)
 }
 
+#' Build a merged baseline characteristics summary table for a single cohort
+#'
+#' Produces a gtsummary table of baseline variables split by treatment group
+#' (PBT vs GKSRS) when both arms are present, or an overall summary otherwise.
+#' Fisher's exact test (simulated) is used for categorical comparisons.
+#'
+#' @param data Data frame of cohort observations.
+#' @param dataset_name Optional dataset id used for pre-collapse level restoration
+#'   and cohort-specific exclusions (e.g., `optic_nerve` in the restricted cohort).
+#' @return A `tbl_summary` object.
 build_merged_baseline_cohort_table <- function(data, dataset_name = NULL) {
     vars_to_summarize <- BASELINE_VARIABLES_TO_SUMMARIZE
     variable_labels <- get_variable_labels()
@@ -1362,20 +1618,13 @@ merge_recurrence_metastatic_progression_tables <- function(full_cohort_data, res
     return(invisible(NULL))
 }
 
-#' Merge adverse events tables from full and restricted cohorts
-#'
-#' Creates a merged table comparing adverse events between full and restricted cohorts
-#' using gtsummary's built-in functions for clean, publication-ready output.
-#' Follows the exact same pattern as merge_cohort_tables.
-#'
-#' @param full_cohort_data Data frame containing full cohort data
-#' @param restricted_cohort_data Data frame containing restricted cohort data
-#' @param output_path Directory where merged tables should be saved
-#' @return Invisibly returns NULL
-#'
-#' @examples
-#' merge_adverse_events_tables(full_data, restricted_data, "~/ProjectsRuntime/uveal_melanoma/Analysis/merged_tables/")
 #' Format count (n) and percent strings without trailing decimals
+#'
+#' Converts gtsummary stat column values like `"15.0 (25.0%)"` to clean
+#' integer displays like `"15 (25%)"`.
+#'
+#' @param values Character vector of stat cell values.
+#' @return Character vector with cleaned count/percent formatting.
 format_count_percent_stat <- function(values) {
     if (is.null(values)) {
         return(values)
@@ -1401,6 +1650,15 @@ format_count_percent_stat <- function(values) {
     }, character(1), USE.NAMES = FALSE)
 }
 
+#' Apply count/percent formatting to all stat columns of a gtsummary table
+#'
+#' Strips trailing decimal zeros from counts and percentages in `stat_*`
+#' columns so that integer counts display cleanly (e.g., `"15 (25%)"` instead
+#' of `"15.0 (25.0%)"`).
+#'
+#' @param tbl A `tbl_summary` object.
+#' @return The input table with formatted stat columns, or unchanged if not
+#'   a `tbl_summary`.
 format_count_percent_columns <- function(tbl) {
     if (!inherits(tbl, "tbl_summary")) {
         return(tbl)
@@ -1420,6 +1678,16 @@ format_count_percent_columns <- function(tbl) {
         })
 }
 
+#' Collapse binary-outcome gtsummary rows into the parent variable row
+#'
+#' For binary outcomes summarised as `"Y"` / `"Yes"`, the gtsummary table
+#' produces separate label and level rows.  This helper lifts the `"Y"`/`"Yes"`
+#' cell statistics (n, %, estimate, CI, p-value) up to the variable label row
+#' so that tables read more naturally — each variable occupies one row.
+#'
+#' @param tbl A `tbl_summary` object.
+#' @return The input table with `"Y"`/`"Yes"` level rows collapsed into the
+#'   corresponding label rows.
 collapse_binary_outcomes_to_cases <- function(tbl) {
     tbl %>%
         modify_table_body(function(body) {
@@ -1497,6 +1765,15 @@ merge_adverse_events_tables <- function(full_cohort_data, restricted_cohort_data
             available_full <- intersect(outcome_vars, names(full_cohort_prepared))
             available_restricted <- intersect(outcome_vars, names(restricted_cohort_prepared))
 
+            #' Summarise adverse-event variables for a single cohort
+            #'
+            #' Builds a stacked gtsummary table with vision-change line/bucket
+            #' distributions and binary toxicity outcomes (retinopathy, NVG, SRD).
+            #'
+            #' @param data Cohort data frame.
+            #' @param available_vars Character vector of adverse-event column names
+            #'   present in the data.
+            #' @return A stacked `tbl_stack` object.
             summarise_adverse_outcomes <- function(data, available_vars) {
                 if (length(available_vars) == 0) {
                     stop("No adverse event variables available for summarization")
@@ -1735,7 +2012,14 @@ export_repeat_treatment_descriptive_stats <- function(full_cohort_data, restrict
 
     tryCatch(
         {
-            # Function to process repeat treatment data for a cohort
+            #' Extract and label repeat-treatment records for a cohort
+            #'
+            #' Filters to patients with at least one repeat treatment, adds
+            #' cohort and count flags, and selects a standard column set.
+            #'
+            #' @param cohort_data Data frame for one cohort.
+            #' @param cohort_name Cohort label (e.g., `"Full Cohort"`).
+            #' @return Data frame of repeat-treatment patients.
             process_repeat_treatments <- function(cohort_data, cohort_name) {
                 # Identify patients with any repeat treatment
                 repeat_treatment_patients <- cohort_data %>%
@@ -1788,7 +2072,14 @@ export_repeat_treatment_descriptive_stats <- function(full_cohort_data, restrict
             # Combine datasets
             all_repeat_treatments <- bind_rows(full_repeat_treatments, restricted_repeat_treatments)
 
-            # Create summary statistics in wide format: treatments as rows, variables as columns
+            #' Build a treatment-type × variable summary table
+            #'
+            #' Produces a data frame where each row is a repeat-treatment
+            #' modality and columns carry counts, means, medians, and SDs for
+            #' categorical and continuous patient characteristics.
+            #'
+            #' @param data Combined repeat-treatment data frame.
+            #' @return Data frame with `Treatment_Type` as the first column.
             create_treatment_type_summary <- function(data) {
                 # Get unique repeat treatment types (excluding NA)
                 treatment_types <- unique(c(
@@ -1859,7 +2150,14 @@ export_repeat_treatment_descriptive_stats <- function(full_cohort_data, restrict
                 return(summary_data)
             }
             
-            # Create cohort distribution summary
+            #' Tabulate repeat-treatment counts by cohort and treatment arm
+            #'
+            #' Pivots the long-format repeat-treatment records to produce a
+            #' cohort × treatment-group count matrix.
+            #'
+            #' @param data Combined repeat-treatment data frame.
+            #' @return Data frame with columns `treatment_type`,
+            #'   `PBT_Full Cohort`, `GKSRS_Full Cohort`, …
             create_cohort_distribution_summary <- function(data) {
                 # Get unique repeat treatment types
                 treatment_types <- unique(c(

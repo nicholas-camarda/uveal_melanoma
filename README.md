@@ -157,9 +157,9 @@ Pipeline outputs are primarily written to the runtime analysis tree:
 Within each cohort folder, outputs follow a consistent layout:
 
 - `00_General/`: baseline characteristics, cohort summaries, treatment-duration summaries, exclusion summaries, reconciliation audit workbooks (including manual date-correction audit sheets), and Objective 0 validation bundles
-- `01_Efficacy/`: recurrence, metastasis, survival, tumor-height, subgroup outputs
-- `02_Safety/`: vision and radiation-related adverse-event outputs
-- `03_Repeat_Radiation/`: PFS-2 summaries and survival artifacts
+- `01_Efficacy/`: recurrence, metastasis, survival, tumor-height, subgroup outputs (primary inference artifacts use typed `01_`–`06_` subfolders per endpoint; legacy exploratory stratified OS/PFS folders and `g_subgroup_analysis/` stay unchanged)
+- `02_Safety/`: vision and radiation-related adverse-event outputs (descriptive → adjusted models → effect summary; vision adds `04_sensitivity/`)
+- `03_Repeat_Radiation/`: PFS-2 cohort support, survival artifacts, and PH diagnostics under `a_pfs2/`
 - `04_GEP_Validation/`: Objective 4 workbooks, plots, and unified summaries
 
 Objective 4 has a deliberate reading path:

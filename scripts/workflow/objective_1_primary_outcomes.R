@@ -318,7 +318,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     recurrence_time_to_event$ph_diagnostics <- run_or_skip_proportional_hazards_diagnostics(
         cox_model = recurrence_time_to_event$cox_model,
         outcome_name = "Local Recurrence-Free Probability",
-        output_dir = output_dirs$obj1_recurrence,
+        output_dir = resolve_route_output_dir(output_dirs, "obj1_recurrence", "ph"),
         file_prefix = paste0(prefix, "local_recurrence_free_probability_"),
         dataset_name = dataset_name,
         data = data,
@@ -328,7 +328,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         reason = "Local recurrence proportional hazards diagnostics were not run because no Cox model was fit."
     )
     annotate_objective1_survival_effect_summary(
-        output_dir = output_dirs$obj1_recurrence,
+        output_dir = resolve_route_output_dir(output_dirs, "obj1_recurrence", "cox"),
         prefix = prefix,
         outcome_label = "Local Recurrence-Free Probability",
         ph_diagnostics = recurrence_time_to_event$ph_diagnostics,
@@ -401,7 +401,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     mets_time_to_event$ph_diagnostics <- run_or_skip_proportional_hazards_diagnostics(
         cox_model = mets_time_to_event$cox_model,
         outcome_name = "Metastasis-Free Survival Probability",
-        output_dir = output_dirs$obj1_mets,
+        output_dir = resolve_route_output_dir(output_dirs, "obj1_mets", "ph"),
         file_prefix = paste0(prefix, "metastasis_free_survival_probability_"),
         dataset_name = dataset_name,
         data = data,
@@ -411,7 +411,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         reason = "Metastasis proportional hazards diagnostics were not run because no Cox model was fit."
     )
     annotate_objective1_survival_effect_summary(
-        output_dir = output_dirs$obj1_mets,
+        output_dir = resolve_route_output_dir(output_dirs, "obj1_mets", "cox"),
         prefix = prefix,
         outcome_label = "Metastasis-Free Survival Probability",
         ph_diagnostics = mets_time_to_event$ph_diagnostics,
@@ -478,7 +478,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
             os_analysis$ph_diagnostics <- run_or_skip_proportional_hazards_diagnostics(
                 cox_model = os_analysis$cox_model,
                 outcome_name = "Overall Survival Probability",
-                output_dir = output_dirs$obj1_ph_diagnostics,
+                output_dir = resolve_route_output_dir(output_dirs, "obj1_os", "ph"),
                 file_prefix = paste0(prefix, "overall_survival_probability_"),
                 dataset_name = dataset_name,
                 data = data,
@@ -491,7 +491,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         silent = TRUE
     )
     annotate_objective1_survival_effect_summary(
-        output_dir = output_dirs$obj1_os,
+        output_dir = resolve_route_output_dir(output_dirs, "obj1_os", "cox"),
         prefix = prefix,
         outcome_label = "Overall Survival Probability",
         ph_diagnostics = os_analysis$ph_diagnostics,
@@ -504,7 +504,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         horizon_months = 60,
         group_var = "treatment_group",
         confounders = confounders,
-        output_dir = output_dirs$obj1_os,
+        output_dir = resolve_route_output_dir(output_dirs, "obj1_os", "sensitivity"),
         prefix = prefix,
         analysis_label = "Overall Survival Probability",
         dataset_name = dataset_name
@@ -533,7 +533,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
             pfs_analysis$ph_diagnostics <- run_or_skip_proportional_hazards_diagnostics(
                 cox_model = pfs_analysis$cox_model,
                 outcome_name = "Progression-Free Survival Probability",
-                output_dir = output_dirs$obj1_ph_diagnostics,
+                output_dir = resolve_route_output_dir(output_dirs, "obj1_pfs", "ph"),
                 file_prefix = paste0(prefix, "progression_free_survival_probability_"),
                 dataset_name = dataset_name,
                 data = data,
@@ -546,7 +546,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         silent = TRUE
     )
     annotate_objective1_survival_effect_summary(
-        output_dir = output_dirs$obj1_pfs,
+        output_dir = resolve_route_output_dir(output_dirs, "obj1_pfs", "cox"),
         prefix = prefix,
         outcome_label = "Progression-Free Survival Probability",
         ph_diagnostics = pfs_analysis$ph_diagnostics,
@@ -559,7 +559,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         horizon_months = 60,
         group_var = "treatment_group",
         confounders = confounders,
-        output_dir = output_dirs$obj1_pfs,
+        output_dir = resolve_route_output_dir(output_dirs, "obj1_pfs", "sensitivity"),
         prefix = prefix,
         analysis_label = "Progression-Free Survival Probability",
         dataset_name = dataset_name
@@ -573,13 +573,13 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     tumor_size_summary <- summarize_tumor_size_by_treatment(
         data = data,
         size_var = "initial_tumor_height",
-        output_dir = output_dirs$obj1_height_primary,
+        output_dir = resolve_route_output_dir(output_dirs, "obj1_height_primary", "descriptive"),
         prefix = prefix
     )
     baseline_diameter_summary <- summarize_tumor_size_by_treatment(
         data = data,
         size_var = "initial_tumor_diameter",
-        output_dir = output_dirs$obj1_height_primary,
+        output_dir = resolve_route_output_dir(output_dirs, "obj1_height_primary", "descriptive"),
         prefix = prefix
     )
     logger::log_info(formatted("Tumor size by treatment group outputs completed", indent = 1))

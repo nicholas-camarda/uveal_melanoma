@@ -203,25 +203,23 @@ Analysis outputs follow a **cohort → objective → sub-objective** structure:
 │   │   │   ├── treatment_duration/
 │   │   │   └── removed_patients_summary.tsv
 │   │   ├── 01_Efficacy/
-│   │   │   ├── a_recurrence/
-│   │   │   ├── b_metastatic_progression/
-│   │   │   ├── c_overall_survival/
+│   │   │   ├── a_recurrence/              # typed subfolders: 01_event_support … 06_ph_diagnostics
+│   │   │   ├── b_metastatic_progression/  # typed subfolders: 01_event_support … 06_ph_diagnostics
+│   │   │   ├── c_overall_survival/        # typed subfolders: 01_km_curves … 06_sensitivity
 │   │   │   ├── d_progression_free_survival/
-│   │   │   ├── e_tumor_height_primary/
-│   │   │   ├── f_tumor_height_sensitivity/
-│   │   │   ├── g_subgroup_analysis/
-│   │   │   │   ├── tumor_height_primary/
-│   │   │   │   ├── tumor_height_sensitivity/
-│   │   │   │   └── forest_plots/
-│   │   │   └── h_proportional_hazards_diagnostics/
+│   │   │   ├── e_tumor_height_primary/    # 01_descriptive, 02_models, 03_timing_audit
+│   │   │   ├── f_tumor_height_sensitivity/  # flat sensitivity regression outputs
+│   │   │   └── g_subgroup_analysis/
+│   │   │       ├── tumor_height_primary/
+│   │   │       ├── tumor_height_sensitivity/
+│   │   │       └── forest_plots/
 │   │   ├── 02_Safety/
-│   │   │   ├── a_vision_changes/
-│   │   │   ├── b_retinopathy/
+│   │   │   ├── a_vision_changes/          # 01_descriptive … 04_sensitivity
+│   │   │   ├── b_retinopathy/             # 01_descriptive, 02_adjusted_models, 03_effect_summary
 │   │   │   ├── c_neovascular_glaucoma/
 │   │   │   └── d_serous_retinal_detachment/
 │   │   ├── 03_Repeat_Radiation/
-│   │   │   ├── a_pfs2/
-│   │   │   └── b_proportional_hazards_diagnostics/
+│   │   │   └── a_pfs2/                    # 01_cohort_support … 06_ph_diagnostics (conditional)
 │   │   └── 04_GEP_Validation/
 │   │       ├── a_metastasis_free_survival/
 │   │       └── b_melanoma_specific_survival/
@@ -473,13 +471,15 @@ The manual-correction sheet includes the corrected field, rationale, confidence 
 
 | Sub-objective | Method | Implementation | Outputs | Location |
 |---------------|--------|----------------|---------|----------|
-| **1a. Local Recurrence** | Time-to-event analysis with descriptive event support | `analyze_time_to_event_outcomes()` plus event-support summaries | Cox models/effect summaries (.html/.xlsx), PH diagnostics, KM plots (.png), descriptive event-support workbooks (.xlsx) | `{cohort}/01_Efficacy/a_recurrence/` |
-| **1b. Metastatic Progression** | Time-to-event analysis with descriptive event support | `analyze_time_to_event_outcomes()` plus event-support summaries | Cox models/effect summaries (.html/.xlsx), PH diagnostics, KM plots (.png), descriptive event-support workbooks (.xlsx) | `{cohort}/01_Efficacy/b_metastatic_progression/` |
-| **1c. Overall Survival** | Kaplan-Meier + Cox regression + RMST analysis | `analyze_time_to_event_outcomes()` | Survival tables (.xlsx), Cox models (.html), `overall_survival_probability_effect_summary.xlsx`, survival curves (.png), RMST plots (.png) | `{cohort}/01_Efficacy/c_overall_survival/` |
-| **1d. Progression-Free Survival** | Composite endpoint (local recurrence, metastatic progression, or death) | `analyze_time_to_event_outcomes()` | Survival tables (.xlsx), Cox models (.html), `progression_free_survival_probability_effect_summary.xlsx`, survival curves (.png), RMST plots (.png) | `{cohort}/01_Efficacy/d_progression_free_survival/` |
-| **1e. Tumor Height (Primary)** | Linear regression with the shared covariate set (`age_at_diagnosis`, `sex`, `location`) | `analyze_tumor_height_changes()` | Change summaries (.html), regression models (.html), height-assessment timing audit (.xlsx) | `{cohort}/01_Efficacy/e_tumor_height_primary/` |
-| **1f. Tumor Height (Sensitivity)** | Internal diagnostic change-score model including baseline tumor height, which is also part of the outcome definition | `analyze_tumor_height_changes()` | Regression models (.html) and diagnostics (.xlsx) | `{cohort}/01_Efficacy/f_tumor_height_sensitivity/` |
+| **1a. Local Recurrence** | Time-to-event analysis with descriptive event support | `analyze_time_to_event_outcomes()` plus event-support summaries | Event support (`01_event_support/`), KM (`02_km_curves/`), Cox + effect summary (`03_cox_models/`), RMST (`04_rmst_analysis/`), survival-rate tables (`05_summary_tables/`), PH (`06_ph_diagnostics/`) | `{cohort}/01_Efficacy/a_recurrence/` |
+| **1b. Metastatic Progression** | Time-to-event analysis with descriptive event support | `analyze_time_to_event_outcomes()` plus event-support summaries | Same Profile A layout as 1a | `{cohort}/01_Efficacy/b_metastatic_progression/` |
+| **1c. Overall Survival** | Kaplan-Meier + Cox regression + RMST analysis | `analyze_time_to_event_outcomes()` | KM (`01_km_curves/`), Cox + effect summary (`02_cox_models/`), RMST (`03_rmst_analysis/`), survival-rate tables (`04_summary_tables/`), PH (`05_ph_diagnostics/`), 5-year capped Cox (`06_sensitivity/`) | `{cohort}/01_Efficacy/c_overall_survival/` |
+| **1d. Progression-Free Survival** | Composite endpoint (local recurrence, metastatic progression, or death) | `analyze_time_to_event_outcomes()` | Same Profile B layout as 1c | `{cohort}/01_Efficacy/d_progression_free_survival/` |
+| **1e. Tumor Height (Primary)** | Linear regression with the shared covariate set (`age_at_diagnosis`, `sex`, `location`) | `analyze_tumor_height_changes()` | Descriptive summaries/plots (`01_descriptive/`), primary regression (`02_models/`), timing audit (`03_timing_audit/`) | `{cohort}/01_Efficacy/e_tumor_height_primary/` |
+| **1f. Tumor Height (Sensitivity)** | Internal diagnostic change-score model including baseline tumor height, which is also part of the outcome definition | `analyze_tumor_height_changes()` | Flat folder: sensitivity regression models (.html) and diagnostics (.xlsx) only | `{cohort}/01_Efficacy/f_tumor_height_sensitivity/` |
 | **1g. Subgroup Analysis** | Interaction testing across patient subgroups | `analyze_treatment_effect_subgroups_*()` | Subgroup tables (.xlsx), forest plots (.png), diagnostics (.xlsx) | `{cohort}/01_Efficacy/g_subgroup_analysis/` |
+
+**Objective 1 artifact routing:** proportional-hazards diagnostics are colocated per survival endpoint (`06_ph_diagnostics/` for recurrence/mets; `05_ph_diagnostics/` for OS/PFS). HR effect summaries and PH interpretation columns live in each endpoint's Cox folder, not in survival-rate summary folders. The former centralized `h_proportional_hazards_diagnostics/` folder is no longer written.
 
 Legacy exploratory note: recurrence-stratified and metastasis-stratified OS/PFS subfolders can also appear under `a_recurrence/` and `b_metastatic_progression/`. These are retained historical one-off post-baseline summaries, not part of the formal Objective 1 contract, and should not be interpreted as valid baseline treatment comparisons.
 
@@ -489,10 +489,10 @@ Tumor-height interpretation note: because `height_change` subtracts baseline tum
 
 | Sub-objective | Method | Implementation | Outputs | Location |
 |---------------|--------|----------------|---------|----------|
-| **2a. Vision Changes** | Descriptive logMAR/Snellen reporting plus adjusted linear, ordinal, follow-up, and latest-VA reviewer-predictor sensitivity analyses | `analyze_visual_acuity_changes()` | `vision_changes.html`, descriptive Snellen summary/distribution workbooks, adjusted LogMAR change linear model (.html + diagnostics), latest LogMAR reviewer-predictor sensitivity model (.html + diagnostics), adjusted Snellen Line Change linear model (.html + diagnostics), adjusted Snellen Line Change Distribution ordinal model (.html + diagnostics), `vision_followup_sensitivity.xlsx`, and `vision_effect_summary.xlsx` | `{cohort}/02_Safety/a_vision_changes/` |
-| **2b. Radiation Retinopathy** | Recorded burden-by-follow-up logistic analysis | `analyze_radiation_complications()` | Complication rates (.xlsx), adjusted logistic model (.html + diagnostics), `retinopathy_effect_summary.xlsx`, or explicit skip artifact when model not fit | `{cohort}/02_Safety/b_retinopathy/` |
-| **2c. Neovascular Glaucoma** | Recorded burden-by-follow-up logistic analysis | `analyze_radiation_complications()` | Complication rates (.xlsx), adjusted logistic model (.html + diagnostics), `neovascular_glaucoma_effect_summary.xlsx`, or explicit skip artifact when model not fit | `{cohort}/02_Safety/c_neovascular_glaucoma/` |
-| **2d. Serous Retinal Detachment** | Recorded burden-by-follow-up logistic analysis (all recorded SRD causes in the published implementation) | `analyze_radiation_complications()` | Complication rates (.xlsx), adjusted logistic model (.html + diagnostics), `serous_retinal_detachment_effect_summary.xlsx`, or explicit skip artifact when model not fit | `{cohort}/02_Safety/d_serous_retinal_detachment/` |
+| **2a. Vision Changes** | Descriptive logMAR/Snellen reporting plus adjusted linear, ordinal, follow-up, and latest-VA reviewer-predictor sensitivity analyses | `analyze_visual_acuity_changes()` | Descriptive (`01_descriptive/`), adjusted models (`02_adjusted_models/`), `vision_effect_summary.xlsx` (`03_effect_summary/`), follow-up and latest-VA sensitivities (`04_sensitivity/`, including compact `va_minfu_*` model filenames) | `{cohort}/02_Safety/a_vision_changes/` |
+| **2b. Radiation Retinopathy** | Recorded burden-by-follow-up logistic analysis | `analyze_radiation_complications()` | Rates (`01_descriptive/`), logistic model (`02_adjusted_models/`), `retinopathy_effect_summary.xlsx` (`03_effect_summary/`), or explicit skip artifact when model not fit | `{cohort}/02_Safety/b_retinopathy/` |
+| **2c. Neovascular Glaucoma** | Recorded burden-by-follow-up logistic analysis | `analyze_radiation_complications()` | Same three-folder layout as 2b | `{cohort}/02_Safety/c_neovascular_glaucoma/` |
+| **2d. Serous Retinal Detachment** | Recorded burden-by-follow-up logistic analysis (all recorded SRD causes in the published implementation) | `analyze_radiation_complications()` | Same three-folder layout as 2b | `{cohort}/02_Safety/d_serous_retinal_detachment/` |
 
 Effect-summary workbooks follow model-family-specific inference conventions and should match the corresponding HTML tables: linear rows report mean differences with Wald CIs/p-values, logistic rows report ORs with model-based Wald CIs and the pipeline's standard term-level p-values, Cox rows report HRs with native Cox CIs/p-values, and ordinal rows report proportional-odds ORs with 95% Wald CIs and likelihood-ratio-test p-values. Objective 2 toxicity rows consume Objective 0-prepared burden fields (`retinopathy_burden_event`, `nvg_burden_event`, `srd_burden_event`) and label them as recorded burden by available follow-up, not time-to-toxicity incidence.
 
@@ -512,9 +512,9 @@ Objective 2a latest-VA reviewer-predictor sensitivity uses `last_vision` as the 
 
 **Implementation:** `analyze_pfs2()` in `scripts/workflow/objective_3_repeat_radiation.R`
 
-**Outputs:** PFS-2 characteristics tables (.xlsx), survival curves (.png), Cox models (.html)
+**Outputs:** Cohort support (`01_cohort_support/`: treatment summary, skip explanations), survival modeling artifacts when fit (`02_km_curves/`, `03_cox_models/`, `04_rmst_analysis/`, `05_summary_tables/`), PH diagnostics (`06_ph_diagnostics/`)
 
-**Location:** `{cohort}/03_Repeat_Radiation/a_pfs2/`
+**Location:** `{cohort}/03_Repeat_Radiation/a_pfs2/` with typed subfolders; the former `b_proportional_hazards_diagnostics/` mirror folder is no longer written.
 
 **Note:** Analysis automatically skips survival modeling when insufficient events present (minimum: 5 total events across 2+ treatment groups)
 

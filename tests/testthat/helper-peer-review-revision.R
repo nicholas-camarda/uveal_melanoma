@@ -31,32 +31,24 @@ expect_no_reviewer_facing_paths <- function(path) {
     )
 }
 
+#' Build typed endpoint output directories for tests
+#'
+#' Mirrors `create_output_structure()` registration for a route-prefix family.
+#'
+#' @param test_output_dir Cohort output root for the test harness.
+#' @param route_prefix_pattern Regex matching route keys to retain.
+#' @return Named list of base and artifact subdirectories.
+build_subdivided_output_dirs <- function(test_output_dir, route_prefix_pattern) {
+    dirs <- create_output_structure(test_output_dir)
+    dirs[grepl(route_prefix_pattern, names(dirs))]
+}
+
 build_peer_review_objective1_output_dirs <- function(test_output_dir) {
-    list(
-        obj1_recurrence = file.path(test_output_dir, "01_Efficacy", "a_recurrence"),
-        obj1_recurrence_1a1 = file.path(test_output_dir, "01_Efficacy", "a_recurrence", "1a1_recurrence_stratified_os"),
-        obj1_recurrence_1a2 = file.path(test_output_dir, "01_Efficacy", "a_recurrence", "1a2_recurrence_stratified_pfs"),
-        obj1_mets = file.path(test_output_dir, "01_Efficacy", "b_metastatic_progression"),
-        obj1_mets_2a1 = file.path(test_output_dir, "01_Efficacy", "b_metastatic_progression", "2a1_metastasis_stratified_os"),
-        obj1_mets_2a2 = file.path(test_output_dir, "01_Efficacy", "b_metastatic_progression", "2a2_metastasis_stratified_pfs"),
-        obj1_os = file.path(test_output_dir, "01_Efficacy", "c_overall_survival"),
-        obj1_pfs = file.path(test_output_dir, "01_Efficacy", "d_progression_free_survival"),
-        obj1_height_primary = file.path(test_output_dir, "01_Efficacy", "e_tumor_height_primary"),
-        obj1_height_sensitivity = file.path(test_output_dir, "01_Efficacy", "f_tumor_height_sensitivity"),
-        obj1_subgroup_primary = file.path(test_output_dir, "01_Efficacy", "g_subgroup_analysis", "tumor_height_primary"),
-        obj1_subgroup_sensitivity = file.path(test_output_dir, "01_Efficacy", "g_subgroup_analysis", "tumor_height_sensitivity"),
-        obj1_forest_plots = file.path(test_output_dir, "01_Efficacy", "g_subgroup_analysis", "forest_plots"),
-        obj1_ph_diagnostics = file.path(test_output_dir, "01_Efficacy", "h_proportional_hazards_diagnostics")
-    )
+    build_subdivided_output_dirs(test_output_dir, "^obj1_")
 }
 
 build_peer_review_objective2_output_dirs <- function(test_output_dir) {
-    list(
-        obj2_vision = file.path(test_output_dir, "02_Safety", "a_vision_changes"),
-        obj2_retinopathy = file.path(test_output_dir, "02_Safety", "b_retinopathy"),
-        obj2_nvg = file.path(test_output_dir, "02_Safety", "c_neovascular_glaucoma"),
-        obj2_srd = file.path(test_output_dir, "02_Safety", "d_serous_retinal_detachment")
-    )
+    build_subdivided_output_dirs(test_output_dir, "^obj2_")
 }
 
 run_objective1_test <- function(data, output_tag = "objective1_peer_review") {

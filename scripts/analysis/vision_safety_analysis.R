@@ -632,6 +632,10 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
     data <- normalize_treatment_group_data(data)
     data <- add_last_vision_followup_months(data)
     data <- add_visual_acuity_treatment_year(data)
+    vision_descriptive_dir <- resolve_route_output_dir(output_dirs, "obj2_vision", "descriptive")
+    vision_adjusted_dir <- resolve_route_output_dir(output_dirs, "obj2_vision", "adjusted_models")
+    vision_effect_summary_dir <- resolve_route_output_dir(output_dirs, "obj2_vision", "effect_summary")
+    vision_sensitivity_dir <- resolve_route_output_dir(output_dirs, "obj2_vision", "sensitivity")
     # Calculate vision changes (row-level)
     # Vision change is already calculated in data derivation (Objective 0)
     # Positive values = improvement (lower logMAR), negative = worsening
@@ -992,20 +996,20 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
 
     save_gt_html(
         combined_tbl,
-        filename = file.path(output_dirs$obj2_vision, paste0(prefix, "vision_changes.html"))
+        filename = file.path(vision_descriptive_dir, paste0(prefix, "vision_changes.html"))
     )
 
     if (nrow(line_change_distribution) > 0) {
         write_readable_xlsx(
             line_change_distribution,
-            path = file.path(output_dirs$obj2_vision, paste0(prefix, "snellen_line_change_integer_distribution.xlsx"))
+            path = file.path(vision_descriptive_dir, paste0(prefix, "snellen_line_change_integer_distribution.xlsx"))
         )
     }
 
     if (nrow(line_change_bucket_distribution) > 0) {
         write_readable_xlsx(
             line_change_bucket_distribution,
-            path = file.path(output_dirs$obj2_vision, paste0(prefix, "snellen_line_change_distribution_summary.xlsx"))
+            path = file.path(vision_descriptive_dir, paste0(prefix, "snellen_line_change_distribution_summary.xlsx"))
         )
     }
 
@@ -1020,7 +1024,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
 
         save_gt_html(
             snellen_combo_tbl,
-            filename = file.path(output_dirs$obj2_vision, paste0(prefix, "snellen_line_change_descriptive_summary.html"))
+            filename = file.path(vision_descriptive_dir, paste0(prefix, "snellen_line_change_descriptive_summary.html"))
         )
     }
 
@@ -1038,7 +1042,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
         effect_measure = "MD", # Mean Difference for continuous outcome
         analysis_name = "logmar_vision_change_adjusted",
         dataset_name = dataset_name %||% "vision_safety",
-        output_dir = output_dirs$obj2_vision,
+        output_dir = vision_adjusted_dir,
         prefix = prefix,
         sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
         filter_stats = exclusion_result$filter_stats
@@ -1123,9 +1127,9 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
         confounders = latest_va_sensitivity_covariates,
         model_type = "linear",
         effect_measure = "MD",
-        analysis_name = "latest_logmar_vision_reviewer_predictor_sensitivity",
+        analysis_name = "va_latest_reviewer_sens",
         dataset_name = dataset_name %||% "vision_safety",
-        output_dir = output_dirs$obj2_vision,
+        output_dir = vision_sensitivity_dir,
         prefix = prefix,
         sparse_level_diagnostics = latest_va_exclusion_result$sparse_level_diagnostics,
         filter_stats = latest_va_filter_stats
@@ -1141,7 +1145,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
         effect_measure = "MD",
         analysis_name = "snellen_line_change_adjusted",
         dataset_name = dataset_name %||% "vision_safety",
-        output_dir = output_dirs$obj2_vision,
+        output_dir = vision_adjusted_dir,
         prefix = prefix,
         sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
         filter_stats = line_change_filter_stats
@@ -1159,7 +1163,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
         effect_measure = "OR",
         analysis_name = "snellen_line_change_distribution_adjusted",
         dataset_name = dataset_name %||% "vision_safety",
-        output_dir = output_dirs$obj2_vision,
+        output_dir = vision_adjusted_dir,
         prefix = prefix,
         sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
         filter_stats = ordinal_filter_stats
@@ -1416,7 +1420,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
 
     write_effect_summary_workbook(
         effect_summary_rows = vision_effect_summary,
-        output_dir = output_dirs$obj2_vision,
+        output_dir = vision_effect_summary_dir,
         prefix = prefix,
         analysis_name = "vision"
     )
@@ -1445,8 +1449,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
         for (threshold_months in minimum_followup_thresholds) {
             threshold_label <- paste0(threshold_months, "mo")
             sensitivity_key <- paste(timing_name, threshold_label, sep = "_")
-            threshold_analysis_name <- paste0("vision_change_", timing_name, "_minimum_followup_", threshold_label)
-            threshold_prefix <- paste0(prefix, timing_definition$file_prefix, "_minimum_followup_", threshold_label, "_")
+            threshold_slug <- sprintf("va_minfu_%s_%s", timing_definition$file_prefix, threshold_label)
             visual_followup_sensitivities[[sensitivity_key]] <- build_visual_acuity_min_followup_sensitivity(
                 data,
                 min_followup_months = threshold_months,
@@ -1465,10 +1468,10 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
                     confounders = confounders_for_model,
                     model_type = "linear",
                     effect_measure = "MD",
-                    analysis_name = threshold_analysis_name,
+                    analysis_name = threshold_slug,
                     dataset_name = dataset_name %||% "vision_followup_sensitivity",
-                    output_dir = output_dirs$obj2_vision,
-                    prefix = threshold_prefix
+                    output_dir = vision_sensitivity_dir,
+                    prefix = prefix
                 )
             } else {
                 list(
@@ -1530,7 +1533,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
 
     write_readable_xlsx(
         visual_followup_workbook,
-        file.path(output_dirs$obj2_vision, paste0(prefix, "vision_followup_sensitivity.xlsx"))
+        file.path(vision_sensitivity_dir, paste0(prefix, "vision_followup_sensitivity.xlsx"))
     )
 
     # Note: Table formatting and saving are now handled by the unified table generation system
@@ -1776,11 +1779,19 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
         "nvg" = output_dirs$obj2_nvg,
         "srd" = output_dirs$obj2_srd
     )
+    route_prefix <- switch(sequela_type,
+        "retinopathy" = "obj2_retinopathy",
+        "nvg" = "obj2_nvg",
+        "srd" = "obj2_srd"
+    )
+    descriptive_dir <- resolve_route_output_dir(output_dirs, route_prefix, "descriptive")
+    adjusted_dir <- resolve_route_output_dir(output_dirs, route_prefix, "adjusted_models")
+    effect_summary_dir <- resolve_route_output_dir(output_dirs, route_prefix, "effect_summary")
 
     # Save rates summary
     write_readable_xlsx(
         sequela_rates,
-        file.path(output_dir, paste0(prefix, sequela_type, "_rates_summary.xlsx"))
+        file.path(descriptive_dir, paste0(prefix, sequela_type, "_rates_summary.xlsx"))
     )
 
     display_outcome_var <- paste0(outcome_var, "_display")
@@ -1840,7 +1851,7 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
     # Save summary table
     save_gt_html(
         tbl,
-        filename = file.path(output_dir, paste0(prefix, sequela_type, "_summary_table.html"))
+        filename = file.path(descriptive_dir, paste0(prefix, sequela_type, "_summary_table.html"))
     )
 
     # Fit logistic regression if there are enough events and confounders
@@ -1862,7 +1873,7 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
             effect_measure = "OR",
             analysis_name = logistic_analysis_name,
             dataset_name = dataset_name,
-            output_dir = output_dir,
+            output_dir = adjusted_dir,
             prefix = prefix,
             sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
             filter_stats = exclusion_result$filter_stats
@@ -1895,7 +1906,7 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
         save_skipped_model_outputs(
             analysis_name = logistic_analysis_name,
             dataset_name = dataset_name,
-            output_dir = output_dir,
+            output_dir = adjusted_dir,
             prefix = prefix,
             reason = skip_diagnostics$reason,
             diagnostics = safety_diagnostics
@@ -1985,7 +1996,7 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
 
     write_effect_summary_workbook(
         effect_summary_rows = effect_summary_rows,
-        output_dir = output_dir,
+        output_dir = effect_summary_dir,
         prefix = prefix,
         analysis_name = sequela_label
     )

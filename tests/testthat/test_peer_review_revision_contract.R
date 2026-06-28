@@ -13,11 +13,11 @@ test_that("Objective 1 returns Cox-led local recurrence and metastasis time-to-e
     expect_s3_class(pipeline$results$mets_time_to_event$cox_model, "coxph")
 
     recurrence_summary <- file.path(
-        pipeline$output_dirs$obj1_recurrence,
+        pipeline$output_dirs$obj1_recurrence_cox,
         "test_local_recurrence_free_probability_effect_summary.xlsx"
     )
     metastasis_summary <- file.path(
-        pipeline$output_dirs$obj1_mets,
+        pipeline$output_dirs$obj1_mets_cox,
         "test_metastasis_free_survival_probability_effect_summary.xlsx"
     )
     expect_true(file.exists(recurrence_summary))
@@ -37,8 +37,8 @@ test_that("Objective 1 recurrence and metastasis descriptive summaries are not l
     pipeline <- run_objective1_test(create_test_dataset(), output_tag = "peer_review_descriptive_event_support")
     withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
 
-    recurrence_summary_path <- file.path(pipeline$output_dirs$obj1_recurrence, "test_recurrence1_event_support_summary.xlsx")
-    mets_summary_path <- file.path(pipeline$output_dirs$obj1_mets, "test_mets_progression_event_support_summary.xlsx")
+    recurrence_summary_path <- file.path(pipeline$output_dirs$obj1_recurrence_event_support, "test_recurrence1_event_support_summary.xlsx")
+    mets_summary_path <- file.path(pipeline$output_dirs$obj1_mets_event_support, "test_mets_progression_event_support_summary.xlsx")
 
     expect_true(file.exists(recurrence_summary_path))
     expect_true(file.exists(mets_summary_path))
@@ -65,11 +65,11 @@ test_that("Objective 1 writes five-year capped OS and PFS Cox sensitivity summar
     withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
 
     os_summary <- file.path(
-        pipeline$output_dirs$obj1_os,
+        pipeline$output_dirs$obj1_os_sensitivity,
         "test_overall_survival_probability_5yr_capped_effect_summary.xlsx"
     )
     pfs_summary <- file.path(
-        pipeline$output_dirs$obj1_pfs,
+        pipeline$output_dirs$obj1_pfs_sensitivity,
         "test_progression_free_survival_probability_5yr_capped_effect_summary.xlsx"
     )
 
@@ -92,11 +92,11 @@ test_that("Objective 1 writes five-year capped OS and PFS Cox sensitivity summar
         "test_progression_free_survival_probability_5yr_capped_skipped.*\\.(xlsx|txt)$"
     )
     for (pattern in ph_or_skip_patterns[c(1, 2)]) {
-        os_hits <- list.files(pipeline$output_dirs$obj1_os, pattern = pattern, full.names = TRUE)
+        os_hits <- list.files(pipeline$output_dirs$obj1_os_sensitivity, pattern = pattern, full.names = TRUE)
         if (length(os_hits) > 0) break
     }
     for (pattern in ph_or_skip_patterns[c(3, 4)]) {
-        pfs_hits <- list.files(pipeline$output_dirs$obj1_pfs, pattern = pattern, full.names = TRUE)
+        pfs_hits <- list.files(pipeline$output_dirs$obj1_pfs_sensitivity, pattern = pattern, full.names = TRUE)
         if (length(pfs_hits) > 0) break
     }
     expect_true(length(os_hits) > 0, info = "Capped OS model must write PH diagnostics or an explicit skip artifact.")

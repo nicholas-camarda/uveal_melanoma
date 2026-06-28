@@ -1,10 +1,5 @@
 build_objective2_output_dirs <- function(test_output_dir) {
-    list(
-        obj2_vision = file.path(test_output_dir, "02_Safety", "a_vision_changes"),
-        obj2_retinopathy = file.path(test_output_dir, "02_Safety", "b_retinopathy"),
-        obj2_nvg = file.path(test_output_dir, "02_Safety", "c_neovascular_glaucoma"),
-        obj2_srd = file.path(test_output_dir, "02_Safety", "d_serous_retinal_detachment")
-    )
+    build_subdivided_output_dirs(test_output_dir, "^obj2_")
 }
 
 test_that("Snellen conversion rounds to the nearest line away from zero", {
@@ -94,34 +89,34 @@ test_that("Objective 2 writes adjusted outputs in each side-effect subfolder", {
     expect_s3_class(results$srd_analysis$model, "glm")
     expect_null(results$nvg_analysis$model)
 
-    expect_true(file.exists(file.path(output_dirs$obj2_vision, "test_logmar_vision_change_adjusted_lm.html")))
-    expect_true(file.exists(file.path(output_dirs$obj2_vision, "test_logmar_vision_change_adjusted_diagnostics.xlsx")))
-    expect_true(file.exists(file.path(output_dirs$obj2_vision, "test_snellen_line_change_adjusted_lm.html")))
-    expect_true(file.exists(file.path(output_dirs$obj2_vision, "test_snellen_line_change_adjusted_diagnostics.xlsx")))
-    expect_true(file.exists(file.path(output_dirs$obj2_vision, "test_snellen_line_change_distribution_adjusted_polr.html")))
-    expect_true(file.exists(file.path(output_dirs$obj2_vision, "test_snellen_line_change_distribution_adjusted_diagnostics.xlsx")))
-    expect_true(file.exists(file.path(output_dirs$obj2_vision, "test_snellen_line_change_descriptive_summary.html")))
-    expect_true(file.exists(file.path(output_dirs$obj2_vision, "test_snellen_line_change_integer_distribution.xlsx")))
-    expect_true(file.exists(file.path(output_dirs$obj2_vision, "test_snellen_line_change_distribution_summary.xlsx")))
-    expect_true(file.exists(file.path(output_dirs$obj2_vision, "test_vision_effect_summary.xlsx")))
+    expect_true(file.exists(file.path(output_dirs$obj2_vision_adjusted_models, "test_logmar_vision_change_adjusted_lm.html")))
+    expect_true(file.exists(file.path(output_dirs$obj2_vision_adjusted_models, "test_logmar_vision_change_adjusted_diagnostics.xlsx")))
+    expect_true(file.exists(file.path(output_dirs$obj2_vision_adjusted_models, "test_snellen_line_change_adjusted_lm.html")))
+    expect_true(file.exists(file.path(output_dirs$obj2_vision_adjusted_models, "test_snellen_line_change_adjusted_diagnostics.xlsx")))
+    expect_true(file.exists(file.path(output_dirs$obj2_vision_adjusted_models, "test_snellen_line_change_distribution_adjusted_polr.html")))
+    expect_true(file.exists(file.path(output_dirs$obj2_vision_adjusted_models, "test_snellen_line_change_distribution_adjusted_diagnostics.xlsx")))
+    expect_true(file.exists(file.path(output_dirs$obj2_vision_descriptive, "test_snellen_line_change_descriptive_summary.html")))
+    expect_true(file.exists(file.path(output_dirs$obj2_vision_descriptive, "test_snellen_line_change_integer_distribution.xlsx")))
+    expect_true(file.exists(file.path(output_dirs$obj2_vision_descriptive, "test_snellen_line_change_distribution_summary.xlsx")))
+    expect_true(file.exists(file.path(output_dirs$obj2_vision_effect_summary, "test_vision_effect_summary.xlsx")))
 
-    expect_true(file.exists(file.path(output_dirs$obj2_retinopathy, "test_retinopathy_logistic_glm.html")))
-    expect_true(file.exists(file.path(output_dirs$obj2_retinopathy, "test_retinopathy_logistic_diagnostics.xlsx")))
-    expect_true(file.exists(file.path(output_dirs$obj2_retinopathy, "test_retinopathy_effect_summary.xlsx")))
+    expect_true(file.exists(file.path(output_dirs$obj2_retinopathy_adjusted_models, "test_retinopathy_logistic_glm.html")))
+    expect_true(file.exists(file.path(output_dirs$obj2_retinopathy_adjusted_models, "test_retinopathy_logistic_diagnostics.xlsx")))
+    expect_true(file.exists(file.path(output_dirs$obj2_retinopathy_effect_summary, "test_retinopathy_effect_summary.xlsx")))
 
-    expect_true(file.exists(file.path(output_dirs$obj2_srd, "test_srd_logistic_glm.html")))
-    expect_true(file.exists(file.path(output_dirs$obj2_srd, "test_srd_logistic_diagnostics.xlsx")))
-    expect_true(file.exists(file.path(output_dirs$obj2_srd, "test_serous_retinal_detachment_effect_summary.xlsx")))
+    expect_true(file.exists(file.path(output_dirs$obj2_srd_adjusted_models, "test_srd_logistic_glm.html")))
+    expect_true(file.exists(file.path(output_dirs$obj2_srd_adjusted_models, "test_srd_logistic_diagnostics.xlsx")))
+    expect_true(file.exists(file.path(output_dirs$obj2_srd_effect_summary, "test_serous_retinal_detachment_effect_summary.xlsx")))
 
-    expect_true(file.exists(file.path(output_dirs$obj2_nvg, "test_nvg_logistic_SKIPPED.html")))
-    expect_true(file.exists(file.path(output_dirs$obj2_nvg, "test_nvg_logistic_diagnostics.xlsx")))
-    expect_true(file.exists(file.path(output_dirs$obj2_nvg, "test_neovascular_glaucoma_effect_summary.xlsx")))
+    expect_true(file.exists(file.path(output_dirs$obj2_nvg_adjusted_models, "test_nvg_logistic_SKIPPED.html")))
+    expect_true(file.exists(file.path(output_dirs$obj2_nvg_adjusted_models, "test_nvg_logistic_diagnostics.xlsx")))
+    expect_true(file.exists(file.path(output_dirs$obj2_nvg_effect_summary, "test_neovascular_glaucoma_effect_summary.xlsx")))
 
-    nvg_skip_sheets <- readxl::excel_sheets(file.path(output_dirs$obj2_nvg, "test_nvg_logistic_diagnostics.xlsx"))
+    nvg_skip_sheets <- readxl::excel_sheets(file.path(output_dirs$obj2_nvg_adjusted_models, "test_nvg_logistic_diagnostics.xlsx"))
     expect_true(all(c("Skip_summary", "Narrative_summary", "Event_support") %in% nvg_skip_sheets))
 
     nvg_skip_summary <- readxl::read_xlsx(
-        file.path(output_dirs$obj2_nvg, "test_nvg_logistic_diagnostics.xlsx"),
+        file.path(output_dirs$obj2_nvg_adjusted_models, "test_nvg_logistic_diagnostics.xlsx"),
         sheet = "Skip_summary"
     )
     expect_equal(
@@ -130,7 +125,7 @@ test_that("Objective 2 writes adjusted outputs in each side-effect subfolder", {
     )
 
     nvg_skip_html <- paste(
-        readLines(file.path(output_dirs$obj2_nvg, "test_nvg_logistic_SKIPPED.html"), warn = FALSE),
+        readLines(file.path(output_dirs$obj2_nvg_adjusted_models, "test_nvg_logistic_SKIPPED.html"), warn = FALSE),
         collapse = "\n"
     )
     expect_match(
@@ -140,7 +135,7 @@ test_that("Objective 2 writes adjusted outputs in each side-effect subfolder", {
     )
     expect_match(nvg_skip_html, "Modeled Outcome Counts By Covariate Level", fixed = TRUE)
 
-    vision_effect_summary <- readxl::read_xlsx(file.path(output_dirs$obj2_vision, "test_vision_effect_summary.xlsx"))
+    vision_effect_summary <- readxl::read_xlsx(file.path(output_dirs$obj2_vision_effect_summary, "test_vision_effect_summary.xlsx"))
     expect_true(all(c(
         "LogMAR Vision Change",
         "Latest LogMAR Vision",
@@ -187,12 +182,12 @@ test_that("Objective 2 writes adjusted outputs in each side-effect subfolder", {
     expect_true(all(grepl("Proportional-odds assumption was not formally tested", ordinal_rows$notes, fixed = TRUE)))
 
     ordinal_diagnostics_sheets <- readxl::excel_sheets(
-        file.path(output_dirs$obj2_vision, "test_snellen_line_change_distribution_adjusted_diagnostics.xlsx")
+        file.path(output_dirs$obj2_vision_adjusted_models, "test_snellen_line_change_distribution_adjusted_diagnostics.xlsx")
     )
     expect_true("Assumption_status" %in% ordinal_diagnostics_sheets)
 
     ordinal_html <- readLines(
-        file.path(output_dirs$obj2_vision, "test_snellen_line_change_distribution_adjusted_polr.html"),
+        file.path(output_dirs$obj2_vision_adjusted_models, "test_snellen_line_change_distribution_adjusted_polr.html"),
         warn = FALSE
     )
     ordinal_html <- paste(ordinal_html, collapse = "\n")
@@ -207,15 +202,15 @@ test_that("Objective 2 writes adjusted outputs in each side-effect subfolder", {
         perl = TRUE
     )
 
-    nvg_effect_summary <- readxl::read_xlsx(file.path(output_dirs$obj2_nvg, "test_neovascular_glaucoma_effect_summary.xlsx"))
+    nvg_effect_summary <- readxl::read_xlsx(file.path(output_dirs$obj2_nvg_effect_summary, "test_neovascular_glaucoma_effect_summary.xlsx"))
     expect_true(any(nvg_effect_summary$model_status == "SKIPPED"))
 
-    retinopathy_rates <- readxl::read_xlsx(file.path(output_dirs$obj2_retinopathy, "test_retinopathy_rates_summary.xlsx"))
+    retinopathy_rates <- readxl::read_xlsx(file.path(output_dirs$obj2_retinopathy_descriptive, "test_retinopathy_rates_summary.xlsx"))
     expect_true(all(c("endpoint", "analysis_field", "estimand", "notes") %in% names(retinopathy_rates)))
     expect_true(all(retinopathy_rates$analysis_field == "retinopathy_burden_event"))
     expect_true(all(grepl("not time-to-toxicity incidence", retinopathy_rates$notes, fixed = TRUE)))
 
-    retinopathy_effect_summary <- readxl::read_xlsx(file.path(output_dirs$obj2_retinopathy, "test_retinopathy_effect_summary.xlsx"))
+    retinopathy_effect_summary <- readxl::read_xlsx(file.path(output_dirs$obj2_retinopathy_effect_summary, "test_retinopathy_effect_summary.xlsx"))
     expect_true(any(grepl("Objective 0-validated recorded-burden", retinopathy_effect_summary$data_source, fixed = TRUE)))
     expect_true(any(grepl("not time-to-toxicity incidence", retinopathy_effect_summary$notes, fixed = TRUE)))
 })
@@ -225,7 +220,7 @@ test_that("visual-acuity minimum-follow-up sensitivity reruns treatment-effect m
     withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
 
     sensitivity_path <- file.path(
-        pipeline$output_dirs$obj2_vision,
+        pipeline$output_dirs$obj2_vision_sensitivity,
         "test_vision_followup_sensitivity.xlsx"
     )
     expect_workbook_has_sheets(
@@ -282,6 +277,23 @@ test_that("visual-acuity minimum-follow-up sensitivity reruns treatment-effect m
         "last_vision_followup_months_proxy >= 36",
         "last_vision_followup_months_proxy >= 60"
     ))
+
+    sensitivity_dir <- pipeline$output_dirs$obj2_vision_sensitivity
+    completed_models <- model_status[model_status$model_status == "completed", , drop = FALSE]
+    for (row_idx in seq_len(nrow(completed_models))) {
+        timing_slug <- completed_models$timing_surface[[row_idx]]
+        threshold_slug <- paste0(completed_models$min_followup_months[[row_idx]], "mo")
+        artifact_slug <- sprintf("test_va_minfu_%s_%s", timing_slug, threshold_slug)
+        expect_true(file.exists(file.path(sensitivity_dir, paste0(artifact_slug, "_lm.html"))))
+        expect_true(file.exists(file.path(sensitivity_dir, paste0(artifact_slug, "_diagnostics.xlsx"))))
+    }
+    expect_true(file.exists(file.path(sensitivity_dir, "test_va_latest_reviewer_sens_lm.html")))
+    duplicated_old_pattern <- list.files(
+        sensitivity_dir,
+        pattern = "_minimum_followup_.*_vision_change_",
+        full.names = FALSE
+    )
+    expect_equal(length(duplicated_old_pattern), 0)
 })
 
 test_that("Objective 2 SRD reviewer-facing output declares radiation-induced versus all-cause scope", {
@@ -289,7 +301,7 @@ test_that("Objective 2 SRD reviewer-facing output declares radiation-induced ver
     withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
 
     candidate_files <- list.files(
-        pipeline$output_dirs$obj2_vision,
+        pipeline$output_dirs$obj2_vision_sensitivity,
         pattern = "(toxicity|vision_followup_sensitivity).*\\.xlsx$",
         full.names = TRUE
     )

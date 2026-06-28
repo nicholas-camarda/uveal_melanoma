@@ -1,20 +1,5 @@
 build_objective1_output_dirs <- function(test_output_dir) {
-    list(
-        obj1_recurrence = file.path(test_output_dir, "01_Efficacy", "a_recurrence"),
-        obj1_recurrence_1a1 = file.path(test_output_dir, "01_Efficacy", "a_recurrence", "1a1_recurrence_stratified_os"),
-        obj1_recurrence_1a2 = file.path(test_output_dir, "01_Efficacy", "a_recurrence", "1a2_recurrence_stratified_pfs"),
-        obj1_mets = file.path(test_output_dir, "01_Efficacy", "b_metastatic_progression"),
-        obj1_mets_2a1 = file.path(test_output_dir, "01_Efficacy", "b_metastatic_progression", "2a1_metastasis_stratified_os"),
-        obj1_mets_2a2 = file.path(test_output_dir, "01_Efficacy", "b_metastatic_progression", "2a2_metastasis_stratified_pfs"),
-        obj1_os = file.path(test_output_dir, "01_Efficacy", "c_overall_survival"),
-        obj1_pfs = file.path(test_output_dir, "01_Efficacy", "d_progression_free_survival"),
-        obj1_height_primary = file.path(test_output_dir, "01_Efficacy", "e_tumor_height_primary"),
-        obj1_height_sensitivity = file.path(test_output_dir, "01_Efficacy", "f_tumor_height_sensitivity"),
-        obj1_subgroup_primary = file.path(test_output_dir, "01_Efficacy", "g_subgroup_analysis", "tumor_height_primary"),
-        obj1_subgroup_sensitivity = file.path(test_output_dir, "01_Efficacy", "g_subgroup_analysis", "tumor_height_sensitivity"),
-        obj1_forest_plots = file.path(test_output_dir, "01_Efficacy", "g_subgroup_analysis", "forest_plots"),
-        obj1_ph_diagnostics = file.path(test_output_dir, "01_Efficacy", "h_proportional_hazards_diagnostics")
-    )
+    build_subdivided_output_dirs(test_output_dir, "^obj1_")
 }
 
 run_objective1_test <- function(data, output_tag = "objective1_test") {
@@ -52,8 +37,8 @@ test_that("Objective 1 pipeline returns expected top-level analyses", {
         "sensitivity_subgroup_results"
     ) %in% names(pipeline$results)))
 
-    expect_true(file.exists(file.path(pipeline$output_dirs$obj1_os, "test_overall_survival_probability_effect_summary.xlsx")))
-    expect_true(file.exists(file.path(pipeline$output_dirs$obj1_pfs, "test_progression_free_survival_probability_effect_summary.xlsx")))
+    expect_true(file.exists(file.path(pipeline$output_dirs$obj1_os_cox, "test_overall_survival_probability_effect_summary.xlsx")))
+    expect_true(file.exists(file.path(pipeline$output_dirs$obj1_pfs_cox, "test_progression_free_survival_probability_effect_summary.xlsx")))
 })
 
 test_that("reviewer-facing subgroup diagnostics record PRAME and T4 exclusions", {
@@ -107,7 +92,7 @@ test_that("Objective 1 tumor-height analysis writes timing summary", {
     withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
 
     timing_path <- file.path(
-        pipeline$output_dirs$obj1_height_primary,
+        pipeline$output_dirs$obj1_height_primary_timing_audit,
         "test_tumor_height_timing_summary.xlsx"
     )
     expect_true(file.exists(timing_path))
@@ -127,8 +112,8 @@ test_that("Objective 1 recurrence and metastasis event-support summaries include
     pipeline <- run_objective1_test(create_test_dataset(), output_tag = "objective1_cumulative_incidence_test")
     withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
 
-    recurrence_summary_path <- file.path(pipeline$output_dirs$obj1_recurrence, "test_recurrence1_event_support_summary.xlsx")
-    mets_summary_path <- file.path(pipeline$output_dirs$obj1_mets, "test_mets_progression_event_support_summary.xlsx")
+    recurrence_summary_path <- file.path(pipeline$output_dirs$obj1_recurrence_event_support, "test_recurrence1_event_support_summary.xlsx")
+    mets_summary_path <- file.path(pipeline$output_dirs$obj1_mets_event_support, "test_mets_progression_event_support_summary.xlsx")
 
     for (summary_path in c(recurrence_summary_path, mets_summary_path)) {
         expect_true(file.exists(summary_path))
@@ -163,11 +148,11 @@ test_that("Objective 1 survival effect summaries include canonical columns", {
     withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
 
     os_summary <- readxl::read_xlsx(file.path(
-        pipeline$output_dirs$obj1_os,
+        pipeline$output_dirs$obj1_os_cox,
         "test_overall_survival_probability_effect_summary.xlsx"
     ))
     pfs_summary <- readxl::read_xlsx(file.path(
-        pipeline$output_dirs$obj1_pfs,
+        pipeline$output_dirs$obj1_pfs_cox,
         "test_progression_free_survival_probability_effect_summary.xlsx"
     ))
 
@@ -180,11 +165,11 @@ test_that("Objective 1 survival effect summaries include graded PH interpretatio
     withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
 
     os_summary <- readxl::read_xlsx(file.path(
-        pipeline$output_dirs$obj1_os,
+        pipeline$output_dirs$obj1_os_cox,
         "test_overall_survival_probability_effect_summary.xlsx"
     ))
     pfs_summary <- readxl::read_xlsx(file.path(
-        pipeline$output_dirs$obj1_pfs,
+        pipeline$output_dirs$obj1_pfs_cox,
         "test_progression_free_survival_probability_effect_summary.xlsx"
     ))
 
@@ -226,7 +211,7 @@ test_that("Objective 1 survival effect summaries separate modeled patients from 
     })
 
     os_summary <- readxl::read_xlsx(file.path(
-        output_dirs$obj1_os,
+        output_dirs$obj1_os_cox,
         "test_overall_survival_probability_effect_summary.xlsx"
     ))
 
@@ -326,6 +311,22 @@ test_that("Objective 1 logs legacy warnings for exploratory post-baseline surviv
         readLines(legacy_note_paths[[1]], warn = FALSE),
         fixed = TRUE
     )))
+
+    expected_legacy_artifacts <- c(
+        file.path(output_dirs$obj1_recurrence_1a1, "01_km_curves", "test_1a1_recurrence_stratified_overall_survival_by_local_recurrence_status_km.png"),
+        file.path(output_dirs$obj1_recurrence_1a2, "01_km_curves", "test_1a2_recurrence_stratified_progression_free_survival_by_local_recurrence_status_km.png"),
+        file.path(output_dirs$obj1_mets_2a1, "01_km_curves", "test_2a1_metastasis_stratified_overall_survival_by_metastatic_progression_status_km.png"),
+        file.path(output_dirs$obj1_mets_2a2, "01_km_curves", "test_2a2_metastasis_stratified_progression_free_survival_by_metastatic_progression_status_km.png")
+    )
+    expect_true(all(file.exists(expected_legacy_artifacts)))
+
+    misplaced_legacy_artifacts <- c(
+        file.path(output_dirs$obj1_os_km, "test_1a1_recurrence_stratified_overall_survival_by_local_recurrence_status_km.png"),
+        file.path(output_dirs$obj1_pfs_km, "test_1a2_recurrence_stratified_progression_free_survival_by_local_recurrence_status_km.png"),
+        file.path(output_dirs$obj1_os_km, "test_2a1_metastasis_stratified_overall_survival_by_metastatic_progression_status_km.png"),
+        file.path(output_dirs$obj1_pfs_km, "test_2a2_metastasis_stratified_progression_free_survival_by_metastatic_progression_status_km.png")
+    )
+    expect_false(any(file.exists(misplaced_legacy_artifacts)))
 })
 
 test_that("Objective 1 centralized interpretation and subgroup contract notes are emitted once per cohort", {
@@ -408,4 +409,22 @@ test_that("Objective 1 subgroup event diagnostics use the modeled endpoint", {
     expect_equal(pfs_result$interaction_diagnostics$level_statistics$A$events_gksrs, 1)
     expect_equal(attr(pfs_result$model, "subgroup_event_var"), "pfs_event")
     expect_equal(levels(pfs_result$filtered_data$subgroup_flag), c("A", "B"))
+})
+
+test_that("Objective 1 survival endpoints register typed artifact subfolders", {
+    pipeline <- run_objective1_test(create_test_dataset(), output_tag = "objective1_output_subdivision_contract")
+    withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
+
+    expect_true(dir.exists(pipeline$output_dirs$obj1_os_km))
+    expect_true(dir.exists(pipeline$output_dirs$obj1_os_cox))
+    expect_true(dir.exists(pipeline$output_dirs$obj1_os_ph))
+    expect_true(dir.exists(pipeline$output_dirs$obj1_recurrence_event_support))
+    expect_true(file.exists(file.path(pipeline$output_dirs$obj1_os_summary, "test_overall_survival_probability_survival_rates.xlsx")))
+
+    root_primary_files <- list.files(
+        pipeline$output_dirs$obj1_os,
+        pattern = "effect_summary|survival_rates|_km\\.png$",
+        full.names = FALSE
+    )
+    expect_equal(length(root_primary_files), 0)
 })

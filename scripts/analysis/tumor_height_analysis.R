@@ -101,6 +101,9 @@ build_tumor_height_timing_audit <- function(data) {
 analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders) {
     data <- normalize_treatment_group_data(data)
     data <- add_tumor_height_followup_timing(data)
+    height_descriptive_dir <- resolve_route_output_dir(output_dirs, "obj1_height_primary", "descriptive")
+    height_models_dir <- resolve_route_output_dir(output_dirs, "obj1_height_primary", "models")
+    height_timing_dir <- resolve_route_output_dir(output_dirs, "obj1_height_primary", "timing_audit")
     # Use height_change variable that was already calculated in data_processing.R
     data_with_height_change <- enforce_unordered_factors(data)
 
@@ -173,7 +176,7 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders)
     # Save table
     save_gt_html(
         tbl_summary_obj,
-        filename = file.path(output_dirs$obj1_height_primary, paste0(prefix, "height_changes.html"))
+        filename = file.path(height_descriptive_dir, paste0(prefix, "height_changes.html"))
     )
 
     # PRIMARY ANALYSIS: Linear regression without adding baseline height to the change-score model
@@ -190,7 +193,7 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders)
             effect_measure = "MD", # Mean Difference for continuous outcome
             analysis_name = "height_change_primary",
             dataset_name = "tumor_height",
-            output_dir = output_dirs$obj1_height_primary,
+            output_dir = height_models_dir,
             prefix = prefix,
             sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
             filter_stats = exclusion_result$filter_stats
@@ -231,7 +234,7 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders)
         save_skipped_model_outputs(
             analysis_name = "height_change_primary",
             dataset_name = "tumor_height",
-            output_dir = output_dirs$obj1_height_primary,
+            output_dir = height_models_dir,
             prefix = prefix,
             reason = diagnostics_stub$diagnostics$reason,
             diagnostics = diagnostics_stub$diagnostics
@@ -315,7 +318,7 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders)
             timing_summary = tumor_height_timing$summary,
             negative_interval_detail = tumor_height_timing$negative_interval_detail
         ),
-        file.path(output_dirs$obj1_height_primary, paste0(prefix, "tumor_height_timing_summary.xlsx"))
+        file.path(height_timing_dir, paste0(prefix, "tumor_height_timing_summary.xlsx"))
     )
 
     return(list(
