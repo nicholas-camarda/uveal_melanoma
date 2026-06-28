@@ -445,7 +445,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
         "Vision endpoint is visual-acuity change score",
         "(initial vision minus final or recurrence-pre-treatment vision);",
         "baseline visual acuity and latest-VA follow-up time are reviewer-response sensitivity considerations;",
-        "last_followup is the associated date for last_vision; no separate last_vision_date field is present."
+        "last_followup is used as the follow-up date associated with the latest visual-acuity assessment."
     )
     ordinal_assumption_note <- paste(
         "Proportional-odds assumption was not formally tested;",
@@ -1170,7 +1170,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             treatment_effect_model = dplyr::bind_rows(visual_followup_model_status),
             toxicity_scope = objective2_toxicity_scope_note(),
             limitation = tibble::tibble(
-                note = "The latest visual-acuity endpoint uses last_vision as the latest BCVA value and last_followup as its associated follow-up date; no separate last_vision_date column exists. The 12-, 36-, and 60-month sensitivity analyses are minimum-follow-up restrictions on latest VA, not standardized 1-, 3-, or 5-year landmark VA analyses."
+                note = "The latest visual-acuity endpoint uses last_vision as the latest BCVA value and last_followup as its associated follow-up date. The 12-, 36-, and 60-month sensitivity analyses are minimum-follow-up restrictions on latest VA, not standardized 1-, 3-, or 5-year landmark VA analyses."
             )
         )
     )
