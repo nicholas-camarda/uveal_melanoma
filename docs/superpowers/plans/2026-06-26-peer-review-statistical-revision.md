@@ -45,11 +45,11 @@ This plan synthesizes the following source packet.
   - Tim comments explicitly directed to Nick include Cox-only recurrence/metastasis reanalysis, PH assumption confirmation, continuous-variable/dichotomization audit, PFS definition clarification, time-to-local-recurrence/time-to-metastasis Cox models, 5-year-capped OS/PFS HR sensitivity, propensity score assessment, minimum-follow-up visual-acuity sensitivity confirmation, PRAME/T4 subgroup removals, and no action needed for Table 1 p-values because Tim planned to remove them manually.
   - Tim comments also mark data feasibility constraints: PBT has radionuclide/plaque-size/notched-plaque fields; GK planning/dose data are not in the current dataset; visual-field/proximity/dose data require chart or plan re-review and may be infeasible in the 60-day window.
   - Melhus and Mignano comments support describing treatment technique where possible, softening conclusions, clarifying limitations, and not overexpanding into a new visual-acuity/dosimetry study.
-- Local pasted statistical memo: `/Users/ncamarda/.codex/attachments/de3b6503-5999-4bb7-97bf-1015f1e097ce/pasted-text.txt`.
+- Local pasted statistical memo: `<STATISTICAL_MEMO>`.
   - The memo frames the revision as de-escalation and refocusing: fewer stronger models, follow-up centrality, adjusted Cox as lead inference, no dichotomized age in models, reduced subgroup claims, and softened language.
 - Current repository and runtime state.
-  - Source repository: `/Users/ncamarda/Projects/uveal_melanoma`.
-  - Runtime analytic datasets: `/Users/ncamarda/ProjectsRuntime/uveal_melanoma/Analytic Dataset/`.
+  - Source repository: `<CANONICAL_REPO>`.
+  - Runtime analytic datasets: `<CANONICAL_PROCESSED_DATA_DIR>/`.
   - Current branch: `master`, clean worktree, HEAD `7465447`.
   - Runtime cohort counts checked directly:
     - Full cohort: n=260, GKSRS=139, PBT=121.
@@ -103,16 +103,20 @@ Runtime outputs should be limited to analysis artifacts that carry reusable tabu
 ## Required Execution Posture
 
 - Execute from a separate worktree created from the exact clean current post-submission/pre-peer-review code state. Use `superpowers:using-git-worktrees` at execution time.
-- Use these source-path aliases throughout execution:
-  - `<CANONICAL_REPO>` = `/Users/ncamarda/Projects/uveal_melanoma`
-  - `<PEER_REVIEW_REPO>` = `/Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision`
-  - `<INPUT_DATA_ROOT>` = `/Users/ncamarda/Library/CloudStorage/OneDrive-Personal/Research/uveal_melanoma/Original Files`
-  - `<RUNTIME_ROOT>` = `/Users/ncamarda/ProjectsRuntime/uveal_melanoma-peer-review-statistical-revision`
-  - `<OUTPUT_DIR>` = `/Users/ncamarda/ProjectsRuntime/uveal_melanoma-peer-review-statistical-revision/Analysis`
-  - `<PROCESSED_DATA_DIR>` = `/Users/ncamarda/ProjectsRuntime/uveal_melanoma-peer-review-statistical-revision/Analytic Dataset`
-  - `<TOOLS_OUTPUT_DIR>` = `/Users/ncamarda/ProjectsRuntime/uveal_melanoma-peer-review-statistical-revision/tools_output`
+- Use these source-path aliases throughout execution. Resolve the checkout and storage roots for the current operator environment; derived aliases must retain the relationships shown here:
+  - `<STATISTICAL_MEMO>` = the local statistical memo supplied for this revision
+  - `<CANONICAL_REPO>` = the canonical source checkout
+  - `<PEER_REVIEW_REPO>` = the active peer-review linked worktree
+  - `<INPUT_DATA_ROOT>` = the canonical synced `Original Files` directory
+  - `<SUBMISSION_OUTPUT_DIR>` = the immutable submission-era output snapshot
+  - `<CANONICAL_PROCESSED_DATA_DIR>` = the canonical checkout's existing runtime analytic-dataset directory
+  - `<RUNTIME_ROOT>` = the isolated runtime root paired with `<PEER_REVIEW_REPO>`
+  - `<OUTPUT_DIR>` = `<RUNTIME_ROOT>/Analysis`
+  - `<PROCESSED_DATA_DIR>` = `<RUNTIME_ROOT>/Analytic Dataset`
+  - `<SHARE_PACKET_DIR>` = `<RUNTIME_ROOT>/share_packets/peer_review_revision_audits`, exposed in R as `PEER_REVIEW_REVISION_AUDITS_DIR`
+  - `<TOOLS_OUTPUT_DIR>` = `<RUNTIME_ROOT>/tools_output`
 - All source, test, and documentation edits in Tasks 2-14 must be made under `<PEER_REVIEW_REPO>`, even when this plan names the canonical repository path for orientation. Do not edit or commit source files on `master` in `<CANONICAL_REPO>` during implementation. Runtime artifacts remain under `<RUNTIME_ROOT>`.
-- Clickable-path exception: this internal implementation plan may include absolute local paths because it is an operator-facing execution document. On-demand audit tools, especially `scripts/tools/peer_review_followup_audit.R`, may also emit absolute `file://` Markdown links or absolute path columns in audit workbooks so Nick can click directly into runtime artifacts. Do not extend this exception to reviewer-facing or coauthor-facing narrative docs unless Nick explicitly asks for that document to become operator-facing.
+- Keep this tracked implementation plan machine-independent by using the aliases above. On-demand audit tools, especially `scripts/tools/peer_review_followup_audit.R`, may emit absolute `file://` Markdown links or absolute path columns inside generated audit workbooks so Nick can click directly into runtime artifacts. Do not place those operator-local paths in this plan or in reviewer-facing or coauthor-facing narrative docs.
 - Preserve `master` as the current post-submission/pre-peer-review repository state, and preserve the submitted manuscript plus April 27 artifacts as external immutable evidence.
 - Avoid compatibility rescue logic. Prefer one correct reviewer-response analysis path and remove or demote obsolete inferential paths.
 - Do not treat successful code execution as enough. Verify data availability, estimand alignment, model output, manuscript methods wording, and reviewer-response wording.
@@ -209,7 +213,7 @@ If a goal uncovers a methodological decision that Nick/Tim/Angie must make, reco
 
 The peer-review worktree is the source and response-document workspace. It contains changed R code, tests, and the single coauthor-facing document at `docs/peer_review_revision_response.md`. It does **not** become an output-data root.
 
-Raw input files remain canonical and shared under `/Users/ncamarda/Library/CloudStorage/OneDrive-Personal/Research/uveal_melanoma/Original Files/`. Generated analytic datasets, workbooks, plots, diagnostics, logs, and tool outputs must be isolated under `/Users/ncamarda/ProjectsRuntime/uveal_melanoma-peer-review-statistical-revision/`. They are not committed to Git and are not copied into the worktree. Do not add new scattered prose note files to runtime output folders for this revision; the single response document records the reviewer-relevant interpretation and cites exact runtime artifacts with stable aliases. Internal audit workbooks may include absolute clickable path metadata for operator inspection. Synced/published output remains a deliberate later export step and must not be used as the default full-workflow output target during the revision.
+Raw input files remain canonical and shared under `<INPUT_DATA_ROOT>/`. Generated analytic datasets, workbooks, plots, diagnostics, logs, and tool outputs must be isolated under `<RUNTIME_ROOT>/`. They are not committed to Git and are not copied into the worktree. Do not add new scattered prose note files to runtime output folders for this revision; the single response document records the reviewer-relevant interpretation and cites exact runtime artifacts with stable aliases. Internal audit workbooks may include absolute clickable path metadata for operator inspection. Synced/published output remains a deliberate later export step and must not be used as the default full-workflow output target during the revision.
 
 - `01_Efficacy/a_recurrence/*local_recurrence_free_probability_effect_summary.xlsx`
 - `01_Efficacy/a_recurrence/*local_recurrence_free_probability_km.png`
@@ -220,7 +224,7 @@ Raw input files remain canonical and shared under `/Users/ncamarda/Library/Cloud
 - `01_Efficacy/c_overall_survival/*overall_survival_probability_5yr_capped_effect_summary.xlsx`
 - `01_Efficacy/d_progression_free_survival/*progression_free_survival_probability_5yr_capped_effect_summary.xlsx`
 - `01_Efficacy/*/*_km.png` figures should preserve observed follow-up; do not create a separate capped plotting dataset or administratively censor KM display data solely to improve appearance. If late tails are unstable, handle that in figure selection/captioning or with an explicitly approved sensitivity analysis, not by silently changing plotted event/censoring data.
-- `peer_review_revision_audits/*followup_and_data_availability.xlsx`
+- `<SHARE_PACKET_DIR>/*followup_and_data_availability.xlsx`
 - `02_Safety/a_vision_changes/*vision_followup_sensitivity.xlsx` (latest-VA follow-up thresholds with explicit and proxy timing surfaces)
 - `01_Efficacy/e_tumor_height_primary/*tumor_height_timing_summary.xlsx`
 
@@ -281,7 +285,7 @@ Execute Goal Group 1 from docs/superpowers/plans/2026-06-26-peer-review-statisti
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma
+cd <CANONICAL_REPO>
 git status --short --branch
 git log --oneline --decorate -1
 ```
@@ -300,7 +304,7 @@ Do not create a Git tag named for the May 3 submission: the submission was an ex
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma
+cd <CANONICAL_REPO>
 if ! git rev-parse -q --verify refs/tags/post-submission-pre-peer-review-analysis-2026-06-11 >/dev/null; then
   git tag post-submission-pre-peer-review-analysis-2026-06-11 7465447
 fi
@@ -323,7 +327,7 @@ In the peer-review response packet, record these immutable references before cha
 Submitted manuscript: ARO - UM - ANONYMIZED MANUSCRIPT (4-27-26)-FINAL.docx
 Journal / submission date: Advances in Radiation Oncology / May 3, 2026
 Submission evidence: Gmail decision thread 19ef47f8cf7efd88
-Submission-era generated outputs: /Users/ncamarda/Library/CloudStorage/OneDrive-Personal/Research/uveal_melanoma/Analysis/2026-04-27/
+Submission-era generated outputs: <SUBMISSION_OUTPUT_DIR>/
 ```
 
 This is a provenance note, not a file copy. Do not add the manuscript or patient-level generated outputs to Git.
@@ -333,9 +337,9 @@ This is a provenance note, not a file copy. Do not add the manuscript or patient
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma
+cd <CANONICAL_REPO>
 git worktree add -b peer-review-statistical-revision ../uveal_melanoma-peer-review-statistical-revision post-submission-pre-peer-review-analysis-2026-06-11
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 git status --short --branch
 git log --oneline -1
 ```
@@ -352,9 +356,9 @@ Expected:
 Copy or move the plan file into the peer-review worktree if needed, then commit it from `<PEER_REVIEW_REPO>`. Leave `<CANONICAL_REPO>`/`master` untouched.
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 mkdir -p docs/superpowers/plans
-cp /Users/ncamarda/Projects/uveal_melanoma/docs/superpowers/plans/2026-06-26-peer-review-statistical-revision.md docs/superpowers/plans/2026-06-26-peer-review-statistical-revision.md
+cp <CANONICAL_REPO>/docs/superpowers/plans/2026-06-26-peer-review-statistical-revision.md docs/superpowers/plans/2026-06-26-peer-review-statistical-revision.md
 git add docs/superpowers/plans/2026-06-26-peer-review-statistical-revision.md
 git commit -m "docs: add peer-review statistical revision plan"
 ```
@@ -401,7 +405,7 @@ expect_artifact_fresh_after <- function(path, started_at) {
 
 expect_no_reviewer_facing_paths <- function(path) {
     text <- readLines(path, warn = FALSE)
-    forbidden <- grep("/Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision|/Users/ncamarda/Projects/uveal_melanoma/docs|/Users/ncamarda/Projects/uveal_melanoma/scripts", text, value = TRUE)
+    forbidden <- grep("(^|[[:space:]`(])/(Users|home)/", text, value = TRUE, perl = TRUE)
     expect_length(forbidden, 0, info = paste("Committed reviewer-facing doc contains source-machine absolute paths:", paste(forbidden, collapse = "\n")))
 }
 
@@ -446,7 +450,7 @@ test_that("artifact freshness helper fails on missing files", {
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 Rscript -e "testthat::test_file('tests/testthat/test_peer_review_artifact_verification.R')"
 ```
 
@@ -461,7 +465,7 @@ PASS
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 git add tests/testthat/helper-peer-review-revision.R tests/testthat/test_peer_review_artifact_verification.R
 git commit -m "test: add peer-review revision artifact helpers"
 ```
@@ -614,7 +618,7 @@ test_that("Objective 1 KM figures cap display at SURVIVAL_XAXIS_MAX_MONTHS while
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 Rscript -e "testthat::test_file('tests/testthat/test_peer_review_revision_contract.R')"
 ```
 
@@ -631,7 +635,7 @@ Failure ... "mets_time_to_event" %in% names(pipeline$results) is not TRUE
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 git add tests/testthat/test_peer_review_revision_contract.R
 git commit -m "test: capture peer-review statistical revision contracts"
 ```
@@ -684,7 +688,7 @@ These tests do not decide whether PFS-2 should be redefined. They prevent Object
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 Rscript -e "testthat::test_file('tests/testthat/test_objective3_objective4_scope_protection.R')"
 ```
 
@@ -699,7 +703,7 @@ PASS
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 git add tests/testthat/test_objective3_objective4_scope_protection.R
 git commit -m "test: protect objective 3 and 4 endpoint scope"
 ```
@@ -769,7 +773,7 @@ In `<PEER_REVIEW_REPO>/docs/CALCULATIONS.md`, replace the "Key Details" bullet t
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 Rscript -e "testthat::test_file('tests/testthat/test_peer_review_revision_contract.R', filter='continuous age')"
 ```
 
@@ -784,7 +788,7 @@ PASS
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 git add scripts/config/modeling_policy.R docs/CALCULATIONS.md
 git commit -m "fix: use continuous age in adjusted reviewer-response models"
 ```
@@ -1218,7 +1222,7 @@ test_that("Objective 1 recurrence and metastasis event-support summaries include
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 Rscript -e "testthat::test_file('tests/testthat/test_peer_review_revision_contract.R')"
 Rscript -e "testthat::test_file('tests/testthat/test_objective1_primary_outcomes.R')"
 ```
@@ -1235,7 +1239,7 @@ PASS
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 git add scripts/analysis/survival_outcomes.R scripts/analysis/binary_outcomes.R scripts/workflow/objective_1_primary_outcomes.R tests/testthat/test_objective1_primary_outcomes.R tests/testthat/test_peer_review_revision_contract.R
 git commit -m "fix: make recurrence and metastasis Cox-led endpoints"
 ```
@@ -1444,7 +1448,7 @@ Do not describe the full-follow-up PFS HR as unqualified Cox lead inference: the
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 Rscript -e "testthat::test_file('tests/testthat/test_peer_review_revision_contract.R', filter='five-year capped')"
 ```
 
@@ -1461,7 +1465,7 @@ The test must assert that each fitted capped model writes either a PH diagnostic
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 git add scripts/analysis/survival_outcomes.R scripts/workflow/objective_1_primary_outcomes.R tests/testthat/test_peer_review_revision_contract.R
 git commit -m "feat: add five-year capped Cox sensitivity analyses"
 ```
@@ -1772,7 +1776,7 @@ if (sys.nframe() == 0) {
         full = file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"),
         restricted = file.path(PROCESSED_DATA_DIR, "uveal_melanoma_restricted_cohort.rds")
     )
-    output_dir <- file.path(OUTPUT_DIR, "peer_review_revision_audits")
+    output_dir <- PEER_REVIEW_REVISION_AUDITS_DIR
     for (cohort_name in names(cohorts)) {
         write_peer_review_data_availability_audit(
             data = readRDS(cohorts[[cohort_name]]),
@@ -1833,7 +1837,7 @@ test_that("peer-review data availability audit reports present and absent review
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 Rscript -e "testthat::test_file('tests/testthat/test_peer_review_data_availability.R')"
 ```
 
@@ -1848,15 +1852,15 @@ PASS
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 Rscript scripts/tools/peer_review_followup_audit.R
 ```
 
 Expected:
 
 ```text
-/Users/ncamarda/ProjectsRuntime/uveal_melanoma/Analysis/peer_review_revision_audits/full_followup_and_data_availability.xlsx
-/Users/ncamarda/ProjectsRuntime/uveal_melanoma/Analysis/peer_review_revision_audits/restricted_followup_and_data_availability.xlsx
+<SHARE_PACKET_DIR>/full_followup_and_data_availability.xlsx
+<SHARE_PACKET_DIR>/restricted_followup_and_data_availability.xlsx
 ```
 
 Use these workbooks to populate the single response document. Do not add these audit results to the main Objective 1 workflow unless a specific reusable table becomes part of the revised manuscript analysis contract.
@@ -1866,7 +1870,7 @@ Use these workbooks to populate the single response document. Do not add these a
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 git add scripts/tools/peer_review_followup_audit.R tests/testthat/test_peer_review_data_availability.R
 git commit -m "feat: add peer-review follow-up and data availability audit tool"
 ```
@@ -2109,7 +2113,7 @@ if (sys.nframe() == 0) {
         full = file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"),
         restricted = file.path(PROCESSED_DATA_DIR, "uveal_melanoma_restricted_cohort.rds")
     )
-    output_dir <- file.path(OUTPUT_DIR, "peer_review_revision_audits")
+    output_dir <- PEER_REVIEW_REVISION_AUDITS_DIR
     if (!dir.exists(output_dir)) {
         dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
     }
@@ -2226,7 +2230,7 @@ test_that("propensity score feasibility blocks separation-prone models from repo
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 Rscript -e "testthat::test_file('tests/testthat/test_propensity_score_feasibility.R')"
 ```
 
@@ -2241,15 +2245,15 @@ PASS
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 Rscript scripts/tools/propensity_score_feasibility.R
 ```
 
 Expected:
 
 ```text
-/Users/ncamarda/ProjectsRuntime/uveal_melanoma/Analysis/peer_review_revision_audits/full_propensity_score_feasibility.xlsx
-/Users/ncamarda/ProjectsRuntime/uveal_melanoma/Analysis/peer_review_revision_audits/restricted_propensity_score_feasibility.xlsx
+<SHARE_PACKET_DIR>/full_propensity_score_feasibility.xlsx
+<SHARE_PACKET_DIR>/restricted_propensity_score_feasibility.xlsx
 ```
 
 Use these workbooks to decide one of two actions in `docs/peer_review_revision_response.md`:
@@ -2262,7 +2266,7 @@ Use these workbooks to decide one of two actions in `docs/peer_review_revision_r
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 git add scripts/tools/propensity_score_feasibility.R tests/testthat/test_propensity_score_feasibility.R
 git commit -m "feat: add propensity score feasibility audit tool"
 ```
@@ -2472,7 +2476,7 @@ test_that("visual-acuity minimum-follow-up sensitivity reruns treatment-effect m
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 Rscript -e "testthat::test_file('tests/testthat/test_objective2_safety_toxicity.R')"
 ```
 
@@ -2487,7 +2491,7 @@ PASS
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 git add scripts/analysis/vision_safety_analysis.R docs/CALCULATIONS.md tests/testthat/test_objective2_safety_toxicity.R
 git commit -m "feat: add visual-acuity follow-up sensitivity outputs"
 ```
@@ -2556,7 +2560,7 @@ test_that("Objective 2 SRD/SRG reviewer-facing output declares radiation-induced
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 Rscript -e "testthat::test_file('tests/testthat/test_objective2_safety_toxicity.R')"
 ```
 
@@ -2571,7 +2575,7 @@ PASS
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 git add scripts/analysis/vision_safety_analysis.R docs/CALCULATIONS.md docs/STATISTICAL_METHODS.md tests/testthat/test_objective2_safety_toxicity.R docs/peer_review_revision_response.md
 git commit -m "fix: clarify objective 2 retinal detachment toxicity scope"
 ```
@@ -2699,7 +2703,7 @@ test_that("Objective 1 tumor-height analysis writes timing summary", {
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 Rscript -e "testthat::test_file('tests/testthat/test_objective1_primary_outcomes.R')"
 ```
 
@@ -2714,7 +2718,7 @@ PASS
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 git add scripts/analysis/tumor_height_analysis.R tests/testthat/test_objective1_primary_outcomes.R docs/CALCULATIONS.md
 git commit -m "feat: add tumor-height timing summary and reporting guardrail"
 ```
@@ -2832,7 +2836,7 @@ reviewer_pruning_audit <- tibble::tibble(
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 Rscript -e "testthat::test_file('tests/testthat/test_forest_plot_labels.R')"
 Rscript -e "testthat::test_file('tests/testthat/test_objective1_primary_outcomes.R')"
 ```
@@ -2883,7 +2887,7 @@ test_that("reviewer-facing subgroup diagnostics record PRAME and T4 exclusions",
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 git add scripts/config/modeling_policy.R scripts/subgroup/subgroup_data_prep.R scripts/visualization/forest_plot_data.R tests/testthat/test_forest_plot_labels.R tests/testthat/test_objective1_primary_outcomes.R
 git commit -m "fix: prune sparse reviewer-facing subgroup outputs"
 ```
@@ -2920,7 +2924,7 @@ Create `<PEER_REVIEW_REPO>/docs/peer_review_revision_response.md` as a Tim-comme
 ```markdown
 # Peer Review Revision Response And Results
 
-This is the only coauthor-facing document for the response to Tim. It is built around Tim-directed Google Doc to-dos for Nick. Each item includes the Google Doc context, Tim's request, the analysis or documentation action, current status, result when available, manuscript/response change, limitation, owner, and a supporting artifact path expressed as a project path alias such as `<OUTPUT_DIR>/peer_review_revision_audits/...` or `<PROCESSED_DATA_DIR>/...`. Do not create a separate action matrix, data-availability memo, or results summary.
+This is the only coauthor-facing document for the response to Tim. It is built around Tim-directed Google Doc to-dos for Nick. Each item includes the Google Doc context, Tim's request, the analysis or documentation action, current status, result when available, manuscript/response change, limitation, owner, and a supporting artifact path expressed as a project path alias such as `<SHARE_PACKET_DIR>/...` or `<PROCESSED_DATA_DIR>/...`. Do not create a separate action matrix, data-availability memo, or results summary.
 
 ## Source Packet
 
@@ -3053,7 +3057,7 @@ The current data cannot support without new chart or plan review:
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 git add docs/peer_review_revision_response.md
 git commit -m "docs: add peer-review response checklist"
 ```
@@ -3121,7 +3125,7 @@ In `<PEER_REVIEW_REPO>/docs/INTERPRETATION_GUIDE.md`, add:
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 Rscript -e "testthat::test_file('tests/testthat/test_doc_contract_alignment.R')"
 ```
 
@@ -3136,7 +3140,7 @@ PASS
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 Rscript -e "testthat::test_file('tests/testthat/test_peer_review_artifact_verification.R')"
 Rscript - <<'RS'
 docs <- c(
@@ -3150,7 +3154,7 @@ missing <- docs[!file.exists(docs)]
 if (length(missing)) stop("Missing docs: ", paste(missing, collapse = ", "))
 absolute_path_hits <- unlist(lapply(docs, function(path) {
     lines <- readLines(path, warn = FALSE)
-    hits <- grep("/Users/ncamarda/", lines, value = TRUE, fixed = TRUE)
+    hits <- grep("(^|[[:space:]`(])/(Users|home)/", lines, value = TRUE, perl = TRUE)
     if (length(hits)) paste(path, hits, sep = ": ")
 }))
 if (length(absolute_path_hits)) stop("Committed docs contain source-machine absolute paths:\n", paste(absolute_path_hits, collapse = "\n"))
@@ -3158,7 +3162,7 @@ cat("Markdown/path contract check passed\n")
 RS
 ```
 
-If a local Markdown renderer is available, preview the touched docs and confirm that tables, code fences, and reviewer checklist formatting render correctly. Do not add absolute local paths to committed reviewer-facing docs such as `docs/peer_review_revision_response.md`; use `<OUTPUT_DIR>`, `<PROCESSED_DATA_DIR>`, or repo-relative paths there. The exception is operator-facing material: this implementation plan and internal audit workbook sheets such as `clickable_paths` may use absolute local paths or Markdown `file://` links to make runtime artifacts easy to open.
+If a local Markdown renderer is available, preview the touched docs and confirm that tables, code fences, and reviewer checklist formatting render correctly. Do not add absolute local paths to committed reviewer-facing docs such as `docs/peer_review_revision_response.md`; use `<OUTPUT_DIR>`, `<PROCESSED_DATA_DIR>`, or repo-relative paths there. Generated internal audit workbook sheets such as `clickable_paths` may use absolute local paths or Markdown `file://` links for operator inspection; the tracked implementation plan must continue to use symbolic aliases.
 
 Expected:
 
@@ -3172,7 +3176,7 @@ Markdown/path contract check passed
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 git add docs/METHODS_SECTION_PAPER.md docs/STATISTICAL_METHODS.md docs/INTERPRETATION_GUIDE.md docs/CALCULATIONS.md tests/testthat/test_doc_contract_alignment.R
 git commit -m "docs: align methods with peer-review statistical revision"
 ```
@@ -3188,7 +3192,7 @@ Expected:
 ### Task 14: Populate And Verify The Single Coauthor Response Document
 
 **Files:**
-- Modify: `/Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision/docs/peer_review_revision_response.md`
+- Modify: `<PEER_REVIEW_REPO>/docs/peer_review_revision_response.md`
 
 - [ ] **Step 1: Populate every checklist row from verified runtime evidence**
 
@@ -3207,7 +3211,7 @@ After the restricted-cohort run, complete every `T-NICK-XX` item in `docs/peer_r
 **Result:** Cohort, event count, effect estimate, 95% CI, p-value if reportable, and the exact diagnostic result that qualifies interpretation.
 **Response/manuscript language:** Exact methods/results/discussion or response-document revision required.
 **Limitation / interpretation:** Data, estimand, model-support, or interpretation constraint.
-**Evidence:** Project path alias to the one or two runtime artifacts that support this row, for example `<OUTPUT_DIR>/peer_review_revision_audits/restricted_followup_and_data_availability.xlsx`.
+**Evidence:** Project path alias to the one or two runtime artifacts that support this row, for example `<SHARE_PACKET_DIR>/restricted_followup_and_data_availability.xlsx`.
 ```
 
 Do not bulk-append a filesystem inventory. Runtime workbooks remain evidence, not a second coauthor-facing packet. Record only the artifact path aliases required to reproduce each stated result.
@@ -3221,12 +3225,12 @@ Before sharing the document with Tim, verify that every `T-NICK-XX` item listed 
 After populating `docs/peer_review_revision_response.md`, rerun the committed-document path check and inspect Markdown rendering. This must happen after results and evidence path aliases are filled in.
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 Rscript -e "testthat::test_file('tests/testthat/test_peer_review_artifact_verification.R')"
 Rscript - <<'RS'
 doc <- "docs/peer_review_revision_response.md"
 lines <- readLines(doc, warn = FALSE)
-if (any(grepl("/Users/ncamarda/", lines, fixed = TRUE))) {
+if (any(grepl("(^|[[:space:]`(])/(Users|home)/", lines, perl = TRUE))) {
     stop("Response document contains source-machine absolute paths; use <OUTPUT_DIR>, <PROCESSED_DATA_DIR>, or repo-relative aliases.")
 }
 required_headings <- c(
@@ -3251,7 +3255,7 @@ Response document validation passed
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 git add docs/peer_review_revision_response.md
 git commit -m "docs: complete peer-review response and results"
 ```
@@ -3279,7 +3283,7 @@ Execute Goal Group 6 from docs/superpowers/plans/2026-06-26-peer-review-statisti
 ### Task 13: Run Targeted Pipeline And Verify Reviewer Artifacts
 
 **Files:**
-- Runtime outputs under `/Users/ncamarda/ProjectsRuntime/uveal_melanoma/Analysis/`
+- Runtime outputs under `<OUTPUT_DIR>/`
 - No source edits unless verification reveals a defect.
 
 - [ ] **Step 1: Run targeted tests**
@@ -3287,7 +3291,7 @@ Execute Goal Group 6 from docs/superpowers/plans/2026-06-26-peer-review-statisti
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 Rscript -e "testthat::test_file('tests/testthat/test_peer_review_revision_contract.R')"
 Rscript -e "testthat::test_file('tests/testthat/test_peer_review_artifact_verification.R')"
 Rscript -e "testthat::test_file('tests/testthat/test_objective3_objective4_scope_protection.R')"
@@ -3316,7 +3320,7 @@ PASS
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 export PEER_REVIEW_VERIFY_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 Rscript -e "source('scripts/load_all.R'); run_my_analysis('uveal_melanoma_restricted_cohort')"
 Rscript scripts/tools/peer_review_followup_audit.R
@@ -3336,7 +3340,7 @@ If the macOS OpenMP SHM2 crash occurs, stop repeated retries and have Nick run t
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 Rscript - <<'RS'
 source("scripts/load_all.R")
 started <- as.POSIXct(Sys.getenv("PEER_REVIEW_VERIFY_STARTED_AT"), tz = "UTC", format = "%Y-%m-%dT%H:%M:%SZ")
@@ -3384,8 +3388,8 @@ vision_followup_sensitivity.xlsx
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
-Rscript -e "library(readxl); files <- list.files('/Users/ncamarda/ProjectsRuntime/uveal_melanoma/Analysis', pattern='(local_recurrence_free_probability_effect_summary|metastasis_free_survival_probability_effect_summary|5yr_capped_effect_summary|propensity_score_feasibility|followup_and_data_availability|vision_followup_sensitivity|tumor_height_timing_summary)\\\\.xlsx$', recursive=TRUE, full.names=TRUE); for (f in files) { cat('\\nFILE:', f, '\\n'); print(readxl::excel_sheets(f)); }"
+cd <PEER_REVIEW_REPO>
+Rscript -e "library(readxl); files <- list.files('<OUTPUT_DIR>', pattern='(local_recurrence_free_probability_effect_summary|metastasis_free_survival_probability_effect_summary|5yr_capped_effect_summary|propensity_score_feasibility|followup_and_data_availability|vision_followup_sensitivity|tumor_height_timing_summary)\\\\.xlsx$', recursive=TRUE, full.names=TRUE); for (f in files) { cat('\\nFILE:', f, '\\n'); print(readxl::excel_sheets(f)); }"
 ```
 
 Expected:
@@ -3404,8 +3408,8 @@ If Task 13 or any earlier task regenerated figure, plot, PNG, TIFF, JPEG, SVG, o
 Run this command to list recently modified figure-like artifacts under the runtime output root:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
-find /Users/ncamarda/ProjectsRuntime/uveal_melanoma/Analysis \
+cd <PEER_REVIEW_REPO>
+find <OUTPUT_DIR> \
   -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.tif' -o -iname '*.tiff' -o -iname '*.svg' -o -iname '*.pdf' \) \
   -newermt "$PEER_REVIEW_VERIFY_STARTED_AT" \
   -print
@@ -3436,7 +3440,7 @@ Regenerated figures inspected visually; inspected file paths recorded in the exe
 Run:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 Rscript -e "testthat::test_dir('tests/testthat')"
 ```
 
@@ -3451,7 +3455,7 @@ PASS
 If Step 1 through Step 6 required source fixes, commit those exact files:
 
 ```bash
-cd /Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision
+cd <PEER_REVIEW_REPO>
 git status --short
 git add \
   scripts/config/modeling_policy.R \
@@ -3483,7 +3487,7 @@ Expected:
 
 ## Final Verification Checklist
 
-- [ ] `git status --short` is clean in `/Users/ncamarda/Projects/uveal_melanoma-peer-review-statistical-revision`.
+- [ ] `git status --short` is clean in `<PEER_REVIEW_REPO>`.
 - [ ] `Rscript -e "testthat::test_dir('tests/testthat')"` passes or the exact failing tests are documented with reason.
 - [ ] Restricted-cohort pipeline run completes or Nick runs locally if OpenMP SHM2 prevents assistant execution.
 - [ ] Recurrence/metastasis reviewer-response outputs contain HRs, not ORs.

@@ -267,7 +267,7 @@ write_propensity_score_feasibility <- function(ps_fit, path) {
 #'
 #' @return Character vector of created workbook paths.
 run_propensity_score_feasibility_audits <- function() {
-    output_dir <- file.path(OUTPUT_DIR, "peer_review_revision_audits")
+    output_dir <- PEER_REVIEW_REVISION_AUDITS_DIR
     cohort_paths <- c(
         full = file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"),
         restricted = file.path(PROCESSED_DATA_DIR, "uveal_melanoma_restricted_cohort.rds")

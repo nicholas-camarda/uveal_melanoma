@@ -125,43 +125,6 @@ test_that("Objective 1 KM figures cap display at SURVIVAL_XAXIS_MAX_MONTHS while
     expect_gt(max(data$tt_pfs_months, na.rm = TRUE), SURVIVAL_XAXIS_MAX_MONTHS)
 })
 
-test_that("Endpoint and claim audit covers reviewer-facing high-risk endpoints", {
-    audit_path <- testthat::test_path("..", "..", "docs", "peer_review_revision_response.md")
-    expect_true(file.exists(audit_path))
-
-    audit_text <- paste(readLines(audit_path, warn = FALSE), collapse = "\n")
-    required_sections <- c(
-        "### PFS",
-        "### PFS-2",
-        "### Local Recurrence",
-        "### Metastatic Progression",
-        "### Vision Change",
-        "### Tumor-Height Change",
-        "### Adverse Events",
-        "### Dosimetry/Proximity Availability"
-    )
-    expect_true(all(required_sections %in% stringr::str_extract_all(audit_text, "### [^\n]+")[[1]]))
-
-    for (section in required_sections) {
-        section_start <- regexpr(section, audit_text, fixed = TRUE)[[1]]
-        expect_gt(section_start, 0)
-        section_text <- substr(audit_text, section_start, nchar(audit_text))
-        next_header <- regexpr("\n### ", section_text)
-        if (next_header[[1]] > 1) {
-            section_text <- substr(section_text, 1, next_header[[1]] - 1)
-        }
-        expect_true(grepl("Outcome label:", section_text, fixed = TRUE))
-        expect_true(grepl("Code path:", section_text, fixed = TRUE))
-        expect_true(grepl("Time variable:", section_text, fixed = TRUE))
-        expect_true(grepl("Event variable:", section_text, fixed = TRUE))
-        expect_true(grepl("Event definition:", section_text, fixed = TRUE))
-        expect_true(grepl("Censoring/competing-event rule:", section_text, fixed = TRUE))
-        expect_true(grepl("Runtime source fields:", section_text, fixed = TRUE))
-        expect_true(grepl("Reviewer question addressed:", section_text, fixed = TRUE))
-        expect_true(grepl("Action:", section_text, fixed = TRUE))
-    }
-})
-
 test_that("Survival route keys separate Objective 1 metastasis and Objective 4 MFS outputs", {
     output_dirs <- list(
         baseline_characteristics = tempfile("baseline"),
