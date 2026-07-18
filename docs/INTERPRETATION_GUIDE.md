@@ -31,7 +31,7 @@ It is not the canonical source for variable derivations or statistical assumptio
 
 If you only need the shortest route:
 
-1. Find the cohort folder under `~/ProjectsRuntime/uveal_melanoma/Analysis/`.
+1. Find the cohort folder under `~/Workspaces/uveal-melanoma/runtime/Analysis/`.
 2. Open the objective folder that matches your question.
 3. Start with the consolidated `.xlsx` workbook or summary `.html` artifact in that folder.
 4. Use this guide to interpret what you are seeing.
@@ -40,11 +40,11 @@ If you only need the shortest route:
 ### Finding Your Analysis
 
 **Step 1:** Identify your cohort
-- Full cohort: `~/ProjectsRuntime/uveal_melanoma/Analysis/uveal_full/`
-- Restricted cohort: `~/ProjectsRuntime/uveal_melanoma/Analysis/uveal_restricted/`
-- GKSRS-only cohort: `~/ProjectsRuntime/uveal_melanoma/Analysis/gksrs/`
+- Full cohort: `~/Workspaces/uveal-melanoma/runtime/Analysis/uveal_full/`
+- Restricted cohort: `~/Workspaces/uveal-melanoma/runtime/Analysis/uveal_restricted/`
+- GKSRS-only cohort: `~/Workspaces/uveal-melanoma/runtime/Analysis/gksrs/`
 
-Current cohort totals are exported with each run to `~/ProjectsRuntime/uveal_melanoma/Analytic Dataset/cohort_summary_statistics.json`.
+Current cohort totals are exported with each run to `~/Workspaces/uveal-melanoma/runtime/Analytic Dataset/cohort_summary_statistics.json`.
 
 **Step 2:** Navigate to objective folder
 - Objective 0: `00_General/` (baseline characteristics, patient flow)
@@ -624,7 +624,7 @@ The main Objective 4 denominator is deliberately stricter than “any row with a
 | Calibration curve PNGs | `<prefix>mfs_calibration_full.png` and `<prefix>mss_calibration_full.png` (one per outcome; faceted by timepoint). |
 | Unified workbook | `<prefix>unified_gep_validation_summary.xlsx` at the root of `04_GEP_Validation/`; this workbook uses comparison-only sheet names such as `Calibration_Comparison`, `Discrimination_Comparison`, `PRAME_Comparison`, and `Missing_Data_Comparison`. The full cohort additionally appends `No_GEP_Overview`, `No_GEP_Model_Comparison`, and `No_GEP_Risk_Strata`. |
 | Simple QC workbook | `unified_summary/<prefix>simple_gep_validation.xlsx`. For MFS, the observed 5-year value is KM at 60 months. |
-| Default directory | `~/ProjectsRuntime/uveal_melanoma/Analysis/<cohort>/04_GEP_Validation/` with `a_metastasis_free_survival/`, `b_melanoma_specific_survival/`, and `unified_summary/`. |
+| Default directory | `~/Workspaces/uveal-melanoma/runtime/Analysis/<cohort>/04_GEP_Validation/` with `a_metastasis_free_survival/`, `b_melanoma_specific_survival/`, and `unified_summary/`. |
 | Outcomes covered | MFS and MSS; unified workbooks stack both. Full-cohort unified workbooks may also append no-GEP comparison sheets. |
 | Timepoints | Driven by `GEP_VALIDATION_TIMEPOINTS` (defaults: 5, 7, 10 years). Every sheet carries one row per timepoint requested. |
 | How to regenerate | Run Objective 4 via `run_specific_objective("uveal_melanoma_<cohort>", 4)` or the full pipeline. New runs overwrite existing workbooks after passing QC. |

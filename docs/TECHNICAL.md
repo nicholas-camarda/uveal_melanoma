@@ -119,7 +119,7 @@ This three-cohort design addresses key clinical and methodological challenges:
 
 ### Dataset Identities and Construction
 
-The analytic datasets in `~/ProjectsRuntime/uveal_melanoma/Analytic Dataset/` are not separate raw sources. They are three derived views of the same cleaned and fully processed master table, created once in Objective 0 and then reused by Objectives 1-4.
+The analytic datasets in `~/Workspaces/uveal-melanoma/runtime/Analytic Dataset/` are not separate raw sources. They are three derived views of the same cleaned and fully processed master table, created once in Objective 0 and then reused by Objectives 1-4.
 
 | Dataset file | Runtime dataset id | Output folder | What it means | How it is constructed | Why it exists |
 |--------------|--------------------|---------------|---------------|-----------------------|---------------|
@@ -133,7 +133,7 @@ These three files should be interpreted as intentionally overlapping analytic co
 - The **restricted cohort** is the clinically balanced subset of the full cohort.
 - The **GKSRS-only cohort** is the clinically excluded-from-PBT subset of the full cohort.
 
-The additional files in `~/ProjectsRuntime/uveal_melanoma/Analytic Dataset/` support consistent downstream reporting:
+The additional files in `~/Workspaces/uveal-melanoma/runtime/Analytic Dataset/` support consistent downstream reporting:
 
 | Supporting file | What it contains | Why it is saved |
 |-----------------|------------------|-----------------|
@@ -188,7 +188,7 @@ Patients are classified into three vital status categories for summary reporting
 Analysis outputs follow a **cohort → objective → sub-objective** structure:
 
 ```
-~/ProjectsRuntime/uveal_melanoma/
+~/Workspaces/uveal-melanoma/runtime/
 ├── Analytic Dataset/               # Processed RDS files and runtime metadata
 │   ├── uveal_melanoma_full_cohort.rds
 │   ├── uveal_melanoma_restricted_cohort.rds
@@ -234,9 +234,9 @@ Analysis outputs follow a **cohort → objective → sub-objective** structure:
 ├── test_output/                    # Testing artifacts
 └── tools_output/                   # Documentation/audit tool artifacts
 
-~/Library/CloudStorage/OneDrive-Personal/Research/uveal_melanoma/
+~/Library/CloudStorage/OneDrive-Personal/Project Vault/Research/uveal-melanoma/
 ├── Original Files/                 # Authoritative raw input data
-└── Analysis/
+└── outputs/
     └── <YYYY-MM-DD>/               # Published final deliverables only
 ```
 
@@ -325,7 +325,7 @@ scripts/
 
 ### Tool Refresh Outputs
 
-Documentation-oriented utilities under [scripts/tools](../scripts/tools) write their canonical runtime artifacts to `~/ProjectsRuntime/uveal_melanoma/tools_output/`, which is the path behind `TOOLS_OUTPUT_DIR` in [scripts/utils/config_constants.R](../scripts/utils/config_constants.R).
+Documentation-oriented utilities under [scripts/tools](../scripts/tools) write their canonical runtime artifacts to `~/Workspaces/uveal-melanoma/runtime/tools_output/`, which is the path behind `TOOLS_OUTPUT_DIR` in [scripts/utils/config_constants.R](../scripts/utils/config_constants.R).
 
 The current refresh entry point is [scripts/tools/run_tool_refreshes.R](../scripts/tools/run_tool_refreshes.R). It orchestrates the documentation-focused tools, writes per-tool run summaries, and leaves behind a suite-level manifest so periodic refreshes can be audited without opening the workbooks themselves.
 

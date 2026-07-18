@@ -28,7 +28,7 @@ The repository is set up to read the source spreadsheet from the path configured
 In the maintainer's environment, the default raw-data folder is:
 
 ```text
-~/Library/CloudStorage/OneDrive-Personal/Research/uveal_melanoma/Original Files/
+~/Library/CloudStorage/OneDrive-Personal/Project Vault/Research/uveal-melanoma/Original Files/
 ```
 
 The expected filename is the value of `INPUT_FILENAME` in `scripts/utils/config_constants.R`.
@@ -46,7 +46,7 @@ Rscript -e "source('scripts/load_all.R'); main_execution()"
 Runtime outputs are written to:
 
 ```text
-~/ProjectsRuntime/uveal_melanoma/
+~/Workspaces/uveal-melanoma/runtime/
 ```
 
 ### Prerequisites
@@ -121,7 +121,7 @@ The pipeline works with three intentionally overlapping analytic cohorts created
 | Restricted | `uveal_melanoma_restricted_cohort` | Dual-eligibility cohort for a more balanced treatment comparison |
 | GKSRS-only | `uveal_melanoma_gksrs_only_cohort` | Patients ineligible for PBT, used to characterize GKSRS in challenging cases |
 
-The current cohort counts and summary totals are written to `~/ProjectsRuntime/uveal_melanoma/Analytic Dataset/cohort_summary_statistics.json` whenever the pipeline is rerun.
+The current cohort counts and summary totals are written to `~/Workspaces/uveal-melanoma/runtime/Analytic Dataset/cohort_summary_statistics.json` whenever the pipeline is rerun.
 
 The analysis is organized into four main research objectives:
 
@@ -139,7 +139,7 @@ For a collaborator-facing overview of the study aims and eligibility logic, see 
 Pipeline outputs are primarily written to the runtime analysis tree:
 
 ```text
-~/ProjectsRuntime/uveal_melanoma/
+~/Workspaces/uveal-melanoma/runtime/
 |- Analytic Dataset/
 |  |- cohort_summary_statistics.json
 |  |- *.rds
@@ -171,7 +171,9 @@ Objective 4 has a deliberate reading path:
 
 ## Publish Workflow
 
-Publishing is an optional manual step used in the maintainer's environment to copy selected deliverables from runtime output into a dated export snapshot. If you are reproducing the analysis locally, you can usually ignore this section and work directly from the runtime outputs under `~/ProjectsRuntime/uveal_melanoma/`.
+Publishing is an optional manual step used in the maintainer's environment to copy selected deliverables from runtime output into a dated export snapshot. If you are reproducing the analysis locally, you can usually ignore this section and work directly from the runtime outputs under `~/Workspaces/uveal-melanoma/runtime/`.
+
+Approved snapshots are published under `~/Library/CloudStorage/OneDrive-Personal/Project Vault/Research/uveal-melanoma/outputs/`. Raw inputs remain in the sibling `Original Files/` directory; generated and intermediate artifacts remain under the local runtime root.
 
 ```r
 source("scripts/load_all.R")

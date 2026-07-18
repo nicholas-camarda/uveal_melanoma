@@ -1,5 +1,59 @@
-test_that("project slug matches project root basename", {
-    expect_equal(PROJECT_SLUG, basename(PROJECT_ROOT))
+test_that("project paths use distinct analysis and repository slugs", {
+    expect_equal(PROJECT_SLUG, "uveal_melanoma")
+    expect_equal(REPOSITORY_SLUG, "uveal-melanoma")
+})
+
+test_that("project paths follow the canonical workspace and Project Vault contract", {
+    expect_equal(
+        normalizePath(PROJECT_ROOT, winslash = "/", mustWork = FALSE),
+        "/Users/ncamarda/Workspaces/uveal-melanoma/source"
+    )
+    expect_equal(
+        normalizePath(DEFAULT_RUNTIME_ROOT, winslash = "/", mustWork = FALSE),
+        "/Users/ncamarda/Workspaces/uveal-melanoma/runtime"
+    )
+    expect_equal(
+        normalizePath(DEFAULT_RAW_DATA_DIR, winslash = "/", mustWork = FALSE),
+        paste0(
+            "/Users/ncamarda/Library/CloudStorage/OneDrive-Personal/",
+            "Project Vault/Research/uveal-melanoma/Original Files"
+        )
+    )
+    expect_equal(
+        normalizePath(DEFAULT_PUBLISH_ROOT, winslash = "/", mustWork = FALSE),
+        paste0(
+            "/Users/ncamarda/Library/CloudStorage/OneDrive-Personal/",
+            "Project Vault/Research/uveal-melanoma/outputs"
+        )
+    )
+})
+
+test_that("standalone tools use the canonical workspace runtime", {
+    withr::local_envvar(c(
+        OUTPUT_DIR = NA,
+        OCULAR_RUNTIME_ROOT = NA,
+        OCULAR_RUNTIME_PARENT_DIR = NA
+    ))
+
+    browse_env <- new.env(parent = baseenv())
+    sys.source(
+        here::here("scripts", "tools", "browse_diagnostics.R"),
+        envir = browse_env
+    )
+    expect_equal(
+        browse_env$get_default_output_dir(),
+        "/Users/ncamarda/Workspaces/uveal-melanoma/runtime/Analysis"
+    )
+
+    export_env <- new.env(parent = baseenv())
+    sys.source(
+        here::here("scripts", "tools", "export_gep_objective4_to_downloads.R"),
+        envir = export_env
+    )
+    expect_equal(
+        export_env$resolve_runtime_analysis_root("uveal_melanoma"),
+        "/Users/ncamarda/Workspaces/uveal-melanoma/runtime/Analysis"
+    )
 })
 
 test_that("initialize_runtime_dirs creates configured runtime directories", {

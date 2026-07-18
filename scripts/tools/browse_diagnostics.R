@@ -34,11 +34,11 @@ get_default_output_dir <- function() {
     if (exists("OUTPUT_DIR", inherits = TRUE)) {
         return(get("OUTPUT_DIR", inherits = TRUE))
     }
-    # Fallback to runtime analysis location
+    # Use the configured runtime root when this tool was loaded with the project.
     if (exists("RUNTIME_ROOT", inherits = TRUE)) {
         return(file.path(get("RUNTIME_ROOT", inherits = TRUE), "Analysis"))
     }
-    return(file.path(path.expand("~/ProjectsRuntime"), basename(here::here()), "Analysis"))
+    return("/Users/ncamarda/Workspaces/uveal-melanoma/runtime/Analysis")
 }
 
 # Simple CLI args parser

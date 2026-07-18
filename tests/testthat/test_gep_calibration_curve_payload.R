@@ -56,4 +56,3 @@ test_that("Survival calibration summary includes plot-ready curve payload", {
 
     expect_true(res$curve$curve_method %in% c("ipcw_logistic_spline", "bins_only_fallback"))
 })
-
