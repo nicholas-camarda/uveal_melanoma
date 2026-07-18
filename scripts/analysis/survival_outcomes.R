@@ -564,11 +564,22 @@ determine_survival_output_dir <- function(ylab, output_dirs, route_key = NULL) {
             stop(sprintf("Unknown survival output route_key `%s`.", route_key), call. = FALSE)
         }
         output_name <- route_map[[route_key]]
-        if (!is.null(output_dirs[[output_name]])) {
-            return(output_dirs[[output_name]])
+        configured_dir <- output_dirs[[output_name]]
+        has_configured_dir <- is.character(configured_dir) &&
+            length(configured_dir) == 1L &&
+            !is.na(configured_dir) &&
+            nzchar(trimws(configured_dir))
+        if (!has_configured_dir) {
+            stop(
+                sprintf(
+                    "Configured survival output route_key `%s` has no non-empty directory (`output_dirs$%s`).",
+                    route_key,
+                    output_name
+                ),
+                call. = FALSE
+            )
         }
-        logger::log_warn("Output directory for route_key {route_key} not provided; using baseline_characteristics as fallback")
-        return(default_dir)
+        return(configured_dir)
     }
 
     if (grepl("Local Recurrence-Free", ylab) && !is.null(output_dirs$obj1_recurrence)) {

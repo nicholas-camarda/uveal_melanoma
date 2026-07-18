@@ -145,3 +145,24 @@ test_that("Survival route keys separate Objective 1 metastasis and Objective 4 M
         "Unknown survival output route_key"
     )
 })
+
+test_that("recognized explicit survival routes fail when their directory is not configured", {
+    invalid_output_dirs <- list(
+        list(baseline_characteristics = tempfile("baseline")),
+        list(baseline_characteristics = tempfile("baseline"), obj1_os = NULL),
+        list(baseline_characteristics = tempfile("baseline"), obj1_os = ""),
+        list(baseline_characteristics = tempfile("baseline"), obj1_os = character())
+    )
+
+    for (output_dirs in invalid_output_dirs) {
+        expect_error(
+            determine_survival_output_dir(
+                "Overall Survival Probability",
+                output_dirs,
+                route_key = "obj1_os"
+            ),
+            "Configured survival output route_key `obj1_os` has no non-empty directory",
+            fixed = TRUE
+        )
+    }
+})
