@@ -124,7 +124,7 @@ assign_line_change_bucket <- function(line_counts) {
 
 #' Convert a formatted logMAR summary string to Snellen line units
 #'
-#' @param stat_string Character string formatted like "{median} ({min}, {max})".
+#' @param stat_string Character string formatted like "{median} ({min}, {max})" with optional "; mean {mean}" suffix.
 #' @param step Numeric size of one Snellen line in logMAR units.
 #' @return Character string with the same summary expressed in Snellen lines.
 convert_logmar_summary_stat_to_line_summary <- function(stat_string, step = VISION_LINE_CHANGE_STEP) {
@@ -141,12 +141,16 @@ convert_logmar_summary_stat_to_line_summary <- function(stat_string, step = VISI
             }
 
             matches <- stringr::str_extract_all(value, "-?\\d+(?:\\.\\d+)?")[[1]]
-            if (length(matches) != 3) {
+            if (!length(matches) %in% c(3L, 4L)) {
                 return(value)
             }
 
             line_values <- compute_line_change_lines(as.numeric(matches), step = step)
-            sprintf("%d (%d, %d)", line_values[1], line_values[2], line_values[3])
+            if (length(line_values) == 4L) {
+                sprintf("%d (%d, %d); mean %d", line_values[1], line_values[2], line_values[3], line_values[4])
+            } else {
+                sprintf("%d (%d, %d)", line_values[1], line_values[2], line_values[3])
+            }
         }
     ))
 }

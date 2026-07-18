@@ -29,6 +29,7 @@ test_that("project paths follow the canonical workspace and Project Vault contra
 })
 
 test_that("standalone tools use the canonical workspace runtime", {
+    configured_runtime_root <- RUNTIME_ROOT
     withr::local_envvar(c(
         OUTPUT_DIR = NA,
         OCULAR_RUNTIME_ROOT = NA,
@@ -44,6 +45,7 @@ test_that("standalone tools use the canonical workspace runtime", {
         browse_env$get_default_output_dir(),
         "/Users/ncamarda/Workspaces/uveal-melanoma/runtime/Analysis"
     )
+    expect_identical(RUNTIME_ROOT, configured_runtime_root)
 
     export_env <- new.env(parent = baseenv())
     sys.source(
@@ -54,6 +56,15 @@ test_that("standalone tools use the canonical workspace runtime", {
         export_env$resolve_runtime_analysis_root("uveal_melanoma"),
         "/Users/ncamarda/Workspaces/uveal-melanoma/runtime/Analysis"
     )
+})
+
+test_that("configured raw, runtime, and publish paths retain their storage roles", {
+    expect_equal(RAW_DATA_DIR, file.path(EXPORT_ROOT, "Original Files"))
+    expect_equal(DATA_DIR, EXPORT_ROOT)
+    expect_equal(EXPORT_ANALYSIS_DIR, file.path(EXPORT_ROOT, "outputs"))
+    expect_equal(PROCESSED_DATA_DIR, file.path(RUNTIME_ROOT, "Analytic Dataset"))
+    expect_equal(OUTPUT_DIR, file.path(RUNTIME_ROOT, "Analysis"))
+    expect_equal(TOOLS_OUTPUT_DIR, file.path(RUNTIME_ROOT, "tools_output"))
 })
 
 test_that("initialize_runtime_dirs creates configured runtime directories", {

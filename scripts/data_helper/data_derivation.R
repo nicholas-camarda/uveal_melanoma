@@ -178,7 +178,9 @@ create_derived_variables <- function(data) {
                 !is.na(dod) ~ time_length(interval(treatment_date, dod), "months"),
                 TRUE ~ time_length(interval(treatment_date, last_known_alive_date), "months")
             ),
-            tt_pfs_months = pmin(tt_recurrence_months, tt_death_months, na.rm = FALSE),
+            # Standard Objective 1 PFS is first local recurrence, metastatic
+            # progression, or death from any cause.
+            tt_pfs_months = pmin(tt_recurrence_months, tt_mets_months, tt_death_months, na.rm = FALSE),
             tt_pfs2_months = case_when(
                 recurrence1 == "Y" & !is.na(recurrence1_treatment_date) & !is.na(pfs2_end_date) ~ time_length(interval(recurrence1_treatment_date, pfs2_end_date), "months"),
                 TRUE ~ NA_real_
@@ -207,7 +209,12 @@ create_derived_variables <- function(data) {
             tt_mets_months_analysis = tt_mets_months,
             tt_recurrence_months_analysis = tt_recurrence_months,
             tt_death_months_analysis = tt_death_months,
-            tt_pfs_months_analysis = pmin(tt_recurrence_months_analysis, tt_death_months_analysis, na.rm = FALSE),
+            tt_pfs_months_analysis = pmin(
+                tt_recurrence_months_analysis,
+                tt_mets_months_analysis,
+                tt_death_months_analysis,
+                na.rm = FALSE
+            ),
             # Tumor height change: Per project goals 1e
             # Formula: last_height - initial_tumor_height (or recurrence1_pretreatment_height - initial)
             # Negative = tumor decreased/shrank (good), Positive = tumor increased/grew (bad)
@@ -242,7 +249,7 @@ create_derived_variables <- function(data) {
                 melanoma_death_event == 1 ~ 0L,
                 TRUE ~ 1L
             ),
-            pfs_event = if_else(recurrence_event == 1 | death_event == 1, 1, 0),
+            pfs_event = if_else(recurrence_event == 1 | mets_event == 1 | death_event == 1, 1, 0),
             pfs2_event = case_when(
                 pfs2_second_recurrence_observed ~ 1,
                 recurrence1 == "Y" & !is.na(recurrence1_treatment_date) ~ 0,

@@ -41,10 +41,11 @@ format_continuous_summary_string <- function(values, digits = 1) {
     }
 
     sprintf(
-        paste0("%.", digits, "f (%.", digits, "f, %.", digits, "f)"),
+        paste0("%.", digits, "f (%.", digits, "f, %.", digits, "f); mean %.", digits, "f"),
         stats::median(values),
         min(values),
-        max(values)
+        max(values),
+        mean(values)
     )
 }
 
@@ -310,6 +311,304 @@ build_binary_rate_note <- function(data, outcome_var, suffix = NULL) {
     paste(parts, collapse = "; ")
 }
 
+#' Safely summarize numeric timing values
+#'
+#' @param values Numeric vector.
+#' @return Named numeric vector with mean/median/min/max, using NA when no values exist.
+safe_numeric_range_summary <- function(values) {
+    values <- values[!is.na(values)]
+    if (length(values) == 0) {
+        return(c(mean = NA_real_, median = NA_real_, min = NA_real_, max = NA_real_))
+    }
+    c(
+        mean = mean(values),
+        median = stats::median(values),
+        min = min(values),
+        max = max(values)
+    )
+}
+
+#' Add latest visual-acuity follow-up timing for reviewer-response sensitivity
+#'
+#' @param data Data frame.
+#' @return Data frame with explicit and proxy latest-VA timing fields.
+add_last_vision_followup_months <- function(data) {
+    explicit_months <- rep(NA_real_, nrow(data))
+    if (all(c("treatment_date", "last_followup") %in% names(data))) {
+        explicit_months <- suppressWarnings(lubridate::time_length(
+            lubridate::interval(data$treatment_date, data$last_followup),
+            unit = "months"
+        ))
+    }
+
+    proxy_months <- explicit_months
+    if ("follow_up_months" %in% names(data)) {
+        follow_up_months <- suppressWarnings(as.numeric(data$follow_up_months))
+        proxy_months <- dplyr::if_else(is.na(proxy_months), follow_up_months, proxy_months)
+    }
+
+    data$last_vision_followup_months_explicit <- explicit_months
+    data$last_vision_followup_months_proxy <- proxy_months
+    data$last_vision_followup_timing_source <- dplyr::case_when(
+        !is.na(explicit_months) ~ "explicit_last_followup",
+        is.na(explicit_months) & !is.na(proxy_months) ~ "proxy_general_recorded_followup",
+        TRUE ~ "missing_timing"
+    )
+    data$last_vision_followup_months <- data$last_vision_followup_months_explicit
+    data
+}
+
+#' Summarize latest visual-acuity timing-source availability
+#'
+#' @param data Data frame.
+#' @return Tibble with explicit and proxy timing availability counts.
+summarize_vision_followup_timing_sources <- function(data) {
+    data <- add_last_vision_followup_months(data)
+    last_vision_present <- if ("last_vision" %in% names(data)) !is.na(data$last_vision) else rep(FALSE, nrow(data))
+    explicit_present <- !is.na(data$last_vision_followup_months_explicit)
+    proxy_present <- !is.na(data$last_vision_followup_months_proxy)
+    recovered_by_proxy <- !explicit_present & proxy_present
+
+    height_months <- if (all(c("treatment_date", "last_height_date") %in% names(data))) {
+        suppressWarnings(lubridate::time_length(
+            lubridate::interval(data$treatment_date, data$last_height_date),
+            unit = "months"
+        ))
+    } else {
+        rep(NA_real_, nrow(data))
+    }
+
+    tibble::tibble(
+        timing_definition = c(
+            "explicit_last_followup",
+            "proxy_general_recorded_followup",
+            "recovered_by_proxy_when_explicit_missing",
+            "last_height_date_comparison"
+        ),
+        n_patients = c(
+            sum(explicit_present),
+            sum(proxy_present),
+            sum(recovered_by_proxy),
+            sum(!is.na(height_months))
+        ),
+        n_with_last_vision = c(
+            sum(explicit_present & last_vision_present),
+            sum(proxy_present & last_vision_present),
+            sum(recovered_by_proxy & last_vision_present),
+            sum(!is.na(height_months) & last_vision_present)
+        ),
+        note = c(
+            "Treatment-to-last_followup timing; primary conservative timing field for latest-VA minimum-follow-up sensitivity.",
+            "Uses explicit last_followup timing when available; otherwise uses the derived general follow_up_months field as a proxy for recorded follow-up duration.",
+            "Rows that have latest VA and general follow-up duration but no explicit last_followup date.",
+            "Tumor-height timing is summarized separately and is not used as the latest-VA timing proxy."
+        )
+    )
+}
+
+#' Summarize visual-acuity follow-up timing by treatment group
+#'
+#' @param data Data frame.
+#' @param value_var Character scalar timing variable.
+#' @return Tibble with treatment-group timing summary.
+summarize_vision_followup_by_group <- function(data, value_var = "last_vision_followup_months") {
+    if (!all(c("treatment_group", value_var) %in% names(data))) {
+        return(tibble::tibble())
+    }
+    data %>%
+        dplyr::group_by(.data$treatment_group) %>%
+        dplyr::summarise(
+            variable = value_var,
+            n_rows = dplyr::n(),
+            n_nonmissing = sum(!is.na(.data[[value_var]])),
+            mean_months = safe_numeric_range_summary(.data[[value_var]])[["mean"]],
+            median_months = safe_numeric_range_summary(.data[[value_var]])[["median"]],
+            min_months = safe_numeric_range_summary(.data[[value_var]])[["min"]],
+            max_months = safe_numeric_range_summary(.data[[value_var]])[["max"]],
+            .groups = "drop"
+        )
+}
+
+#' Build minimum-follow-up visual-acuity sensitivity summary
+#'
+#' @param data Data frame with visual-acuity change and latest-VA follow-up timing.
+#' @param min_followup_months Numeric minimum follow-up threshold.
+#' @param timing_var Character scalar timing variable.
+#' @return List with filtered data and summary table.
+build_visual_acuity_min_followup_sensitivity <- function(data,
+                                                         min_followup_months = 36,
+                                                         timing_var = "last_vision_followup_months_explicit") {
+    followup_data <- add_last_vision_followup_months(data)
+    filtered <- followup_data %>%
+        dplyr::filter(
+            !is.na(.data$vision_change),
+            !is.na(.data[[timing_var]]),
+            .data[[timing_var]] >= min_followup_months
+        )
+    summary <- filtered %>%
+        dplyr::group_by(.data$treatment_group) %>%
+        dplyr::summarise(
+            min_followup_months = min_followup_months,
+            timing_definition = timing_var,
+            n = dplyr::n(),
+            mean_last_vision_followup_months = safe_numeric_range_summary(.data[[timing_var]])[["mean"]],
+            median_last_vision_followup_months = safe_numeric_range_summary(.data[[timing_var]])[["median"]],
+            mean_vision_change = safe_numeric_range_summary(.data$vision_change)[["mean"]],
+            median_vision_change = safe_numeric_range_summary(.data$vision_change)[["median"]],
+            min_vision_change = safe_numeric_range_summary(.data$vision_change)[["min"]],
+            max_vision_change = safe_numeric_range_summary(.data$vision_change)[["max"]],
+            .groups = "drop"
+        )
+    list(data = filtered, summary = summary)
+}
+
+#' Declare reviewer-facing toxicity scope for Objective 2 outputs
+#'
+#' @return Tibble describing the supported toxicity endpoint scope.
+objective2_toxicity_scope_note <- function() {
+    tibble::tibble(
+        endpoint_family = "retinal_toxicity",
+        scope = "recorded_burden_by_available_follow_up",
+        reviewer_label = "Retinopathy, neovascular glaucoma, and serous retinal detachment were analyzed as recorded burden by available follow-up, not as standardized graded or time-to-toxicity incidence endpoints.",
+        limitation = "The checked source and derived fields do not provide CTCAE-style grades or dated onset fields for each toxicity. SRD cause is available for records coded as SRD, but the current Objective 2 burden endpoint is not a radiation-induced-only SRD incidence analysis."
+    )
+}
+
+#' Add treatment year for reviewer-requested visual acuity sensitivity screening
+#'
+#' @param data Data frame with a treatment_date column.
+#' @return Data frame with treatment_year when treatment_date is available.
+add_visual_acuity_treatment_year <- function(data) {
+    if (!"treatment_date" %in% names(data)) {
+        return(data)
+    }
+
+    data <- data %>%
+        mutate(
+            treatment_year = suppressWarnings(as.integer(format(as.Date(.data$treatment_date), "%Y")))
+        )
+
+    year_mean <- mean(data$treatment_year, na.rm = TRUE)
+    data %>%
+        mutate(
+            treatment_year_centered = .data$treatment_year - year_mean
+        )
+}
+
+#' Reviewer-requested visual outcome predictor candidates
+#'
+#' @return Tibble mapping reviewer-requested predictors to analytic fields.
+visual_reviewer_predictor_candidates <- function() {
+    tibble::tribble(
+        ~reviewer_predictor, ~field, ~candidate_term, ~candidate_role, ~note,
+        "Baseline visual acuity", "initial_vision", "initial_vision", "baseline_adjustment", "Available baseline logMAR visual acuity.",
+        "Latest visual-acuity follow-up duration", "last_vision_followup_months_explicit", "last_vision_followup_months_explicit", "followup_adjustment", "Available treatment-to-last_followup timing for latest VA.",
+        "Tumor height", "initial_tumor_height", "initial_tumor_height", "baseline_predictor", "Available baseline tumor height.",
+        "Basal diameter", "initial_tumor_diameter", "initial_tumor_diameter", "baseline_predictor", "Available baseline largest basal diameter.",
+        "T stage", "initial_t_stage_simple", "initial_t_stage_simple", "baseline_predictor", "Available baseline T-stage grouping used elsewhere for model support.",
+        "Subretinal fluid", "srf", "srf", "baseline_predictor", "Available baseline subretinal-fluid field.",
+        "Optic-nerve proximity/involvement", "optic_nerve", "optic_nerve", "baseline_predictor", "Available optic-nerve involvement/abutment field; this is not a quantitative distance.",
+        "Treatment year", "treatment_year", "treatment_year_centered", "baseline_predictor", "Derived from treatment_date and centered for numerical stability.",
+        "Macular or foveal proximity", NA_character_, NA_character_, "not_available", "No structured macular/foveal proximity or distance field is present in the checked analytic/source columns.",
+        "Baseline retinal detachment", NA_character_, NA_character_, "not_available", "No baseline retinal-detachment predictor is present. The available srd/srd_cause fields are recorded Objective 2 toxicity-burden fields, not baseline adjustment variables.",
+        "Radiation dose to optic disc/nerve", NA_character_, NA_character_, "not_available", "No structured cross-modality optic-disc/optic-nerve dose field is present in the checked analytic/source columns.",
+        "Radiation dose to macula", NA_character_, NA_character_, "not_available", "No structured cross-modality macular dose field is present in the checked analytic/source columns."
+    )
+}
+
+#' Screen reviewer-requested visual outcome predictors for model viability
+#'
+#' @param data Data frame prepared for visual acuity modeling.
+#' @param min_level_n Minimum non-missing observations required per categorical level.
+#' @return List with selected terms and an availability/decision tibble.
+screen_visual_reviewer_predictors <- function(data, min_level_n = 5L) {
+    candidate_table <- visual_reviewer_predictor_candidates()
+    selected_terms <- character()
+
+    availability <- candidate_table %>%
+        rowwise() %>%
+        mutate(
+            present = !is.na(field) && field %in% names(data),
+            non_missing_n = if (present) sum(!is.na(data[[field]])) else 0L,
+            unique_non_missing_n = if (present) length(unique(data[[field]][!is.na(data[[field]])])) else 0L,
+            min_level_n_observed = if (present && (is.factor(data[[field]]) || is.character(data[[field]]))) {
+                counts <- table(data[[field]], useNA = "no")
+                if (length(counts) == 0) 0L else as.integer(min(counts))
+            } else {
+                NA_integer_
+            },
+            denominator_n = nrow(data),
+            included_in_latest_va_model = present &&
+                !is.na(candidate_term) &&
+                unique_non_missing_n >= 2L &&
+                (is.na(min_level_n_observed) || min_level_n_observed >= min_level_n),
+            exclusion_reason = dplyr::case_when(
+                candidate_role == "not_available" ~ note,
+                !present ~ "Field not present in prepared analytic dataset.",
+                non_missing_n == 0L ~ "Field has no non-missing values.",
+                unique_non_missing_n < 2L ~ "Field has insufficient variation in this cohort.",
+                !is.na(min_level_n_observed) && min_level_n_observed < min_level_n ~ sprintf(
+                    "Categorical field has a level with fewer than %d observations.",
+                    min_level_n
+                ),
+                included_in_latest_va_model ~ "Included.",
+                TRUE ~ "Not included."
+            )
+        ) %>%
+        ungroup()
+
+    selected_terms <- availability %>%
+        filter(.data$included_in_latest_va_model) %>%
+        pull(.data$candidate_term) %>%
+        unique()
+
+    list(
+        selected_terms = selected_terms,
+        availability = availability
+    )
+}
+
+#' Select terms that do not make a linear model rank-deficient
+#'
+#' @param data Complete-case model data.
+#' @param outcome_var Outcome column name.
+#' @param predictor_terms Terms forced before candidate terms.
+#' @param candidate_terms Candidate covariate terms to add in order.
+#' @return List with supported terms and dropped-term diagnostics.
+select_rank_supported_linear_terms <- function(data, outcome_var, predictor_terms, candidate_terms) {
+    supported_terms <- character()
+    dropped_rows <- list()
+
+    for (candidate_term in unique(candidate_terms)) {
+        trial_terms <- unique(c(predictor_terms, supported_terms, candidate_term))
+        trial_formula <- stats::as.formula(paste(outcome_var, "~", paste(trial_terms, collapse = " + ")))
+        rank_ok <- tryCatch(
+            {
+                model_frame <- stats::model.frame(trial_formula, data = data, na.action = stats::na.omit)
+                model_matrix <- stats::model.matrix(trial_formula, data = model_frame)
+                qr(model_matrix)$rank == ncol(model_matrix)
+            },
+            error = function(e) {
+                FALSE
+            }
+        )
+
+        if (rank_ok) {
+            supported_terms <- c(supported_terms, candidate_term)
+        } else {
+            dropped_rows[[length(dropped_rows) + 1L]] <- tibble::tibble(
+                candidate_term = candidate_term,
+                exclusion_reason = "Excluded because adding this term made the latest-VA sensitivity model rank-deficient."
+            )
+        }
+    }
+
+    list(
+        supported_terms = supported_terms,
+        dropped_terms = if (length(dropped_rows) > 0) dplyr::bind_rows(dropped_rows) else tibble::tibble()
+    )
+}
+
 #' Analyze visual acuity changes by treatment group
 #'
 #' Calculates and summarizes changes in visual acuity by treatment group.
@@ -331,6 +630,12 @@ build_binary_rate_note <- function(data, outcome_var, suffix = NULL) {
 #' analyze_visual_acuity_changes(data, output_dirs, prefix)
 analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders = NULL, dataset_name = NULL) {
     data <- normalize_treatment_group_data(data)
+    data <- add_last_vision_followup_months(data)
+    data <- add_visual_acuity_treatment_year(data)
+    vision_descriptive_dir <- resolve_route_output_dir(output_dirs, "obj2_vision", "descriptive")
+    vision_adjusted_dir <- resolve_route_output_dir(output_dirs, "obj2_vision", "adjusted_models")
+    vision_effect_summary_dir <- resolve_route_output_dir(output_dirs, "obj2_vision", "effect_summary")
+    vision_sensitivity_dir <- resolve_route_output_dir(output_dirs, "obj2_vision", "sensitivity")
     # Calculate vision changes (row-level)
     # Vision change is already calculated in data derivation (Objective 0)
     # Positive values = improvement (lower logMAR), negative = worsening
@@ -346,9 +651,10 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             vision_line_change_bucket = assign_line_change_bucket(vision_line_change)
         )
     vision_change_contract_note <- paste(
-        "Vision endpoint is the implemented change score",
+        "Vision endpoint is visual-acuity change score",
         "(initial vision minus final or recurrence-pre-treatment vision);",
-        "no baseline vision covariate is included."
+        "baseline visual acuity and latest-VA follow-up time are reviewer-response sensitivity considerations;",
+        "minimum-follow-up sensitivity uses explicit last_followup timing as primary and a separately labeled general-follow-up proxy as sensitivity context."
     )
     ordinal_assumption_note <- paste(
         "Proportional-odds assumption was not formally tested;",
@@ -552,7 +858,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             missing = "no",
             by = treatment_group,
             type = list(vision_change ~ "continuous"),
-            statistic = list(vision_change ~ "{median} ({min}, {max})"),
+            statistic = list(vision_change ~ "{median} ({min}, {max}); mean {mean}"),
             digits = list(all_continuous() ~ 1, all_categorical() ~ 0),
             label = list(vision_change ~ "Vision Change (logMAR)")
         ) %>%
@@ -649,7 +955,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             missing = "no",
             by = treatment_group,
             type = list(vision_change ~ "continuous"),
-            statistic = list(vision_change ~ "{median} ({min}, {max})"),
+            statistic = list(vision_change ~ "{median} ({min}, {max}); mean {mean}"),
             digits = list(vision_change ~ 1),
             label = list(vision_change ~ "Vision Change (logMAR)")
         ) %>%
@@ -690,20 +996,20 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
 
     save_gt_html(
         combined_tbl,
-        filename = file.path(output_dirs$obj2_vision, paste0(prefix, "vision_changes.html"))
+        filename = file.path(vision_descriptive_dir, paste0(prefix, "vision_changes.html"))
     )
 
     if (nrow(line_change_distribution) > 0) {
         write_readable_xlsx(
             line_change_distribution,
-            path = file.path(output_dirs$obj2_vision, paste0(prefix, "snellen_line_change_integer_distribution.xlsx"))
+            path = file.path(vision_descriptive_dir, paste0(prefix, "snellen_line_change_integer_distribution.xlsx"))
         )
     }
 
     if (nrow(line_change_bucket_distribution) > 0) {
         write_readable_xlsx(
             line_change_bucket_distribution,
-            path = file.path(output_dirs$obj2_vision, paste0(prefix, "snellen_line_change_distribution_summary.xlsx"))
+            path = file.path(vision_descriptive_dir, paste0(prefix, "snellen_line_change_distribution_summary.xlsx"))
         )
     }
 
@@ -718,7 +1024,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
 
         save_gt_html(
             snellen_combo_tbl,
-            filename = file.path(output_dirs$obj2_vision, paste0(prefix, "snellen_line_change_descriptive_summary.html"))
+            filename = file.path(vision_descriptive_dir, paste0(prefix, "snellen_line_change_descriptive_summary.html"))
         )
     }
 
@@ -736,7 +1042,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
         effect_measure = "MD", # Mean Difference for continuous outcome
         analysis_name = "logmar_vision_change_adjusted",
         dataset_name = dataset_name %||% "vision_safety",
-        output_dir = output_dirs$obj2_vision,
+        output_dir = vision_adjusted_dir,
         prefix = prefix,
         sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
         filter_stats = exclusion_result$filter_stats
@@ -744,6 +1050,91 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
 
     vision_lm <- vision_result$model
     vision_lm_tbl <- vision_result$table
+
+    visual_predictor_screen <- screen_visual_reviewer_predictors(data_with_vision_change)
+    latest_va_sensitivity_covariates <- unique(c(
+        visual_predictor_screen$selected_terms,
+        confounders_for_model
+    ))
+    latest_va_sensitivity_covariates <- latest_va_sensitivity_covariates[
+        latest_va_sensitivity_covariates %in% names(data_with_vision_change)
+    ]
+    latest_va_sensitivity_vars <- unique(c("treatment_group", latest_va_sensitivity_covariates))
+    latest_va_required_vars <- unique(c("last_vision", latest_va_sensitivity_vars))
+    latest_va_initial_n <- nrow(data_with_vision_change)
+    latest_va_complete_data <- data_with_vision_change %>%
+        filter(if_all(all_of(latest_va_required_vars), ~ !is.na(.x)))
+    latest_va_missing_removed_n <- latest_va_initial_n - nrow(latest_va_complete_data)
+    latest_va_exclusion_result <- apply_sparse_level_exclusions(
+        latest_va_complete_data,
+        variables = latest_va_sensitivity_vars[latest_va_sensitivity_vars %in% names(data_with_vision_change)],
+        analysis_name = "latest_vision_reviewer_predictor_sensitivity",
+        id_col = pick_sparse_level_id_col(data_with_vision_change),
+        level_exclusions = MODELING_LEVEL_EXCLUSIONS
+    )
+    latest_va_model_data <- latest_va_exclusion_result$data
+    latest_va_rank_screen <- select_rank_supported_linear_terms(
+        data = latest_va_model_data,
+        outcome_var = "last_vision",
+        predictor_terms = "treatment_group",
+        candidate_terms = latest_va_sensitivity_covariates
+    )
+    if (nrow(latest_va_rank_screen$dropped_terms) > 0) {
+        dropped_terms <- latest_va_rank_screen$dropped_terms
+        visual_predictor_screen$availability <- visual_predictor_screen$availability %>%
+            left_join(dropped_terms, by = "candidate_term", suffix = c("", ".rank")) %>%
+            mutate(
+                included_in_latest_va_model = if_else(
+                    !is.na(.data$exclusion_reason.rank),
+                    FALSE,
+                    .data$included_in_latest_va_model
+                ),
+                exclusion_reason = coalesce(.data$exclusion_reason.rank, .data$exclusion_reason)
+            ) %>%
+            select(-"exclusion_reason.rank")
+    }
+    latest_va_sensitivity_covariates <- latest_va_rank_screen$supported_terms
+    latest_va_sensitivity_vars <- unique(c("treatment_group", latest_va_sensitivity_covariates))
+    latest_va_filter_stats <- latest_va_exclusion_result$filter_stats
+    latest_va_filter_stats$initial_n <- latest_va_initial_n
+    latest_va_filter_stats$model_n <- nrow(latest_va_model_data)
+    latest_va_filter_stats$removed_n <- latest_va_initial_n - nrow(latest_va_model_data)
+    latest_va_filter_stats$removed_pct <- if (latest_va_initial_n > 0) {
+        round(100 * latest_va_filter_stats$removed_n / latest_va_initial_n, 1)
+    } else {
+        0
+    }
+    latest_va_filter_stats$removal_reason <- paste(
+        sprintf(
+            "Removed rows missing latest-VA sensitivity outcome or covariates before modeling (n=%d)",
+            latest_va_missing_removed_n
+        ),
+        sprintf(
+            "excluded sparse categorical levels after complete-case filtering (n=%d)",
+            latest_va_exclusion_result$removed_row_count
+        ),
+        sep = "; "
+    )
+    latest_va_sensitivity_note <- paste(
+        "ANCOVA-style reviewer-response sensitivity: latest logMAR visual acuity is modeled with treatment group, viable reviewer-requested baseline predictors, explicit latest-VA follow-up duration, and the standard confounder set.",
+        "This avoids adding baseline visual acuity as an ordinary covariate to a change-score outcome that already contains baseline visual acuity.",
+        "The accompanying reviewer_predictor_availability sheet documents unavailable and non-viable requested fields."
+    )
+    latest_va_sensitivity_result <- generate_regression_table(
+        data = latest_va_model_data,
+        outcome_var = "last_vision",
+        predictor_vars = "treatment_group",
+        confounders = latest_va_sensitivity_covariates,
+        model_type = "linear",
+        effect_measure = "MD",
+        analysis_name = "va_latest_reviewer_sens",
+        dataset_name = dataset_name %||% "vision_safety",
+        output_dir = vision_sensitivity_dir,
+        prefix = prefix,
+        sparse_level_diagnostics = latest_va_exclusion_result$sparse_level_diagnostics,
+        filter_stats = latest_va_filter_stats
+    )
+    latest_va_sensitivity_model <- latest_va_sensitivity_result$model
 
     line_change_result <- generate_regression_table(
         data = line_change_model_data,
@@ -754,7 +1145,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
         effect_measure = "MD",
         analysis_name = "snellen_line_change_adjusted",
         dataset_name = dataset_name %||% "vision_safety",
-        output_dir = output_dirs$obj2_vision,
+        output_dir = vision_adjusted_dir,
         prefix = prefix,
         sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
         filter_stats = line_change_filter_stats
@@ -772,7 +1163,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
         effect_measure = "OR",
         analysis_name = "snellen_line_change_distribution_adjusted",
         dataset_name = dataset_name %||% "vision_safety",
-        output_dir = output_dirs$obj2_vision,
+        output_dir = vision_adjusted_dir,
         prefix = prefix,
         sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
         filter_stats = ordinal_filter_stats
@@ -815,7 +1206,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             term = "summary",
             model_formula = "Descriptive summary",
             covariates_used = "None",
-            effect_measure = "Median (Min, Max)",
+            effect_measure = "Median (Min, Max); Mean",
             estimate = logmar_summary$overall_estimate,
             n_patients = nrow(summary_data),
             n_outcome_non_missing = logmar_summary$n_outcome_non_missing,
@@ -871,6 +1262,30 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             model_status = "SKIPPED",
             notes = paste(as.character(vision_result$diagnostics$raw_model_output %||% "Adjusted linear model could not be fit."), vision_change_contract_note)
         ),
+        summarize_effect_model(
+            model = latest_va_sensitivity_model,
+            dataset_name = dataset_name %||% "vision_safety",
+            analysis_label = "Latest LogMAR Vision",
+            model_label = "Reviewer-predictor adjusted linear sensitivity",
+            group_var = "treatment_group",
+            data_source_label = "Filtered latest-VA dataset with viable reviewer-requested predictors and standard confounders",
+            effect_measure = "MD",
+            outcome_var = "last_vision",
+            notes = latest_va_sensitivity_note
+        ) %||% create_effect_summary_rows(
+            dataset_name = dataset_name %||% "vision_safety",
+            analysis_label = "Latest LogMAR Vision",
+            model_label = "Reviewer-predictor adjusted linear sensitivity",
+            term = "treatment_group",
+            model_formula = build_effect_summary_model_formula("last_vision", "treatment_group", latest_va_sensitivity_covariates),
+            covariates_used = format_effect_summary_covariates(latest_va_sensitivity_covariates),
+            effect_measure = "MD",
+            n_patients = nrow(latest_va_model_data),
+            n_outcome_non_missing = sum(!is.na(latest_va_model_data$last_vision)),
+            data_source = "Filtered latest-VA dataset with viable reviewer-requested predictors and standard confounders",
+            model_status = "SKIPPED",
+            notes = paste(as.character(latest_va_sensitivity_result$diagnostics$raw_model_output %||% "Latest-VA reviewer-predictor sensitivity model could not be fit."), latest_va_sensitivity_note)
+        ),
         create_effect_summary_rows(
             dataset_name = dataset_name %||% "vision_safety",
             analysis_label = "Snellen Line Change",
@@ -878,7 +1293,7 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
             term = "summary",
             model_formula = "Descriptive summary",
             covariates_used = "None",
-            effect_measure = "Median (Min, Max)",
+            effect_measure = "Median (Min, Max); Mean",
             estimate = snellen_overall_estimate,
             n_patients = nrow(summary_data),
             n_outcome_non_missing = logmar_summary$n_outcome_non_missing,
@@ -1005,9 +1420,120 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
 
     write_effect_summary_workbook(
         effect_summary_rows = vision_effect_summary,
-        output_dir = output_dirs$obj2_vision,
+        output_dir = vision_effect_summary_dir,
         prefix = prefix,
         analysis_name = "vision"
+    )
+
+    minimum_followup_thresholds <- c(12, 36, 60)
+    followup_timing_definitions <- list(
+        explicit = list(
+            timing_var = "last_vision_followup_months_explicit",
+            sheet_prefix = "explicit_min_followup",
+            file_prefix = "explicit",
+            label = "Explicit treatment-to-last_followup timing"
+        ),
+        proxy = list(
+            timing_var = "last_vision_followup_months_proxy",
+            sheet_prefix = "proxy_min_followup",
+            file_prefix = "proxy",
+            label = "Proxy timing using explicit last_followup when available, otherwise general follow_up_months"
+        )
+    )
+    visual_followup_sensitivities <- list()
+    visual_followup_models <- list()
+    visual_followup_model_status <- list()
+
+    for (timing_name in names(followup_timing_definitions)) {
+        timing_definition <- followup_timing_definitions[[timing_name]]
+        for (threshold_months in minimum_followup_thresholds) {
+            threshold_label <- paste0(threshold_months, "mo")
+            sensitivity_key <- paste(timing_name, threshold_label, sep = "_")
+            threshold_slug <- sprintf("va_minfu_%s_%s", timing_definition$file_prefix, threshold_label)
+            visual_followup_sensitivities[[sensitivity_key]] <- build_visual_acuity_min_followup_sensitivity(
+                data,
+                min_followup_months = threshold_months,
+                timing_var = timing_definition$timing_var
+            )
+            threshold_model_data <- visual_followup_sensitivities[[sensitivity_key]]$data %>%
+                enforce_unordered_factors()
+            visual_followup_models[[sensitivity_key]] <- if (
+                nrow(threshold_model_data) > 0 &&
+                    dplyr::n_distinct(stats::na.omit(threshold_model_data$treatment_group)) >= 2
+            ) {
+                generate_regression_table(
+                    data = threshold_model_data,
+                    outcome_var = "vision_change",
+                    predictor_vars = "treatment_group",
+                    confounders = confounders_for_model,
+                    model_type = "linear",
+                    effect_measure = "MD",
+                    analysis_name = threshold_slug,
+                    dataset_name = dataset_name %||% "vision_followup_sensitivity",
+                    output_dir = vision_sensitivity_dir,
+                    prefix = prefix
+                )
+            } else {
+                list(
+                    table = NULL,
+                    model = NULL,
+                    diagnostics = tibble::tibble(
+                        status = "skipped",
+                        reason = sprintf(
+                            "Minimum-follow-up visual-acuity treatment-effect model skipped for the %s %d-month threshold because the subset did not retain enough treatment-group support.",
+                            timing_name,
+                            threshold_months
+                        )
+                    )
+                )
+            }
+            visual_followup_model_status[[sensitivity_key]] <- tibble::tibble(
+                timing_surface = timing_name,
+                min_followup_months = threshold_months,
+                model_status = ifelse(is.null(visual_followup_models[[sensitivity_key]]$model), "skipped", "completed"),
+                model = "vision_change ~ treatment_group + confounders",
+                subset = paste0(timing_definition$timing_var, " >= ", threshold_months),
+                timing_definition = timing_definition$label,
+                threshold_rationale = "Minimum-follow-up latest-visual-acuity sensitivity using 1-, 3-, and 5-year durations as cutoff options; these are not fixed-landmark VA measurements."
+            )
+        }
+    }
+
+    visual_followup_summary_sheets <- purrr::imap(
+        visual_followup_sensitivities,
+        function(sensitivity, sensitivity_key) sensitivity$summary
+    )
+    names(visual_followup_summary_sheets) <- vapply(names(visual_followup_summary_sheets), function(sensitivity_key) {
+        key_parts <- strsplit(sensitivity_key, "_", fixed = TRUE)[[1]]
+        timing_definition <- followup_timing_definitions[[key_parts[[1]]]]
+        paste(timing_definition$sheet_prefix, key_parts[[2]], sep = "_")
+    }, character(1))
+
+    visual_followup_workbook <- c(
+        visual_followup_summary_sheets,
+        list(
+            available_explicit_va_timing = summarize_vision_followup_by_group(data, "last_vision_followup_months_explicit"),
+            available_proxy_va_timing = summarize_vision_followup_by_group(data, "last_vision_followup_months_proxy"),
+            timing_source_counts = summarize_vision_followup_timing_sources(data),
+            treatment_effect_model = dplyr::bind_rows(visual_followup_model_status),
+            latest_va_reviewer_model = tibble::tibble(
+                model_status = ifelse(is.null(latest_va_sensitivity_model), "skipped", "completed"),
+                model = build_effect_summary_model_formula("last_vision", "treatment_group", latest_va_sensitivity_covariates),
+                covariates_used = format_effect_summary_covariates(latest_va_sensitivity_covariates),
+                modeled_n = if (is.null(latest_va_sensitivity_model)) nrow(latest_va_model_data) else stats::nobs(latest_va_sensitivity_model),
+                sensitivity_rationale = latest_va_sensitivity_note
+            ),
+            reviewer_predictor_availability = visual_predictor_screen$availability,
+            toxicity_scope = objective2_toxicity_scope_note(),
+            limitation = tibble::tibble(
+                note = "The primary latest-VA minimum-follow-up sensitivity uses treatment-to-last_followup timing when that date is recorded. A separate proxy surface uses the derived general follow_up_months field when last_followup is missing. Tumor-height timing is not used as the VA timing proxy. The 12-, 36-, and 60-month sensitivity analyses are minimum-follow-up restrictions on latest VA, not standardized 1-, 3-, or 5-year landmark VA analyses."
+            )
+        )
+    )
+
+    write_readable_xlsx(
+        visual_followup_workbook,
+        file.path(vision_sensitivity_dir, paste0(prefix, "vision_followup_sensitivity.xlsx"))
     )
 
     # Note: Table formatting and saving are now handled by the unified table generation system
@@ -1022,12 +1548,16 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
         line_change_summary_table = line_change_summary_tbl,
         regression_model = vision_lm,
         regression_table = vision_lm_tbl,
+        latest_va_sensitivity_model = latest_va_sensitivity_model,
+        latest_va_predictor_screen = visual_predictor_screen,
         line_change_regression_model = line_change_lm,
         line_change_regression_table = line_change_lm_tbl,
         line_change_regression_diagnostics = line_change_result$diagnostics,
         line_change_bucket_regression_model = line_change_ordinal_model,
         line_change_bucket_regression_table = line_change_ordinal_tbl,
         line_change_bucket_regression_diagnostics = line_change_ordinal_result$diagnostics,
+        visual_followup_sensitivity = visual_followup_sensitivities,
+        visual_followup_model = visual_followup_models,
         effect_summary = vision_effect_summary
     ))
 }
@@ -1194,29 +1724,6 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
             })
     }
 
-    # Historical note: earlier docs described radiation-induced-only SRD, but the
-    # published collaborator-aligned implementation intentionally keeps all recorded
-    # SRD causes. The old filter is retained here commented for provenance only.
-    # if (sequela_type == "srd") {
-    #     logger::log_info("Filtering SRD to only radiation-induced causes")
-    #     original_n <- nrow(data)
-    #     # Check what values exist in srd_cause
-    #     if ("srd_cause" %in% names(data)) {
-    #         logger::log_info("Available srd_cause values:")
-    #         print(table(data$srd_cause, useNA = "ifany"))
-    #     }
-
-    #     # Filter for radiation-induced SRD analysis: exclude patients with mass-induced SRD
-    #     data <- data %>%
-    #         filter(
-    #             # Keep patients without SRD
-    #             srd == "N" | is.na(srd) |
-    #                 # Keep patients with radiation-induced SRD (exclude mass-induced)
-    #                 (srd == "Y" & srd_cause == "Radiation")
-    #         )
-    #     logger::log_info(sprintf("Data filtered for radiation-induced SRD: %d -> %d patients", original_n, nrow(data)))
-    # }
-
     # Ensure consistent factor contrasts for modeling
     data <- enforce_unordered_factors(data)
     assert_valid_objective2_toxicity_burden_field(data, outcome_var, sequela_type)
@@ -1272,11 +1779,19 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
         "nvg" = output_dirs$obj2_nvg,
         "srd" = output_dirs$obj2_srd
     )
+    route_prefix <- switch(sequela_type,
+        "retinopathy" = "obj2_retinopathy",
+        "nvg" = "obj2_nvg",
+        "srd" = "obj2_srd"
+    )
+    descriptive_dir <- resolve_route_output_dir(output_dirs, route_prefix, "descriptive")
+    adjusted_dir <- resolve_route_output_dir(output_dirs, route_prefix, "adjusted_models")
+    effect_summary_dir <- resolve_route_output_dir(output_dirs, route_prefix, "effect_summary")
 
     # Save rates summary
     write_readable_xlsx(
         sequela_rates,
-        file.path(output_dir, paste0(prefix, sequela_type, "_rates_summary.xlsx"))
+        file.path(descriptive_dir, paste0(prefix, sequela_type, "_rates_summary.xlsx"))
     )
 
     display_outcome_var <- paste0(outcome_var, "_display")
@@ -1336,7 +1851,7 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
     # Save summary table
     save_gt_html(
         tbl,
-        filename = file.path(output_dir, paste0(prefix, sequela_type, "_summary_table.html"))
+        filename = file.path(descriptive_dir, paste0(prefix, sequela_type, "_summary_table.html"))
     )
 
     # Fit logistic regression if there are enough events and confounders
@@ -1358,7 +1873,7 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
             effect_measure = "OR",
             analysis_name = logistic_analysis_name,
             dataset_name = dataset_name,
-            output_dir = output_dir,
+            output_dir = adjusted_dir,
             prefix = prefix,
             sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
             filter_stats = exclusion_result$filter_stats
@@ -1391,7 +1906,7 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
         save_skipped_model_outputs(
             analysis_name = logistic_analysis_name,
             dataset_name = dataset_name,
-            output_dir = output_dir,
+            output_dir = adjusted_dir,
             prefix = prefix,
             reason = skip_diagnostics$reason,
             diagnostics = safety_diagnostics
@@ -1481,7 +1996,7 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
 
     write_effect_summary_workbook(
         effect_summary_rows = effect_summary_rows,
-        output_dir = output_dir,
+        output_dir = effect_summary_dir,
         prefix = prefix,
         analysis_name = sequela_label
     )

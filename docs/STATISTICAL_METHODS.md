@@ -65,7 +65,7 @@ For practical reading of survival curves, see [Kaplan-Meier Plots](INTERPRETATIO
 
 **Model Formula:**
 ```r
-Surv(time, event) ~ treatment + age_at_diagnosis + sex + location + optic_nerve
+Surv(time, event) ~ treatment + age_at_diagnosis + sex + location
 ```
 
 **Outputs:**
@@ -301,7 +301,7 @@ For practical reading of cumulative-incidence outputs, see [Cumulative Incidence
 
 **Model Formula:**
 ```r
-outcome ~ treatment + age_at_diagnosis + sex + location + optic_nerve
+outcome ~ treatment + age_at_diagnosis + sex + location
 ```
 
 **Outputs:**
@@ -369,18 +369,20 @@ outcome_change ~ treatment + baseline_value + confounders
 
 | Outcome | Primary Analysis | Sensitivity Analysis | Location |
 |---------|------------------|---------------------|----------|
-| **Tumor Height Change** | Unadjusted | Baseline-adjusted | Objective 1e, 1f |
-| **Vision Change (logMAR)** | Unadjusted | Adjusted linear regression on the implemented change score; baseline vision is not added as a separate covariate | Objective 2a |
+| **Tumor Height Change** | Linear regression adjusted for the shared covariate set (`age_at_diagnosis`, `sex`, `location`) | Internal diagnostic change-score sensitivity that includes baseline tumor height, which is also part of the outcome definition | Objective 1e, 1f |
+| **Vision Change (logMAR)** | Unadjusted | Adjusted linear regression on the implemented change score; baseline vision is not added as a separate covariate. A separate latest-VA sensitivity models final logMAR with baseline VA, explicit latest-VA follow-up duration, viable reviewer-requested baseline predictors, and the shared covariate set | Objective 2a |
 | **Snellen Line Change (exact integer lines)** | Descriptive converted summary row | Adjusted linear regression | Objective 2a |
+
+Tumor-height change remains a secondary/descriptive endpoint for reviewer-response interpretation. Because `height_change` subtracts baseline height, adding `initial_tumor_height` to the change-score model creates algebraic coupling between the covariate and outcome. That sensitivity can be used only as an internal diagnostic for dependence on baseline size; it is not ordinary confounder adjustment, it is not a reviewer-facing solution, and it does not address unequal time from treatment to follow-up height measurement. Tumor-height timing summaries must be reviewed alongside any comparative estimate, and current timing evidence supports demoting rather than emphasizing the comparative tumor-height result.
 
 ### Interpretation
 
 **Tumor Height Change Coefficient = -0.5 mm**
-- Treatment group had 0.5 mm greater decrease (more shrinkage) than reference
+- Treatment group had 0.5 mm greater decrease (more shrinkage) than reference within the model specification
 - Negative change = shrinkage (see [CALCULATIONS.md](CALCULATIONS.md))
 
 **Vision Change Coefficient = -0.2 logMAR**
-- Treatment group had 0.2 logMAR less worsening (better vision preservation)
+- Treatment group had 0.2 logMAR less worsening on the implemented visual-acuity change score
 - Negative change = worsening vision (see [CALCULATIONS.md](CALCULATIONS.md))
 
 ### Assumptions
@@ -392,7 +394,11 @@ outcome_change ~ treatment + baseline_value + confounders
 
 For practical reading of linear-regression outputs, see [Linear Regression Tables (Continuous Outcomes)](INTERPRETATION_GUIDE.md#linear-regression-tables-continuous-outcomes).
 
-Objective 2 vision models use the precomputed `vision_change` endpoint (`initial_vision - last_vision`, or `initial_vision - recurrence1_pretreatment_vision` for patients with local recurrence). The adjusted rows include the central confounder set but do not include a separate baseline-vision covariate.
+Objective 2 vision change models use the precomputed `vision_change` endpoint (`initial_vision - last_vision`, or `initial_vision - recurrence1_pretreatment_vision` for patients with local recurrence). The adjusted change-score rows include the central confounder set (`age_at_diagnosis`, `sex`, and `location`) but do not include a separate baseline-vision covariate.
+
+Reviewer-response latest-VA sensitivity uses an ANCOVA-style linear model with `last_vision` as the outcome. It adjusts for treatment group, `initial_vision`, explicit treatment-to-`last_followup` timing, viable reviewer-requested baseline predictors (`initial_tumor_height`, `initial_tumor_diameter`, `initial_t_stage_simple`, `srf`, optic-nerve involvement when variable within cohort, and centered treatment year), plus the central confounder set. The full-cohort sensitivity estimated a GKSRS-vs-PBT mean difference of -0.200 logMAR (95% CI -0.462 to 0.063; p = 0.135; n = 208). The restricted-cohort sensitivity estimated -0.126 logMAR (95% CI -0.429 to 0.177; p = 0.411; n = 126). These sensitivity results should be read as support for cautious interpretation, not causal evidence of superior functional preservation.
+
+Latest-VA minimum-follow-up sensitivity outputs report explicit treatment-to-`last_followup` timing as the primary timing surface and a separately labeled proxy surface that uses derived general `follow_up_months` when explicit timing is missing. The same workbook includes a `reviewer_predictor_availability` sheet documenting requested visual-outcome predictors that were included, excluded for cohort support, or not available as structured baseline/dosimetry fields.
 
 ---
 

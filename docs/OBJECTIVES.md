@@ -16,14 +16,16 @@ Goal: compare efficacy outcomes after the primary treatment modalities used in t
 
 Current pipeline objective: `01_Efficacy/`
 
+**Reading order within each survival endpoint folder:** event support (recurrence/mets only) → KM curves → Cox models and effect summaries → RMST → survival-rate tables → PH diagnostics → capped Cox sensitivity (OS/PFS only). Tumor-height primary outputs use `01_descriptive/` → `02_models/` → `03_timing_audit/`; sensitivity tumor-height outputs remain flat under `f_tumor_height_sensitivity/`.
+
 Key sub-objectives:
 
 - `1a. Local recurrence`: compare rates of `recurrence1`
 - `1b. Metastatic progression`: compare rates of `mets_progression`
 - `1c. Overall survival`: compare survival after primary treatment
 - `1d. Progression-free survival`: compare progression-free survival in the current pipeline's efficacy framework
-- `1e. Tumor height change (primary)`: evaluate change from `initial_tumor_height` to `last_height`
-- `1f. Tumor height change (sensitivity)`: retain the same clinical question with the pipeline's sensitivity-model specification
+- `1e. Tumor height change (primary)`: evaluate change from `initial_tumor_height` to `last_height` with timing-audit context
+- `1f. Tumor height change (sensitivity)`: internal diagnostic change-score sensitivity that includes baseline tumor height even though baseline height is part of the change-score outcome; this is not a reviewer-facing answer to the timing or clinical-relevance concern
 - `1g. Subgroup analysis`: evaluate whether efficacy patterns differ across baseline subgroups
 
 Legacy exploratory note:
@@ -35,6 +37,8 @@ Tumor-height note:
 
 - The source planning document explicitly asks for pretreatment-versus-follow-up tumor-height change.
 - It also states that for retreated local progression, the retreatment context should use `initial_tumor_height - recurrence1_pretreatment_height` when that question is relevant.
+- Reviewer-response interpretation should treat tumor-height change as secondary/descriptive; current timing evidence argues against promoting the comparative regression as a main reviewer-facing result.
+- Because `height_change` subtracts `initial_tumor_height`, adding `initial_tumor_height` to a change-score regression is algebraically coupled to the outcome and should not be framed as ordinary confounder adjustment.
 
 ### Objective 1 Subgroup Scope
 
@@ -57,10 +61,13 @@ Goal: compare treatment-related visual and radiation-toxicity outcomes after the
 
 Current pipeline objective: `02_Safety/`
 
+**Reading order within each safety endpoint folder:** descriptive summaries (`01_descriptive/`) → adjusted models (`02_adjusted_models/`) → effect-summary workbook (`03_effect_summary/`). Vision adds minimum-follow-up and latest-VA sensitivities under `04_sensitivity/`.
+
 Key sub-objectives:
 
 - `2a. Vision change`: evaluate change in vision from `initial_vision` to `last_vision`
 - retreatment vision context: when local progression occurs and the eye is retreated, the source planning document specifies the corresponding pretreatment-to-retreatment comparison using `initial_vision - recurrence1_pretreatment_vision`
+- latest-VA minimum-follow-up sensitivity: report explicit treatment-to-`last_followup` timing separately from the proxy general-follow-up timing surface
 - `2b. Radiation retinopathy`: compare recorded burden using `retinopathy_burden_event`
 - `2c. Neovascular glaucoma`: compare recorded burden using `nvg_burden_event`
 - `2d. Serous retinal detachment`: compare recorded burden using `srd_burden_event` regardless of attributed cause in the current published implementation, including mass-induced cases when present
@@ -74,6 +81,8 @@ Objective 2d retains all recorded SRD causes, including mass-induced cases when 
 Goal: evaluate outcomes after second-line treatment among patients who develop local progression after primary therapy.
 
 Current pipeline objective: `03_Repeat_Radiation/`
+
+**Reading order within `a_pfs2/`:** cohort support (`01_cohort_support/`) → KM/Cox/RMST/survival-rate folders when modeling runs → PH diagnostics (`06_ph_diagnostics/`). Sparse cohorts may contain only cohort support, Cox skip artifacts, and PH skip artifacts.
 
 Primary sub-objective:
 

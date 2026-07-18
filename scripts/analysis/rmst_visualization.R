@@ -11,8 +11,9 @@
 #' @param group1_name Character string for the first group (coded as 0 in RMST)
 #' @param group2_name Character string for the second group (coded as 1 in RMST)
 #' @param group_var Character string for the grouping variable name (used for palette selection)
+#' @param route_key Optional explicit survival-output route key.
 #' @return ggplot object
-plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dirs, prefix, group1_name = "Group 1", group2_name = "Group 2", group_var = "treatment_group") {
+plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dirs, prefix, group1_name = "Group 1", group2_name = "Group 2", group_var = "treatment_group", route_key = NULL) {
     wrap_plot_text <- function(text, width) {
         paste(strwrap(text, width = width), collapse = "\n")
     }
@@ -379,35 +380,14 @@ plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dir
         return(combined_plot)
     }
 
-    output_dir <- switch(outcome_label,
-        "Overall Survival Probability" = output_dirs$obj1_os,
-        "Overall Survival by Local Recurrence Status" =
-            output_dirs$obj1_recurrence_1a1 %||%
-                output_dirs$obj1_recurrence %||%
-                output_dirs$obj1_os,
-        "Overall Survival by Metastatic Progression Status" =
-            output_dirs$obj1_mets_2a1 %||%
-                output_dirs$obj1_mets,
-        "Progression-Free Survival Probability" = output_dirs$obj1_pfs,
-        "Progression-Free Survival by Local Recurrence Status" =
-            output_dirs$obj1_recurrence_1a2 %||%
-                output_dirs$obj1_recurrence %||%
-                output_dirs$obj1_pfs,
-        "Progression-Free Survival by Metastatic Progression Status" =
-            output_dirs$obj1_mets_2a2 %||%
-                output_dirs$obj1_mets,
-        "PFS-2 Probability (Freedom from 2nd Recurrence)" = output_dirs$obj3_pfs2,
-        "PFS-2 Probability" = output_dirs$obj3_pfs2,
-        "Metastasis-Free Survival Probability" = output_dirs$obj4_mfs,
-        NULL
-    )
+    output_dir <- determine_survival_output_dir(outcome_label, output_dirs, route_key = route_key)
 
     if (is.null(output_dir)) {
         warning("Could not determine output directory for outcome_label: ", outcome_label)
         return(combined_plot)
     }
 
-    output_dir <- ensure_output_dir(resolve_obj4_output_dir(output_dirs, output_dir, "rmst"))
+    output_dir <- ensure_output_dir(resolve_endpoint_output_dir(output_dirs, output_dir, "rmst"))
 
     filename <- paste0(prefix, make_filename_safe(outcome_label), "_rmst_pvalue_progression.png")
     if (is.null(filename) || filename == "" || is.na(filename)) {

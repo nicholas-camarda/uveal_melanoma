@@ -1,7 +1,4 @@
 # Browse Diagnostics Files Utility
-if (!exists("TOOLS_OUTPUT_DIR", inherits = TRUE)) {
-    source(here::here("scripts", "load_all.R"))
-}
 
 # Usage examples:
 # Rscript scripts/tools/browse_diagnostics.R

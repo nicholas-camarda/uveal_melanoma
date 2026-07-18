@@ -41,9 +41,11 @@ SEX_FACTOR_LEVELS <- c("Female", "Male")
 # - continuous_subgroup_vars: Variables that need binning for categorical analysis
 # NOTE: Adding variables to confounders can cause perfect separation issues
 
-# Define confounders for adjustment in all models
+# Reviewer-response adjusted models keep age continuous to avoid reviewer-flagged
+# loss of information from dichotomization. Dichotomized age remains available for
+# descriptive and exploratory subgroup displays only.
 confounders <- c(
-    "age_at_diagnosis_general_pop_median", "sex", "location"
+    "age_at_diagnosis", "sex", "location"
     # "internal_reflectivity",
     # "srf", "flashes_photopsia", "floaters",
     # "initial_overall_stage", "initial_t_stage",
@@ -57,12 +59,13 @@ confounders <- c(
 # 4. Individual coefficient p-values (2A, 2B, 3A) are valid and may be used for significance assessment but unclear how to do this
 # 5. Factor label p-value will show as NA in diagnostic files - this appears to be correct behavior
 
-# Define subgroup variables for analysis
+# These subgroup variables are exploratory display surfaces. They are not the
+# default adjusted-model covariate set for the reviewer-response analyses.
 subgroup_vars <- c(
     "age_at_diagnosis_general_pop_median", "sex", "location", "initial_t_stage_simple",
     #"initial_t_stage",
     "initial_tumor_height", "initial_tumor_diameter",
-    "initial_overall_stage", "biopsy1_gep", "gep_class_simple", "gep12_prame_status", "optic_nerve"
+    "initial_overall_stage", "biopsy1_gep", "gep_class_simple", "optic_nerve"
 )
 
 # Define which subgroup variables are continuous and need binning
@@ -96,4 +99,3 @@ STAGES_TO_EXCLUDE_FROM_MODIFIED <- c("3B", "3C", "4")
 MODELING_LEVEL_EXCLUSIONS <- list(
     initial_overall_stage = STAGES_TO_EXCLUDE_FROM_MODIFIED
 )
-

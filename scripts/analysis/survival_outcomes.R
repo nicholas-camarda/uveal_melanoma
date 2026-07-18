@@ -543,13 +543,37 @@ write_rmst_skip_artifact <- function(rmst_dir, prefix, ylab, rmst_results) {
     logger::log_info(sprintf("RMST skip note saved: %s", basename(note_path)))
 }
 
-determine_survival_output_dir <- function(ylab, output_dirs) {
+determine_survival_output_dir <- function(ylab, output_dirs, route_key = NULL) {
     if (is.null(output_dirs)) {
         return(getwd())
     }
 
     default_dir <- output_dirs$baseline_characteristics %||% getwd()
+    route_map <- c(
+        obj1_recurrence = "obj1_recurrence",
+        obj1_mets = "obj1_mets",
+        obj1_os = "obj1_os",
+        obj1_pfs = "obj1_pfs",
+        obj3_pfs2 = "obj3_pfs2",
+        obj4_mfs = "obj4_mfs",
+        obj4_mss = "obj4_mss"
+    )
 
+    if (!is.null(route_key)) {
+        if (!route_key %in% names(route_map)) {
+            stop(sprintf("Unknown survival output route_key `%s`.", route_key), call. = FALSE)
+        }
+        output_name <- route_map[[route_key]]
+        if (!is.null(output_dirs[[output_name]])) {
+            return(output_dirs[[output_name]])
+        }
+        logger::log_warn("Output directory for route_key {route_key} not provided; using baseline_characteristics as fallback")
+        return(default_dir)
+    }
+
+    if (grepl("Local Recurrence-Free", ylab) && !is.null(output_dirs$obj1_recurrence)) {
+        return(output_dirs$obj1_recurrence)
+    }
     if (grepl("Overall Survival", ylab) && !is.null(output_dirs$obj1_os)) {
         return(output_dirs$obj1_os)
     }
@@ -570,6 +594,19 @@ determine_survival_output_dir <- function(ylab, output_dirs) {
     }
 
     default_dir
+}
+
+#' Repoint typed survival artifact subdirectories for a local one-off route
+#'
+#' @param output_dirs Output directory list.
+#' @param route_prefix Route prefix such as `obj1_os` or `obj1_pfs`.
+#' @param base_dir Base directory for the local one-off analysis.
+#' @return Output directory list with route base and typed artifact subfolders repointed.
+repoint_local_survival_route <- function(output_dirs, route_prefix, base_dir) {
+    output_dirs[[route_prefix]] <- base_dir
+
+    profile_id <- ENDPOINT_PROFILE_BY_ROUTE_PREFIX[[route_prefix]] %||% "capped_survival"
+    append_endpoint_subdirs(output_dirs, route_prefix, base_dir, profile_id)
 }
 
 #' Summarize censoring and follow-up support for a survival endpoint
@@ -932,6 +969,170 @@ summarize_cox_hr <- function(model, dataset_name, analysis_label, model_label, g
     )
 }
 
+#' Fit a Cox model with administrative censoring at a fixed horizon
+#'
+#' @param data Data frame containing time, event, treatment, and covariate columns.
+#' @param time_var Character scalar follow-up time column in months.
+#' @param event_var Character scalar event indicator column.
+#' @param horizon_months Numeric administrative censoring horizon in months.
+#' @param group_var Character scalar treatment/group variable.
+#' @param confounders Character vector of covariates.
+#' @param output_dir Directory for effect-summary output.
+#' @param prefix File prefix.
+#' @param analysis_label Character label used in effect-summary workbook.
+#' @param dataset_name Character dataset/cohort label.
+#' @return List with `data`, `model`, `effect_summary`, `diagnostics`, and
+#'   `ph_diagnostics`.
+fit_capped_cox_sensitivity <- function(data,
+                                       time_var,
+                                       event_var,
+                                       horizon_months = 60,
+                                       group_var = "treatment_group",
+                                       confounders = NULL,
+                                       output_dir,
+                                       prefix,
+                                       analysis_label,
+                                       dataset_name = NULL) {
+    required_cols <- unique(c(time_var, event_var, group_var, confounders))
+    missing_cols <- setdiff(required_cols, names(data))
+    if (length(missing_cols) > 0) {
+        stop(sprintf(
+            "Capped Cox sensitivity cannot run; missing columns: %s",
+            paste(missing_cols, collapse = ", ")
+        ), call. = FALSE)
+    }
+
+    if (!dir.exists(output_dir)) {
+        dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+
+    capped_data <- normalize_treatment_group_data(data) %>%
+        enforce_unordered_factors() %>%
+        dplyr::filter(!is.na(.data[[time_var]]), .data[[time_var]] >= 0) %>%
+        dplyr::mutate(
+            capped_time_months = pmin(.data[[time_var]], horizon_months),
+            capped_event = dplyr::if_else(.data[[time_var]] <= horizon_months & .data[[event_var]] == 1, 1L, 0L)
+        )
+
+    variables <- unique(c(group_var, confounders))
+    analysis_slug <- paste0(make_filename_safe(analysis_label), "_5yr_capped")
+    exclusion_result <- apply_sparse_level_exclusions(
+        data = capped_data,
+        variables = variables[variables %in% names(capped_data)],
+        analysis_name = paste0(analysis_slug, "_cox"),
+        id_col = pick_sparse_level_id_col(capped_data),
+        level_exclusions = MODELING_LEVEL_EXCLUSIONS
+    )
+    model_data <- exclusion_result$data
+
+    if (nrow(model_data) == 0 || length(unique(stats::na.omit(model_data[[group_var]]))) < 2) {
+        diagnostics <- build_survival_skip_diagnostics(
+            data = model_data,
+            event_var = "capped_event",
+            variables = variables,
+            analysis_name = paste0(analysis_slug, "_cox"),
+            dataset_name = dataset_name %||% "unspecified_dataset",
+            reason = "The 5-year capped Cox sensitivity was skipped because the post-exclusion dataset did not retain enough usable rows or group variation.",
+            narrative_lines = c(
+                sprintf("Administrative censoring horizon: %.0f months.", horizon_months),
+                sprintf("Rows retained after sparse-level exclusions: %d.", nrow(model_data))
+            ),
+            filter_stats = exclusion_result$filter_stats,
+            sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
+            modeled_n = nrow(model_data),
+            status = "skipped",
+            time_var = "capped_time_months"
+        )
+        save_skipped_model_outputs(
+            analysis_name = paste0(analysis_slug, "_cox"),
+            dataset_name = dataset_name %||% "unspecified_dataset",
+            output_dir = output_dir,
+            prefix = prefix %||% "",
+            reason = diagnostics$reason,
+            diagnostics = diagnostics
+        )
+        writeLines(
+            diagnostics$reason,
+            file.path(output_dir, paste0(prefix, analysis_slug, "_skipped_ph_diagnostics.txt"))
+        )
+        return(list(
+            data = model_data,
+            model = NULL,
+            effect_summary = empty_effect_summary_rows(),
+            diagnostics = diagnostics,
+            ph_diagnostics = diagnostics
+        ))
+    }
+
+    result <- generate_regression_table(
+        data = model_data,
+        outcome_var = "capped_event",
+        predictor_vars = group_var,
+        confounders = confounders,
+        model_type = "cox",
+        effect_measure = "HR",
+        analysis_name = analysis_slug,
+        dataset_name = dataset_name %||% "unspecified_dataset",
+        output_dir = output_dir,
+        prefix = prefix,
+        time_var = "capped_time_months",
+        event_var = "capped_event",
+        treatment_var = group_var,
+        sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
+        filter_stats = exclusion_result$filter_stats
+    )
+
+    effect_summary <- summarize_cox_hr(
+        model = result$model,
+        dataset_name = dataset_name,
+        analysis_label = analysis_label,
+        model_label = "Adjusted Cox (5-year capped)",
+        group_var = group_var,
+        data_source_label = sprintf("Cox dataset administratively censored at %.0f months", horizon_months)
+    )
+    if (is.null(effect_summary)) {
+        effect_summary <- empty_effect_summary_rows()
+    }
+    if (nrow(effect_summary) > 0) {
+        write_readable_xlsx(
+            effect_summary,
+            file.path(output_dir, paste0(prefix, analysis_slug, "_effect_summary.xlsx"))
+        )
+    }
+
+    ph_diagnostics <- run_or_skip_proportional_hazards_diagnostics(
+        cox_model = result$model,
+        outcome_name = paste0(analysis_label, " (5-year capped)"),
+        output_dir = output_dir,
+        file_prefix = paste0(prefix, analysis_slug, "_"),
+        dataset_name = dataset_name,
+        data = model_data,
+        time_var = "capped_time_months",
+        event_var = "capped_event",
+        variables = variables,
+        reason = "The 5-year capped Cox sensitivity did not fit a Cox model."
+    )
+    if (!is.null(ph_diagnostics$ph_summary)) {
+        write_readable_xlsx(
+            ph_diagnostics$ph_summary,
+            file.path(output_dir, paste0(prefix, analysis_slug, "_ph_diagnostics.xlsx"))
+        )
+    } else if (!is.null(ph_diagnostics$reason)) {
+        writeLines(
+            ph_diagnostics$reason,
+            file.path(output_dir, paste0(prefix, analysis_slug, "_skipped_ph_diagnostics.txt"))
+        )
+    }
+
+    list(
+        data = model_data,
+        model = result$model,
+        effect_summary = effect_summary,
+        diagnostics = result$diagnostics,
+        ph_diagnostics = ph_diagnostics
+    )
+}
+
 #' Analyze time-to-event outcomes (KM + Cox)
 #' @param data Data frame
 #' @param time_var Time variable
@@ -945,7 +1146,7 @@ summarize_cox_hr <- function(model, dataset_name, analysis_label, model_label, g
 #' @param output_dirs Output directories by analysis type
 #' @param prefix File prefix for outputs
 #' @return List with KM/cox outputs and diagnostics
-analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var = "treatment_group", model_group_var = group_var, confounders = NULL, ylab = "Survival Probability", analysis_type = "post_treatment_only", dataset_name = NULL, legend_labels = NULL, output_dirs = NULL, prefix = NULL, risk_table_height = 0.18, risk_table_rel_heights = c(0.78, 0.22), risk_table_y_expand = c(0.18, 0.18), saved_plot_height = NULL, allow_cox = TRUE, cox_skip_reason = NULL, cox_skip_narrative = NULL) {
+analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var = "treatment_group", model_group_var = group_var, confounders = NULL, ylab = "Survival Probability", analysis_type = "post_treatment_only", dataset_name = NULL, legend_labels = NULL, output_dirs = NULL, prefix = NULL, route_key = NULL, risk_table_height = 0.18, risk_table_rel_heights = c(0.78, 0.22), risk_table_y_expand = c(0.18, 0.18), saved_plot_height = NULL, allow_cox = TRUE, cox_skip_reason = NULL, cox_skip_narrative = NULL) {
     data <- normalize_treatment_group_data(data)
     plot_group_var <- group_var
     palette_group_var <- group_var
@@ -954,7 +1155,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     if (length(unique(data[[plot_group_var]])) < 2) {
         warning(sprintf("Only one level of %s present; skipping cox model.", plot_group_var))
         skip_output_dir <- if (!is.null(output_dirs)) {
-            ensure_output_dir(resolve_obj4_output_dir(output_dirs, determine_survival_output_dir(ylab, output_dirs), "cox"))
+            ensure_output_dir(resolve_endpoint_output_dir(output_dirs, determine_survival_output_dir(ylab, output_dirs, route_key = route_key), "cox"))
         } else {
             "test_output"
         }
@@ -1031,7 +1232,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             indent = 1
         ))
         skip_output_dir <- if (!is.null(output_dirs)) {
-            ensure_output_dir(resolve_obj4_output_dir(output_dirs, determine_survival_output_dir(ylab, output_dirs), "cox"))
+            ensure_output_dir(resolve_endpoint_output_dir(output_dirs, determine_survival_output_dir(ylab, output_dirs, route_key = route_key), "cox"))
         } else {
             "test_output"
         }
@@ -1130,21 +1331,32 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     surv_fit <- survival::survfit(surv_formula, data = km_data)
     surv_fit$call$formula <- surv_formula
 
-    # Set up time axis breaks (in months) with legacy cap to avoid extreme tails
+    # Set up time axis breaks (in months) with display cap to avoid extreme tails.
+    # Cox models use full follow-up; KM plots cap display at SURVIVAL_XAXIS_MAX_MONTHS.
     raw_max_time <- max(km_data[[time_var]], na.rm = TRUE)
     max_time <- min(raw_max_time, SURVIVAL_XAXIS_MAX_MONTHS)
     base_by <- if (max_time <= 60) 6 else 12
     x_breaks <- seq(0, ceiling(max_time / base_by) * base_by, by = base_by)
+
+    km_plot_data <- km_data
+    km_plot_cap_months <- max(x_breaks)
+    beyond_plot_cap <- !is.na(km_plot_data[[time_var]]) & km_plot_data[[time_var]] > km_plot_cap_months
+    if (any(beyond_plot_cap)) {
+        km_plot_data[[time_var]][beyond_plot_cap] <- km_plot_cap_months
+        km_plot_data[[event_var]][beyond_plot_cap] <- 0
+    }
+    surv_fit_plot <- survival::survfit(surv_formula, data = km_plot_data)
+    surv_fit_plot$call$formula <- surv_formula
 
     clean_strata_label <- function(x) {
         x_chr <- as.character(x)
         ifelse(grepl("=", x_chr), sub("^[^=]*=", "", x_chr), x_chr)
     }
 
-    fit_strata_order <- names(surv_fit$strata)
+    fit_strata_order <- names(surv_fit_plot$strata)
     fit_strata_order <- unique(stats::na.omit(clean_strata_label(fit_strata_order)))
     if (length(fit_strata_order) == 0) {
-        fit_strata_order <- unique(stats::na.omit(as.character(km_data[[plot_group_var]])))
+        fit_strata_order <- unique(stats::na.omit(as.character(km_plot_data[[plot_group_var]])))
     }
 
     # Set legend labels and color palette (centralized)
@@ -1264,15 +1476,16 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         )
     }
 
-    # Generate Kaplan-Meier plot with risk table (all sizes scaled proportionally)
+    # Generate Kaplan-Meier plot with risk table. Do not display log-rank
+    # p-values on reviewer-facing KM plots; Cox models are the inferential
+    # treatment-comparison surface for this revision.
     surv_plot <- survminer::ggsurvplot(
-        fit = surv_fit,
-        data = km_data,
+        fit = surv_fit_plot,
+        data = km_plot_data,
         palette = color_palette,
         risk.table = TRUE,
         conf.int = FALSE,
-        pval = TRUE,
-        pval.size = 6 * plot_scale,       # p-value text (scaled)
+        pval = FALSE,
         title = paste("Kaplan-Meier Survival Curves", ylab, sep = "\n"),
         subtitle = if (!is.null(dataset_name)) paste("Cohort:", dataset_name) else NULL,
         xlab = "Time (months)",
@@ -1294,8 +1507,8 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         size = 1.2 * plot_scale           # survival line thickness (scaled larger)
     )
 
-    surv_plot$plot <- remove_plot_scales(surv_plot$plot, aesthetics = c("colour", "color", "y"))
-    surv_plot$table <- remove_plot_scales(surv_plot$table, aesthetics = c("y"))
+    surv_plot$plot <- remove_plot_scales(surv_plot$plot, aesthetics = c("colour", "color", "x", "y"))
+    surv_plot$table <- remove_plot_scales(surv_plot$table, aesthetics = c("x", "y"))
 
     legend_override <- NULL
     if (length(deemphasised_levels) > 0) {
@@ -1371,17 +1584,24 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             axis.ticks = ggplot2::element_blank(),     # Remove tick marks
             plot.title = ggplot2::element_text(size = 18 * plot_scale, face = "bold"),
             plot.subtitle = ggplot2::element_text(size = 14 * plot_scale),
-            plot.margin = ggplot2::margin(t = 8, r = 8, b = 0, l = 0)
+            plot.margin = ggplot2::margin(t = 10, r = 18, b = 10, l = 24)
         )
     # Format y-axis as percent (keep after theme to preserve colors)
     surv_plot$plot <- surv_plot$plot +
+        ggplot2::scale_x_continuous(
+            breaks = x_breaks,
+            expand = ggplot2::expansion(mult = c(0.01, 0.03)),
+            name = "Time (months)"
+        ) +
         ggplot2::scale_y_continuous(
             limits = c(0, 1),
             breaks = seq(0, 1, by = 0.1),
             labels = function(x) x * 100,
+            expand = ggplot2::expansion(mult = c(0, 0.02)),
             name = paste0(ylab, " (%)")
         ) +
-        ggplot2::labs(x = "Time (months)") +  # Explicitly set x-axis label with black color via theme
+        ggplot2::labs(x = "Time (months)") +
+        ggplot2::coord_cartesian(clip = "off") +
         ggplot2::geom_hline(yintercept = 0.5, linetype = "solid", color = "black", linewidth = 0.9, alpha = 0.35)  # 50% reference line
     # Make risk table text larger and easier to read
     surv_plot$table <- surv_plot$table + theme_minimal() +
@@ -1390,7 +1610,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             axis.text.y = ggplot2::element_text(size = 12 * plot_scale, color = "black"),
             axis.text.x = ggplot2::element_text(size = 12 * plot_scale, color = "black"),
             strip.text = ggplot2::element_text(size = 12 * plot_scale, color = "black"),
-            plot.margin = ggplot2::margin(t = 8, r = 8, b = 0, l = 8)
+            plot.margin = ggplot2::margin(t = 10, r = 18, b = 10, l = 24)
         )
     
     # Increase the size of the actual numbers in the risk table
@@ -1419,6 +1639,13 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     )
 
     surv_plot$table <- surv_plot$table +
+        ggplot2::scale_x_continuous(
+            limits = c(0, max(x_breaks)),
+            breaks = x_breaks,
+            expand = ggplot2::expansion(mult = c(0.01, 0.03)),
+            name = "Time (months)"
+        ) +
+        ggplot2::coord_cartesian(clip = "off") +
         ggplot2::scale_y_discrete(
             limits = rev(display_strata_order),
             expand = ggplot2::expansion(mult = risk_table_y_expand)
@@ -1426,8 +1653,8 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     
     # Save KM plot if output_dirs are provided
     if (!is.null(output_dirs)) {
-        output_dir <- determine_survival_output_dir(ylab, output_dirs)
-        km_dir <- ensure_output_dir(resolve_obj4_output_dir(output_dirs, output_dir, "km"))
+        output_dir <- determine_survival_output_dir(ylab, output_dirs, route_key = route_key)
+        km_dir <- ensure_output_dir(resolve_endpoint_output_dir(output_dirs, output_dir, "km"))
         km_path <- file.path(km_dir, paste0(prefix, make_filename_safe(ylab), "_km.png"))
         # Combine main plot and risk table vertically so the saved image includes both
         combined_km <- cowplot::plot_grid(
@@ -1437,6 +1664,8 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             align = "v",
             rel_heights = risk_table_rel_heights
         )
+        combined_km <- cowplot::ggdraw() +
+            cowplot::draw_plot(combined_km, x = 0.02, y = 0, width = 0.96, height = 1)
         # Dynamic height scaling: base on number of strata in the KM fit
         n_groups <- tryCatch(
             {
@@ -1727,8 +1956,8 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
 
     # Write outputs to Excel files if output_dirs provided
     if (!is.null(output_dirs)) {
-        output_dir <- determine_survival_output_dir(ylab, output_dirs)
-        summary_dir <- ensure_output_dir(resolve_obj4_output_dir(output_dirs, output_dir, "summary"))
+        output_dir <- determine_survival_output_dir(ylab, output_dirs, route_key = route_key)
+        summary_dir <- ensure_output_dir(resolve_endpoint_output_dir(output_dirs, output_dir, "summary"))
         write_readable_xlsx(
             surv_rates,
             path = file.path(summary_dir, paste0(prefix, make_filename_safe(ylab), "_survival_rates.xlsx"))
@@ -1737,7 +1966,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             surv_rates_wide_with_rmst,
             path = file.path(summary_dir, paste0(prefix, make_filename_safe(ylab), "_survival_rates_wide.xlsx"))
         )
-        rmst_dir <- ensure_output_dir(resolve_obj4_output_dir(output_dirs, output_dir, "rmst"))
+        rmst_dir <- ensure_output_dir(resolve_endpoint_output_dir(output_dirs, output_dir, "rmst"))
         rmst_has_completed_results <- nrow(completed_rmst_results) > 0
         if (nrow(rmst_results) > 0) {
             write_readable_xlsx(
@@ -1775,8 +2004,8 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         logger::log_info(sprintf("DEBUG: About to call generate_regression_table for %s", paste0(ylab, "_cox")))
         cox_result <- tryCatch({
             cox_dir <- if (!is.null(output_dirs)) {
-                cox_output_dir <- determine_survival_output_dir(ylab, output_dirs)
-                ensure_output_dir(resolve_obj4_output_dir(output_dirs, cox_output_dir, "cox"))
+                cox_output_dir <- determine_survival_output_dir(ylab, output_dirs, route_key = route_key)
+                ensure_output_dir(resolve_endpoint_output_dir(output_dirs, cox_output_dir, "cox"))
             } else {
                 "test_output"
             }
@@ -1804,7 +2033,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         })
     } else {
         cox_dir <- if (!is.null(output_dirs)) {
-            ensure_output_dir(resolve_obj4_output_dir(output_dirs, determine_survival_output_dir(ylab, output_dirs), "cox"))
+            ensure_output_dir(resolve_endpoint_output_dir(output_dirs, determine_survival_output_dir(ylab, output_dirs, route_key = route_key), "cox"))
         } else {
             "test_output"
         }
@@ -1848,7 +2077,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
 
     if (is.null(cox_result)) {
         cox_dir <- if (!is.null(output_dirs)) {
-            ensure_output_dir(resolve_obj4_output_dir(output_dirs, determine_survival_output_dir(ylab, output_dirs), "cox"))
+            ensure_output_dir(resolve_endpoint_output_dir(output_dirs, determine_survival_output_dir(ylab, output_dirs, route_key = route_key), "cox"))
         } else {
             "test_output"
         }
@@ -1917,8 +2146,8 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     hazard_ratio_summary <- if (length(hr_rows) > 0) do.call(bind_effect_summary_rows, hr_rows) else empty_effect_summary_rows()
 
     if (!is.null(output_dirs) && nrow(hazard_ratio_summary) > 0) {
-        hr_output_dir <- determine_survival_output_dir(ylab, output_dirs)
-        hr_dir <- ensure_output_dir(resolve_obj4_output_dir(output_dirs, hr_output_dir, "cox"))
+        hr_output_dir <- determine_survival_output_dir(ylab, output_dirs, route_key = route_key)
+        hr_dir <- ensure_output_dir(resolve_endpoint_output_dir(output_dirs, hr_output_dir, "cox"))
         
         hr_filename <- paste0(prefix, make_filename_safe(ylab), "_effect_summary.xlsx")
         write_readable_xlsx(hazard_ratio_summary, file.path(hr_dir, hr_filename))
@@ -1963,7 +2192,16 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
                 group1_name <- as.character(factor_levels[1])
                 group2_name <- as.character(factor_levels[2])
                 
-                plot_rmst_pvalue_progression(completed_rmst_results, ylab, output_dirs, prefix, group1_name, group2_name, plot_group_var)
+                plot_rmst_pvalue_progression(
+                    completed_rmst_results,
+                    ylab,
+                    output_dirs,
+                    prefix,
+                    group1_name,
+                    group2_name,
+                    plot_group_var,
+                    route_key = route_key
+                )
             }
         }, error = function(e) {
             logger::log_warn(sprintf("RMST plot generation failed: %s", e$message))
@@ -2008,7 +2246,7 @@ analyze_os_by_local_recurrence <- function(data, dataset_name, output_dirs, pref
     }
     logger::log_info(formatted(sprintf("Routing 1a1 recurrence OS outputs to %s", os_subdir), indent = 2))
     local_dirs <- output_dirs
-    local_dirs$obj1_os <- os_subdir
+    local_dirs <- repoint_local_survival_route(local_dirs, "obj1_os", os_subdir)
     local_dirs$baseline_characteristics <- os_subdir
 
     analyze_time_to_event_outcomes(
@@ -2019,9 +2257,10 @@ analyze_os_by_local_recurrence <- function(data, dataset_name, output_dirs, pref
         confounders = confounders,
         ylab = "Overall Survival by Local Recurrence Status",
         analysis_type = "post_treatment_only",
-        dataset_name = dataset_name,
-        output_dirs = local_dirs,
-        prefix = paste0(prefix, "1a1_recurrence_stratified_")
+            dataset_name = dataset_name,
+            output_dirs = local_dirs,
+            prefix = paste0(prefix, "1a1_recurrence_stratified_"),
+            route_key = "obj1_os"
     )
 }
 
@@ -2052,7 +2291,7 @@ analyze_pfs_by_local_recurrence <- function(data, dataset_name, output_dirs, pre
     }
     logger::log_info(formatted(sprintf("Routing 1a2 recurrence PFS outputs to %s", pfs_subdir), indent = 2))
     local_dirs <- output_dirs
-    local_dirs$obj1_pfs <- pfs_subdir
+    local_dirs <- repoint_local_survival_route(local_dirs, "obj1_pfs", pfs_subdir)
     local_dirs$baseline_characteristics <- pfs_subdir
 
     analyze_time_to_event_outcomes(
@@ -2063,9 +2302,10 @@ analyze_pfs_by_local_recurrence <- function(data, dataset_name, output_dirs, pre
         confounders = confounders,
         ylab = "Progression-Free Survival by Local Recurrence Status",
         analysis_type = "post_treatment_only",
-        dataset_name = dataset_name,
-        output_dirs = local_dirs,
-        prefix = paste0(prefix, "1a2_recurrence_stratified_")
+            dataset_name = dataset_name,
+            output_dirs = local_dirs,
+            prefix = paste0(prefix, "1a2_recurrence_stratified_"),
+            route_key = "obj1_pfs"
     )
 }
 
@@ -2093,7 +2333,7 @@ analyze_os_by_metastatic_progression <- function(data, dataset_name, output_dirs
     logger::log_info(formatted(sprintf("Routing 2a1 metastasis OS outputs to %s", os_subdir), indent = 2))
 
     local_dirs <- output_dirs
-    local_dirs$obj1_os <- os_subdir
+    local_dirs <- repoint_local_survival_route(local_dirs, "obj1_os", os_subdir)
     local_dirs$baseline_characteristics <- os_subdir
 
     analyze_time_to_event_outcomes(
@@ -2104,9 +2344,10 @@ analyze_os_by_metastatic_progression <- function(data, dataset_name, output_dirs
         confounders = confounders,
         ylab = "Overall Survival by Metastatic Progression Status",
         analysis_type = "post_treatment_only",
-        dataset_name = dataset_name,
-        output_dirs = local_dirs,
-        prefix = paste0(prefix, "2a1_metastasis_stratified_")
+            dataset_name = dataset_name,
+            output_dirs = local_dirs,
+            prefix = paste0(prefix, "2a1_metastasis_stratified_"),
+            route_key = "obj1_os"
     )
 }
 
@@ -2132,7 +2373,7 @@ analyze_pfs_by_metastatic_progression <- function(data, dataset_name, output_dir
     logger::log_info(formatted(sprintf("Routing 2a2 metastasis PFS outputs to %s", pfs_subdir), indent = 2))
 
     local_dirs <- output_dirs
-    local_dirs$obj1_pfs <- pfs_subdir
+    local_dirs <- repoint_local_survival_route(local_dirs, "obj1_pfs", pfs_subdir)
     local_dirs$baseline_characteristics <- pfs_subdir
 
     analyze_time_to_event_outcomes(
@@ -2143,9 +2384,10 @@ analyze_pfs_by_metastatic_progression <- function(data, dataset_name, output_dir
         confounders = confounders,
         ylab = "Progression-Free Survival by Metastatic Progression Status",
         analysis_type = "post_treatment_only",
-        dataset_name = dataset_name,
-        output_dirs = local_dirs,
-        prefix = paste0(prefix, "2a2_metastasis_stratified_")
+            dataset_name = dataset_name,
+            output_dirs = local_dirs,
+            prefix = paste0(prefix, "2a2_metastasis_stratified_"),
+            route_key = "obj1_pfs"
     )
 }
 
@@ -2257,7 +2499,8 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_d
     )
 
     if (!is.null(output_dirs) && !is.null(output_dirs$obj3_pfs2)) {
-        summary_path <- file.path(output_dirs$obj3_pfs2, paste0(prefix, "pfs2_treatment_summary.xlsx"))
+        cohort_support_dir <- resolve_route_output_dir(output_dirs, "obj3_pfs2", "cohort_support")
+        summary_path <- file.path(cohort_support_dir, paste0(prefix, "pfs2_treatment_summary.xlsx"))
         write_readable_xlsx(
             list(
                 raw_primary_vs_salvage = raw_primary_vs_salvage,
@@ -2293,21 +2536,24 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_d
         pfs2_skip_diagnostics$compatibility_text <- explanation_text
 
         if (!is.null(output_dirs)) {
-            output_targets <- list(output_dirs$obj3_pfs2, output_dirs$obj3_ph_diagnostics)
-            for (target_dir in output_targets) {
-                if (!is.null(target_dir) && dir.exists(target_dir)) {
-                    explanation_file <- file.path(target_dir, paste0(prefix, "pfs2_analysis_skipped_explanation.txt"))
-                    writeLines(explanation_text, explanation_file)
-                    logger::log_info(sprintf("Explanation saved to: %s", explanation_file))
-                    save_skipped_model_outputs(
-                        analysis_name = "pfs2_analysis",
-                        dataset_name = dataset_name %||% "unspecified_dataset",
-                        output_dir = target_dir,
-                        prefix = prefix,
-                        reason = pfs2_skip_diagnostics$reason,
-                        diagnostics = pfs2_skip_diagnostics
-                    )
-                }
+            cohort_support_dir <- resolve_route_output_dir(output_dirs, "obj3_pfs2", "cohort_support")
+            cox_dir <- resolve_route_output_dir(output_dirs, "obj3_pfs2", "cox")
+            if (!is.null(cohort_support_dir)) {
+                ensure_output_dir(cohort_support_dir)
+                explanation_file <- file.path(cohort_support_dir, paste0(prefix, "pfs2_analysis_skipped_explanation.txt"))
+                writeLines(explanation_text, explanation_file)
+                logger::log_info(sprintf("Explanation saved to: %s", explanation_file))
+            }
+            if (!is.null(cox_dir)) {
+                ensure_output_dir(cox_dir)
+                save_skipped_model_outputs(
+                    analysis_name = "pfs2_analysis",
+                    dataset_name = dataset_name %||% "unspecified_dataset",
+                    output_dir = cox_dir,
+                    prefix = prefix,
+                    reason = pfs2_skip_diagnostics$reason,
+                    diagnostics = pfs2_skip_diagnostics
+                )
             }
         }
 
@@ -2449,34 +2695,22 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_d
         )
         pfs2_skip_diagnostics$compatibility_text <- explanation_text
 
-        # Save explanation to both a_pfs2 and b_proportional_hazards_diagnostics directories
+        # Save explanation and skip artifacts to typed PFS-2 subfolders
         if (!is.null(output_dirs)) {
-            # Save to a_pfs2 directory
-            pfs2_dir <- output_dirs$obj3_pfs2
-            if (!is.null(pfs2_dir) && dir.exists(pfs2_dir)) {
-                explanation_file <- file.path(pfs2_dir, paste0(prefix, "pfs2_analysis_skipped_explanation.txt"))
+            cohort_support_dir <- resolve_route_output_dir(output_dirs, "obj3_pfs2", "cohort_support")
+            cox_dir <- resolve_route_output_dir(output_dirs, "obj3_pfs2", "cox")
+            if (!is.null(cohort_support_dir)) {
+                ensure_output_dir(cohort_support_dir)
+                explanation_file <- file.path(cohort_support_dir, paste0(prefix, "pfs2_analysis_skipped_explanation.txt"))
                 writeLines(explanation_text, explanation_file)
                 logger::log_info(sprintf("Explanation saved to: %s", explanation_file))
-                save_skipped_model_outputs(
-                    analysis_name = "pfs2_analysis",
-                    dataset_name = dataset_name %||% "unspecified_dataset",
-                    output_dir = pfs2_dir,
-                    prefix = prefix,
-                    reason = pfs2_skip_diagnostics$reason,
-                    diagnostics = pfs2_skip_diagnostics
-                )
             }
-            
-            # Save to b_proportional_hazards_diagnostics directory
-            ph_dir <- output_dirs$obj3_ph_diagnostics
-            if (!is.null(ph_dir) && dir.exists(ph_dir)) {
-                explanation_file <- file.path(ph_dir, paste0(prefix, "pfs2_analysis_skipped_explanation.txt"))
-                writeLines(explanation_text, explanation_file)
-                logger::log_info(sprintf("Explanation saved to: %s", explanation_file))
+            if (!is.null(cox_dir)) {
+                ensure_output_dir(cox_dir)
                 save_skipped_model_outputs(
                     analysis_name = "pfs2_analysis",
                     dataset_name = dataset_name %||% "unspecified_dataset",
-                    output_dir = ph_dir,
+                    output_dir = cox_dir,
                     prefix = prefix,
                     reason = pfs2_skip_diagnostics$reason,
                     diagnostics = pfs2_skip_diagnostics
@@ -2510,6 +2744,7 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_d
             dataset_name = paste0(dataset_name, "_pfs2_recurrent"),
             output_dirs = output_dirs,
             prefix = prefix,
+            route_key = "obj3_pfs2",
             allow_cox = isTRUE(pfs2_treatment_estimability$reportable),
             cox_skip_reason = if (!isTRUE(pfs2_treatment_estimability$reportable)) pfs2_treatment_estimability$reason else NULL,
             cox_skip_narrative = if (!isTRUE(pfs2_treatment_estimability$reportable)) {
@@ -2532,7 +2767,7 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_d
     ph_diag_result <- run_or_skip_proportional_hazards_diagnostics(
         cox_model = pfs2_survival$cox_model,
         outcome_name = "PFS-2 Probability (Freedom from 2nd Recurrence)",
-        output_dir = if (!is.null(output_dirs)) output_dirs$obj3_ph_diagnostics else getwd(),
+        output_dir = if (!is.null(output_dirs)) resolve_route_output_dir(output_dirs, "obj3_pfs2", "ph") else getwd(),
         file_prefix = paste0(prefix, make_filename_safe("PFS-2 Probability (Freedom from 2nd Recurrence)"), "_"),
         dataset_name = dataset_name,
         data = pfs2_data,

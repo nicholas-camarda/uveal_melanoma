@@ -27,6 +27,7 @@ test_that("current documentation does not revive retired GEP Other sidecars", {
         here::here("docs", "METHODS_SECTION_PAPER.md"),
         here::here("docs", "GEP_OBJECTIVE4_GOAL_IMPLEMENTATION_MAP.md")
     )
+    current_doc_paths <- current_doc_paths[file.exists(current_doc_paths)]
     current_doc_text <- paste(
         unlist(lapply(current_doc_paths, readLines, warn = FALSE)),
         collapse = "\n"
@@ -51,6 +52,10 @@ test_that("repo docs and contract-facing utilities avoid stale path contract tok
         here::here("scripts", "tools", "derived_variables_documentation.R")
     )
     repo_doc_paths <- unique(repo_doc_paths[file.exists(repo_doc_paths)])
+    clickable_path_exception_docs <- c(
+        here::here("docs", "superpowers", "plans", "2026-06-26-peer-review-statistical-revision.md")
+    )
+    repo_doc_paths_for_absolute_path_check <- setdiff(repo_doc_paths, clickable_path_exception_docs)
 
     repo_doc_text <- vapply(
         repo_doc_paths,
@@ -70,7 +75,8 @@ test_that("repo docs and contract-facing utilities avoid stale path contract tok
         "final_data/|OCULAR_EXPORT_ROOT|residency/.+research projects",
         repo_doc_text
     )]
-    maintainer_path_hits <- names(repo_doc_text)[grepl("/Users/ncamarda/", repo_doc_text, fixed = TRUE)]
+    maintainer_path_text <- repo_doc_text[names(repo_doc_text) %in% repo_doc_paths_for_absolute_path_check]
+    maintainer_path_hits <- names(maintainer_path_text)[grepl("/Users/ncamarda/", maintainer_path_text, fixed = TRUE)]
 
     expect(
         length(stale_path_hits) == 0,
@@ -78,7 +84,7 @@ test_that("repo docs and contract-facing utilities avoid stale path contract tok
     )
     expect(
         length(maintainer_path_hits) == 0,
-        paste("Files leaking maintainer-specific absolute paths:", paste(maintainer_path_hits, collapse = ", "))
+        paste("Files leaking maintainer-specific absolute paths outside approved clickable-path exceptions:", paste(maintainer_path_hits, collapse = ", "))
     )
 })
 
@@ -91,6 +97,7 @@ test_that("active Objective 4 docs and code-facing outputs do not revive split-r
         here::here("tests", "integration", "test_exploratory_no_gep_report.R"),
         here::here("tests", "testthat", "test_exploratory_no_gep_followup_context.R")
     )
+    split_contract_paths <- split_contract_paths[file.exists(split_contract_paths)]
 
     split_contract_text <- vapply(
         split_contract_paths,

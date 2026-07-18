@@ -127,6 +127,14 @@ MERGED_TABLES_DIR <- resolve_config_path(
     Sys.getenv("MERGED_TABLES_DIR", unset = ""),
     file.path(OUTPUT_DIR, "merged_tables")
 )
+SHARE_PACKETS_DIR <- resolve_config_path(
+    Sys.getenv("SHARE_PACKETS_DIR", unset = ""),
+    file.path(RUNTIME_ROOT, "share_packets")
+)
+PEER_REVIEW_REVISION_AUDITS_DIR <- file.path(
+    SHARE_PACKETS_DIR,
+    "peer_review_revision_audits"
+)
 
 # Project Vault project root exposed for existing analysis code.
 DATA_DIR <- EXPORT_ROOT
@@ -147,7 +155,9 @@ initialize_runtime_dirs <- function() {
         LOGS_DIR,
         TOOLS_OUTPUT_DIR,
         TEST_OUTPUT_DIR,
-        MERGED_TABLES_DIR
+        MERGED_TABLES_DIR,
+        SHARE_PACKETS_DIR,
+        PEER_REVIEW_REVISION_AUDITS_DIR
     ))
 
     for (dir_path in runtime_dirs) {
@@ -190,7 +200,7 @@ assert_required_input_paths <- function(input_filename = INPUT_FILENAME, require
             paste(
                 "Required raw input path checks failed:",
                 paste(paste0("- ", path_issues), collapse = "\n"),
-                sprintf("Configured export root: %s", EXPORT_ROOT),
+                sprintf("Configured Project Vault root: %s", EXPORT_ROOT),
                 sep = "\n"
             ),
             call. = FALSE

@@ -21,10 +21,7 @@ run_objective3_pipeline_test <- function(data) {
   tryCatch({
     # Create proper output directory structure
     test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective3_test")
-    output_dirs <- list(
-      obj3_pfs2 = file.path(test_output_dir, "03_Repeat_Radiation", "a_pfs2"),
-      obj3_ph_diagnostics = file.path(test_output_dir, "03_Repeat_Radiation", "b_proportional_hazards_diagnostics")
-    )
+    output_dirs <- build_subdivided_output_dirs(test_output_dir, "^obj3_")
     
     # Create directories
     for (dir_path in output_dirs) {
@@ -71,21 +68,23 @@ test_that("Objective 3 pipeline returns the current PFS-2 analysis contract", {
   expect_null(results$pfs2_analysis$summary_table)
   expect_null(results$pfs2_analysis$survival_analysis$cox_model)
 
-  expect_true(file.exists(file.path(pipeline_run$output_dirs$obj3_pfs2, "test_pfs2_treatment_summary.xlsx")))
-  expect_true(file.exists(file.path(pipeline_run$output_dirs$obj3_pfs2, "test_pfs2_analysis_SKIPPED.html")))
-  expect_true(file.exists(file.path(pipeline_run$output_dirs$obj3_pfs2, "test_pfs2_analysis_diagnostics.xlsx")))
-  expect_true(file.exists(file.path(pipeline_run$output_dirs$obj3_ph_diagnostics, "test_pfs2_analysis_SKIPPED.html")))
-  expect_true(file.exists(file.path(pipeline_run$output_dirs$obj3_ph_diagnostics, "test_pfs2_analysis_diagnostics.xlsx")))
+  expect_true(file.exists(file.path(pipeline_run$output_dirs$obj3_pfs2_cohort_support, "test_pfs2_treatment_summary.xlsx")))
+  expect_true(file.exists(file.path(pipeline_run$output_dirs$obj3_pfs2_cox, "test_pfs2_analysis_SKIPPED.html")))
+  expect_true(file.exists(file.path(pipeline_run$output_dirs$obj3_pfs2_cox, "test_pfs2_analysis_diagnostics.xlsx")))
+  ph_skipped_files <- list.files(
+    pipeline_run$output_dirs$obj3_pfs2_ph,
+    pattern = "proportional_hazards_diagnostics_SKIPPED\\.html$",
+    full.names = TRUE
+  )
+  expect_true(length(ph_skipped_files) > 0)
 })
 
 test_that("PFS-2 insufficient-event skips retain txt notes and add structured skip artifacts", {
   test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective3_pfs2_skip_test")
-  output_dirs <- list(
-    obj3_pfs2 = file.path(test_output_dir, "03_Repeat_Radiation", "a_pfs2"),
-    obj3_ph_diagnostics = file.path(test_output_dir, "03_Repeat_Radiation", "b_proportional_hazards_diagnostics")
-  )
-  dir.create(output_dirs$obj3_pfs2, recursive = TRUE, showWarnings = FALSE)
-  dir.create(output_dirs$obj3_ph_diagnostics, recursive = TRUE, showWarnings = FALSE)
+  output_dirs <- build_subdivided_output_dirs(test_output_dir, "^obj3_")
+  for (dir_path in output_dirs) {
+    dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
+  }
   withr::defer(unlink(test_output_dir, recursive = TRUE), envir = parent.frame())
 
   pfs2_test_data <- tibble::tibble(
@@ -108,18 +107,21 @@ test_that("PFS-2 insufficient-event skips retain txt notes and add structured sk
   expect_false(is.null(result$pfs2_data))
   expect_null(result$survival_analysis$cox_model)
 
-  expect_true(file.exists(file.path(output_dirs$obj3_pfs2, "test_pfs2_analysis_skipped_explanation.txt")))
-  expect_true(file.exists(file.path(output_dirs$obj3_ph_diagnostics, "test_pfs2_analysis_skipped_explanation.txt")))
-  expect_true(file.exists(file.path(output_dirs$obj3_pfs2, "test_pfs2_analysis_SKIPPED.html")))
-  expect_true(file.exists(file.path(output_dirs$obj3_pfs2, "test_pfs2_analysis_diagnostics.xlsx")))
-  expect_true(file.exists(file.path(output_dirs$obj3_ph_diagnostics, "test_pfs2_analysis_SKIPPED.html")))
-  expect_true(file.exists(file.path(output_dirs$obj3_ph_diagnostics, "test_pfs2_analysis_diagnostics.xlsx")))
+  expect_true(file.exists(file.path(output_dirs$obj3_pfs2_cohort_support, "test_pfs2_analysis_skipped_explanation.txt")))
+  expect_true(file.exists(file.path(output_dirs$obj3_pfs2_cox, "test_pfs2_analysis_SKIPPED.html")))
+  expect_true(file.exists(file.path(output_dirs$obj3_pfs2_cox, "test_pfs2_analysis_diagnostics.xlsx")))
+  ph_skipped_files <- list.files(
+    output_dirs$obj3_pfs2_ph,
+    pattern = "proportional_hazards_diagnostics_SKIPPED\\.html$",
+    full.names = TRUE
+  )
+  expect_true(length(ph_skipped_files) > 0)
 
-  skip_sheets <- readxl::excel_sheets(file.path(output_dirs$obj3_pfs2, "test_pfs2_analysis_diagnostics.xlsx"))
+  skip_sheets <- readxl::excel_sheets(file.path(output_dirs$obj3_pfs2_cox, "test_pfs2_analysis_diagnostics.xlsx"))
   expect_true(all(c("Skip_summary", "Narrative_summary", "Event_support") %in% skip_sheets))
 
   skip_html <- paste(
-    readLines(file.path(output_dirs$obj3_pfs2, "test_pfs2_analysis_SKIPPED.html"), warn = FALSE),
+    readLines(file.path(output_dirs$obj3_pfs2_cox, "test_pfs2_analysis_SKIPPED.html"), warn = FALSE),
     collapse = "\n"
   )
   expect_match(
@@ -132,12 +134,10 @@ test_that("PFS-2 insufficient-event skips retain txt notes and add structured sk
 
 test_that("PFS-2 precheck requires the configured minimum analyzable patient count", {
   test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective3_pfs2_patient_threshold")
-  output_dirs <- list(
-    obj3_pfs2 = file.path(test_output_dir, "03_Repeat_Radiation", "a_pfs2"),
-    obj3_ph_diagnostics = file.path(test_output_dir, "03_Repeat_Radiation", "b_proportional_hazards_diagnostics")
-  )
-  dir.create(output_dirs$obj3_pfs2, recursive = TRUE, showWarnings = FALSE)
-  dir.create(output_dirs$obj3_ph_diagnostics, recursive = TRUE, showWarnings = FALSE)
+  output_dirs <- build_subdivided_output_dirs(test_output_dir, "^obj3_")
+  for (dir_path in output_dirs) {
+    dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
+  }
   withr::defer(unlink(test_output_dir, recursive = TRUE), envir = parent.frame())
 
   pfs2_small_n <- tibble::tibble(
@@ -162,12 +162,11 @@ test_that("PFS-2 precheck requires the configured minimum analyzable patient cou
   expect_null(result$survival_analysis$cox_model)
   expect_null(result$summary_table)
   expect_null(result$ph_diagnostics)
-  expect_true(file.exists(file.path(output_dirs$obj3_pfs2, "test_pfs2_analysis_skipped_explanation.txt")))
-  expect_true(file.exists(file.path(output_dirs$obj3_pfs2, "test_pfs2_analysis_SKIPPED.html")))
-  expect_true(file.exists(file.path(output_dirs$obj3_pfs2, "test_pfs2_analysis_diagnostics.xlsx")))
-  expect_true(file.exists(file.path(output_dirs$obj3_ph_diagnostics, "test_pfs2_analysis_SKIPPED.html")))
+  expect_true(file.exists(file.path(output_dirs$obj3_pfs2_cohort_support, "test_pfs2_analysis_skipped_explanation.txt")))
+  expect_true(file.exists(file.path(output_dirs$obj3_pfs2_cox, "test_pfs2_analysis_SKIPPED.html")))
+  expect_true(file.exists(file.path(output_dirs$obj3_pfs2_cox, "test_pfs2_analysis_diagnostics.xlsx")))
 
-  skip_sheets <- readxl::excel_sheets(file.path(output_dirs$obj3_pfs2, "test_pfs2_analysis_diagnostics.xlsx"))
+  skip_sheets <- readxl::excel_sheets(file.path(output_dirs$obj3_pfs2_cox, "test_pfs2_analysis_diagnostics.xlsx"))
   expect_true(all(c("Skip_summary", "Narrative_summary", "Event_support", "Model_context") %in% skip_sheets))
 })
 
@@ -217,12 +216,10 @@ test_that("PFS-2 derivation is invariant to raw and display recurrence coding", 
 
 test_that("PFS-2 summaries include censoring support and downgrade notes", {
   test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective3_pfs2_censoring_support")
-  output_dirs <- list(
-    obj3_pfs2 = file.path(test_output_dir, "03_Repeat_Radiation", "a_pfs2"),
-    obj3_ph_diagnostics = file.path(test_output_dir, "03_Repeat_Radiation", "b_proportional_hazards_diagnostics")
-  )
-  dir.create(output_dirs$obj3_pfs2, recursive = TRUE, showWarnings = FALSE)
-  dir.create(output_dirs$obj3_ph_diagnostics, recursive = TRUE, showWarnings = FALSE)
+  output_dirs <- build_subdivided_output_dirs(test_output_dir, "^obj3_")
+  for (dir_path in output_dirs) {
+    dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
+  }
   withr::defer(unlink(test_output_dir, recursive = TRUE), envir = parent.frame())
 
   pfs2_test_data <- tibble::tibble(
@@ -242,7 +239,7 @@ test_that("PFS-2 summaries include censoring support and downgrade notes", {
     prefix = "test_"
   )
 
-  summary_path <- file.path(output_dirs$obj3_pfs2, "test_pfs2_treatment_summary.xlsx")
+  summary_path <- file.path(output_dirs$obj3_pfs2_cohort_support, "test_pfs2_treatment_summary.xlsx")
   expect_true(file.exists(summary_path))
   expect_true(all(c("censoring_support", "interpretation_guardrails") %in% readxl::excel_sheets(summary_path)))
   guardrails <- readxl::read_xlsx(summary_path, sheet = "interpretation_guardrails")
@@ -252,12 +249,10 @@ test_that("PFS-2 summaries include censoring support and downgrade notes", {
 
 test_that("PFS-2 zero-event reference arm suppresses Cox treatment output", {
   test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective3_pfs2_zero_reference")
-  output_dirs <- list(
-    obj3_pfs2 = file.path(test_output_dir, "03_Repeat_Radiation", "a_pfs2"),
-    obj3_ph_diagnostics = file.path(test_output_dir, "03_Repeat_Radiation", "b_proportional_hazards_diagnostics")
-  )
-  dir.create(output_dirs$obj3_pfs2, recursive = TRUE, showWarnings = FALSE)
-  dir.create(output_dirs$obj3_ph_diagnostics, recursive = TRUE, showWarnings = FALSE)
+  output_dirs <- build_subdivided_output_dirs(test_output_dir, "^obj3_")
+  for (dir_path in output_dirs) {
+    dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
+  }
   withr::defer(unlink(test_output_dir, recursive = TRUE), envir = parent.frame())
 
   pfs2_test_data <- tibble::tibble(
@@ -282,17 +277,17 @@ test_that("PFS-2 zero-event reference arm suppresses Cox treatment output", {
   expect_null(result$survival_analysis$cox_model)
   expect_null(result$summary_table)
 
-  skipped_files <- list.files(output_dirs$obj3_pfs2, pattern = "cox_SKIPPED\\.html$", full.names = TRUE)
+  skipped_files <- list.files(output_dirs$obj3_pfs2_cox, pattern = "cox_SKIPPED\\.html$", full.names = TRUE)
   expect_length(skipped_files, 1)
   skipped_html <- paste(readLines(skipped_files[[1]], warn = FALSE), collapse = "\n")
   expect_match(skipped_html, "zero second-recurrence events", fixed = TRUE)
 
-  ph_skipped_files <- list.files(output_dirs$obj3_ph_diagnostics, pattern = "proportional_hazards_diagnostics_SKIPPED\\.html$", full.names = TRUE)
+  ph_skipped_files <- list.files(output_dirs$obj3_pfs2_ph, pattern = "proportional_hazards_diagnostics_SKIPPED\\.html$", full.names = TRUE)
   expect_length(ph_skipped_files, 1)
   ph_skipped_html <- paste(readLines(ph_skipped_files[[1]], warn = FALSE), collapse = "\n")
   expect_match(ph_skipped_html, "no Cox model was fit", fixed = TRUE)
   expect_match(ph_skipped_html, "zero second-recurrence events", fixed = TRUE)
-  expect_true(any(grepl("proportional_hazards_diagnostics_diagnostics\\.xlsx$", list.files(output_dirs$obj3_ph_diagnostics))))
+  expect_true(any(grepl("proportional_hazards_diagnostics_diagnostics\\.xlsx$", list.files(output_dirs$obj3_pfs2_ph))))
 })
 
 test_that("PH diagnostics are skipped below the configured event floor", {
