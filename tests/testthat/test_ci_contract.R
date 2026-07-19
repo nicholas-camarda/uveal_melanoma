@@ -22,6 +22,12 @@ test_that("portable CI installs rmda from its tracked upstream repository", {
     expect_false(grepl("any::rmda", workflow_text, fixed = TRUE))
 })
 
+test_that("lintr contract permits the repository's established mixed pipe syntax", {
+    lintr_text <- paste(readLines(here::here(".lintr"), warn = FALSE), collapse = "\n")
+
+    expect_match(lintr_text, "pipe_consistency_linter = NULL", fixed = TRUE)
+})
+
 test_that("documented test commands use the fail-sensitive runner", {
     readme_text <- paste(readLines(here::here("README.md"), warn = FALSE), collapse = "\n")
 
