@@ -247,7 +247,7 @@ test_that("Three-cohort simple MFS plot uses fixed comparable axes", {
     expect_equal(x_scale$limits, c(0.35, 1.01))
     expect_equal(y_scale$limits, c(0.35, 1.01))
     expect_match(plot_obj$labels$caption, "Fixed x/y axes across panels", fixed = TRUE)
-    expect_true(inherits(plot_obj$coordinates, "CoordFixed"))
+    expect_equal(plot_obj$coordinates$ratio, 1)
 
     report_dir <- file.path(TEST_OUTPUT_DIR, "objective4_three_panel_report")
     withr::defer(unlink(report_dir, recursive = TRUE), envir = parent.frame())
