@@ -7,9 +7,21 @@ test_that("portable CI runs required checks with fail-sensitive commands", {
     expect_match(workflow_text, "scripts/tools/run_testthat.R tests/integration", fixed = TRUE)
     expect_match(workflow_text, "OCULAR_RUN_INTEGRATION_TESTS: true", fixed = TRUE)
     expect_match(workflow_text, "lintr::lint_package()", fixed = TRUE)
-    expect_match(workflow_text, "openspec validate --all --strict --no-interactive", fixed = TRUE)
     expect_false(grepl("continue-on-error", workflow_text, fixed = TRUE))
     expect_false(grepl("\\|\\|[[:space:]]+true", workflow_text))
+})
+
+test_that("OpenSpec records remain available without active CI enforcement", {
+    workflow_text <- paste(
+        readLines(here::here(".github", "workflows", "portable-tests.yml"), warn = FALSE),
+        collapse = "\n"
+    )
+
+    expect_false(grepl("@fission-ai/openspec", workflow_text, fixed = TRUE))
+    expect_false(grepl("openspec validate", workflow_text, fixed = TRUE))
+    expect_true(file.exists(here::here("openspec", "config.yaml")))
+    expect_gt(length(list.files(here::here("openspec", "specs"), recursive = TRUE)), 0L)
+    expect_gt(length(list.files(here::here("openspec", "changes", "archive"), recursive = TRUE)), 0L)
 })
 
 test_that("portable CI installs rmda from its tracked upstream repository", {
