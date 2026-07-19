@@ -516,7 +516,9 @@ validate_objective1_endpoint_invariants <- function(data, cohort_name) {
     required_fields <- c(
         "recurrence1", "mets_progression", "dod",
         "recurrence_event", "mets_event", "death_event", "pfs_event",
-        "tt_recurrence_months", "tt_mets_months", "tt_death_months", "tt_pfs_months"
+        "tt_recurrence_months", "tt_mets_months", "tt_death_months", "tt_pfs_months",
+        "tt_recurrence_months_analysis", "tt_mets_months_analysis",
+        "tt_death_months_analysis", "tt_pfs_months_analysis"
     )
     missing_fields <- setdiff(required_fields, names(data))
 
@@ -545,11 +547,20 @@ validate_objective1_endpoint_invariants <- function(data, cohort_name) {
         recurrence_event = ifelse(normalize_yes_no_value(data$recurrence1) %in% TRUE, 1L, 0L),
         mets_event = ifelse(normalize_yes_no_value(data$mets_progression) %in% TRUE, 1L, 0L),
         death_event = ifelse(!is.na(data$dod), 1L, 0L),
-        tt_pfs_months = pmin(data$tt_recurrence_months, data$tt_mets_months, data$tt_death_months, na.rm = FALSE)
+        tt_pfs_months = pmin(data$tt_recurrence_months, data$tt_mets_months, data$tt_death_months, na.rm = FALSE),
+        tt_pfs_months_analysis = pmin(
+            data$tt_recurrence_months_analysis,
+            data$tt_mets_months_analysis,
+            data$tt_death_months_analysis,
+            na.rm = FALSE
+        )
     ) %>%
         dplyr::mutate(pfs_event = ifelse(.data$recurrence_event == 1L | .data$mets_event == 1L | .data$death_event == 1L, 1L, 0L))
 
-    mismatch_rows <- purrr::map_dfr(c("recurrence_event", "mets_event", "death_event", "pfs_event", "tt_pfs_months"), function(field_name) {
+    mismatch_rows <- purrr::map_dfr(c(
+        "recurrence_event", "mets_event", "death_event", "pfs_event",
+        "tt_pfs_months", "tt_pfs_months_analysis"
+    ), function(field_name) {
         observed <- suppressWarnings(as.numeric(as.character(data[[field_name]])))
         expected_values <- expected[[field_name]]
         mismatched <- !contract_numeric_equal(observed, expected_values)
@@ -576,7 +587,7 @@ validate_objective1_endpoint_invariants <- function(data, cohort_name) {
             message = if (nrow(mismatch_rows) > 0) {
                 "Objective 1 source-derived endpoint invariants failed; PFS must be the first local recurrence, metastatic progression, or death."
             } else {
-                "Objective 1 recurrence, metastasis, death, and local-recurrence/death PFS invariants passed."
+                "Objective 1 recurrence, metastasis, death, and PFS invariants passed: PFS is the first local recurrence, metastatic progression, or death from any cause."
             },
             affected_n = nrow(mismatch_rows),
             affected_ids = collapse_affected_ids(mismatch_rows$id %||% character())

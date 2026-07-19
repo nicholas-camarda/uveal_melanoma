@@ -137,21 +137,32 @@ test_that("Objective 1 PFS invariant uses recurrence, metastasis, or death as fi
     pfs_contract_data$tt_recurrence_months <- c(12, 18, 24)
     pfs_contract_data$tt_mets_months <- c(20, 10, 30)
     pfs_contract_data$tt_death_months <- c(40, 36, 8)
+    pfs_contract_data$tt_recurrence_months_analysis <- pfs_contract_data$tt_recurrence_months
+    pfs_contract_data$tt_mets_months_analysis <- pfs_contract_data$tt_mets_months
+    pfs_contract_data$tt_death_months_analysis <- pfs_contract_data$tt_death_months
     pfs_contract_data$recurrence_event <- c(1L, 0L, 0L)
     pfs_contract_data$mets_event <- c(0L, 1L, 0L)
     pfs_contract_data$death_event <- c(0L, 0L, 1L)
     pfs_contract_data$pfs_event <- c(1L, 1L, 1L)
     pfs_contract_data$tt_pfs_months <- c(12, 10, 8)
+    pfs_contract_data$tt_pfs_months_analysis <- pfs_contract_data$tt_pfs_months
 
     valid_result <- validate_objective1_endpoint_invariants(pfs_contract_data, "pfs_contract")
     expect_equal(nrow(valid_result$details), 0)
+    expect_match(
+        valid_result$findings$message[[1]],
+        "PFS is the first local recurrence, metastatic progression, or death from any cause",
+        fixed = TRUE
+    )
 
     invalid_contract_data <- pfs_contract_data
     invalid_contract_data$tt_pfs_months[[2]] <- 18
+    invalid_contract_data$tt_pfs_months_analysis[[2]] <- 18
     invalid_contract_data$pfs_event[[2]] <- 0L
 
     invalid_result <- validate_objective1_endpoint_invariants(invalid_contract_data, "pfs_contract")
     expect_true(any(invalid_result$details$field_name == "tt_pfs_months"))
+    expect_true(any(invalid_result$details$field_name == "tt_pfs_months_analysis"))
     expect_true(any(invalid_result$details$field_name == "pfs_event"))
     expect_equal(
         invalid_result$details$expected_value[invalid_result$details$field_name == "tt_pfs_months"][[1]],
@@ -419,6 +430,7 @@ test_that("Objective 1 endpoint invariants include metastatic progression in PFS
     invariant_data$mets_event[1] <- 1L
     invariant_data$pfs_event[1] <- 1L
     invariant_data$tt_mets_months[1] <- 10
+    invariant_data$tt_mets_months_analysis[1] <- 10
     invariant_data$tt_pfs_months[1] <- 10
     invariant_data$tt_pfs_months_analysis[1] <- 10
     invariant_data$mfs_event_5yr[1] <- 1L
