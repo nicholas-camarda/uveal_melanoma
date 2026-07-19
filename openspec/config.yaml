@@ -1,7 +1,7 @@
 schema: spec-driven
 
 context: |
-  R research-analysis repo with source code in scripts/ and runtime artifacts under ~/ProjectsRuntime/uveal_melanoma.
+  R research-analysis repo with source code in scripts/, runtime artifacts under ~/Workspaces/uveal-melanoma/runtime, raw inputs under Project Vault/Research/uveal-melanoma/Original Files, and durable published outputs under Project Vault/Research/uveal-melanoma/outputs.
   Existing reporting mechanisms include diagnostics workbooks, effect summaries, skip-artifact helpers, GEP consolidated workbooks, and narrative summary generators.
   Prefer extending those existing surfaces over creating new parallel output trees, bespoke workbook writers, or duplicate diagnostics systems.
   Objective changes should preserve current cohort/objective folder organization unless a spec explicitly requires a contract change.

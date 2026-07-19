@@ -454,11 +454,13 @@ test_that("Objective 4 returns fatal issues and failed run_state when MSS analys
     assign("create_unified_gep_visuals", function(...) invisible(NULL), envir = .GlobalEnv)
     assign(
         "simple_gep_validation",
-        function(...) list(
-            mfs_results = data.frame(),
-            mss_results = data.frame(),
-            overall_summary = data.frame()
-        ),
+        function(...) {
+            list(
+                mfs_results = data.frame(),
+                mss_results = data.frame(),
+                overall_summary = data.frame()
+            )
+        },
         envir = .GlobalEnv
     )
 

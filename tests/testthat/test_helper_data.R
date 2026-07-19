@@ -28,9 +28,11 @@ create_test_dataset <- function() {
     initial_plaque = rep(c("N", "Y"), each = 10),
     initial_gk_date = rep(c(base_date, as.Date(NA)), each = 10),
     initial_plaque_date = rep(c(as.Date(NA), base_date), each = 10),
+    treatment_date = base_date,
     date_diagnosis = base_date + sample(0:30, 20, replace = TRUE),
     dob = base_date - (365 * sample(50:80, 20, replace = TRUE)),
     last_known_alive_date = base_date + sample(365:1825, 20, replace = TRUE),
+    last_followup = base_date + seq(365, by = 45, length.out = 20),
 
     # Treatment variables (these will be derived, but we need them for testing)
     treatment_group = rep(c("GKSRS", "Plaque"), each = 10),

@@ -1,5 +1,135 @@
-test_that("project slug matches project root basename", {
-    expect_equal(PROJECT_SLUG, basename(PROJECT_ROOT))
+test_that("project paths use distinct analysis and repository slugs", {
+    expect_equal(PROJECT_SLUG, "uveal_melanoma")
+    expect_equal(REPOSITORY_SLUG, "uveal-melanoma")
+})
+
+test_that("project paths follow the canonical workspace and Project Vault contract", {
+    expect_equal(
+        normalizePath(PROJECT_ROOT, winslash = "/", mustWork = FALSE),
+        normalizePath(here::here(), winslash = "/", mustWork = FALSE)
+    )
+    expect_equal(
+        normalizePath(DEFAULT_RUNTIME_ROOT, winslash = "/", mustWork = FALSE),
+        file.path(path.expand("~/Workspaces"), "uveal-melanoma", "runtime")
+    )
+    expect_equal(
+        normalizePath(DEFAULT_RAW_DATA_DIR, winslash = "/", mustWork = FALSE),
+        file.path(
+            path.expand("~/Library/CloudStorage/OneDrive-Personal"),
+            "Project Vault",
+            "Research",
+            "uveal-melanoma",
+            "Original Files"
+        )
+    )
+    expect_equal(
+        normalizePath(DEFAULT_PUBLISH_ROOT, winslash = "/", mustWork = FALSE),
+        file.path(
+            path.expand("~/Library/CloudStorage/OneDrive-Personal"),
+            "Project Vault",
+            "Research",
+            "uveal-melanoma",
+            "outputs"
+        )
+    )
+})
+
+test_that("standalone tools use the canonical workspace runtime", {
+    configured_runtime_root <- RUNTIME_ROOT
+    withr::local_envvar(c(
+        OUTPUT_DIR = NA,
+        OCULAR_RUNTIME_ROOT = NA,
+        OCULAR_RUNTIME_PARENT_DIR = NA
+    ))
+
+    browse_env <- new.env(parent = baseenv())
+    sys.source(
+        here::here("scripts", "tools", "browse_diagnostics.R"),
+        envir = browse_env
+    )
+    expect_equal(
+        browse_env$get_default_output_dir(),
+        file.path(path.expand("~/Workspaces"), "uveal-melanoma", "runtime", "Analysis")
+    )
+    expect_identical(RUNTIME_ROOT, configured_runtime_root)
+
+    export_env <- new.env(parent = baseenv())
+    sys.source(
+        here::here("scripts", "tools", "export_gep_objective4_to_downloads.R"),
+        envir = export_env
+    )
+    expect_equal(
+        export_env$resolve_runtime_analysis_root("uveal_melanoma"),
+        file.path(path.expand("~/Workspaces"), "uveal-melanoma", "runtime", "Analysis")
+    )
+})
+
+test_that("portable path tools do not embed a maintainer home directory", {
+    tool_paths <- c(
+        here::here("scripts", "tools", "browse_diagnostics.R"),
+        here::here("scripts", "tools", "export_gep_objective4_to_downloads.R")
+    )
+
+    expect_true(all(file.exists(tool_paths)))
+    tool_text <- unlist(lapply(tool_paths, readLines, warn = FALSE), use.names = FALSE)
+    expect_false(any(grepl("/Users/ncamarda", tool_text, fixed = TRUE)))
+})
+
+test_that("portable test runner propagates testthat failures", {
+    runner <- here::here("scripts", "tools", "run_testthat.R")
+    expect_true(file.exists(runner))
+
+    passing_dir <- tempfile("intentional-testthat-pass-")
+    failing_dir <- tempfile("intentional-testthat-failure-")
+    dir.create(passing_dir, recursive = TRUE, showWarnings = FALSE)
+    dir.create(failing_dir, recursive = TRUE, showWarnings = FALSE)
+    withr::defer(unlink(passing_dir, recursive = TRUE, force = TRUE), envir = parent.frame())
+    withr::defer(unlink(failing_dir, recursive = TRUE, force = TRUE), envir = parent.frame())
+    writeLines(
+        "testthat::test_that('intentional pass', testthat::expect_true(TRUE))",
+        file.path(passing_dir, "test-intentional-pass.R")
+    )
+    writeLines(
+        "testthat::test_that('intentional failure', testthat::expect_true(FALSE))",
+        file.path(failing_dir, "test-intentional-failure.R")
+    )
+
+    passing_status <- system2(
+        file.path(R.home("bin"), "Rscript"),
+        c(shQuote(runner), shQuote(passing_dir)),
+        stdout = FALSE,
+        stderr = FALSE
+    )
+    failing_status <- suppressWarnings(
+        system2(
+            file.path(R.home("bin"), "Rscript"),
+            c(shQuote(runner), shQuote(failing_dir)),
+            stdout = FALSE,
+            stderr = FALSE
+        )
+    )
+    expect_identical(passing_status, 0L)
+    expect_true(failing_status != 0L)
+})
+
+test_that("clean-checkout production and CI files are not excluded", {
+    ignore_text <- readLines(here::here(".gitignore"), warn = FALSE)
+
+    expect_true(file.exists(here::here("scripts", "tools", "export_gep_objective4_to_downloads.R")))
+    expect_true(file.exists(here::here(".github", "workflows", "portable-tests.yml")))
+    expect_true(file.exists(here::here(".lintr")))
+    expect_false(any(trimws(ignore_text) == "scripts/tools/export_gep_objective4_to_downloads.R"))
+    expect_false(any(trimws(ignore_text) == ".github/"))
+    expect_false(any(trimws(ignore_text) == ".lintr"))
+})
+
+test_that("configured raw, runtime, and publish paths retain their storage roles", {
+    expect_equal(RAW_DATA_DIR, file.path(EXPORT_ROOT, "Original Files"))
+    expect_equal(DATA_DIR, EXPORT_ROOT)
+    expect_equal(EXPORT_ANALYSIS_DIR, file.path(EXPORT_ROOT, "outputs"))
+    expect_equal(PROCESSED_DATA_DIR, file.path(RUNTIME_ROOT, "Analytic Dataset"))
+    expect_equal(OUTPUT_DIR, file.path(RUNTIME_ROOT, "Analysis"))
+    expect_equal(TOOLS_OUTPUT_DIR, file.path(RUNTIME_ROOT, "tools_output"))
 })
 
 test_that("initialize_runtime_dirs creates configured runtime directories", {

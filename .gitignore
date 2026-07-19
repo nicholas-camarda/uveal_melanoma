@@ -19,13 +19,16 @@ scripts/old/*
 # Ignore local history and workspace metadata
 .Rhistory
 .history
-.github/
+# Keep repository CI visible while ignoring editor-specific GitHub helpers.
+.github/*
+!.github/workflows/
+.github/workflows/*
+!.github/workflows/portable-tests.yml
 .cursor/
 .codex/
 .agent-os/
 .claude/
 .vscode/
-.lintr
 .RData
 .Ruserdata
 tmp/
@@ -47,6 +50,6 @@ tests/**/test_output/*
 tests/**/Rplots.pdf
 tests/.DS_Store
 
-# Ignore helper file
-scripts/tools/export_gep_objective4_to_downloads.R
 analysis_registry.yaml
+docs/peer_review_revision_response.md
+docs/PR_VS_ORIGINAL_RESULTS_AUDIT.md

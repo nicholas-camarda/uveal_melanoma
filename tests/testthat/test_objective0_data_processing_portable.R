@@ -36,6 +36,35 @@ test_that("Objective 0 derivation preserves impossible endpoint times for valida
     expect_lt(derived$tt_pfs_months_analysis[[1]], 0)
 })
 
+test_that("Objective 0 derives PFS from the first recurrence, metastasis, death, or censoring time", {
+    test_data <- create_test_dataset()[1:4, ]
+    treatment_date <- as.Date("2020-01-01")
+    test_data$initial_gk <- "Y"
+    test_data$initial_plaque <- "N"
+    test_data$initial_gk_date <- treatment_date
+    test_data$treatment_date <- treatment_date
+    test_data$last_known_alive_date <- as.Date("2021-01-01")
+    test_data$recurrence1 <- c("Y", "N", "N", "N")
+    test_data$recurrence1_date <- as.Date(c("2020-04-01", NA, NA, NA))
+    test_data$mets_progression <- c("N", "Y", "N", "N")
+    test_data$mets_progression_date <- as.Date(c(NA, "2020-03-01", NA, NA))
+    test_data$dod <- as.Date(c(NA, NA, "2020-02-01", NA))
+
+    derived <- create_derived_variables(test_data)
+
+    expect_equal(derived$pfs_event, c(1L, 1L, 1L, 0L))
+    expect_equal(
+        derived$tt_pfs_months,
+        pmin(
+            derived$tt_recurrence_months,
+            derived$tt_mets_months,
+            derived$tt_death_months,
+            na.rm = FALSE
+        )
+    )
+    expect_equal(derived$tt_pfs_months_analysis, derived$tt_pfs_months)
+})
+
 test_that("Objective 0 factor preparation and cohort criteria run on synthetic data", {
     synthetic_cohort_input <- tibble::tibble(
         id = c(1, 2, 3, 4, 5, 271),

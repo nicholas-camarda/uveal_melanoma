@@ -4,8 +4,8 @@ This file is generated from canonical runtime artifacts and centralized config c
 
 ## Canonical sources
 
-- `/Users/ncamarda/ProjectsRuntime/uveal_melanoma/Analytic Dataset/cohort_summary_statistics.json`
-- `/Users/ncamarda/ProjectsRuntime/uveal_melanoma/Analysis/uveal_full/00_General/removed_patients_summary.tsv`
+- `~/Workspaces/uveal-melanoma/runtime/Analytic Dataset/cohort_summary_statistics.json`
+- `~/Workspaces/uveal-melanoma/runtime/Analysis/uveal_full/00_General/removed_patients_summary.tsv`
 - `scripts/utils/cohort_summary_export.R`
 - `scripts/utils/config_constants.R`
 

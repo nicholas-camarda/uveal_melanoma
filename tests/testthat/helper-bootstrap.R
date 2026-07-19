@@ -4,14 +4,13 @@ if (!identical(Sys.getenv("OCULAR_TESTTHAT_BOOTSTRAPPED"), "true")) {
 
     runtime_root <- file.path(test_output_root, "runtime")
     export_parent_dir <- file.path(test_output_root, "export_parent")
-    export_root <- file.path(export_parent_dir, basename(here::here()))
-    export_analysis_dir <- file.path(export_root, "Analysis")
+    export_root <- file.path(export_parent_dir, "uveal-melanoma")
+    export_analysis_dir <- file.path(export_root, "outputs")
     dir.create(file.path(export_root, "Original Files"), recursive = TRUE, showWarnings = FALSE)
     dir.create(export_analysis_dir, recursive = TRUE, showWarnings = FALSE)
 
     Sys.setenv(OCULAR_RUNTIME_ROOT = runtime_root)
     Sys.setenv(OCULAR_EXPORT_PARENT_DIR = export_parent_dir)
-    Sys.unsetenv("OCULAR_EXPORT_ROOT")
     Sys.setenv(DATA_DIR = export_root)
     Sys.setenv(PROCESSED_DATA_DIR = file.path(runtime_root, "Analytic Dataset"))
     Sys.setenv(OUTPUT_DIR = file.path(runtime_root, "Analysis"))

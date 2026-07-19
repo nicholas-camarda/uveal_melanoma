@@ -30,8 +30,8 @@ These contracts MUST remain data-readiness checks. They MUST NOT create per-obje
 
 #### Scenario: Objective 1 endpoint invariants are locked without a full mapping table
 - **WHEN** Objective 0 derivation creates Objective 1 recurrence, metastasis, death, and PFS fields
-- **THEN** regression tests assert that `recurrence_event` follows `recurrence1`, `mets_event` follows `mets_progression`, `death_event` follows `dod`, and `pfs_event` follows local recurrence or death
-- **AND** tests assert that `tt_pfs_months` is derived from recurrence/death timing and is not silently redefined to use metastatic progression
+- **THEN** regression tests assert that `recurrence_event` follows `recurrence1`, `mets_event` follows `mets_progression`, `death_event` follows `dod`, and `pfs_event` is `1` for any local recurrence, metastatic progression, or all-cause death
+- **AND** tests assert that `tt_pfs_months` and `tt_pfs_months_analysis` are derived from the first local-recurrence, metastatic-progression, or death timing
 - **AND** Objective 1 does not require a standalone endpoint mapping table unless future derivation complexity makes that table clearer than invariant tests
 
 ### Requirement: Objective 2 toxicity endpoint mapping SHALL remain explicit
@@ -162,4 +162,3 @@ The review MUST verify that config modules have clear ownership, Objective 0 con
 - **WHEN** P5 implementation is complete and tests pass
 - **THEN** a final review checks the config layout, Objective 0 contract names, validation output wording, test fixture size, and documentation alignment
 - **AND** P5 is not archived until review findings are resolved or explicitly deferred into a new spec
-

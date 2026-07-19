@@ -11,8 +11,8 @@ This repository does not include the clinical source spreadsheet. To reproduce t
 1. Clone the repository and enter it.
 
 ```sh
-git clone https://github.com/nicholas-camarda/uveal_melanoma.git
-cd uveal_melanoma
+git clone https://github.com/nicholas-camarda/uveal-melanoma.git
+cd uveal-melanoma
 ```
 
 2. Install R package dependencies.
@@ -23,17 +23,17 @@ Rscript scripts/bootstrap_packages.R
 
 3. Place the shared input spreadsheet in the expected raw-data folder.
 
-The repository is set up to read the source spreadsheet from the path configured in `scripts/utils/config_constants.R`.
+Canonical source, runtime, raw-data, and publish paths are defined in `scripts/config/project_paths.R`.
 
 In the maintainer's environment, the default raw-data folder is:
 
 ```text
-~/Library/CloudStorage/OneDrive-Personal/Research/uveal_melanoma/Original Files/
+~/Library/CloudStorage/OneDrive-Personal/Project Vault/Research/uveal-melanoma/Original Files/
 ```
 
 The expected filename is the value of `INPUT_FILENAME` in `scripts/utils/config_constants.R`.
 
-If you are reproducing this analysis in a different environment, update the path settings in `scripts/utils/config_constants.R` to match your local or shared storage layout before running the pipeline.
+On another machine, override paths through the supported environment variables rather than editing tracked configuration. `OCULAR_RUNTIME_ROOT` sets the local runtime root, `OCULAR_EXPORT_PARENT_DIR` sets the Project Vault research parent, and `RAW_DATA_DIR` can set the raw-input directory directly. `PROCESSED_DATA_DIR`, `OUTPUT_DIR`, `LOGS_DIR`, `TOOLS_OUTPUT_DIR`, `TEST_OUTPUT_DIR`, `MERGED_TABLES_DIR`, `SHARE_PACKETS_DIR`, and `DATA_DICTIONARY_PATH` provide narrower overrides when required. All configured paths must be absolute.
 
 4. Run the full pipeline.
 
@@ -46,7 +46,7 @@ Rscript -e "source('scripts/load_all.R'); main_execution()"
 Runtime outputs are written to:
 
 ```text
-~/ProjectsRuntime/uveal_melanoma/
+~/Workspaces/uveal-melanoma/runtime/
 ```
 
 ### Prerequisites
@@ -105,10 +105,10 @@ main_execution()
 
 ```sh
 # Portable regression suite
-Rscript -e "testthat::test_dir('tests/testthat')"
+Rscript scripts/tools/run_testthat.R tests/testthat
 
 # Local integration suite (requires local cohort data)
-Rscript -e "Sys.setenv(OCULAR_RUN_INTEGRATION_TESTS='true'); testthat::test_dir('tests/integration')"
+OCULAR_RUN_INTEGRATION_TESTS=true Rscript scripts/tools/run_testthat.R tests/integration
 ```
 
 ## Study Scope
@@ -121,7 +121,7 @@ The pipeline works with three intentionally overlapping analytic cohorts created
 | Restricted | `uveal_melanoma_restricted_cohort` | Dual-eligibility cohort for a more balanced treatment comparison |
 | GKSRS-only | `uveal_melanoma_gksrs_only_cohort` | Patients ineligible for PBT, used to characterize GKSRS in challenging cases |
 
-The current cohort counts and summary totals are written to `~/ProjectsRuntime/uveal_melanoma/Analytic Dataset/cohort_summary_statistics.json` whenever the pipeline is rerun.
+The current cohort counts and summary totals are written to `~/Workspaces/uveal-melanoma/runtime/Analytic Dataset/cohort_summary_statistics.json` whenever the pipeline is rerun.
 
 The analysis is organized into four main research objectives:
 
@@ -139,7 +139,7 @@ For a collaborator-facing overview of the study aims and eligibility logic, see 
 Pipeline outputs are primarily written to the runtime analysis tree:
 
 ```text
-~/ProjectsRuntime/uveal_melanoma/
+~/Workspaces/uveal-melanoma/runtime/
 |- Analytic Dataset/
 |  |- cohort_summary_statistics.json
 |  |- *.rds
@@ -157,9 +157,9 @@ Pipeline outputs are primarily written to the runtime analysis tree:
 Within each cohort folder, outputs follow a consistent layout:
 
 - `00_General/`: baseline characteristics, cohort summaries, treatment-duration summaries, exclusion summaries, reconciliation audit workbooks (including manual date-correction audit sheets), and Objective 0 validation bundles
-- `01_Efficacy/`: recurrence, metastasis, survival, tumor-height, subgroup outputs
-- `02_Safety/`: vision and radiation-related adverse-event outputs
-- `03_Repeat_Radiation/`: PFS-2 summaries and survival artifacts
+- `01_Efficacy/`: recurrence, metastasis, survival, tumor-height, and subgroup outputs; primary endpoint artifacts use typed `01_`–`06_` subfolders and subgroup outputs use `g_subgroup_analysis/`
+- `02_Safety/`: vision and radiation-related adverse-event outputs (descriptive → adjusted models → effect summary; vision adds `04_sensitivity/`)
+- `03_Repeat_Radiation/`: PFS-2 cohort support, survival artifacts, and PH diagnostics under `a_pfs2/`
 - `04_GEP_Validation/`: Objective 4 workbooks, plots, and unified summaries
 
 Objective 4 has a deliberate reading path:
@@ -171,7 +171,9 @@ Objective 4 has a deliberate reading path:
 
 ## Publish Workflow
 
-Publishing is an optional manual step used in the maintainer's environment to copy selected deliverables from runtime output into a dated export snapshot. If you are reproducing the analysis locally, you can usually ignore this section and work directly from the runtime outputs under `~/ProjectsRuntime/uveal_melanoma/`.
+Publishing is an optional manual step used in the maintainer's environment to copy selected deliverables from runtime output into a dated export snapshot. If you are reproducing the analysis locally, you can usually ignore this section and work directly from the runtime outputs under `~/Workspaces/uveal-melanoma/runtime/`.
+
+Approved snapshots are published under `~/Library/CloudStorage/OneDrive-Personal/Project Vault/Research/uveal-melanoma/outputs/`. Raw inputs remain in the sibling `Original Files/` directory; generated and intermediate artifacts remain under the local runtime root.
 
 ```r
 source("scripts/load_all.R")
@@ -187,11 +189,11 @@ The publish step copies only registry-approved deliverables. It excludes `.rds`,
 
 ## Configuration
 
-Most run-time configuration lives in `scripts/utils/config_constants.R`. Typical settings to review before a fresh run:
+Analysis settings live in `scripts/utils/config_constants.R`; canonical filesystem roots and supported path overrides live in `scripts/config/project_paths.R`. Typical analysis settings to review before a fresh run are:
 
 ```r
 INPUT_FILENAME <- "your_data_file.xlsx"
-RECREATE_ANALYTIC_DATASETS <- TRUE
+RECREATE_ANALYTIC_DATASETS <- FALSE
 USE_LOGS <- TRUE
 ```
 

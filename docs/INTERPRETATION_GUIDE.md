@@ -31,7 +31,7 @@ It is not the canonical source for variable derivations or statistical assumptio
 
 If you only need the shortest route:
 
-1. Find the cohort folder under `~/ProjectsRuntime/uveal_melanoma/Analysis/`.
+1. Find the cohort folder under `~/Workspaces/uveal-melanoma/runtime/Analysis/`.
 2. Open the objective folder that matches your question.
 3. Start with the consolidated `.xlsx` workbook or summary `.html` artifact in that folder.
 4. Use this guide to interpret what you are seeing.
@@ -40,11 +40,11 @@ If you only need the shortest route:
 ### Finding Your Analysis
 
 **Step 1:** Identify your cohort
-- Full cohort: `~/ProjectsRuntime/uveal_melanoma/Analysis/uveal_full/`
-- Restricted cohort: `~/ProjectsRuntime/uveal_melanoma/Analysis/uveal_restricted/`
-- GKSRS-only cohort: `~/ProjectsRuntime/uveal_melanoma/Analysis/gksrs/`
+- Full cohort: `~/Workspaces/uveal-melanoma/runtime/Analysis/uveal_full/`
+- Restricted cohort: `~/Workspaces/uveal-melanoma/runtime/Analysis/uveal_restricted/`
+- GKSRS-only cohort: `~/Workspaces/uveal-melanoma/runtime/Analysis/gksrs/`
 
-Current cohort totals are exported with each run to `~/ProjectsRuntime/uveal_melanoma/Analytic Dataset/cohort_summary_statistics.json`.
+Current cohort totals are exported with each run to `~/Workspaces/uveal-melanoma/runtime/Analytic Dataset/cohort_summary_statistics.json`.
 
 **Step 2:** Navigate to objective folder
 - Objective 0: `00_General/` (baseline characteristics, patient flow)
@@ -231,14 +231,14 @@ Baseline tumor height   -0.42   -0.55, -0.29    <0.001
 
 **GKSRS Beta = -0.35 mm:**
 - GKSRS patients have 0.35 mm greater decrease in tumor height
-- **Clinical meaning:** GKSRS produces more tumor shrinkage
+- **Model meaning:** Within this example model, GKSRS is associated with greater tumor-height decrease
 
 **Baseline tumor height Beta = -0.42:**
 - Each 1 mm increase in baseline height → 0.42 mm greater decrease
-- Larger tumors shrink more (regression to mean)
+- Because baseline height is part of the tumor-height change outcome, this coefficient is partly algebraic and should be treated as a diagnostic sensitivity result
 
 **Clinical Interpretation:**
-GKSRS treatment results in 0.35 mm greater tumor height reduction compared to PBT (β=-0.35, 95% CI: -0.68 to -0.02, p=0.038), after adjusting for baseline tumor height and other confounders.
+In this example, GKSRS is associated with 0.35 mm greater tumor-height reduction compared to PBT (β=-0.35, 95% CI: -0.68 to -0.02, p=0.038), after model adjustment. For reviewer-response tumor-height analyses, this kind of model output must be interpreted with the tumor-height timing audit. A model that adds baseline tumor height to a tumor-height change score is not appropriate as the reviewer-facing adjustment because baseline height is already part of the outcome definition. If imaging follow-up differs materially by treatment group, the comparative result should be demoted to descriptive context or omitted from the main response.
 
 For Objective 2 vision there are two different linear outputs:
 - `*_logmar_vision_change_adjusted_lm.html` models continuous logMAR change.
@@ -279,7 +279,8 @@ Age (per year)          0.98    0.96, 1.00      0.071
 **Effect Summary Workbooks**
 
 - `*_effect_summary.xlsx` files are flat one-sheet workbooks that combine descriptive, unadjusted, and adjusted rows for the corresponding analysis folder.
-- In `a_vision_changes`, use `analysis_label` to distinguish `LogMAR Vision Change`, `Snellen Line Change`, and `Snellen Line Change Distribution`.
+- In `a_vision_changes`, use `analysis_label` to distinguish `LogMAR Vision Change`, `Latest LogMAR Vision`, `Snellen Line Change`, and `Snellen Line Change Distribution`.
+- `Latest LogMAR Vision` is the reviewer-response sensitivity model for final/latest logMAR VA. It adjusts for baseline VA, explicit latest-VA follow-up duration, viable reviewer-requested baseline predictors, and the shared confounder set. Interpret it as sensitivity evidence only; missing macular/foveal proximity and radiation-dose fields still limit causal claims about visual-acuity preservation.
 - `model_status = "DESCRIPTIVE"` marks summary rows, `model_status = "FIT"` marks modeled rows, and `model_status = "SKIPPED"` documents analyses that could not be fit.
 - Workbook methods are model-family specific and match the reader-facing HTML tables: linear rows use mean differences with Wald CIs/p-values, logistic rows use ORs with model-based Wald CIs and the pipeline's standard term-level p-values, Cox rows use HRs with native Cox CIs/p-values, and ordinal rows use proportional-odds ORs with 95% Wald CIs plus likelihood-ratio-test p-values.
 - **Clinical meaning:** the outcome distribution is shifted toward more improvement or less loss
@@ -624,7 +625,7 @@ The main Objective 4 denominator is deliberately stricter than “any row with a
 | Calibration curve PNGs | `<prefix>mfs_calibration_full.png` and `<prefix>mss_calibration_full.png` (one per outcome; faceted by timepoint). |
 | Unified workbook | `<prefix>unified_gep_validation_summary.xlsx` at the root of `04_GEP_Validation/`; this workbook uses comparison-only sheet names such as `Calibration_Comparison`, `Discrimination_Comparison`, `PRAME_Comparison`, and `Missing_Data_Comparison`. The full cohort additionally appends `No_GEP_Overview`, `No_GEP_Model_Comparison`, and `No_GEP_Risk_Strata`. |
 | Simple QC workbook | `unified_summary/<prefix>simple_gep_validation.xlsx`. For MFS, the observed 5-year value is KM at 60 months. |
-| Default directory | `~/ProjectsRuntime/uveal_melanoma/Analysis/<cohort>/04_GEP_Validation/` with `a_metastasis_free_survival/`, `b_melanoma_specific_survival/`, and `unified_summary/`. |
+| Default directory | `~/Workspaces/uveal-melanoma/runtime/Analysis/<cohort>/04_GEP_Validation/` with `a_metastasis_free_survival/`, `b_melanoma_specific_survival/`, and `unified_summary/`. |
 | Outcomes covered | MFS and MSS; unified workbooks stack both. Full-cohort unified workbooks may also append no-GEP comparison sheets. |
 | Timepoints | Driven by `GEP_VALIDATION_TIMEPOINTS` (defaults: 5, 7, 10 years). Every sheet carries one row per timepoint requested. |
 | How to regenerate | Run Objective 4 via `run_specific_objective("uveal_melanoma_<cohort>", 4)` or the full pipeline. New runs overwrite existing workbooks after passing QC. |

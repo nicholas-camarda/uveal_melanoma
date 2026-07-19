@@ -50,8 +50,8 @@ make_objective0_validation_dataset <- function() {
         tt_recurrence_months_analysis = c(12, 18, 24),
         tt_mets_months_analysis = c(20, 22, 10),
         tt_death_months_analysis = c(40, 36, 30),
-        tt_pfs_months = c(12, 18, 24),
-        tt_pfs_months_analysis = c(12, 18, 24),
+        tt_pfs_months = c(12, 18, 10),
+        tt_pfs_months_analysis = c(12, 18, 10),
         tt_pfs2_months = c(
             NA_real_,
             lubridate::time_length(lubridate::interval(as.Date("2021-08-01"), as.Date("2025-02-15")), "months"),
@@ -127,6 +127,47 @@ test_that("structured validation result treats warnings as non-blocking", {
     expect_true("validation_findings" %in% names(validation_result))
     expect_true(all(c("check_id", "scope", "cohort", "severity", "status", "metric", "value", "message") %in% names(validation_result$validation_findings)))
     expect_true(any(validation_result$validation_findings$severity == "warning"))
+})
+
+test_that("Objective 1 PFS invariant uses recurrence, metastasis, or death as first event", {
+    pfs_contract_data <- make_objective0_validation_dataset()
+    pfs_contract_data$recurrence1 <- c("Yes", "No", "No")
+    pfs_contract_data$mets_progression <- c("No", "Yes", "No")
+    pfs_contract_data$dod <- as.Date(c(NA, NA, "2022-08-01"))
+    pfs_contract_data$tt_recurrence_months <- c(12, 18, 24)
+    pfs_contract_data$tt_mets_months <- c(20, 10, 30)
+    pfs_contract_data$tt_death_months <- c(40, 36, 8)
+    pfs_contract_data$tt_recurrence_months_analysis <- pfs_contract_data$tt_recurrence_months
+    pfs_contract_data$tt_mets_months_analysis <- pfs_contract_data$tt_mets_months
+    pfs_contract_data$tt_death_months_analysis <- pfs_contract_data$tt_death_months
+    pfs_contract_data$recurrence_event <- c(1L, 0L, 0L)
+    pfs_contract_data$mets_event <- c(0L, 1L, 0L)
+    pfs_contract_data$death_event <- c(0L, 0L, 1L)
+    pfs_contract_data$pfs_event <- c(1L, 1L, 1L)
+    pfs_contract_data$tt_pfs_months <- c(12, 10, 8)
+    pfs_contract_data$tt_pfs_months_analysis <- pfs_contract_data$tt_pfs_months
+
+    valid_result <- validate_objective1_endpoint_invariants(pfs_contract_data, "pfs_contract")
+    expect_equal(nrow(valid_result$details), 0)
+    expect_match(
+        valid_result$findings$message[[1]],
+        "PFS is the first local recurrence, metastatic progression, or death from any cause",
+        fixed = TRUE
+    )
+
+    invalid_contract_data <- pfs_contract_data
+    invalid_contract_data$tt_pfs_months[[2]] <- 18
+    invalid_contract_data$tt_pfs_months_analysis[[2]] <- 18
+    invalid_contract_data$pfs_event[[2]] <- 0L
+
+    invalid_result <- validate_objective1_endpoint_invariants(invalid_contract_data, "pfs_contract")
+    expect_true(any(invalid_result$details$field_name == "tt_pfs_months"))
+    expect_true(any(invalid_result$details$field_name == "tt_pfs_months_analysis"))
+    expect_true(any(invalid_result$details$field_name == "pfs_event"))
+    expect_equal(
+        invalid_result$details$expected_value[invalid_result$details$field_name == "tt_pfs_months"][[1]],
+        "10"
+    )
 })
 
 test_that("structured validation result blocks hard errors", {
@@ -383,10 +424,24 @@ test_that("Objective 0 validates Objective 2 toxicity endpoint burden fields", {
     expect_true(any(toxicity_findings$check_id == "objective2_srd_burden_event_matches_source" & toxicity_findings$status == "fail"))
 })
 
-test_that("Objective 1 endpoint invariants preserve local recurrence/death PFS", {
+test_that("Objective 1 endpoint invariants include metastatic progression in PFS", {
     invariant_data <- make_objective0_validation_dataset()
+    invariant_data$mets_progression[1] <- "Yes"
     invariant_data$mets_event[1] <- 1L
     invariant_data$pfs_event[1] <- 1L
+    invariant_data$tt_mets_months[1] <- 10
+    invariant_data$tt_mets_months_analysis[1] <- 10
+    invariant_data$tt_pfs_months[1] <- 10
+    invariant_data$tt_pfs_months_analysis[1] <- 10
+    invariant_data$mfs_event_5yr[1] <- 1L
+    invariant_data$mfs_event_7yr[1] <- 1L
+    invariant_data$mfs_event_10yr[1] <- 1L
+    invariant_data$event_type_mfs_5yr[1] <- 1L
+    invariant_data$event_type_mfs_7yr[1] <- 1L
+    invariant_data$event_type_mfs_10yr[1] <- 1L
+    invariant_data$tt_mfs_5yr[1] <- 10
+    invariant_data$tt_mfs_7yr[1] <- 10
+    invariant_data$tt_mfs_10yr[1] <- 10
 
     validation_result <- validate_processing_pipeline(
         invariant_data,
@@ -396,9 +451,8 @@ test_that("Objective 1 endpoint invariants preserve local recurrence/death PFS",
     invariant_details <- validation_result$detail_tables %>%
         dplyr::filter(.data$detail_sheet == "Objective1_Endpoint_Invariants")
 
-    expect_false(validation_result$success)
-    expect_true(any(invariant_details$field_name == "pfs_event"))
-    expect_equal(invariant_details$expected_value[invariant_details$field_name == "pfs_event"][[1]], "0")
+    expect_true(validation_result$success)
+    expect_equal(nrow(invariant_details), 0)
 })
 
 test_that("Objective 3 PFS-2 derivation contract handles death-before-second-recurrence censoring", {

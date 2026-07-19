@@ -72,6 +72,12 @@ height_change = case_when(
 - **Positive values:** Tumor growth, indicating treatment failure or progression
 - **Larger negative values:** Greater tumor response to treatment
 
+### **Reviewer-Response Interpretation Limit**
+
+Tumor-height change is not a time-to-event endpoint, and follow-up height measurements are not taken at a standardized post-treatment time. The pipeline writes a tumor-height timing audit using treatment-to-`last_height_date` intervals. Adding baseline tumor height to the change-score model does not correct unequal height-assessment timing between treatment groups.
+
+Because `height_change` is defined by subtracting `initial_tumor_height`, models that add `initial_tumor_height` back as a covariate are algebraically coupled change-score sensitivities. They can show whether the treatment coefficient is sensitive to baseline size, but they are not appropriate as the reviewer-facing adjustment for this concern. The reviewer-facing answer is the post-treatment imaging timing audit and a limitation/demotion of tumor-height reduction as comparative evidence.
+
 ### **Location in Code**
 
 `scripts/data_helper/data_derivation.R`, lines ~98-103
@@ -134,6 +140,7 @@ vision_change = case_when(
 - **Non-recurrence patients:** Use `last_vision` = most recent vision measurement
 - **Recurrence patients:** Use `recurrence1_pretreatment_vision` = vision just before salvage treatment
 - **Rationale:** Isolate the visual outcome of primary treatment, before salvage treatment affects vision further
+- **Latest-VA timing sensitivity:** Minimum-follow-up analyses use explicit treatment-to-`last_followup` timing as the primary timing surface. A separately labeled proxy surface uses the derived general `follow_up_months` duration when explicit `last_followup` timing is missing. Tumor-height timing is summarized separately and is not used as the VA timing proxy.
 
 ### **Clinical Interpretation**
 
@@ -160,7 +167,7 @@ Vision loss is **expected** after radiation treatment due to:
 - **Step 2: Snellen lines** — convert logMAR deltas into integer line counts via nearest-line rounding with halves rounded away from zero: `lines = round_half_away_from_zero(delta_logMAR / 0.1)`. One Snellen line equals 0.1 logMAR, so `-0.2 -> -2`, `-0.3 -> -3`, and `+0.2 -> +2`.
 - **Historical note** — before commit `6df27eb` (March 16, 2026), the helper used `ceiling(delta_logMAR / 0.1)` for positive changes and `floor(delta_logMAR / 0.1)` for negative changes. That older rule pushed every non-zero partial line away from zero, so values such as `+0.04` and `-0.04` were counted as `+1` and `-1` lines instead of `0`.
 - **Step 3: Labels & distribution categories** — translate counts into ordered labels through `vision_helpers.R::categorize_line_change()` and aggregate them into the 7-level `Snellen Line Change Distribution` with `assign_line_change_bucket()`. Distribution levels are centrally defined in `config_constants.R::VISION_LINE_CHANGE_CATEGORY_LEVELS` (≥3-, 2-, 1-line improvement; Stable [0-line change]; 1-, 2-, ≥3-line loss). Under the current nearest-line rule, non-zero logMAR deltas with absolute magnitude less than 0.05 round to `0` and therefore contribute to the stable bucket rather than the adjacent 1-line categories.
-- **Step 4: Manuscript-facing summary row** — the `Snellen Line Change` median/min/max row shown in Objective 2 tables is a direct conversion of the displayed logMAR summary row, not a separately summarized transformed variable. This keeps the reported logMAR and Snellen summaries numerically aligned.
+- **Step 4: Manuscript-facing summary row** — the `Snellen Line Change` median/min/max and mean row shown in Objective 2 tables is a direct conversion of the displayed logMAR summary row, not a separately summarized transformed variable. This keeps the reported logMAR and Snellen summaries numerically aligned.
 
 **Outputs (Objective 2 / `a_vision_changes/` subfolder):**
 
@@ -169,7 +176,9 @@ Vision loss is **expected** after radiation treatment due to:
 3. `*_snellen_line_change_adjusted_lm.html` and `*_snellen_line_change_adjusted_diagnostics.xlsx` — adjusted linear regression for the exact integer `Snellen Line Change` outcome.
 4. `*_snellen_line_change_distribution_adjusted_polr.html` and `*_snellen_line_change_distribution_adjusted_diagnostics.xlsx` — adjusted ordinal logistic regression for the 7-level `Snellen Line Change Distribution`; the diagnostics workbook records that the proportional-odds assumption is not formally tested.
 5. `*_snellen_line_change_descriptive_summary.html`, `*_snellen_line_change_integer_distribution.xlsx`, and `*_snellen_line_change_distribution_summary.xlsx` — descriptive Snellen outputs for manuscript QA and supplements.
-6. `*_vision_effect_summary.xlsx` — one-sheet effect summary workbook combining descriptive, unadjusted, and adjusted rows for logMAR Vision Change, Snellen Line Change, and Snellen Line Change Distribution. Workbook inference conventions follow the fitted model family: linear rows use mean differences with Wald CIs/p-values, logistic rows use ORs with model-based Wald CIs and the pipeline's standard term-level p-values, Cox rows use HRs with native Cox CIs/p-values, and ordinal rows use proportional-odds ORs with 95% Wald CIs plus likelihood-ratio-test p-values. Vision rows state that the model uses the implemented change score and does not add baseline vision as a separate covariate.
+6. `*_latest_logmar_vision_reviewer_predictor_sensitivity_lm.html` and `*_latest_logmar_vision_reviewer_predictor_sensitivity_diagnostics.xlsx` — reviewer-response sensitivity model for latest logMAR VA, using baseline VA, explicit latest-VA follow-up duration, viable reviewer-requested baseline predictors, and the shared covariate set.
+7. `*_vision_followup_sensitivity.xlsx` — minimum-follow-up latest-VA sensitivity workbook. It includes explicit and proxy timing surfaces, model-status rows, a `latest_va_reviewer_model` sheet, and a `reviewer_predictor_availability` sheet defining which requested predictors were included, unavailable, or excluded for cohort support.
+8. `*_vision_effect_summary.xlsx` — one-sheet effect summary workbook combining descriptive, unadjusted, adjusted, and latest-VA sensitivity rows for logMAR Vision Change, Latest LogMAR Vision, Snellen Line Change, and Snellen Line Change Distribution. Workbook inference conventions follow the fitted model family: linear rows use mean differences with Wald CIs/p-values, logistic rows use ORs with model-based Wald CIs and the pipeline's standard term-level p-values, Cox rows use HRs with native Cox CIs/p-values, and ordinal rows use proportional-odds ORs with 95% Wald CIs plus likelihood-ratio-test p-values. Vision-change rows state that the implemented change-score model does not add baseline vision as a separate covariate; the separate latest-VA sensitivity uses final logMAR as the outcome.
 
 For reader-facing interpretation of these outputs, see [INTERPRETATION_GUIDE.md](INTERPRETATION_GUIDE.md#understanding-regression-outputs).
 
@@ -241,21 +250,30 @@ tt_death_months = case_when(
 **Formula:**
 
 ```r
-tt_pfs_months_analysis = pmin(tt_recurrence_months_analysis, tt_death_months_analysis, na.rm = FALSE)
+tt_pfs_months_analysis = pmin(
+    tt_recurrence_months_analysis,
+    tt_mets_months_analysis,
+    tt_death_months_analysis,
+    na.rm = FALSE
+)
+pfs_event = recurrence_event == 1 | mets_event == 1 | death_event == 1
 ```
 
 **Definition:**
 
-- **Composite endpoint:** First occurrence of either local recurrence OR death
-- Takes the **minimum** time between recurrence and death
+- **Composite endpoint:** First occurrence of local recurrence, metastatic progression, or death from any cause
+- Takes the **minimum** time among recurrence, metastasis, and death component times
 - If recurrence occurs before death, PFS time = time to recurrence
-- If death occurs before recurrence, PFS time = time to death
+- If metastatic progression occurs before recurrence or death, PFS time = time to metastatic progression
+- If death occurs before recurrence or metastatic progression, PFS time = time to death
 - Impossible negative component times are preserved and blocked by Objective 0 validation rather than normalized.
 
 **Example:**
 
 - Patient has recurrence at 24 months, death at 60 months
 - **PFS time = 24 months** (first event)
+- Patient has metastatic progression at 10 months, recurrence at 24 months, and death at 60 months
+- **PFS time = 10 months** (first event)
 
 ---
 
@@ -393,9 +411,9 @@ age_at_diagnosis_general_pop_median = factor(
 
 **Key Details:**
 
-- `GENERAL_POP_MEDIAN_AGE_CUTOFF` is defined in `config_constants.R` and currently equals **63**; changing it there automatically updates the derivation.
+- `GENERAL_POP_MEDIAN_AGE_CUTOFF` is defined in `config_constants.R` and currently equals **63**; changing it there automatically updates the derived descriptive/subgroup field.
 - Output labels always render as “< 63 years” and “≥ 63 years” to match manuscript wording.
-- Used anywhere we need a dichotomous age term: baseline tables, subgroup forest plots (see `age_at_diagnosis_general_pop_median` rows), or model covariate adjustments meant to mimic “younger vs older” splits.
+- In the peer-review revision, adjusted treatment-effect models use continuous `age_at_diagnosis`; `age_at_diagnosis_general_pop_median` is retained for descriptive and exploratory subgroup displays only.
 
 ---
 

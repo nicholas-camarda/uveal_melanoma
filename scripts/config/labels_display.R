@@ -195,7 +195,6 @@ FOREST_PLOT_VARIABLE_ORDER <- c(
     "sex", "location",
     "initial_t_stage_simple", # "initial_t_stage",
     "gep_class_simple", # gep_class_simple is just Class 1 vs Class 2
-    "gep12_prame_status", # prame status within Class 1/2 (so this gets a value when gep_class_simple is known Class 1 or 2)
     # "initial_tumor_height", "initial_tumor_diameter", 
     # "biopsy1_gep", 
     "optic_nerve"
@@ -227,10 +226,6 @@ FOREST_PLOT_REQUIRED_LEVELS <- list(
         "Class 2",
         "GEP Failed/Indeterminate",
         "GEP Not Tested"
-    ),
-    gep12_prame_status = c(
-        "Negative",
-        "Positive"
     )
 )
 
@@ -241,7 +236,7 @@ SURVIVAL_PLOT_WIDTH <- 16 # inches (prefer a wider KM layout so long legends/tit
 SURVIVAL_PLOT_HEIGHT <- 9.5 # inches (base height lowered so standard KM figures save wider than tall)
 PFS2_PLOT_HEIGHT <- 11.5 # inches (PFS-2 still needs extra vertical room for the risk table)
 # KM x-axis cap (months) to match legacy visual range and avoid empty tails
-SURVIVAL_XAXIS_MAX_MONTHS <- 216
+SURVIVAL_XAXIS_MAX_MONTHS <- 180
 # Dynamic sizing for KM plots based on number of strata (groups)
 KM_BASE_HEIGHT <- SURVIVAL_PLOT_HEIGHT       # base height for ~2 strata
 KM_HEIGHT_PER_STRATUM <- 0.4                 # extra inches per stratum beyond 2
@@ -280,4 +275,3 @@ VISION_LINE_CHANGE_CATEGORY_LEVELS <- c(
     "2-line loss",
     "≥3-line loss"
 )
-

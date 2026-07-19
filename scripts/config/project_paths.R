@@ -1,21 +1,26 @@
 # =============================================================================
 # CORE DATA PATHS AND DIRECTORIES
 # =============================================================================
-# CRITICAL: Enforce three-location architecture with one canonical slug:
+# CRITICAL: Enforce the canonical workspace and Project Vault architecture:
 # - Code root (source controlled): PROJECT_ROOT / CODE_ROOT
 # - Runtime root (local non-synced): RUNTIME_ROOT
-# - Export parent (synced): EXPORT_PARENT_DIR
-# - Project export root (synced): EXPORT_ROOT = EXPORT_PARENT_DIR / PROJECT_SLUG
-# - Published analysis root (synced): EXPORT_ANALYSIS_DIR = EXPORT_ROOT / Analysis
-# This repository's synced research home follows:
-# ~/Library/CloudStorage/OneDrive-Personal/Research/<slug>
+# - Raw input root (synced): RAW_DATA_DIR = EXPORT_ROOT / Original Files
+# - Durable publish root (synced): EXPORT_ANALYSIS_DIR = EXPORT_ROOT / outputs
+# Analysis identifiers use PROJECT_SLUG; filesystem paths use REPOSITORY_SLUG.
 PROJECT_ROOT <- here::here()
-PROJECT_SLUG <- basename(PROJECT_ROOT)
+PROJECT_SLUG <- "uveal_melanoma"
+REPOSITORY_SLUG <- "uveal-melanoma"
+WORKSPACE_ROOT <- normalizePath(
+    file.path(PROJECT_ROOT, ".."),
+    winslash = "/",
+    mustWork = FALSE
+)
 CODE_ROOT <- PROJECT_ROOT
-DEFAULT_RUNTIME_PARENT_DIR <- "~/ProjectsRuntime"
-DEFAULT_RUNTIME_ROOT <- file.path(DEFAULT_RUNTIME_PARENT_DIR, PROJECT_SLUG)
-DEFAULT_EXPORT_PARENT_DIR <- "~/Library/CloudStorage/OneDrive-Personal/Research"
-DEFAULT_EXPORT_ROOT <- file.path(DEFAULT_EXPORT_PARENT_DIR, PROJECT_SLUG)
+DEFAULT_RUNTIME_ROOT <- "~/Workspaces/uveal-melanoma/runtime"
+DEFAULT_EXPORT_PARENT_DIR <- "~/Library/CloudStorage/OneDrive-Personal/Project Vault/Research"
+DEFAULT_EXPORT_ROOT <- file.path(DEFAULT_EXPORT_PARENT_DIR, REPOSITORY_SLUG)
+DEFAULT_RAW_DATA_DIR <- file.path(DEFAULT_EXPORT_ROOT, "Original Files")
+DEFAULT_PUBLISH_ROOT <- file.path(DEFAULT_EXPORT_ROOT, "outputs")
 
 #' Resolve a configured filesystem path with fallback behavior
 #'
@@ -28,7 +33,7 @@ DEFAULT_EXPORT_ROOT <- file.path(DEFAULT_EXPORT_PARENT_DIR, PROJECT_SLUG)
 #' @param allow_relative Logical indicating whether relative paths are allowed.
 #' @return Character scalar absolute path.
 #' @examples
-#' resolve_config_path("", "~/ProjectsRuntime")
+#' resolve_config_path("", "~/Workspaces/uveal-melanoma/runtime")
 resolve_config_path <- function(path_value, default_path, allow_relative = FALSE) {
     candidate_path <- path_value
     if (is.null(candidate_path) || !nzchar(trimws(candidate_path))) {
@@ -57,63 +62,35 @@ resolve_config_path <- function(path_value, default_path, allow_relative = FALSE
     normalizePath(expanded_path, winslash = "/", mustWork = FALSE)
 }
 
-#' Resolve the canonical synced export root for this project
+#' Resolve the canonical Project Vault root for this project
 #'
-#' Prefers `OCULAR_EXPORT_PARENT_DIR`, which should point to the synced parent
-#' folder. `OCULAR_EXPORT_ROOT` is retained as a one-release compatibility shim
-#' for callers that still pass the project-specific export directory directly.
+#' `OCULAR_EXPORT_PARENT_DIR` may redirect the Project Vault research parent for
+#' isolated tests or another machine. The repository slug remains fixed.
 #'
-#' @return A list containing `export_parent_dir`, `export_root`, and
-#'   `used_legacy_root`.
+#' @return A list containing `export_parent_dir` and `export_root`.
 resolve_export_root_config <- function() {
     configured_export_parent_dir <- Sys.getenv("OCULAR_EXPORT_PARENT_DIR", unset = "")
-    configured_export_root <- Sys.getenv("OCULAR_EXPORT_ROOT", unset = "")
-
-    if (nzchar(trimws(configured_export_parent_dir))) {
-        export_parent_dir <- resolve_config_path(
-            configured_export_parent_dir,
-            DEFAULT_EXPORT_PARENT_DIR
-        )
-        return(list(
-            export_parent_dir = export_parent_dir,
-            export_root = file.path(export_parent_dir, PROJECT_SLUG),
-            used_legacy_root = FALSE
-        ))
-    }
-
-    if (nzchar(trimws(configured_export_root))) {
-        warning(
-            "OCULAR_EXPORT_ROOT is deprecated; prefer OCULAR_EXPORT_PARENT_DIR pointing to the synced parent directory.",
-            call. = FALSE
-        )
-        export_root <- resolve_config_path(configured_export_root, DEFAULT_EXPORT_ROOT)
-        return(list(
-            export_parent_dir = dirname(export_root),
-            export_root = export_root,
-            used_legacy_root = TRUE
-        ))
-    }
+    export_parent_dir <- resolve_config_path(
+        configured_export_parent_dir,
+        DEFAULT_EXPORT_PARENT_DIR
+    )
 
     list(
-        export_parent_dir = resolve_config_path("", DEFAULT_EXPORT_PARENT_DIR),
-        export_root = DEFAULT_EXPORT_ROOT,
-        used_legacy_root = FALSE
+        export_parent_dir = export_parent_dir,
+        export_root = file.path(export_parent_dir, REPOSITORY_SLUG)
     )
 }
 
-RUNTIME_PARENT_DIR <- resolve_config_path(
-    Sys.getenv("OCULAR_RUNTIME_PARENT_DIR", unset = ""),
-    DEFAULT_RUNTIME_PARENT_DIR
-)
 RUNTIME_ROOT <- resolve_config_path(
     Sys.getenv("OCULAR_RUNTIME_ROOT", unset = ""),
     DEFAULT_RUNTIME_ROOT
 )
+RUNTIME_PARENT_DIR <- dirname(RUNTIME_ROOT)
 
 export_root_config <- resolve_export_root_config()
 EXPORT_PARENT_DIR <- export_root_config$export_parent_dir
 EXPORT_ROOT <- normalizePath(export_root_config$export_root, winslash = "/", mustWork = FALSE)
-EXPORT_ANALYSIS_DIR <- file.path(EXPORT_ROOT, "Analysis")
+EXPORT_ANALYSIS_DIR <- file.path(EXPORT_ROOT, "outputs")
 
 # Export-backed raw input paths (authoritative source files)
 RAW_DATA_DIR <- resolve_config_path(
@@ -150,8 +127,16 @@ MERGED_TABLES_DIR <- resolve_config_path(
     Sys.getenv("MERGED_TABLES_DIR", unset = ""),
     file.path(OUTPUT_DIR, "merged_tables")
 )
+SHARE_PACKETS_DIR <- resolve_config_path(
+    Sys.getenv("SHARE_PACKETS_DIR", unset = ""),
+    file.path(RUNTIME_ROOT, "share_packets")
+)
+PEER_REVIEW_REVISION_AUDITS_DIR <- file.path(
+    SHARE_PACKETS_DIR,
+    "peer_review_revision_audits"
+)
 
-# Deprecated compatibility alias retained for transition code paths only.
+# Project Vault project root exposed for existing analysis code.
 DATA_DIR <- EXPORT_ROOT
 
 #' Create runtime directories required for analysis execution
@@ -170,7 +155,9 @@ initialize_runtime_dirs <- function() {
         LOGS_DIR,
         TOOLS_OUTPUT_DIR,
         TEST_OUTPUT_DIR,
-        MERGED_TABLES_DIR
+        MERGED_TABLES_DIR,
+        SHARE_PACKETS_DIR,
+        PEER_REVIEW_REVISION_AUDITS_DIR
     ))
 
     for (dir_path in runtime_dirs) {
@@ -213,7 +200,7 @@ assert_required_input_paths <- function(input_filename = INPUT_FILENAME, require
             paste(
                 "Required raw input path checks failed:",
                 paste(paste0("- ", path_issues), collapse = "\n"),
-                sprintf("Configured export root: %s", EXPORT_ROOT),
+                sprintf("Configured Project Vault root: %s", EXPORT_ROOT),
                 sep = "\n"
             ),
             call. = FALSE

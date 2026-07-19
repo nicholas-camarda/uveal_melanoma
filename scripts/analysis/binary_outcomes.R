@@ -1,11 +1,11 @@
 # Binary Outcomes Analysis
 
-#' Build Objective 1 co-primary estimand notes for binary endpoints
+#' Build Objective 1 reviewer-response event-support notes
 #'
 #' @param outcome_var Character outcome variable name.
 #' @param time_var Character event-time variable name used for cumulative incidence.
 #' @param event_var Character event indicator variable name.
-#' @return Data frame describing the binary and cumulative-incidence estimands.
+#' @return Data frame describing descriptive and supportive event summaries.
 build_objective1_binary_estimand_notes <- function(outcome_var, time_var, event_var) {
     outcome_label <- dplyr::case_when(
         identical(outcome_var, "recurrence1") ~ "local recurrence",
@@ -14,12 +14,12 @@ build_objective1_binary_estimand_notes <- function(outcome_var, time_var, event_
     )
 
     data.frame(
-        estimand = c("binary_ever_observed", "competing_risk_cumulative_incidence"),
-        role = c("co-primary", "co-primary"),
+        estimand = c("descriptive_ever_observed", "competing_risk_cumulative_incidence"),
+        role = c("descriptive_support", "supportive_time_to_event_context"),
         endpoint = outcome_label,
         interpretation = c(
-            "Ever-observed event/rate comparison over available follow-up; not a censoring-aware fixed-horizon probability.",
-            "Time-horizon event probability accounting for censoring and death before the event as a competing event."
+            "Ever-observed event counts over available follow-up; not a censoring-aware treatment-effect estimand.",
+            "Time-horizon event probability accounting for censoring and death before the event as a competing event; used as supportive context for Cox-led inference."
         ),
         time_variable = c(NA_character_, time_var),
         event_variable = c(event_var, event_var),
@@ -253,55 +253,6 @@ analyze_binary_outcome_rates <- function(
     output_dirs = NULL,
     prefix = NULL) {
     data <- normalize_treatment_group_data(data)
-    # Check that there are at least two groups to compare
-    if (length(unique(data[[group_var]])) < 2) {
-        warning(sprintf("Only one level of %s present; skipping logistic model.", group_var))
-        early_output_dir <- if (!is.null(output_dirs)) {
-            if (outcome_var == "recurrence1") {
-                output_dirs$obj1_recurrence
-            } else if (outcome_var == "mets_progression") {
-                output_dirs$obj1_mets
-            } else {
-                "test_output"
-            }
-        } else {
-            "test_output"
-        }
-        early_skip_diagnostics <- build_skip_report_diagnostics(
-            status = "skipped",
-            analysis_name = paste0(outcome_var, "_", analysis_type, "_logistic"),
-            dataset_name = dataset_name %||% "unspecified_dataset",
-            reason = sprintf(
-                "Logistic regression was skipped because only one `%s` level was present in the analysis dataset.",
-                group_var
-            ),
-            narrative_lines = c(
-                sprintf(
-                    "The incoming analysis dataset contains only one observed `%s` level.",
-                    group_var
-                ),
-                "A logistic regression comparison requires at least two groups."
-            ),
-            skip_summary = build_skip_summary_tab(list(
-                modeled_n = nrow(data),
-                distinct_groups_remaining = length(unique(stats::na.omit(data[[group_var]])))
-            )),
-            event_support = build_level_support_tab(data, group_var, outcome_var = event_var),
-            raw_model_output = sprintf(
-                "Model skipped: only one level of %s present.",
-                group_var
-            )
-        )
-        save_skipped_model_outputs(
-            analysis_name = paste0(outcome_var, "_", analysis_type, "_logistic"),
-            dataset_name = dataset_name %||% "unspecified_dataset",
-            output_dir = early_output_dir %||% "test_output",
-            prefix = prefix %||% "",
-            reason = early_skip_diagnostics$reason,
-            diagnostics = early_skip_diagnostics
-        )
-        return(list(rates = NULL, table = NULL, model = NULL, diagnostics = early_skip_diagnostics))
-    }
 
     # Subset data based on analysis type
     if (analysis_type == "post_treatment_only") {
@@ -319,11 +270,6 @@ analyze_binary_outcome_rates <- function(
     # Ensure all factor variables are unordered for modeling consistency
     fix_event_data <- enforce_unordered_factors(fix_event_data)
 
-    # Select confounders that exist in the data and have more than one unique value
-    confounders_to_use <- confounders[
-        sapply(confounders, function(c) c %in% names(fix_event_data) && length(unique(fix_event_data[[c]])) > 1)
-    ]
-
     # Calculate event rates by group
     rates <- fix_event_data %>%
         dplyr::group_by(!!sym(group_var)) %>%
@@ -334,9 +280,9 @@ analyze_binary_outcome_rates <- function(
             .groups = "drop"
         ) %>%
         dplyr::mutate(
-            estimand = "binary_ever_observed",
-            estimand_role = "co-primary",
-            notes = "Ever-observed event/rate comparison over available follow-up; not a censoring-aware fixed-horizon probability."
+            estimand = "descriptive_ever_observed",
+            estimand_role = "descriptive_support",
+            notes = "Ever-observed event counts over available follow-up; adjusted Cox models are the lead reviewer-response inference."
         )
 
     cumulative_incidence <- estimate_objective1_cumulative_incidence(
@@ -359,111 +305,28 @@ analyze_binary_outcome_rates <- function(
             NULL
         }
         if (!is.null(output_dir)) {
+            route_prefix <- if (outcome_var == "recurrence1") "obj1_recurrence" else "obj1_mets"
+            event_support_dir <- resolve_route_output_dir(output_dirs, route_prefix, "event_support")
             write_readable_xlsx(
                 list(
-                    binary_rates = rates,
+                    descriptive_event_counts = rates,
                     cumulative_incidence = cumulative_incidence$summary,
                     competing_risk_support = cumulative_incidence$support,
                     estimand_notes = cumulative_incidence$notes
                 ),
-                path = file.path(output_dir, paste0(prefix, outcome_var, "_rates_summary.xlsx"))
+                path = file.path(event_support_dir, paste0(prefix, outcome_var, "_event_support_summary.xlsx"))
             )
         }
     }
 
-    model_variables <- unique(c(group_var, confounders_to_use))
-    analysis_label <- paste0(outcome_var, "_", analysis_type, "_logistic")
-    exclusion_result <- apply_sparse_level_exclusions(
-        data = fix_event_data,
-        variables = model_variables[model_variables %in% names(fix_event_data)],
-        analysis_name = analysis_label,
-        id_col = pick_sparse_level_id_col(fix_event_data),
-        level_exclusions = MODELING_LEVEL_EXCLUSIONS
-    )
-
-    if (exclusion_result$removed_row_count > 0) {
-        logger::log_info(formatted(sprintf(
-            "Excluded %d rows with sparse categorical levels prior to logistic regression (%s)",
-            exclusion_result$removed_row_count,
-            paste(model_variables, collapse = ", ")
-        ), indent = 1))
-    }
-
-    model_data <- exclusion_result$data
-
-    if (nrow(model_data) == 0 || length(unique(stats::na.omit(model_data[[group_var]]))) < 2) {
-        logger::log_warn(formatted(
-            "Insufficient data available after sparse-level exclusions; skipping logistic regression.",
-            indent = 1
-        ))
-        sample_size_summary <- build_sample_size_summary_tab(
-            filter_stats = exclusion_result$filter_stats,
-            dataset_name = dataset_name,
-            analysis_name = analysis_label,
-            modeled_n = nrow(model_data)
-        )
-        support_variables <- unique(c(group_var, confounders_to_use))
-        diagnostics_stub <- build_skip_report_diagnostics(
-            status = "skipped",
-            analysis_name = analysis_label,
-            dataset_name = dataset_name %||% "unspecified_dataset",
-            reason = "Logistic regression was skipped because the post-exclusion dataset did not retain enough usable rows or group variation.",
-            narrative_lines = c(
-                sprintf(
-                    "After sparse-level exclusions, %d patients remained in the modeled dataset.",
-                    nrow(model_data)
-                ),
-                sprintf(
-                    "Adjusted logistic regression requires at least two non-missing `%s` groups after exclusions.",
-                    group_var
-                )
-            ),
-            sample_size_summary = sample_size_summary,
-            skip_summary = build_skip_summary_tab(list(
-                modeled_n = nrow(model_data),
-                distinct_groups_remaining = length(unique(stats::na.omit(model_data[[group_var]]))),
-                sparse_exclusion_reason = exclusion_result$filter_stats$removal_reason %||% "Sparse-level exclusions"
-            )),
-            sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
-            event_support = build_level_support_tab(model_data, support_variables, outcome_var = event_var),
-            raw_model_output = "Model skipped: insufficient data after sparse-level exclusions."
-        )
-        save_skipped_model_outputs(
-            analysis_name = analysis_label,
-            dataset_name = dataset_name %||% "unspecified_dataset",
-            output_dir = output_dir %||% "test_output",
-            prefix = prefix %||% "",
-            reason = diagnostics_stub$reason,
-            diagnostics = diagnostics_stub
-        )
-        return(list(rates = rates, table = NULL, model = NULL, diagnostics = diagnostics_stub))
-    }
-
-    # Run logistic regression and generate regression table
-    result <- generate_regression_table(
-        data = model_data,
-        outcome_var = outcome_var,
-        predictor_vars = group_var,
-        confounders = confounders_to_use,
-        model_type = "logistic",
-        effect_measure = "OR",
-        analysis_name = analysis_label,
-        dataset_name = dataset_name,
-        output_dir = if (!is.null(output_dirs)) output_dir else "test_output",
-        prefix = prefix,
-        time_var = analysis_time_var,
-        event_var = event_var,
-        treatment_var = group_var,
-        sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
-        filter_stats = exclusion_result$filter_stats
-    )
-
-    # Return a list of results: rates, regression table, model object, and diagnostics
     list(
         rates = rates,
         cumulative_incidence = cumulative_incidence,
-        table = result$table,
-        model = result$model,
-        diagnostics = result$diagnostics
+        table = NULL,
+        model = NULL,
+        diagnostics = list(
+            status = "not_fit",
+            reason = "Reviewer-response analysis treats recurrence and metastasis as time-dependent endpoints; logistic regression is intentionally not fit."
+        )
     )
 }

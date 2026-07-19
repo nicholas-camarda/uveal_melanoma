@@ -44,9 +44,9 @@ write_objective1_interpretation_note <- function(output_dirs, dataset_name, pref
         paste0("Cohort role: ", cohort_note$cohort_interpretation_role),
         paste0("Interpretation: ", cohort_note$interpretation),
         "",
-        "Recurrence and metastatic-progression endpoints use co-primary estimands:",
-        "- Binary ever-observed event/rate comparisons over available follow-up.",
-        "- Competing-risk cumulative incidence by time horizon, with death before the event treated as a competing event.",
+        "Recurrence and metastatic-progression endpoints use Cox-led time-to-event inference:",
+        "- Adjusted Cox models are the lead reviewer-response treatment-effect summaries.",
+        "- Ever-observed event counts and competing-risk cumulative incidence are descriptive support.",
         "",
         "Cox survival summaries use graded PH interpretation:",
         "- Cox-forward when PH diagnostics do not show concern.",
@@ -55,29 +55,6 @@ write_objective1_interpretation_note <- function(output_dirs, dataset_name, pref
         "- Cox-limited when PH diagnostics are not supportable."
     )
     writeLines(note_lines, note_path)
-    invisible(note_path)
-}
-
-#' Write an artifact-level note for legacy post-baseline Objective 1 outputs
-#'
-#' @param output_dir Directory containing a legacy post-baseline output bundle.
-#' @param analysis_label Character label for the legacy analysis.
-#' @param stratifier_label Character label for the post-baseline stratifier.
-#' @return Path to the note file, invisibly.
-write_objective1_legacy_exploratory_note <- function(output_dir, analysis_label, stratifier_label) {
-    if (!dir.exists(output_dir)) {
-        dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
-    }
-    note_path <- file.path(output_dir, "post_baseline_exploratory_note.txt")
-    writeLines(c(
-        "POST-BASELINE EXPLORATORY ANALYSIS",
-        "",
-        paste0("Analysis: ", analysis_label),
-        paste0("Post-baseline stratifier: ", stratifier_label),
-        "",
-        "This output stratifies OS/PFS by a post-baseline event status.",
-        "It is exploratory and non-causal, and it must not be interpreted as a baseline treatment comparison."
-    ), note_path)
     invisible(note_path)
 }
 
@@ -199,7 +176,7 @@ write_objective1_subgroup_contract_note <- function(output_dirs, dataset_name, p
 #' @param dataset_name Character dataset/cohort identifier.
 #' @param subgroup_surface Character subgroup output family.
 #' @return Diagnostics data frame with exploratory interpretation columns.
-annotate_objective1_subgroup_diagnostics <- function(diagnostics, dataset_name, subgroup_surface) {
+annotate_objective1_subgroup_diagnostics <- function(diagnostics, dataset_name, subgroup_surface, reviewer_pruning = NULL) {
     if (is.null(diagnostics) || !is.data.frame(diagnostics)) {
         return(diagnostics)
     }
@@ -211,6 +188,27 @@ annotate_objective1_subgroup_diagnostics <- function(diagnostics, dataset_name, 
     diagnostics$analysis_role <- "exploratory_support"
     diagnostics$subgroup_surface <- subgroup_surface
     diagnostics$interpretation_note <- sparse_note
+    diagnostics$reviewer_exclusion_note <- NA_character_
+    diagnostics$reviewer_excluded_level <- NA_character_
+    diagnostics$reviewer_excluded_n <- NA_integer_
+
+    if (!is.null(reviewer_pruning)) {
+        variable_col <- if ("variable" %in% names(diagnostics)) {
+            "variable"
+        } else if ("subgroup_variable" %in% names(diagnostics)) {
+            "subgroup_variable"
+        } else {
+            NULL
+        }
+        if (!is.null(variable_col)) {
+            t4_mask <- diagnostics[[variable_col]] == "initial_t_stage_simple"
+            if (any(t4_mask, na.rm = TRUE)) {
+                diagnostics$reviewer_exclusion_note[t4_mask] <- "T4 excluded from reviewer-facing subgroup displays due to sparse and inconsistent support."
+                diagnostics$reviewer_excluded_level[t4_mask] <- "T4"
+                diagnostics$reviewer_excluded_n[t4_mask] <- reviewer_pruning$t4_excluded_n
+            }
+        }
+    }
     diagnostics
 }
 
@@ -257,6 +255,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     if (length(cohort_forest_variable_order) == 0) {
         cohort_forest_variable_order <- FOREST_PLOT_VARIABLE_ORDER
     }
+    reviewer_subgroup_pruning <- build_reviewer_subgroup_pruning_audit(data)
 
     # Display the confounders that will be used for statistical adjustment
     logger::log_info(formatted(
@@ -267,8 +266,8 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         indent = 1
     ))
 
-    # 1a. Rates of recurrence (post-treatment only)
-    logger::log_info(formatted("Executing analyze_binary_outcome_rates: Local recurrence rates analysis (post-treatment only)", indent = 1))
+    # 1a. Local recurrence: descriptive support plus Cox-led time-to-event analysis
+    logger::log_info(formatted("Executing recurrence event-support summary and Cox time-to-local-recurrence analysis", indent = 1))
     recurrence_rates <- analyze_binary_outcome_rates(
         data,
         outcome_var = "recurrence1",
@@ -280,46 +279,42 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         output_dirs = output_dirs,
         prefix = prefix
     )
-    logger::log_info(formatted("Local recurrence analysis completed", indent = 1))
-
-    # 1a1. Overall survival stratified by local recurrence status
-    logger::log_warn(formatted(
-        "Legacy exploratory one-off analysis: recurrence-stratified OS/PFS uses post-baseline recurrence status, sits outside the original formal objectives, and must not be interpreted as a baseline treatment comparison.",
-        indent = 1
-    ))
-    logger::log_info(formatted("1a1: Recurrence-stratified overall survival (KM)", indent = 1))
-    recurrence_os <- analyze_os_by_local_recurrence(
-        data = data,
+    recurrence_time_to_event <- analyze_time_to_event_outcomes(
+        data,
+        time_var = "tt_recurrence_months",
+        event_var = "recurrence_event",
+        group_var = "treatment_group",
+        confounders = confounders,
+        ylab = "Local Recurrence-Free Probability",
+        analysis_type = "post_treatment_only",
         dataset_name = dataset_name,
         output_dirs = output_dirs,
         prefix = prefix,
-        confounders = confounders
+        route_key = "obj1_recurrence"
     )
-    write_objective1_legacy_exploratory_note(
-        output_dir = output_dirs$obj1_recurrence_1a1 %||% file.path(output_dirs$obj1_recurrence, "1a1_recurrence_stratified_os"),
-        analysis_label = "Recurrence-stratified overall survival",
-        stratifier_label = "Local recurrence status"
-    )
-    logger::log_info(formatted("Recurrence-stratified overall survival completed", indent = 1))
-
-    # 1a2. Progression-free survival stratified by local recurrence status
-    logger::log_info(formatted("1a2: Recurrence-stratified progression-free survival (KM)", indent = 1))
-    recurrence_pfs <- analyze_pfs_by_local_recurrence(
-        data = data,
+    recurrence_time_to_event$ph_diagnostics <- run_or_skip_proportional_hazards_diagnostics(
+        cox_model = recurrence_time_to_event$cox_model,
+        outcome_name = "Local Recurrence-Free Probability",
+        output_dir = resolve_route_output_dir(output_dirs, "obj1_recurrence", "ph"),
+        file_prefix = paste0(prefix, "local_recurrence_free_probability_"),
         dataset_name = dataset_name,
-        output_dirs = output_dirs,
+        data = data,
+        time_var = "tt_recurrence_months",
+        event_var = "recurrence_event",
+        variables = unique(c("treatment_group", confounders)),
+        reason = "Local recurrence proportional hazards diagnostics were not run because no Cox model was fit."
+    )
+    annotate_objective1_survival_effect_summary(
+        output_dir = resolve_route_output_dir(output_dirs, "obj1_recurrence", "cox"),
         prefix = prefix,
-        confounders = confounders
+        outcome_label = "Local Recurrence-Free Probability",
+        ph_diagnostics = recurrence_time_to_event$ph_diagnostics,
+        rmst_results = recurrence_time_to_event$rmst_analysis
     )
-    write_objective1_legacy_exploratory_note(
-        output_dir = output_dirs$obj1_recurrence_1a2 %||% file.path(output_dirs$obj1_recurrence, "1a2_recurrence_stratified_pfs"),
-        analysis_label = "Recurrence-stratified progression-free survival",
-        stratifier_label = "Local recurrence status"
-    )
-    logger::log_info(formatted("Recurrence-stratified progression-free survival completed", indent = 1))
+    logger::log_info(formatted("Local recurrence Cox time-to-event analysis completed", indent = 1))
 
-    # 1b. Rates of metastatic progression (post-treatment only)
-    logger::log_info(formatted("Executing analyze_binary_outcome_rates: Metastatic progression rates analysis (post-treatment only)", indent = 1))
+    # 1b. Metastatic progression: descriptive support plus Cox-led time-to-event analysis
+    logger::log_info(formatted("Executing metastasis event-support summary and Cox time-to-metastasis analysis", indent = 1))
     mets_rates <- analyze_binary_outcome_rates(
         data,
         outcome_var = "mets_progression",
@@ -331,43 +326,39 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         output_dirs = output_dirs,
         prefix = prefix
     )
-    logger::log_info(formatted("Metastatic progression analysis completed", indent = 1))
-
-    # 2a1. Overall survival stratified by metastatic progression status
-    logger::log_warn(formatted(
-        "Legacy exploratory one-off analysis: metastasis-stratified OS/PFS uses post-baseline metastatic progression status, sits outside the original formal objectives, and must not be interpreted as a baseline treatment comparison.",
-        indent = 1
-    ))
-    logger::log_info(formatted("2a1: Metastasis-stratified overall survival (KM)", indent = 1))
-    metastasis_os <- analyze_os_by_metastatic_progression(
-        data = data,
+    mets_time_to_event <- analyze_time_to_event_outcomes(
+        data,
+        time_var = "tt_mets_months",
+        event_var = "mets_event",
+        group_var = "treatment_group",
+        confounders = confounders,
+        ylab = "Metastasis-Free Survival Probability",
+        analysis_type = "post_treatment_only",
         dataset_name = dataset_name,
         output_dirs = output_dirs,
         prefix = prefix,
-        confounders = confounders
+        route_key = "obj1_mets"
     )
-    write_objective1_legacy_exploratory_note(
-        output_dir = output_dirs$obj1_mets_2a1 %||% file.path(output_dirs$obj1_mets, "2a1_metastasis_stratified_os"),
-        analysis_label = "Metastasis-stratified overall survival",
-        stratifier_label = "Metastatic progression status"
-    )
-    logger::log_info(formatted("Metastasis-stratified overall survival completed", indent = 1))
-
-    # 2a2. Progression-free survival stratified by metastatic progression status
-    logger::log_info(formatted("2a2: Metastasis-stratified progression-free survival (KM)", indent = 1))
-    metastasis_pfs <- analyze_pfs_by_metastatic_progression(
-        data = data,
+    mets_time_to_event$ph_diagnostics <- run_or_skip_proportional_hazards_diagnostics(
+        cox_model = mets_time_to_event$cox_model,
+        outcome_name = "Metastasis-Free Survival Probability",
+        output_dir = resolve_route_output_dir(output_dirs, "obj1_mets", "ph"),
+        file_prefix = paste0(prefix, "metastasis_free_survival_probability_"),
         dataset_name = dataset_name,
-        output_dirs = output_dirs,
+        data = data,
+        time_var = "tt_mets_months",
+        event_var = "mets_event",
+        variables = unique(c("treatment_group", confounders)),
+        reason = "Metastasis proportional hazards diagnostics were not run because no Cox model was fit."
+    )
+    annotate_objective1_survival_effect_summary(
+        output_dir = resolve_route_output_dir(output_dirs, "obj1_mets", "cox"),
         prefix = prefix,
-        confounders = confounders
+        outcome_label = "Metastasis-Free Survival Probability",
+        ph_diagnostics = mets_time_to_event$ph_diagnostics,
+        rmst_results = mets_time_to_event$rmst_analysis
     )
-    write_objective1_legacy_exploratory_note(
-        output_dir = output_dirs$obj1_mets_2a2 %||% file.path(output_dirs$obj1_mets, "2a2_metastasis_stratified_pfs"),
-        analysis_label = "Metastasis-stratified progression-free survival",
-        stratifier_label = "Metastatic progression status"
-    )
-    logger::log_info(formatted("Metastasis-stratified progression-free survival completed", indent = 1))
+    logger::log_info(formatted("Metastasis Cox time-to-event analysis completed", indent = 1))
 
     # 1c. Overall Survival (post-treatment only)
     logger::log_info(formatted("Executing analyze_time_to_event_outcomes: Overall survival analysis (Kaplan-Meier & Cox regression)", indent = 1))
@@ -381,7 +372,8 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         analysis_type = "post_treatment_only",
         dataset_name = dataset_name,
         output_dirs = output_dirs,
-        prefix = prefix
+        prefix = prefix,
+        route_key = "obj1_os"
     )
     logger::log_info(formatted("Overall survival analysis completed", indent = 1))
 
@@ -391,7 +383,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
             os_analysis$ph_diagnostics <- run_or_skip_proportional_hazards_diagnostics(
                 cox_model = os_analysis$cox_model,
                 outcome_name = "Overall Survival Probability",
-                output_dir = output_dirs$obj1_ph_diagnostics,
+                output_dir = resolve_route_output_dir(output_dirs, "obj1_os", "ph"),
                 file_prefix = paste0(prefix, "overall_survival_probability_"),
                 dataset_name = dataset_name,
                 data = data,
@@ -404,11 +396,23 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         silent = TRUE
     )
     annotate_objective1_survival_effect_summary(
-        output_dir = output_dirs$obj1_os,
+        output_dir = resolve_route_output_dir(output_dirs, "obj1_os", "cox"),
         prefix = prefix,
         outcome_label = "Overall Survival Probability",
         ph_diagnostics = os_analysis$ph_diagnostics,
         rmst_results = os_analysis$rmst_analysis
+    )
+    os_5yr_capped <- fit_capped_cox_sensitivity(
+        data = data,
+        time_var = "tt_death_months",
+        event_var = "death_event",
+        horizon_months = 60,
+        group_var = "treatment_group",
+        confounders = confounders,
+        output_dir = resolve_route_output_dir(output_dirs, "obj1_os", "sensitivity"),
+        prefix = prefix,
+        analysis_label = "Overall Survival Probability",
+        dataset_name = dataset_name
     )
 
     # 1d. Progression Free Survival (includes both progression AND death)
@@ -423,7 +427,8 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         analysis_type = "post_treatment_only",
         dataset_name = dataset_name,
         output_dirs = output_dirs,
-        prefix = prefix
+        prefix = prefix,
+        route_key = "obj1_pfs"
     )
     logger::log_info(formatted("Progression-free survival analysis completed", indent = 1))
 
@@ -433,7 +438,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
             pfs_analysis$ph_diagnostics <- run_or_skip_proportional_hazards_diagnostics(
                 cox_model = pfs_analysis$cox_model,
                 outcome_name = "Progression-Free Survival Probability",
-                output_dir = output_dirs$obj1_ph_diagnostics,
+                output_dir = resolve_route_output_dir(output_dirs, "obj1_pfs", "ph"),
                 file_prefix = paste0(prefix, "progression_free_survival_probability_"),
                 dataset_name = dataset_name,
                 data = data,
@@ -446,11 +451,23 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         silent = TRUE
     )
     annotate_objective1_survival_effect_summary(
-        output_dir = output_dirs$obj1_pfs,
+        output_dir = resolve_route_output_dir(output_dirs, "obj1_pfs", "cox"),
         prefix = prefix,
         outcome_label = "Progression-Free Survival Probability",
         ph_diagnostics = pfs_analysis$ph_diagnostics,
         rmst_results = pfs_analysis$rmst_analysis
+    )
+    pfs_5yr_capped <- fit_capped_cox_sensitivity(
+        data = data,
+        time_var = "tt_pfs_months",
+        event_var = "pfs_event",
+        horizon_months = 60,
+        group_var = "treatment_group",
+        confounders = confounders,
+        output_dir = resolve_route_output_dir(output_dirs, "obj1_pfs", "sensitivity"),
+        prefix = prefix,
+        analysis_label = "Progression-Free Survival Probability",
+        dataset_name = dataset_name
     )
 
     # 1e. Tumor height changes
@@ -461,13 +478,13 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     tumor_size_summary <- summarize_tumor_size_by_treatment(
         data = data,
         size_var = "initial_tumor_height",
-        output_dir = output_dirs$obj1_height_primary,
+        output_dir = resolve_route_output_dir(output_dirs, "obj1_height_primary", "descriptive"),
         prefix = prefix
     )
     baseline_diameter_summary <- summarize_tumor_size_by_treatment(
         data = data,
         size_var = "initial_tumor_diameter",
-        output_dir = output_dirs$obj1_height_primary,
+        output_dir = resolve_route_output_dir(output_dirs, "obj1_height_primary", "descriptive"),
         prefix = prefix
     )
     logger::log_info(formatted("Tumor size by treatment group outputs completed", indent = 1))
@@ -475,20 +492,20 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     # 1f. Subgroup analysis with interaction terms
     logger::log_info(formatted("Executing analyze_treatment_effect_subgroups_height: Subgroup analysis with interaction terms for tumor height change", indent = 1))
 
-    # PRIMARY ANALYSIS: Without baseline height adjustment
+    # PRIMARY ANALYSIS: without adding baseline height to the change-score subgroup model
     primary_start_time <- Sys.time()
-    logger::log_info(formatted("PRIMARY SUBGROUP ANALYSIS (without baseline height adjustment)", indent = 1))
+    logger::log_info(formatted("PRIMARY SUBGROUP ANALYSIS (without adding baseline height to the change-score model)", indent = 1))
     primary_subgroup_results <- list()
     for (i in seq_along(cohort_subgroup_vars)) {
         subgroup_var <- cohort_subgroup_vars[i]
         logger::log_info(formatted(sprintf(">>> Testing PRIMARY interaction (%d/%d): %s", i, length(cohort_subgroup_vars), subgroup_var)))
 
-        # Test the interaction with confounders but without baseline height
+        # Test the interaction with confounders but without adding baseline height to the change-score outcome
         result <- analyze_treatment_effect_subgroups_height(
             data = data,
             subgroup_var = subgroup_var,
             confounders = confounders, # Pass confounders (will auto-exclude subgroup var)
-            include_baseline_height = FALSE, # PRIMARY: no baseline height adjustment
+            include_baseline_height = FALSE, # PRIMARY: no baseline-in-change-score diagnostic term
             dataset_name = dataset_name
         )
 
@@ -505,20 +522,20 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     }
     logger::log_info(formatted(sprintf(">>> COMPLETED %s (Duration: %.1f seconds)", "PRIMARY SUBGROUP ANALYSIS", as.numeric(difftime(Sys.time(), primary_start_time, units = "secs"))), indent = 1))
 
-    # SENSITIVITY ANALYSIS: With baseline height adjustment
+    # SENSITIVITY ANALYSIS: internal diagnostic baseline-in-change-score subgroup model
     sensitivity_start_time <- Sys.time()
-    logger::log_info(formatted("SENSITIVITY SUBGROUP ANALYSIS (with baseline height adjustment)", indent = 1))
+    logger::log_info(formatted("SENSITIVITY SUBGROUP ANALYSIS (diagnostic baseline-in-change-score model)", indent = 1))
     sensitivity_subgroup_results <- list()
     for (i in seq_along(cohort_subgroup_vars)) {
         subgroup_var <- cohort_subgroup_vars[i]
         logger::log_info(formatted(sprintf(">>> Testing SENSITIVITY interaction (%d/%d): %s", i, length(cohort_subgroup_vars), subgroup_var)))
 
-        # Test the interaction with confounders including baseline height
+        # Test the interaction with baseline height included despite its algebraic link to the change-score outcome
         result <- analyze_treatment_effect_subgroups_height(
             data = data,
             subgroup_var = subgroup_var,
             confounders = confounders, # Pass confounders (will auto-exclude subgroup var)
-            include_baseline_height = TRUE, # SENSITIVITY: include baseline height adjustment
+            include_baseline_height = TRUE, # SENSITIVITY: internal diagnostic baseline-in-change-score term
             dataset_name = dataset_name
         )
 
@@ -558,7 +575,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     # Initialize forest plot diagnostics collector
     diagnostics_list <- list()
 
-    # Forest plot for PRIMARY tumor height subgroup analysis (without baseline height)
+    # Forest plot for PRIMARY tumor height subgroup analysis without baseline-in-change-score term
     primary_height_forest_plot <- create_single_cohort_forest_plot(
         subgroup_results = primary_subgroup_results,
         outcome_name = "Tumor Height Change (Primary Analysis)",
@@ -585,7 +602,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     dev.off()
     logger::log_info(formatted("PRIMARY tumor height forest plot created", indent = 1))
 
-    # Forest plot for SENSITIVITY tumor height subgroup analysis (with baseline height)
+    # Forest plot for SENSITIVITY tumor height subgroup analysis with diagnostic baseline-in-change-score term
     sensitivity_height_forest_plot <- create_single_cohort_forest_plot(
         subgroup_results = sensitivity_subgroup_results,
         outcome_name = "Tumor Height Change (Sensitivity Analysis)",
@@ -655,7 +672,8 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
             df_out <- annotate_objective1_subgroup_diagnostics(
                 diagnostics = df_out,
                 dataset_name = dataset_name,
-                subgroup_surface = "tumor_height_primary"
+                subgroup_surface = "tumor_height_primary",
+                reviewer_pruning = reviewer_subgroup_pruning
             )
             primary_diagnostics_list[[tab_name]] <- df_out
         }
@@ -694,7 +712,8 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
             df_out <- annotate_objective1_subgroup_diagnostics(
                 diagnostics = df_out,
                 dataset_name = dataset_name,
-                subgroup_surface = "tumor_height_sensitivity"
+                subgroup_surface = "tumor_height_sensitivity",
+                reviewer_pruning = reviewer_subgroup_pruning
             )
             sensitivity_diagnostics_list[[tab_name]] <- df_out
         }
@@ -924,9 +943,11 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         annotate_objective1_subgroup_diagnostics(
             diagnostics = df,
             dataset_name = dataset_name,
-            subgroup_surface = "primary_outcomes_forest_plots"
+            subgroup_surface = "primary_outcomes_forest_plots",
+            reviewer_pruning = reviewer_subgroup_pruning
         )
     })
+    diagnostics_list_no_interaction[["reviewer_pruning_audit"]] <- reviewer_subgroup_pruning$audit
     write_readable_xlsx(diagnostics_list_no_interaction, consolidated_forest_path)
     logger::log_info(formatted(sprintf("Forest plot diagnostics written to %s with %d tabs", consolidated_forest_path, length(diagnostics_list)), indent = 1))
 
@@ -937,13 +958,13 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
 
     return(list(
         recurrence_rates = recurrence_rates,
-        recurrence_os = recurrence_os,
-        recurrence_pfs = recurrence_pfs,
+        recurrence_time_to_event = recurrence_time_to_event,
         mets_rates = mets_rates,
-        metastasis_os = metastasis_os,
-        metastasis_pfs = metastasis_pfs,
+        mets_time_to_event = mets_time_to_event,
         os_analysis = os_analysis,
+        os_5yr_capped = os_5yr_capped,
         pfs_analysis = pfs_analysis,
+        pfs_5yr_capped = pfs_5yr_capped,
         height_changes = height_changes,
         primary_subgroup_results = primary_subgroup_results,
         sensitivity_subgroup_results = sensitivity_subgroup_results
