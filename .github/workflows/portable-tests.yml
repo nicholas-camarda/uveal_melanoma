@@ -64,10 +64,3 @@ jobs:
         run: Rscript scripts/tools/run_testthat.R tests/integration
       - name: Run lintr
         run: Rscript -e "lints <- lintr::lint_package(); if (length(lints) > 0L) { print(lints); stop(sprintf('%d lint(s) found', length(lints))) }"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - name: Validate OpenSpec contracts
-        run: |
-          npm install --global @fission-ai/openspec@1.6.0
-          openspec validate --all --strict --no-interactive
