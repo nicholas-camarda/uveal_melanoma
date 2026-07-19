@@ -240,6 +240,19 @@ read_removed_patients_summary_for_doc <- function() {
     )
 }
 
+abbreviate_user_home_path <- function(path) {
+    home <- path.expand("~")
+    home_prefix <- paste0(home, .Platform$file.sep)
+
+    if (identical(path, home)) {
+        return("~")
+    }
+    if (startsWith(path, home_prefix)) {
+        return(paste0("~", substring(path, nchar(home) + 1L)))
+    }
+    path
+}
+
 render_figure_counts_audit_markdown <- function(summary_data = NULL) {
     if (is.null(summary_data)) {
         summary_path <- file.path(PROCESSED_DATA_DIR, "cohort_summary_statistics.json")
@@ -269,8 +282,8 @@ render_figure_counts_audit_markdown <- function(summary_data = NULL) {
         "",
         "## Canonical sources",
         "",
-        sprintf("- `%s`", file.path(PROCESSED_DATA_DIR, "cohort_summary_statistics.json")),
-        sprintf("- `%s`", file.path(OUTPUT_DIR, "uveal_full", "00_General", "removed_patients_summary.tsv")),
+        sprintf("- `%s`", abbreviate_user_home_path(file.path(PROCESSED_DATA_DIR, "cohort_summary_statistics.json"))),
+        sprintf("- `%s`", abbreviate_user_home_path(file.path(OUTPUT_DIR, "uveal_full", "00_General", "removed_patients_summary.tsv"))),
         "- `scripts/utils/cohort_summary_export.R`",
         "- `scripts/utils/config_constants.R`",
         "",
