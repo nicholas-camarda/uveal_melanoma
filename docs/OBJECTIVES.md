@@ -28,11 +28,6 @@ Key sub-objectives:
 - `1f. Tumor height change (sensitivity)`: internal diagnostic change-score sensitivity that includes baseline tumor height even though baseline height is part of the change-score outcome; this is not a reviewer-facing answer to the timing or clinical-relevance concern
 - `1g. Subgroup analysis`: evaluate whether efficacy patterns differ across baseline subgroups
 
-Legacy exploratory note:
-
-- The runtime tree may also contain recurrence-stratified and metastasis-stratified OS/PFS outputs under `01_Efficacy/a_recurrence/` and `01_Efficacy/b_metastatic_progression/`.
-- Those were added as one-off exploratory post-baseline summaries, are not part of the original formal Objective 1 contract, and should not be interpreted as valid baseline treatment comparisons.
-
 Tumor-height note:
 
 - The source planning document explicitly asks for pretreatment-versus-follow-up tumor-height change.

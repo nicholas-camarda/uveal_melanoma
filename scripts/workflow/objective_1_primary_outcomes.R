@@ -58,29 +58,6 @@ write_objective1_interpretation_note <- function(output_dirs, dataset_name, pref
     invisible(note_path)
 }
 
-#' Write an artifact-level note for legacy post-baseline Objective 1 outputs
-#'
-#' @param output_dir Directory containing a legacy post-baseline output bundle.
-#' @param analysis_label Character label for the legacy analysis.
-#' @param stratifier_label Character label for the post-baseline stratifier.
-#' @return Path to the note file, invisibly.
-write_objective1_legacy_exploratory_note <- function(output_dir, analysis_label, stratifier_label) {
-    if (!dir.exists(output_dir)) {
-        dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
-    }
-    note_path <- file.path(output_dir, "post_baseline_exploratory_note.txt")
-    writeLines(c(
-        "POST-BASELINE EXPLORATORY ANALYSIS",
-        "",
-        paste0("Analysis: ", analysis_label),
-        paste0("Post-baseline stratifier: ", stratifier_label),
-        "",
-        "This output stratifies OS/PFS by a post-baseline event status.",
-        "It is exploratory and non-causal, and it must not be interpreted as a baseline treatment comparison."
-    ), note_path)
-    invisible(note_path)
-}
-
 #' Classify Objective 1 proportional-hazards interpretation severity
 #'
 #' @param ph_diagnostics Result from proportional-hazards diagnostics.
@@ -336,42 +313,6 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     )
     logger::log_info(formatted("Local recurrence Cox time-to-event analysis completed", indent = 1))
 
-    # 1a1. Overall survival stratified by local recurrence status
-    logger::log_warn(formatted(
-        "Legacy exploratory one-off analysis: recurrence-stratified OS/PFS uses post-baseline recurrence status, sits outside the original formal objectives, and must not be interpreted as a baseline treatment comparison.",
-        indent = 1
-    ))
-    logger::log_info(formatted("1a1: Recurrence-stratified overall survival (KM)", indent = 1))
-    recurrence_os <- analyze_os_by_local_recurrence(
-        data = data,
-        dataset_name = dataset_name,
-        output_dirs = output_dirs,
-        prefix = prefix,
-        confounders = confounders
-    )
-    write_objective1_legacy_exploratory_note(
-        output_dir = output_dirs$obj1_recurrence_1a1 %||% file.path(output_dirs$obj1_recurrence, "1a1_recurrence_stratified_os"),
-        analysis_label = "Recurrence-stratified overall survival",
-        stratifier_label = "Local recurrence status"
-    )
-    logger::log_info(formatted("Recurrence-stratified overall survival completed", indent = 1))
-
-    # 1a2. Progression-free survival stratified by local recurrence status
-    logger::log_info(formatted("1a2: Recurrence-stratified progression-free survival (KM)", indent = 1))
-    recurrence_pfs <- analyze_pfs_by_local_recurrence(
-        data = data,
-        dataset_name = dataset_name,
-        output_dirs = output_dirs,
-        prefix = prefix,
-        confounders = confounders
-    )
-    write_objective1_legacy_exploratory_note(
-        output_dir = output_dirs$obj1_recurrence_1a2 %||% file.path(output_dirs$obj1_recurrence, "1a2_recurrence_stratified_pfs"),
-        analysis_label = "Recurrence-stratified progression-free survival",
-        stratifier_label = "Local recurrence status"
-    )
-    logger::log_info(formatted("Recurrence-stratified progression-free survival completed", indent = 1))
-
     # 1b. Metastatic progression: descriptive support plus Cox-led time-to-event analysis
     logger::log_info(formatted("Executing metastasis event-support summary and Cox time-to-metastasis analysis", indent = 1))
     mets_rates <- analyze_binary_outcome_rates(
@@ -418,42 +359,6 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         rmst_results = mets_time_to_event$rmst_analysis
     )
     logger::log_info(formatted("Metastasis Cox time-to-event analysis completed", indent = 1))
-
-    # 2a1. Overall survival stratified by metastatic progression status
-    logger::log_warn(formatted(
-        "Legacy exploratory one-off analysis: metastasis-stratified OS/PFS uses post-baseline metastatic progression status, sits outside the original formal objectives, and must not be interpreted as a baseline treatment comparison.",
-        indent = 1
-    ))
-    logger::log_info(formatted("2a1: Metastasis-stratified overall survival (KM)", indent = 1))
-    metastasis_os <- analyze_os_by_metastatic_progression(
-        data = data,
-        dataset_name = dataset_name,
-        output_dirs = output_dirs,
-        prefix = prefix,
-        confounders = confounders
-    )
-    write_objective1_legacy_exploratory_note(
-        output_dir = output_dirs$obj1_mets_2a1 %||% file.path(output_dirs$obj1_mets, "2a1_metastasis_stratified_os"),
-        analysis_label = "Metastasis-stratified overall survival",
-        stratifier_label = "Metastatic progression status"
-    )
-    logger::log_info(formatted("Metastasis-stratified overall survival completed", indent = 1))
-
-    # 2a2. Progression-free survival stratified by metastatic progression status
-    logger::log_info(formatted("2a2: Metastasis-stratified progression-free survival (KM)", indent = 1))
-    metastasis_pfs <- analyze_pfs_by_metastatic_progression(
-        data = data,
-        dataset_name = dataset_name,
-        output_dirs = output_dirs,
-        prefix = prefix,
-        confounders = confounders
-    )
-    write_objective1_legacy_exploratory_note(
-        output_dir = output_dirs$obj1_mets_2a2 %||% file.path(output_dirs$obj1_mets, "2a2_metastasis_stratified_pfs"),
-        analysis_label = "Metastasis-stratified progression-free survival",
-        stratifier_label = "Metastatic progression status"
-    )
-    logger::log_info(formatted("Metastasis-stratified progression-free survival completed", indent = 1))
 
     # 1c. Overall Survival (post-treatment only)
     logger::log_info(formatted("Executing analyze_time_to_event_outcomes: Overall survival analysis (Kaplan-Meier & Cox regression)", indent = 1))
@@ -1054,12 +959,8 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     return(list(
         recurrence_rates = recurrence_rates,
         recurrence_time_to_event = recurrence_time_to_event,
-        recurrence_os = recurrence_os,
-        recurrence_pfs = recurrence_pfs,
         mets_rates = mets_rates,
         mets_time_to_event = mets_time_to_event,
-        metastasis_os = metastasis_os,
-        metastasis_pfs = metastasis_pfs,
         os_analysis = os_analysis,
         os_5yr_capped = os_5yr_capped,
         pfs_analysis = pfs_analysis,

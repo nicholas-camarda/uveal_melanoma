@@ -271,62 +271,47 @@ test_that("Objective 1 diagnostics keep factor labels grouped before coefficient
     }
 })
 
-test_that("Objective 1 logs legacy warnings for exploratory post-baseline survival outputs", {
-    test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective1_legacy_warning_test")
-    output_dirs <- build_objective1_output_dirs(test_output_dir)
-    dir.create(test_output_dir, recursive = TRUE, showWarnings = FALSE)
-    for (dir_path in output_dirs) {
-        dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
-    }
-    withr::defer(unlink(test_output_dir, recursive = TRUE), envir = parent.frame())
+test_that("Objective 1 omits post-baseline event-status survival analyses", {
+    pipeline <- run_objective1_test(
+        create_test_dataset(),
+        output_tag = "objective1_no_post_baseline_status_survival"
+    )
+    withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
 
-    log_path <- file.path(LOGS_DIR, "objective1_legacy_warning_test.txt")
-    setup_logging(log_path = log_path, level = "INFO", progress = FALSE, context_in_file = TRUE)
-
-    expect_no_error(
-        run_objective_1(
-            data = create_test_dataset(),
-            dataset_name = "test_cohort",
-            output_dirs = output_dirs,
-            prefix = "test_",
-            confounders = c("age_at_diagnosis", "sex")
-        )
+    retired_result_names <- c(
+        "recurrence_os",
+        "recurrence_pfs",
+        "metastasis_os",
+        "metastasis_pfs"
+    )
+    retired_route_names <- c(
+        "obj1_recurrence_1a1",
+        "obj1_recurrence_1a2",
+        "obj1_mets_2a1",
+        "obj1_mets_2a2"
+    )
+    retired_function_names <- c(
+        "analyze_os_by_local_recurrence",
+        "analyze_pfs_by_local_recurrence",
+        "analyze_os_by_metastatic_progression",
+        "analyze_pfs_by_metastatic_progression"
     )
 
-    text_log_path <- file.path(dirname(log_path), "txt", basename(log_path))
-    log_lines <- readLines(text_log_path, warn = FALSE)
+    expect_false(any(retired_result_names %in% names(pipeline$results)))
+    expect_false(any(retired_route_names %in% names(pipeline$output_dirs)))
+    expect_false(any(vapply(retired_function_names, exists, logical(1), mode = "function")))
 
-    expect_true(any(grepl("Legacy exploratory one-off analysis", log_lines, fixed = TRUE)))
-    expect_true(any(grepl("post-baseline", log_lines, fixed = TRUE)))
-
-    legacy_note_paths <- file.path(c(
-        output_dirs$obj1_recurrence_1a1,
-        output_dirs$obj1_recurrence_1a2,
-        output_dirs$obj1_mets_2a1,
-        output_dirs$obj1_mets_2a2
-    ), "post_baseline_exploratory_note.txt")
-    expect_true(all(file.exists(legacy_note_paths)))
-    expect_true(any(grepl(
-        "not be interpreted as a baseline treatment comparison",
-        readLines(legacy_note_paths[[1]], warn = FALSE),
-        fixed = TRUE
-    )))
-
-    expected_legacy_artifacts <- c(
-        file.path(output_dirs$obj1_recurrence_1a1, "01_km_curves", "test_1a1_recurrence_stratified_overall_survival_by_local_recurrence_status_km.png"),
-        file.path(output_dirs$obj1_recurrence_1a2, "01_km_curves", "test_1a2_recurrence_stratified_progression_free_survival_by_local_recurrence_status_km.png"),
-        file.path(output_dirs$obj1_mets_2a1, "01_km_curves", "test_2a1_metastasis_stratified_overall_survival_by_metastatic_progression_status_km.png"),
-        file.path(output_dirs$obj1_mets_2a2, "01_km_curves", "test_2a2_metastasis_stratified_progression_free_survival_by_metastatic_progression_status_km.png")
+    output_paths <- list.files(
+        pipeline$test_output_dir,
+        recursive = TRUE,
+        full.names = FALSE,
+        all.files = TRUE
     )
-    expect_true(all(file.exists(expected_legacy_artifacts)))
-
-    misplaced_legacy_artifacts <- c(
-        file.path(output_dirs$obj1_os_km, "test_1a1_recurrence_stratified_overall_survival_by_local_recurrence_status_km.png"),
-        file.path(output_dirs$obj1_pfs_km, "test_1a2_recurrence_stratified_progression_free_survival_by_local_recurrence_status_km.png"),
-        file.path(output_dirs$obj1_os_km, "test_2a1_metastasis_stratified_overall_survival_by_metastatic_progression_status_km.png"),
-        file.path(output_dirs$obj1_pfs_km, "test_2a2_metastasis_stratified_progression_free_survival_by_metastatic_progression_status_km.png")
+    retired_output_pattern <- paste(
+        c("recurrence_stratified", "metastasis_stratified", "post_baseline_exploratory_note"),
+        collapse = "|"
     )
-    expect_false(any(file.exists(misplaced_legacy_artifacts)))
+    expect_false(any(grepl(retired_output_pattern, output_paths, ignore.case = TRUE)))
 })
 
 test_that("Objective 1 centralized interpretation and subgroup contract notes are emitted once per cohort", {

@@ -11,8 +11,8 @@ This repository does not include the clinical source spreadsheet. To reproduce t
 1. Clone the repository and enter it.
 
 ```sh
-git clone https://github.com/nicholas-camarda/uveal_melanoma.git
-cd uveal_melanoma
+git clone https://github.com/nicholas-camarda/uveal-melanoma.git
+cd uveal-melanoma
 ```
 
 2. Install R package dependencies.
@@ -105,10 +105,10 @@ main_execution()
 
 ```sh
 # Portable regression suite
-Rscript -e "testthat::test_dir('tests/testthat')"
+Rscript scripts/tools/run_testthat.R tests/testthat
 
 # Local integration suite (requires local cohort data)
-Rscript -e "Sys.setenv(OCULAR_RUN_INTEGRATION_TESTS='true'); testthat::test_dir('tests/integration')"
+OCULAR_RUN_INTEGRATION_TESTS=true Rscript scripts/tools/run_testthat.R tests/integration
 ```
 
 ## Study Scope
@@ -157,7 +157,7 @@ Pipeline outputs are primarily written to the runtime analysis tree:
 Within each cohort folder, outputs follow a consistent layout:
 
 - `00_General/`: baseline characteristics, cohort summaries, treatment-duration summaries, exclusion summaries, reconciliation audit workbooks (including manual date-correction audit sheets), and Objective 0 validation bundles
-- `01_Efficacy/`: recurrence, metastasis, survival, tumor-height, and subgroup outputs; primary endpoint artifacts use typed `01_`–`06_` subfolders, recurrence- and metastasis-stratified OS/PFS use their named subfolders, and subgroup outputs use `g_subgroup_analysis/`
+- `01_Efficacy/`: recurrence, metastasis, survival, tumor-height, and subgroup outputs; primary endpoint artifacts use typed `01_`–`06_` subfolders and subgroup outputs use `g_subgroup_analysis/`
 - `02_Safety/`: vision and radiation-related adverse-event outputs (descriptive → adjusted models → effect summary; vision adds `04_sensitivity/`)
 - `03_Repeat_Radiation/`: PFS-2 cohort support, survival artifacts, and PH diagnostics under `a_pfs2/`
 - `04_GEP_Validation/`: Objective 4 workbooks, plots, and unified summaries

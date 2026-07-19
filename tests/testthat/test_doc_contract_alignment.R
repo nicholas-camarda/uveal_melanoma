@@ -9,14 +9,28 @@ test_that("documentation keeps Objective 2d aligned with the inclusive SRD endpo
     expect_match(methods_text, "Objective 2d includes all recorded SRD causes", fixed = TRUE)
 })
 
-test_that("documentation labels recurrence/metastasis-stratified survival outputs as legacy exploratory one-offs", {
-    objectives_text <- paste(readLines(here::here("docs", "OBJECTIVES.md"), warn = FALSE), collapse = "\n")
-    technical_text <- paste(readLines(here::here("docs", "TECHNICAL.md"), warn = FALSE), collapse = "\n")
-    methods_text <- paste(readLines(here::here("docs", "STATISTICAL_METHODS.md"), warn = FALSE), collapse = "\n")
+test_that("current contracts do not claim post-baseline event-status survival outputs", {
+    contract_paths <- c(
+        here::here("README.md"),
+        here::here("docs", "OBJECTIVES.md"),
+        here::here("docs", "TECHNICAL.md"),
+        here::here("docs", "STATISTICAL_METHODS.md"),
+        here::here("openspec", "specs", "objective1-cohort-interpretation-guardrails", "spec.md")
+    )
+    contract_text <- paste(unlist(lapply(contract_paths, readLines, warn = FALSE)), collapse = "\n")
 
-    expect_match(objectives_text, "one-off exploratory post-baseline summaries", fixed = TRUE)
-    expect_match(technical_text, "retained historical one-off post-baseline summaries", fixed = TRUE)
-    expect_match(methods_text, "outside the formal objective contract", fixed = TRUE)
+    expect_false(grepl("recurrence-stratified", contract_text, ignore.case = TRUE))
+    expect_false(grepl("metastasis-stratified", contract_text, ignore.case = TRUE))
+    expect_false(grepl("post-baseline output bundle", contract_text, ignore.case = TRUE))
+})
+
+test_that("README uses the canonical repository identity", {
+    readme_text <- paste(readLines(here::here("README.md"), warn = FALSE), collapse = "\n")
+
+    expect_match(readme_text, "github.com/nicholas-camarda/uveal-melanoma.git", fixed = TRUE)
+    expect_match(readme_text, "cd uveal-melanoma", fixed = TRUE)
+    expect_false(grepl("github.com/nicholas-camarda/uveal_melanoma", readme_text, fixed = TRUE))
+    expect_false(grepl("cd uveal_melanoma", readme_text, fixed = TRUE))
 })
 
 test_that("current documentation does not revive retired GEP Other sidecars", {

@@ -93,8 +93,6 @@ For practical reading of hazard ratios and confidence intervals, see [Cox Regres
 
 For practical reading of survival-curve separation and log-rank context, see [Kaplan-Meier Plots](INTERPRETATION_GUIDE.md#kaplan-meier-plots).
 
-Legacy exploratory note: the runtime tree also retains recurrence-stratified and metastasis-stratified OS/PFS summaries built on post-baseline outcome groups. Those one-off outputs are outside the formal objective contract and should not be interpreted as valid baseline treatment comparisons.
-
 ---
 
 ## Restricted Mean Survival Time (RMST)

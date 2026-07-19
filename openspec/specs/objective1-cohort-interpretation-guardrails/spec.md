@@ -1,7 +1,7 @@
 # objective1-cohort-interpretation-guardrails Specification
 
 ## Purpose
-Define the active Objective 1 interpretation guardrails for cohort roles, proportional-hazards diagnostics, and legacy post-baseline exploratory outputs.
+Define the active Objective 1 interpretation guardrails for cohort roles, proportional-hazards diagnostics, and valid survival grouping variables.
 
 ## Requirements
 ### Requirement: Objective 1 SHALL use a centralized cohort-interpretation note
@@ -37,9 +37,10 @@ Objective 1 MUST interpret Cox hazard ratios according to proportional-hazards d
 - **THEN** it amends existing survival effect summaries, proportional-hazards summary text, RMST summaries, or centralized Objective 1 summaries where feasible
 - **AND** it does not create additional PH/RMST interpretation workbooks, folders, or sidecar reports solely for this note
 
-### Requirement: Legacy post-baseline outputs SHALL self-identify as exploratory
-Objective 1 legacy recurrence-stratified and metastasis-stratified OS/PFS outputs MUST include artifact-level warnings that they are post-baseline exploratory analyses and not baseline treatment comparisons.
+### Requirement: Objective 1 SHALL NOT group OS or PFS by eventual endpoint status
+Objective 1 MUST NOT generate OS or PFS analyses grouped by eventual local-recurrence or metastatic-progression status. These downstream endpoint-component groups are circular and can introduce immortal-time bias; warning labels do not make the analyses valid.
 
-#### Scenario: Legacy folder contains explanation artifact
-- **WHEN** Objective 1 writes a legacy post-baseline output bundle
-- **THEN** the folder includes a stable note or summary artifact stating that the analysis is post-baseline and non-causal
+#### Scenario: Objective 1 writes survival outputs
+- **WHEN** Objective 1 writes OS or PFS curves, models, summaries, or diagnostics
+- **THEN** the workflow does not use eventual local-recurrence or metastatic-progression status as the grouping variable
+- **AND** it does not create dedicated output routes or artifacts for those groupings

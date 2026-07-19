@@ -29,35 +29,12 @@ plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dir
     group1_label <- ifelse(is.null(group1_name) || is.na(group1_name) || group1_name == "", "Group 1", group1_name)
     group2_label <- ifelse(is.null(group2_name) || is.na(group2_name) || group2_name == "", "Group 2", group2_name)
 
-    status_comparison_outcomes <- c(
-        "Overall Survival by Local Recurrence Status",
-        "Overall Survival by Metastatic Progression Status",
-        "Progression-Free Survival by Local Recurrence Status",
-        "Progression-Free Survival by Metastatic Progression Status"
+    subtitle_text <- wrap_plot_text(
+        sprintf("%s advantage when above zero; %s advantage when below", group2_label, group1_label),
+        width = 60
     )
-    use_status_wording <- outcome_label %in% status_comparison_outcomes &&
-        identical(sort(c(group1_label, group2_label)), c("No", "Yes"))
 
-    subtitle_text <- if (use_status_wording) {
-        wrap_plot_text(
-            paste(
-                "Values below 0 indicate longer survival for patients without the event;",
-                "values above 0 indicate longer survival for patients with the event"
-            ),
-            width = 80
-        )
-    } else {
-        wrap_plot_text(
-            sprintf("%s advantage when above zero; %s advantage when below", group2_label, group1_label),
-            width = 60
-        )
-    }
-
-    y_axis_text <- if (use_status_wording) {
-        "RMST Difference\n(Yes minus No, mo)"
-    } else {
-        sprintf("RMST Difference\n(%s minus %s, mo)", group2_label, group1_label)
-    }
+    y_axis_text <- sprintf("RMST Difference\n(%s minus %s, mo)", group2_label, group1_label)
 
     title_text <- wrap_plot_text(
         paste("RMST Difference vs Time:", outcome_label),

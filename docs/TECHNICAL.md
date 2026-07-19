@@ -481,8 +481,6 @@ The manual-correction sheet includes the corrected field, rationale, confidence 
 
 **Objective 1 artifact routing:** proportional-hazards diagnostics are colocated per survival endpoint (`06_ph_diagnostics/` for recurrence/mets; `05_ph_diagnostics/` for OS/PFS). HR effect summaries and PH interpretation columns live in each endpoint's Cox folder, not in survival-rate summary folders. The former centralized `h_proportional_hazards_diagnostics/` folder is no longer written.
 
-Legacy exploratory note: recurrence-stratified and metastasis-stratified OS/PFS subfolders can also appear under `a_recurrence/` and `b_metastatic_progression/`. These are retained historical one-off post-baseline summaries, not part of the formal Objective 1 contract, and should not be interpreted as valid baseline treatment comparisons.
-
 Tumor-height interpretation note: because `height_change` subtracts baseline tumor height, the baseline-in-change-score sensitivity is algebraically coupled to the outcome. It is an internal diagnostic sensitivity, not the reviewer-facing adjustment for Comment 8. It also does not correct unequal time from treatment to follow-up height assessment; the timing audit in `e_tumor_height_primary/` is required context and currently supports demoting rather than emphasizing tumor-height comparisons in reviewer-facing text.
 
 ### Objective 2: Safety/Toxicity Analysis (COMPLETE)
@@ -673,9 +671,9 @@ The repository uses two test lanes with separate bootstrap helpers:
 Run tests with the shell entry points used elsewhere in the repository:
 
 ```sh
-Rscript -e "testthat::test_dir('tests/testthat')"
+Rscript scripts/tools/run_testthat.R tests/testthat
 Rscript -e "testthat::test_file('tests/testthat/test_objective2_safety_toxicity.R')"
-Rscript -e "Sys.setenv(OCULAR_RUN_INTEGRATION_TESTS='true'); testthat::test_dir('tests/integration')"
+OCULAR_RUN_INTEGRATION_TESTS=true Rscript scripts/tools/run_testthat.R tests/integration
 ```
 
 Integration tests are intentionally gated by `OCULAR_RUN_INTEGRATION_TESTS` so routine regression runs do not assume local cohort data are available.

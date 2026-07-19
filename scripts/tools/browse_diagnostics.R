@@ -35,7 +35,7 @@ get_default_output_dir <- function() {
     if (exists("RUNTIME_ROOT", inherits = TRUE)) {
         return(file.path(get("RUNTIME_ROOT", inherits = TRUE), "Analysis"))
     }
-    return("/Users/ncamarda/Workspaces/uveal-melanoma/runtime/Analysis")
+    file.path(path.expand("~/Workspaces"), "uveal-melanoma", "runtime", "Analysis")
 }
 
 # Simple CLI args parser
