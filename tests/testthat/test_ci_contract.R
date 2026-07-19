@@ -12,6 +12,16 @@ test_that("portable CI runs required checks with fail-sensitive commands", {
     expect_false(grepl("\\|\\|[[:space:]]+true", workflow_text))
 })
 
+test_that("portable CI installs rmda from its tracked upstream repository", {
+    workflow_text <- paste(
+        readLines(here::here(".github", "workflows", "portable-tests.yml"), warn = FALSE),
+        collapse = "\n"
+    )
+
+    expect_match(workflow_text, "github::mdbrown/rmda", fixed = TRUE)
+    expect_false(grepl("any::rmda", workflow_text, fixed = TRUE))
+})
+
 test_that("documented test commands use the fail-sensitive runner", {
     readme_text <- paste(readLines(here::here("README.md"), warn = FALSE), collapse = "\n")
 

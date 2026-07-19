@@ -52,7 +52,7 @@ jobs:
             any::cmprsk
             any::timeROC
             any::pROC
-            any::rmda
+            github::mdbrown/rmda
             any::VIM
             any::mice
             any::glmnet
