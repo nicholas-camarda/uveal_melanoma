@@ -38,7 +38,7 @@ md_forest_plot_results <- list(
     )
 )
 
-test_that("forest plot headers distinguish binary events from MD sample sizes", {
+test_that("forest plot count headers use compact n/N notation", {
     binary_plot_data <- create_forest_plot_data(
         subgroup_results = binary_forest_plot_results,
         variable_order = names(binary_forest_plot_results),
@@ -57,13 +57,58 @@ test_that("forest plot headers distinguish binary events from MD sample sizes", 
     expect_equal(names(binary_plot_data$data_frame)[4], " ")
     expect_equal(names(md_plot_data$data_frame)[4], " ")
 
-    expect_equal(names(binary_plot_data$data_frame)[2:3], c("PBT events/n", "GKSRS events/n"))
+    expect_equal(names(binary_plot_data$data_frame)[2:3], c("PBT n/N", "GKSRS n/N"))
     expect_equal(names(md_plot_data$data_frame)[2:3], c("PBT n/N", "GKSRS n/N"))
 
-    expect_equal(binary_plot_data$data_frame[[names(binary_plot_data$data_frame)[2]]][2], "8/50")
-    expect_equal(binary_plot_data$data_frame[[names(binary_plot_data$data_frame)[3]]][2], "10/61")
-    expect_equal(md_plot_data$data_frame[[names(md_plot_data$data_frame)[2]]][2], "50/111")
-    expect_equal(md_plot_data$data_frame[[names(md_plot_data$data_frame)[3]]][2], "61/111")
+    expect_equal(binary_plot_data$data_frame[[names(binary_plot_data$data_frame)[2]]][2], "10/61")
+    expect_equal(binary_plot_data$data_frame[[names(binary_plot_data$data_frame)[3]]][2], "8/50")
+    expect_equal(md_plot_data$data_frame[[names(md_plot_data$data_frame)[2]]][2], "61/111")
+    expect_equal(md_plot_data$data_frame[[names(md_plot_data$data_frame)[3]]][2], "50/111")
+})
+
+test_that("forest plot arm counts follow treatment keys rather than column positions", {
+    configured_order <- create_forest_plot_data(
+        subgroup_results = binary_forest_plot_results,
+        variable_order = names(binary_forest_plot_results),
+        treatment_labels = c("PBT", "GKSRS"),
+        effect_measure = "OR"
+    )
+    reversed_order <- create_forest_plot_data(
+        subgroup_results = binary_forest_plot_results,
+        variable_order = names(binary_forest_plot_results),
+        treatment_labels = c("GKSRS", "PBT"),
+        effect_measure = "OR"
+    )
+
+    expect_identical(
+        unname(as.character(configured_order$data_frame[2, c("PBT n/N", "GKSRS n/N")])),
+        c("10/61", "8/50")
+    )
+    expect_identical(
+        unname(as.character(reversed_order$data_frame[2, c("GKSRS n/N", "PBT n/N")])),
+        c("8/50", "10/61")
+    )
+})
+
+test_that("forest plot arm mapping rejects ambiguous treatment labels", {
+    expect_error(
+        create_forest_plot_data(
+            subgroup_results = binary_forest_plot_results,
+            variable_order = names(binary_forest_plot_results),
+            treatment_labels = c("PBT", "Plaque"),
+            effect_measure = "OR"
+        ),
+        "exactly PBT and GKSRS"
+    )
+    expect_error(
+        create_forest_plot_data(
+            subgroup_results = binary_forest_plot_results,
+            variable_order = names(binary_forest_plot_results),
+            treatment_labels = c("PBT", "PBT"),
+            effect_measure = "OR"
+        ),
+        "exactly PBT and GKSRS"
+    )
 })
 
 test_that("forest plots render for binary and MD outcomes with unchanged row structure", {

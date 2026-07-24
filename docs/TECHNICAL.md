@@ -645,6 +645,8 @@ OBJECTIVE1_AGE_SUBGROUP_VAR <- "age_at_diagnosis_general_pop_median"
 
 `OBJECTIVE1_AGE_SUBGROUP_VAR` controls the age representation used by both Objective 1 subgroup modeling and forest-plot ordering. Supported values are `age_at_diagnosis`, `age_at_diagnosis_binned`, and `age_at_diagnosis_general_pop_median`. Adjusted models continue to use continuous `age_at_diagnosis`.
 
+Forest-plot arm-count columns are keyed by the exact treatment identifiers `PBT` and `GKSRS`; plot construction stops with an error if those keys are missing, duplicated, or replaced by an alias. Headers and count values are joined by treatment key rather than column position.
+
 ### Confounders
 
 Standard confounders used across analyses:

@@ -68,7 +68,7 @@ create_forest_plot <- function(subgroup_results,
 #' @param subgroup_results List of subgroup analysis results from analyze_treatment_effect_subgroups_*
 #' @param outcome_name Character string for the outcome name (e.g., "Overall Survival")
 #' @param cohort_name Character string for the cohort name (e.g., "Full Cohort")
-#' @param treatment_labels Character vector of length 2 with treatment labels (e.g., c("GKSRS", "PBT"))
+#' @param treatment_labels Exact treatment keys `PBT` and `GKSRS`, in display order.
 #' @param variable_order Character vector specifying the order of variables to display (REQUIRED for consistency)
 #' @param effect_measure Character string for the effect measure (default: "HR")
 #' @param favours_labels Character vector of length 2 for axis labels (e.g., c("Favors GKSRS", "Favors PBT"))
@@ -217,7 +217,7 @@ create_single_cohort_forest_plot <- function(subgroup_results,
     }, add = TRUE)
 
     # Create the forest plot using correct forestploter syntax following documentation
-    # CI column is position 4 (blank column after Subgroup, GKSRS_n, Plaque_n)
+    # CI column is position 4 (blank column after Subgroup and keyed arm counts).
     fp <- forest(
         plot_data$data_frame,
         est = plot_data$est_values,

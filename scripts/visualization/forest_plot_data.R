@@ -8,6 +8,16 @@
 #' @param effect_measure Character string for effect measure
 #' @return List with formatted data for forestploter
 create_forest_plot_data <- function(subgroup_results, variable_order, treatment_labels, effect_measure) {
+    treatment_labels <- as.character(treatment_labels)
+    treatment_count_columns <- c(PBT = "PBT_n", GKSRS = "GKSRS_n")
+    if (
+        length(treatment_labels) != length(treatment_count_columns) ||
+            anyDuplicated(treatment_labels) ||
+            !setequal(treatment_labels, names(treatment_count_columns))
+    ) {
+        stop("treatment_labels must contain exactly PBT and GKSRS, once each")
+    }
+
     # Initialize data collection
     all_rows <- list()
     est_values <- c()
@@ -19,10 +29,10 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
     missing_interaction_vars <- character(0) # Track variables where interaction p could not be estimated
     diagnostics_rows <- list()
     show_event_counts <- toupper(effect_measure) %in% c("HR", "OR", "RR")
-    arm_count_header_label <- if (show_event_counts) "events/n" else "n/N"
-    arm_count_headers <- c(
-        sprintf("%s %s", treatment_labels[1], arm_count_header_label),
-        sprintf("%s %s", treatment_labels[2], arm_count_header_label)
+    arm_count_header_label <- "n/N"
+    arm_count_headers <- stats::setNames(
+        sprintf("%s %s", treatment_labels, arm_count_header_label),
+        treatment_labels
     )
     effect_header <- sprintf("%s (95%% CI)", effect_measure)
 
@@ -31,8 +41,8 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
         # Return empty data structure
         empty_data_frame <- data.frame(
             Subgroup = character(),
-            GKSRS_n = character(),
             PBT_n = character(),
+            GKSRS_n = character(),
             ` ` = character(),
             `HR (95% CI)` = character(),
             `p-value` = character(),
@@ -41,8 +51,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
         )
         colnames(empty_data_frame) <- c(
             "Subgroup",
-            arm_count_headers[1],
-            arm_count_headers[2],
+            unname(arm_count_headers),
             " ",
             effect_header,
             "p-value",
@@ -71,8 +80,8 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
             # Variable missing from results - create a "no data" header
             no_data_row <- data.frame(
                 Subgroup = format_variable_name(var_name),
+                PBT_n = "",
                 GKSRS_n = "",
-                Plaque_n = "",
                 stringsAsFactors = FALSE
             )
 
@@ -95,8 +104,8 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
         # Variable header row
         var_header <- data.frame(
             Subgroup = format_variable_name(var_name),
+            PBT_n = "",
             GKSRS_n = "",
-            Plaque_n = "",
             stringsAsFactors = FALSE
         )
 
@@ -181,11 +190,13 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                 required_levels = required_levels
             )
 
-            if (length(ordered_levels) == 0) {
+            if (isTRUE(var_data$modeled_continuously)) {
+                next
+            } else if (length(ordered_levels) == 0) {
                 no_data_row <- data.frame(
                     Subgroup = "  No data available",
+                    PBT_n = "",
                     GKSRS_n = "",
-                    Plaque_n = "",
                     stringsAsFactors = FALSE
                 )
                 no_data_row$` ` <- paste(rep(" ", 20), collapse = " ")
@@ -241,8 +252,8 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
 
                             non_estimable_row <- data.frame(
                                 Subgroup = sprintf("  %s", display_level),
+                                PBT_n = format_forest_treatment_count(events_plaque, row_data$n_plaque, row_data$n_total, show_event_counts),
                                 GKSRS_n = format_forest_treatment_count(events_gksrs, row_data$n_gksrs, row_data$n_total, show_event_counts),
-                                Plaque_n = format_forest_treatment_count(events_plaque, row_data$n_plaque, row_data$n_total, show_event_counts),
                                 stringsAsFactors = FALSE
                             )
                             non_estimable_row$` ` <- paste(rep(" ", 20), collapse = " ")
@@ -281,8 +292,8 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
 
                                 non_estimable_row <- data.frame(
                                     Subgroup = sprintf("  %s", display_level),
+                                    PBT_n = format_forest_treatment_count(events_plaque, row_data$n_plaque, row_data$n_total, show_event_counts),
                                     GKSRS_n = format_forest_treatment_count(events_gksrs, row_data$n_gksrs, row_data$n_total, show_event_counts),
-                                    Plaque_n = format_forest_treatment_count(events_plaque, row_data$n_plaque, row_data$n_total, show_event_counts),
                                     stringsAsFactors = FALSE
                                 )
                                 non_estimable_row$` ` <- paste(rep(" ", 20), collapse = " ")
@@ -321,8 +332,8 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
 
                             non_estimable_row <- data.frame(
                                 Subgroup = sprintf("  %s", display_level),
+                                PBT_n = format_forest_treatment_count(events_plaque, row_data$n_plaque, row_data$n_total, show_event_counts),
                                 GKSRS_n = format_forest_treatment_count(events_gksrs, row_data$n_gksrs, row_data$n_total, show_event_counts),
-                                Plaque_n = format_forest_treatment_count(events_plaque, row_data$n_plaque, row_data$n_total, show_event_counts),
                                 stringsAsFactors = FALSE
                             )
                             non_estimable_row$` ` <- paste(rep(" ", 20), collapse = " ")
@@ -359,8 +370,8 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
 
                         subgroup_row <- data.frame(
                             Subgroup = sprintf("  %s", display_level),
+                            PBT_n = format_forest_treatment_count(events_plaque, row_data$n_plaque, row_data$n_total, show_event_counts),
                             GKSRS_n = format_forest_treatment_count(events_gksrs, row_data$n_gksrs, row_data$n_total, show_event_counts),
-                            Plaque_n = format_forest_treatment_count(events_plaque, row_data$n_plaque, row_data$n_total, show_event_counts),
                             stringsAsFactors = FALSE
                         )
                         subgroup_row$` ` <- paste(rep(" ", 20), collapse = " ")
@@ -404,18 +415,18 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
 
                     non_estimable_row <- data.frame(
                         Subgroup = sprintf("  %s", level_label),
-                        GKSRS_n = if (non_estimable_meta$has_arm_counts) {
+                        PBT_n = if (non_estimable_meta$has_arm_counts) {
                             format_forest_treatment_count(
-                                non_estimable_meta$events_gksrs,
-                                non_estimable_meta$n_gksrs,
+                                non_estimable_meta$events_plaque,
+                                non_estimable_meta$n_plaque,
                                 non_estimable_meta$n_total,
                                 show_event_counts
                             )
                         } else "",
-                        Plaque_n = if (non_estimable_meta$has_arm_counts) {
+                        GKSRS_n = if (non_estimable_meta$has_arm_counts) {
                             format_forest_treatment_count(
-                                non_estimable_meta$events_plaque,
-                                non_estimable_meta$n_plaque,
+                                non_estimable_meta$events_gksrs,
+                                non_estimable_meta$n_gksrs,
                                 non_estimable_meta$n_total,
                                 show_event_counts
                             )
@@ -458,8 +469,8 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
             # Variable missing from results
             no_data_row <- data.frame(
                 Subgroup = "  No data available",
+                PBT_n = "",
                 GKSRS_n = "",
-                Plaque_n = "",
                 stringsAsFactors = FALSE
             )
 
@@ -498,8 +509,8 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
         # Create empty data frame with proper structure
         final_df <- data.frame(
             Subgroup = character(),
-            GKSRS_n = character(),
             PBT_n = character(),
+            GKSRS_n = character(),
             ` ` = character(),
             `HR (95% CI)` = character(),
             `p-value` = character(),
@@ -508,8 +519,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
         )
         colnames(final_df) <- c(
             "Subgroup",
-            arm_count_headers[1],
-            arm_count_headers[2],
+            unname(arm_count_headers),
             " ",
             effect_header,
             "p-value",
@@ -524,16 +534,41 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
         text_size <- numeric()
     }
 
+    source_count_values <- final_df[, unname(treatment_count_columns), drop = FALSE]
+    displayed_count_columns <- unname(treatment_count_columns[treatment_labels])
+    final_df <- final_df[
+        ,
+        c(
+            "Subgroup",
+            displayed_count_columns,
+            " ",
+            "HR (95% CI)",
+            "p-value",
+            "Interaction p"
+        ),
+        drop = FALSE
+    ]
+
     # Set proper column names that will become the forestploter headers
     colnames(final_df) <- c(
         "Subgroup",
-        arm_count_headers[1],
-        arm_count_headers[2],
+        unname(arm_count_headers),
         " ", # Blank column for CI
         effect_header,
         "p-value",
         "Int p"
     )
+    for (treatment_key in treatment_labels) {
+        displayed_header <- unname(arm_count_headers[treatment_key])
+        source_column <- unname(treatment_count_columns[treatment_key])
+        if (!identical(final_df[[displayed_header]], source_count_values[[source_column]])) {
+            stop(sprintf(
+                "Forest plot arm-count contract violated: %s values do not match the %s header",
+                treatment_key,
+                displayed_header
+            ))
+        }
+    }
 
     # If using a ratio measure (HR, OR, RR), ensure positive values; otherwise keep as is.
     ratio_measures <- c("HR", "OR", "RR")
@@ -946,7 +981,6 @@ get_non_estimable_level_metadata <- function(var_data, level_name, sparse_rows, 
             events_plaque <- suppressWarnings(as.numeric(interaction_excluded_levels$events_plaque[i]))
             events_gksrs <- suppressWarnings(as.numeric(interaction_excluded_levels$events_gksrs[i]))
             reason <- as.character(interaction_excluded_levels$reason[i])
-
             return(list(
                 n_total = n_total,
                 n_plaque = n_plaque,
