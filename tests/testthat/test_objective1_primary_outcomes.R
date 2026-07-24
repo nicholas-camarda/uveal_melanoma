@@ -34,11 +34,73 @@ test_that("Objective 1 pipeline returns expected top-level analyses", {
         "pfs_analysis",
         "height_changes",
         "primary_subgroup_results",
-        "sensitivity_subgroup_results"
+        "sensitivity_subgroup_results",
+        "outcome_subgroup_results"
     ) %in% names(pipeline$results)))
 
     expect_true(file.exists(file.path(pipeline$output_dirs$obj1_os_cox, "test_overall_survival_probability_effect_summary.xlsx")))
     expect_true(file.exists(file.path(pipeline$output_dirs$obj1_pfs_cox, "test_progression_free_survival_probability_effect_summary.xlsx")))
+})
+
+test_that("Objective 1 recurrence and metastasis subgroup outputs use the Cox HR contract", {
+    pipeline <- run_objective1_test(create_test_dataset(), output_tag = "objective1_subgroup_model_contract")
+    withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
+
+    for (outcome_key in c("local_recurrence", "metastatic_progression")) {
+        outcome_results <- pipeline$results$outcome_subgroup_results[[outcome_key]]
+        expect_true(is.list(outcome_results))
+        expect_identical(
+            get_objective1_subgroup_outcome_spec(outcome_key)$model_family,
+            "Cox proportional hazards"
+        )
+    }
+
+    diagnostics_path <- file.path(
+        pipeline$output_dirs$obj1_forest_plots,
+        "test_forest_plot_diagnostics.xlsx"
+    )
+    for (outcome_key in c("local_recurrence", "metastatic_progression")) {
+        diagnostics <- readxl::read_xlsx(diagnostics_path, sheet = outcome_key)
+        expect_identical(unique(diagnostics$model_family), "Cox proportional hazards")
+        expect_identical(unique(diagnostics$effect_measure), "HR")
+    }
+})
+
+test_that("Objective 1 records an empty one-arm subgroup workbook as not estimable", {
+    one_arm_data <- data.frame(
+        treatment_group = factor(rep("GKSRS", 4), levels = c("PBT", "GKSRS"))
+    )
+    sheets <- finalize_objective1_subgroup_diagnostic_sheets(
+        sheets = list(),
+        data = one_arm_data,
+        dataset_name = "gksrs_only_test",
+        analysis_name = "primary_tumor_height_subgroup_analysis"
+    )
+
+    expect_identical(names(sheets), "Analysis_Status")
+    expect_identical(sheets$Analysis_Status$model_status[[1]], "NOT_ESTIMABLE")
+    expect_match(sheets$Analysis_Status$reason[[1]], "one treatment arm", ignore.case = TRUE)
+
+    workbook_path <- tempfile(fileext = ".xlsx")
+    withr::defer(unlink(workbook_path), envir = parent.frame())
+    expect_no_error(write_readable_xlsx(sheets, workbook_path))
+    expect_identical(readxl::excel_sheets(workbook_path), "Analysis_Status")
+})
+
+test_that("Objective 1 records empty sparse two-arm subgroup diagnostics without error", {
+    two_arm_data <- data.frame(
+        treatment_group = factor(c("PBT", "GKSRS"), levels = c("PBT", "GKSRS"))
+    )
+    sheets <- finalize_objective1_subgroup_diagnostic_sheets(
+        sheets = list(),
+        data = two_arm_data,
+        dataset_name = "sparse_two_arm_test",
+        analysis_name = "primary_tumor_height_subgroup_analysis"
+    )
+
+    expect_identical(names(sheets), "Analysis_Status")
+    expect_identical(sheets$Analysis_Status$model_status[[1]], "NOT_ESTIMABLE")
+    expect_match(sheets$Analysis_Status$reason[[1]], "modeling-feasibility requirements")
 })
 
 test_that("reviewer-facing subgroup diagnostics retain T4 support information", {

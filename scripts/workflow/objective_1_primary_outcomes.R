@@ -175,10 +175,28 @@ write_objective1_subgroup_contract_note <- function(output_dirs, dataset_name, p
 #' @param diagnostics Data frame of subgroup diagnostics.
 #' @param dataset_name Character dataset/cohort identifier.
 #' @param subgroup_surface Character subgroup output family.
-#' @return Diagnostics data frame with exploratory interpretation columns.
-annotate_objective1_subgroup_diagnostics <- function(diagnostics, dataset_name, subgroup_surface, reviewer_support = NULL) {
+#' @param outcome_key Optional Objective 1 outcome specification key.
+#' @return Diagnostics data frame with endpoint and interpretation metadata.
+annotate_objective1_subgroup_diagnostics <- function(
+    diagnostics,
+    dataset_name,
+    subgroup_surface,
+    reviewer_support = NULL,
+    outcome_key = NULL
+) {
     if (is.null(diagnostics) || !is.data.frame(diagnostics)) {
         return(diagnostics)
+    }
+    if (!is.null(outcome_key)) {
+        spec <- get_objective1_subgroup_outcome_spec(outcome_key)
+        diagnostics$outcome_key <- outcome_key
+        diagnostics$outcome <- spec$outcome
+        diagnostics$endpoint_type <- spec$endpoint_type
+        diagnostics$model_family <- spec$model_family
+        diagnostics$effect_measure <- spec$effect_measure
+        diagnostics$time_variable <- spec$time_var
+        diagnostics$event_variable <- spec$event_var
+        diagnostics$estimand <- spec$estimand
     }
     sparse_note <- if (grepl("gksrs", dataset_name %||% "", ignore.case = TRUE)) {
         "GKSRS-only subgroup surface is sparse-support characterization; avoid confirmatory interaction language."
@@ -212,11 +230,84 @@ annotate_objective1_subgroup_diagnostics <- function(diagnostics, dataset_name, 
     diagnostics
 }
 
+#' Ensure a subgroup diagnostic workbook always has an explicit result
+#'
+#' A cohort with fewer than two observed treatment arms cannot support a
+#' treatment-by-subgroup comparison. Record that analytic result instead of
+#' passing an empty list to the workbook writer.
+#'
+#' @param sheets Named list of diagnostic data frames.
+#' @param data Cohort analytic data.
+#' @param dataset_name Character dataset/cohort identifier.
+#' @param analysis_name Character diagnostic surface identifier.
+#' @return A non-empty named list of diagnostic data frames.
+finalize_objective1_subgroup_diagnostic_sheets <- function(
+    sheets,
+    data,
+    dataset_name,
+    analysis_name
+) {
+    non_null_sheets <- sheets[!vapply(sheets, is.null, logical(1))]
+    if (length(non_null_sheets) > 0) {
+        return(non_null_sheets)
+    }
+
+    observed_arms <- sort(unique(as.character(stats::na.omit(data$treatment_group))))
+    observed_label <- if (length(observed_arms) == 0) "none" else paste(observed_arms, collapse = ", ")
+    reason <- if (length(observed_arms) < 2) {
+        sprintf(
+            "Treatment-by-subgroup effects are not estimable because only one treatment arm was observed (%s).",
+            observed_label
+        )
+    } else {
+        paste(
+            "No treatment-by-subgroup effects met the modeling-feasibility requirements",
+            "after sparse-level exclusions; no estimates are reported."
+        )
+    }
+    list(
+        Analysis_Status = data.frame(
+            dataset_name = dataset_name,
+            analysis_name = analysis_name,
+            model_status = "NOT_ESTIMABLE",
+            observed_treatment_arms = observed_label,
+            reason = reason,
+            stringsAsFactors = FALSE
+        )
+    )
+}
+
+#' Run the centralized Objective 1 time-to-event subgroup contract
+#'
+#' @param data Cohort analytic data.
+#' @param subgroup_vars Character vector of subgroup variables.
+#' @param confounders Character vector of adjustment variables.
+#' @param dataset_name Character dataset/cohort identifier.
+#' @return Named list of subgroup results, one per configured outcome.
+run_objective1_time_to_event_subgroups <- function(
+    data,
+    subgroup_vars,
+    confounders,
+    dataset_name
+) {
+    lapply(OBJECTIVE1_SUBGROUP_OUTCOME_SPECS, function(spec) {
+        analyze_treatment_effect_subgroups_survival(
+            data = data,
+            time_var = spec$time_var,
+            event_var = spec$event_var,
+            subgroup_vars = subgroup_vars,
+            confounders = confounders,
+            outcome_name = spec$outcome,
+            dataset_name = dataset_name
+        )$subgroup_results
+    })
+}
+
 #' Run Objective 1: Primary Outcomes Analysis
 #'
 #' Performs comprehensive analysis of primary outcomes for uveal melanoma patients:
-#' - 1a: Local recurrence rates (binary outcome, post-treatment only)
-#' - 1b: Metastatic progression rates (binary outcome, post-treatment only)
+#' - 1a: Local recurrence (descriptive event support plus Cox time-to-event inference)
+#' - 1b: Metastatic progression (descriptive event support plus Cox time-to-event inference)
 #' - 1c: Overall survival analysis (time-to-event, Kaplan-Meier + Cox regression)
 #' - 1d: Progression-free survival (time-to-event, Kaplan-Meier + Cox regression)
 #' - 1e: Tumor height changes (continuous outcome, linear regression)
@@ -424,7 +515,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     )
 
     # 1d. Progression Free Survival (includes both progression AND death)
-    logger::log_info(formatted("Executing analyze_time_to_event_outcomes: Progression-free survival analysis (progression OR death)", indent = 1))
+    logger::log_info(formatted("Executing analyze_time_to_event_outcomes: Progression-free survival analysis (local recurrence, metastasis, or death)", indent = 1))
     pfs_analysis <- analyze_time_to_event_outcomes(
         data,
         time_var = "tt_pfs_months",
@@ -687,6 +778,12 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         }
     }
     consolidated_primary_path <- file.path(output_dirs$obj1_subgroup_primary, paste0(prefix, "primary_tumor_height_diagnostics.xlsx"))
+    primary_diagnostics_list <- finalize_objective1_subgroup_diagnostic_sheets(
+        sheets = primary_diagnostics_list,
+        data = data,
+        dataset_name = dataset_name,
+        analysis_name = "primary_tumor_height_subgroup_analysis"
+    )
     write_readable_xlsx(primary_diagnostics_list, consolidated_primary_path)
     logger::log_info(formatted(sprintf("Primary tumor height diagnostics written to %s with %d tabs", consolidated_primary_path, length(primary_diagnostics_list)), indent = 1))
 
@@ -727,6 +824,12 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         }
     }
     consolidated_sensitivity_path <- file.path(output_dirs$obj1_subgroup_sensitivity, paste0(prefix, "sensitivity_tumor_height_diagnostics.xlsx"))
+    sensitivity_diagnostics_list <- finalize_objective1_subgroup_diagnostic_sheets(
+        sheets = sensitivity_diagnostics_list,
+        data = data,
+        dataset_name = dataset_name,
+        analysis_name = "sensitivity_tumor_height_subgroup_analysis"
+    )
     write_readable_xlsx(sensitivity_diagnostics_list, consolidated_sensitivity_path)
     logger::log_info(formatted(sprintf("Sensitivity tumor height diagnostics written to %s with %d tabs", consolidated_sensitivity_path, length(sensitivity_diagnostics_list)), indent = 1))
 
@@ -737,26 +840,26 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     primary_outcomes_start_time <- Sys.time()
     logger::log_info(formatted("PRIMARY OUTCOMES SUBGROUP ANALYSIS", indent = 1))
 
-    # 1g1. Local Recurrence Subgroup Analysis
-    logger::log_info(formatted("Analyzing subgroup effects for Local Recurrence", indent = 1))
-    recurrence_subgroup_analysis <- analyze_treatment_effect_subgroups_binary(
+    outcome_subgroup_results <- run_objective1_time_to_event_subgroups(
         data = data,
-        outcome_var = "recurrence1",
         subgroup_vars = cohort_subgroup_vars,
         confounders = confounders,
-        outcome_name = "Local Recurrence",
         dataset_name = dataset_name
     )
-    recurrence_subgroup_results <- recurrence_subgroup_analysis$subgroup_results
+    recurrence_subgroup_results <- outcome_subgroup_results$local_recurrence
+    mets_subgroup_results <- outcome_subgroup_results$metastatic_progression
+    os_subgroup_results <- outcome_subgroup_results$overall_survival
+    pfs_subgroup_results <- outcome_subgroup_results$progression_free_survival
 
     # Create forest plot for local recurrence
+    recurrence_spec <- get_objective1_subgroup_outcome_spec("local_recurrence")
     recurrence_forest_plot <- create_single_cohort_forest_plot(
         subgroup_results = recurrence_subgroup_results,
-        outcome_name = "Local Recurrence",
+        outcome_name = recurrence_spec$outcome,
         cohort_name = display_name,
         treatment_labels = TREATMENT_LABELS,
         variable_order = cohort_forest_variable_order,
-        effect_measure = "OR",
+        effect_measure = recurrence_spec$effect_measure,
         favours_labels = FAVOURS_LABELS,
         title = sprintf("Subgroup Analysis: Local Recurrence (%s)", display_name)
     )
@@ -769,26 +872,15 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     dev.off()
     logger::log_info(formatted("Local recurrence subgroup analysis completed", indent = 1))
 
-    # 1g2. Metastatic Progression Subgroup Analysis
-    logger::log_info(formatted("Analyzing subgroup effects for Metastatic Progression", indent = 1))
-    mets_subgroup_analysis <- analyze_treatment_effect_subgroups_binary(
-        data = data,
-        outcome_var = "mets_progression",
-        subgroup_vars = cohort_subgroup_vars,
-        confounders = confounders,
-        outcome_name = "Metastatic Progression",
-        dataset_name = dataset_name
-    )
-    mets_subgroup_results <- mets_subgroup_analysis$subgroup_results
-
     # Create forest plot for metastatic progression
+    mets_spec <- get_objective1_subgroup_outcome_spec("metastatic_progression")
     mets_forest_plot <- create_single_cohort_forest_plot(
         subgroup_results = mets_subgroup_results,
-        outcome_name = "Metastatic Progression",
+        outcome_name = mets_spec$outcome,
         cohort_name = display_name,
         treatment_labels = TREATMENT_LABELS,
         variable_order = cohort_forest_variable_order,
-        effect_measure = "OR",
+        effect_measure = mets_spec$effect_measure,
         favours_labels = FAVOURS_LABELS,
         title = sprintf("Subgroup Analysis: Metastatic Progression (%s)", display_name)
     )
@@ -801,27 +893,15 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     dev.off()
     logger::log_info(formatted("Metastatic progression subgroup analysis completed", indent = 1))
 
-    # 1g3. Overall Survival Subgroup Analysis
-    logger::log_info(formatted("Analyzing subgroup effects for Overall Survival", indent = 1))
-    os_subgroup_analysis <- analyze_treatment_effect_subgroups_survival(
-        data = data,
-        time_var = "tt_death_months",
-        event_var = "death_event",
-        subgroup_vars = cohort_subgroup_vars,
-        confounders = confounders,
-        outcome_name = "Overall Survival",
-        dataset_name = dataset_name
-    )
-    os_subgroup_results <- os_subgroup_analysis$subgroup_results
-
     # Create forest plot for overall survival
+    os_spec <- get_objective1_subgroup_outcome_spec("overall_survival")
     os_forest_plot <- create_single_cohort_forest_plot(
         subgroup_results = os_subgroup_results,
-        outcome_name = "Overall Survival",
+        outcome_name = os_spec$outcome,
         cohort_name = display_name,
         treatment_labels = TREATMENT_LABELS,
         variable_order = cohort_forest_variable_order,
-        effect_measure = "HR",
+        effect_measure = os_spec$effect_measure,
         favours_labels = FAVOURS_LABELS,
         title = sprintf("Subgroup Analysis: Overall Survival (%s)", display_name)
     )
@@ -834,67 +914,25 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     dev.off()
     logger::log_info(formatted("Overall survival subgroup analysis completed", indent = 1))
 
-    # 1g4. Progression-Free Survival Subgroup Analysis
-    logger::log_info(formatted("Analyzing subgroup effects for Progression-Free Survival", indent = 1))
-    pfs_subgroup_analysis <- analyze_treatment_effect_subgroups_survival(
-        data = data,
-        time_var = "tt_pfs_months",
-        event_var = "pfs_event",
-        subgroup_vars = cohort_subgroup_vars,
-        confounders = confounders,
-        outcome_name = "Progression-Free Survival",
-        dataset_name = dataset_name
-    )
-    pfs_subgroup_results <- pfs_subgroup_analysis$subgroup_results
-
     # Separate exploratory age-decade sensitivity: retain the displayed <63/≥63
     # forest-plot definition while assessing the existing ordered age bands.
     age_decade_subgroup_var <- "age_at_diagnosis_binned"
-    age_decade_results <- list(
-        local_recurrence = analyze_treatment_effect_subgroups_binary(
-            data = data,
-            outcome_var = "recurrence1",
-            subgroup_vars = age_decade_subgroup_var,
-            confounders = confounders,
-            outcome_name = "Local Recurrence",
-            dataset_name = dataset_name
-        )$subgroup_results,
-        metastatic_progression = analyze_treatment_effect_subgroups_binary(
-            data = data,
-            outcome_var = "mets_progression",
-            subgroup_vars = age_decade_subgroup_var,
-            confounders = confounders,
-            outcome_name = "Metastatic Progression",
-            dataset_name = dataset_name
-        )$subgroup_results,
-        overall_survival = analyze_treatment_effect_subgroups_survival(
-            data = data,
-            time_var = "tt_death_months",
-            event_var = "death_event",
-            subgroup_vars = age_decade_subgroup_var,
-            confounders = confounders,
-            outcome_name = "Overall Survival",
-            dataset_name = dataset_name
-        )$subgroup_results,
-        progression_free_survival = analyze_treatment_effect_subgroups_survival(
-            data = data,
-            time_var = "tt_pfs_months",
-            event_var = "pfs_event",
-            subgroup_vars = age_decade_subgroup_var,
-            confounders = confounders,
-            outcome_name = "Progression-Free Survival",
-            dataset_name = dataset_name
-        )$subgroup_results
+    age_decade_results <- run_objective1_time_to_event_subgroups(
+        data = data,
+        subgroup_vars = age_decade_subgroup_var,
+        confounders = confounders,
+        dataset_name = dataset_name
     )
     age_decade_diagnostics <- lapply(names(age_decade_results), function(outcome_key) {
         annotate_objective1_subgroup_diagnostics(
             diagnostics = create_forest_plot_diagnostics(
                 subgroup_results = age_decade_results[[outcome_key]],
-                effect_measure = if (outcome_key %in% c("local_recurrence", "metastatic_progression")) "OR" else "HR",
+                effect_measure = "HR",
                 variable_order = age_decade_subgroup_var
             ),
             dataset_name = dataset_name,
-            subgroup_surface = "age_decade_sensitivity"
+            subgroup_surface = "age_decade_sensitivity",
+            outcome_key = outcome_key
         )
     })
     names(age_decade_diagnostics) <- names(age_decade_results)
@@ -906,13 +944,14 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     logger::log_info(formatted(sprintf("Age-decade subgroup sensitivity written to %s", age_decade_path), indent = 1))
 
     # Create forest plot for progression-free survival
+    pfs_spec <- get_objective1_subgroup_outcome_spec("progression_free_survival")
     pfs_forest_plot <- create_single_cohort_forest_plot(
         subgroup_results = pfs_subgroup_results,
-        outcome_name = "Progression-Free Survival",
+        outcome_name = pfs_spec$outcome,
         cohort_name = display_name,
         treatment_labels = TREATMENT_LABELS,
         variable_order = cohort_forest_variable_order,
-        effect_measure = "HR",
+        effect_measure = pfs_spec$effect_measure,
         favours_labels = FAVOURS_LABELS,
         title = sprintf("Subgroup Analysis: Progression-Free Survival (%s)", display_name)
     )
@@ -979,30 +1018,20 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     }
 
     # FOREST PLOT DIAGNOSTICS COLLECTION
-    diagnostics_list[["local_recurrence"]] <- create_forest_plot_diagnostics(
-        subgroup_results = recurrence_subgroup_results,
-        effect_measure = "OR",
-        variable_order = cohort_forest_variable_order
-    )
-    diagnostics_list[["metastatic_progression"]] <- create_forest_plot_diagnostics(
-        subgroup_results = mets_subgroup_results,
-        effect_measure = "OR",
-        variable_order = cohort_forest_variable_order
-    )
-    diagnostics_list[["overall_survival"]] <- create_forest_plot_diagnostics(
-        subgroup_results = os_subgroup_results,
-        effect_measure = "HR",
-        variable_order = cohort_forest_variable_order
-    )
-    diagnostics_list[["progression_free_survival"]] <- create_forest_plot_diagnostics(
-        subgroup_results = pfs_subgroup_results,
-        effect_measure = "HR",
-        variable_order = cohort_forest_variable_order
-    )
+    diagnostics_list <- lapply(names(outcome_subgroup_results), function(outcome_key) {
+        spec <- get_objective1_subgroup_outcome_spec(outcome_key)
+        create_forest_plot_diagnostics(
+            subgroup_results = outcome_subgroup_results[[outcome_key]],
+            effect_measure = spec$effect_measure,
+            variable_order = cohort_forest_variable_order
+        )
+    })
+    names(diagnostics_list) <- names(outcome_subgroup_results)
 
     # Save forest plot diagnostics
     consolidated_forest_path <- file.path(output_dirs$obj1_forest_plots, paste0(prefix, "forest_plot_diagnostics.xlsx"))
-    diagnostics_list_no_interaction <- lapply(diagnostics_list, function(df) {
+    diagnostics_list_no_interaction <- lapply(names(diagnostics_list), function(outcome_key) {
+        df <- diagnostics_list[[outcome_key]]
         if (is.data.frame(df) && ("interaction_p" %in% names(df))) {
             df <- df[, setdiff(names(df), "interaction_p"), drop = FALSE]
         }
@@ -1010,9 +1039,11 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
             diagnostics = df,
             dataset_name = dataset_name,
             subgroup_surface = "primary_outcomes_forest_plots",
-            reviewer_support = reviewer_subgroup_support
+            reviewer_support = reviewer_subgroup_support,
+            outcome_key = outcome_key
         )
     })
+    names(diagnostics_list_no_interaction) <- names(diagnostics_list)
     diagnostics_list_no_interaction[["reviewer_subgroup_support_audit"]] <- reviewer_subgroup_support$audit
     write_readable_xlsx(diagnostics_list_no_interaction, consolidated_forest_path)
     logger::log_info(formatted(sprintf("Forest plot diagnostics written to %s with %d tabs", consolidated_forest_path, length(diagnostics_list)), indent = 1))
@@ -1033,6 +1064,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         pfs_5yr_capped = pfs_5yr_capped,
         height_changes = height_changes,
         primary_subgroup_results = primary_subgroup_results,
-        sensitivity_subgroup_results = sensitivity_subgroup_results
+        sensitivity_subgroup_results = sensitivity_subgroup_results,
+        outcome_subgroup_results = outcome_subgroup_results
     ))
 }

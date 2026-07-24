@@ -1327,8 +1327,7 @@ create_all_combined_forest_plots <- function(base_dir, cohort_names = c("full", 
 
                 # Create combined forest plot if both results are available
                 if (!is.null(full_results) && !is.null(restricted_results)) {
-                    # Determine effect measure
-                    effect_measure <- ifelse(outcome_key %in% c("overall_survival", "progression_free_survival"), "HR", "OR")
+                    effect_measure <- get_objective1_subgroup_outcome_spec(outcome_key)$effect_measure
 
                     # Create combined forest plot
                     combined_plot <- create_combined_forest_plot(
