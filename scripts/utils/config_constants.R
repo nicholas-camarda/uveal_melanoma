@@ -15,6 +15,7 @@ CONFIG_MODULES <- c(
     "modeling_policy.R",
     "gep_policy.R",
     "objective0_contracts.R",
+    "objective1_contracts.R",
     "labels_display.R"
 )
 

@@ -223,6 +223,40 @@ test_that("Objective 1 survival effect summaries separate modeled patients from 
     expect_true(all(cox_rows$n_outcome_non_missing == cox_rows$n_patients))
 })
 
+test_that("Objective 1 writes patient-level KM risk-set audit workbooks", {
+    test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective1_km_risk_set_audit")
+    output_dirs <- build_objective1_output_dirs(test_output_dir)
+
+    dir.create(test_output_dir, recursive = TRUE, showWarnings = FALSE)
+    for (dir_path in output_dirs) {
+        dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
+    }
+    withr::defer(unlink(test_output_dir, recursive = TRUE), envir = parent.frame())
+
+    analyze_time_to_event_outcomes(
+        data = create_test_dataset(),
+        time_var = "tt_death_months",
+        event_var = "death_event",
+        group_var = "treatment_group",
+        confounders = c("age_at_diagnosis", "sex"),
+        ylab = "Overall Survival Probability",
+        analysis_type = "post_treatment_only",
+        dataset_name = "test_cohort",
+        output_dirs = output_dirs,
+        prefix = "test_"
+    )
+
+    audit_path <- file.path(
+        output_dirs$obj1_os_km,
+        "test_overall_survival_probability_km_risk_set_audit.xlsx"
+    )
+    expect_true(file.exists(audit_path))
+    expect_setequal(
+        readxl::excel_sheets(audit_path),
+        c("Audit_Metadata", "Risk_Set_Counts", "Risk_Set_Members", "Patient_Endpoints", "Configured_Corrections")
+    )
+})
+
 test_that("Objective 1 diagnostics keep factor labels grouped before coefficients", {
     pipeline <- run_objective1_test(create_test_dataset(), output_tag = "objective1_diagnostics_ordering")
     withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())

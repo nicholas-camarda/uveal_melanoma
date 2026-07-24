@@ -1157,6 +1157,202 @@ fit_capped_cox_sensitivity <- function(data,
 #' @param output_dirs Output directories by analysis type
 #' @param prefix File prefix for outputs
 #' @return List with KM/cox outputs and diagnostics
+#' Compute a stable patient-level survival population fingerprint
+#'
+#' @param data Analytic data containing a stable patient identifier.
+#' @param time_var,event_var,group_var Survival endpoint column names.
+#' @return SHA-256 fingerprint of sorted patient, group, time, and event records.
+compute_survival_population_fingerprint <- function(data, time_var, event_var, group_var) {
+    id_col <- intersect(c("id", "study_id", "patient_id"), names(data))[1]
+    if (is.na(id_col)) {
+        stop("A stable patient identifier is required to fingerprint a survival population.", call. = FALSE)
+    }
+
+    required_cols <- c(id_col, time_var, event_var, group_var)
+    missing_cols <- setdiff(required_cols, names(data))
+    if (length(missing_cols) > 0) {
+        stop(sprintf(
+            "Cannot fingerprint survival population; missing columns: %s",
+            paste(missing_cols, collapse = ", ")
+        ), call. = FALSE)
+    }
+
+    canonical_records <- data %>%
+        dplyr::filter(
+            !is.na(.data[[time_var]]),
+            !is.na(.data[[event_var]]),
+            !is.na(.data[[group_var]]),
+            .data[[time_var]] >= 0
+        ) %>%
+        dplyr::transmute(
+            patient_id = as.character(.data[[id_col]]),
+            analysis_group = as.character(.data[[group_var]]),
+            analysis_time = sprintf("%.12f", as.numeric(.data[[time_var]])),
+            event_status = as.integer(.data[[event_var]])
+        ) %>%
+        dplyr::arrange(.data$patient_id, .data$analysis_group, .data$analysis_time, .data$event_status)
+
+    record_lines <- apply(canonical_records, 1, paste, collapse = "|")
+    digest::digest(paste(record_lines, collapse = "\n"), algo = "sha256", serialize = FALSE)
+}
+
+#' Enforce an approved survival analysis-population contract
+#'
+#' Uncontracted datasets are left unchanged so reusable analysis functions and
+#' synthetic tests remain usable. Contracted production cohorts fail closed on
+#' any patient-level group, endpoint-time, or event-status drift.
+assert_survival_population_contract <- function(data,
+                                                dataset_name,
+                                                contracts = OBJECTIVE1_OS_POPULATION_CONTRACTS,
+                                                time_var = "tt_death_months",
+                                                event_var = "death_event",
+                                                group_var = "treatment_group") {
+    contract <- contracts %>%
+        dplyr::filter(
+            .data$dataset_name == .env$dataset_name,
+            .data$time_var == .env$time_var,
+            .data$event_var == .env$event_var,
+            .data$group_var == .env$group_var
+        )
+
+    if (nrow(contract) == 0) {
+        return(invisible(NULL))
+    }
+    if (nrow(contract) != 1) {
+        stop(sprintf("Expected one survival population contract for '%s'; found %d.", dataset_name, nrow(contract)), call. = FALSE)
+    }
+
+    eligible <- data %>%
+        dplyr::filter(
+            !is.na(.data[[time_var]]),
+            !is.na(.data[[event_var]]),
+            !is.na(.data[[group_var]]),
+            .data[[time_var]] >= 0
+        )
+    observed_fingerprint <- compute_survival_population_fingerprint(
+        eligible,
+        time_var = time_var,
+        event_var = event_var,
+        group_var = group_var
+    )
+    observed_n <- nrow(eligible)
+    observed_events <- sum(as.integer(eligible[[event_var]]), na.rm = TRUE)
+
+    matches <- identical(observed_fingerprint, contract$population_fingerprint[[1]]) &&
+        identical(as.integer(observed_n), as.integer(contract$n_patients[[1]])) &&
+        identical(as.integer(observed_events), as.integer(contract$n_events[[1]]))
+
+    if (!matches) {
+        stop(sprintf(
+            paste0(
+                "Survival population contract violation for '%s'. ",
+                "Expected n=%d, events=%d, fingerprint=%s; observed n=%d, events=%d, fingerprint=%s. ",
+                "Do not regenerate publication outputs until the patient-level drift is explained. ",
+                "Review the prior KM risk-set audit, then update the contract only with an explicit approval note."
+            ),
+            dataset_name,
+            contract$n_patients[[1]],
+            contract$n_events[[1]],
+            contract$population_fingerprint[[1]],
+            observed_n,
+            observed_events,
+            observed_fingerprint
+        ), call. = FALSE)
+    }
+
+    invisible(contract)
+}
+
+#' Build patient-level provenance for Kaplan-Meier risk-set counts
+#'
+#' @return Named list of tables suitable for a multi-sheet audit workbook.
+build_km_risk_set_audit <- function(data,
+                                    time_var,
+                                    event_var,
+                                    group_var,
+                                    time_points,
+                                    dataset_name = NULL) {
+    required_cols <- c(time_var, event_var, group_var)
+    missing_cols <- setdiff(required_cols, names(data))
+    if (length(missing_cols) > 0) {
+        stop(sprintf("Cannot build KM risk-set audit; missing columns: %s", paste(missing_cols, collapse = ", ")), call. = FALSE)
+    }
+
+    id_col <- intersect(c("id", "study_id", "patient_id"), names(data))[1]
+    audit_data <- data
+    if (is.na(id_col)) {
+        id_col <- ".analysis_row_id"
+        audit_data[[id_col]] <- seq_len(nrow(audit_data))
+    }
+
+    audit_data <- audit_data %>%
+        dplyr::filter(
+            !is.na(.data[[time_var]]),
+            !is.na(.data[[event_var]]),
+            !is.na(.data[[group_var]])
+        )
+    group_values <- if (is.factor(audit_data[[group_var]])) {
+        intersect(levels(audit_data[[group_var]]), unique(as.character(audit_data[[group_var]])))
+    } else {
+        unique(as.character(audit_data[[group_var]]))
+    }
+
+    risk_rows <- lapply(group_values, function(group_value) {
+        group_data <- audit_data[as.character(audit_data[[group_var]]) == group_value, , drop = FALSE]
+        lapply(time_points, function(time_point) {
+            at_risk <- group_data[group_data[[time_var]] >= time_point, , drop = FALSE]
+            member_ids <- as.character(at_risk[[id_col]])
+            member_ids <- member_ids[order(suppressWarnings(as.numeric(member_ids)), member_ids, na.last = TRUE)]
+            data.frame(
+                dataset_name = dataset_name %||% "unspecified_dataset",
+                group = group_value,
+                time_months = as.numeric(time_point),
+                n_at_risk = as.integer(nrow(at_risk)),
+                at_risk_ids = paste(member_ids, collapse = ", "),
+                stringsAsFactors = FALSE
+            )
+        })
+    })
+    risk_set_members <- dplyr::bind_rows(unlist(risk_rows, recursive = FALSE))
+    risk_set_counts <- risk_set_members %>% dplyr::select(-"at_risk_ids")
+
+    endpoint_cols <- unique(c(
+        id_col, group_var, time_var, event_var,
+        intersect(c(
+            "treatment_date", "dod", "last_known_alive_date", "last_known_alive_source",
+            "date_diagnosis", "initial_gk_date", "initial_plaque_date", "last_followup"
+        ), names(audit_data))
+    ))
+    patient_endpoints <- audit_data %>%
+        dplyr::select(dplyr::all_of(endpoint_cols)) %>%
+        dplyr::arrange(.data[[group_var]], .data[[id_col]])
+
+    configured_corrections <- if (exists("MANUAL_DATE_CORRECTIONS", inherits = TRUE)) {
+        get("MANUAL_DATE_CORRECTIONS", inherits = TRUE) %>%
+            dplyr::filter(as.character(.data$study_id) %in% as.character(audit_data[[id_col]]))
+    } else {
+        tibble::tibble(
+            study_id = character(), column_name = character(), corrected_value = as.Date(character()),
+            correction_reason = character(), confidence_tier = character(), supporting_columns = character()
+        )
+    }
+
+    list(
+        audit_metadata = tibble::tibble(
+            field = c("dataset_name", "patient_id_column", "time_variable", "event_variable", "group_variable", "analyzable_patients", "events", "population_fingerprint"),
+            value = c(
+                dataset_name %||% "unspecified_dataset", id_col, time_var, event_var, group_var,
+                as.character(nrow(audit_data)), as.character(sum(as.integer(audit_data[[event_var]]), na.rm = TRUE)),
+                if (id_col == ".analysis_row_id") "unavailable_without_stable_patient_id" else compute_survival_population_fingerprint(audit_data, time_var, event_var, group_var)
+            )
+        ),
+        risk_set_counts = risk_set_counts,
+        risk_set_members = risk_set_members,
+        patient_endpoints = patient_endpoints,
+        configured_corrections = configured_corrections
+    )
+}
+
 analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var = "treatment_group", model_group_var = group_var, confounders = NULL, ylab = "Survival Probability", analysis_type = "post_treatment_only", dataset_name = NULL, legend_labels = NULL, output_dirs = NULL, prefix = NULL, route_key = NULL, risk_table_height = 0.18, risk_table_rel_heights = c(0.78, 0.22), risk_table_y_expand = c(0.18, 0.18), saved_plot_height = NULL, allow_cox = TRUE, cox_skip_reason = NULL, cox_skip_narrative = NULL) {
     data <- normalize_treatment_group_data(data)
     plot_group_var <- group_var
@@ -1697,6 +1893,30 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         # Save the combined plot with dynamic height
         ggplot2::ggsave(km_path, combined_km, width = SURVIVAL_PLOT_WIDTH, height = plot_height, dpi = PLOT_DPI, bg = "white")
         logger::log_info(sprintf("KM plot (with risk table) saved: %s", km_path))
+
+        km_audit <- build_km_risk_set_audit(
+            data = fix_event_data,
+            time_var = time_var,
+            event_var = event_var,
+            group_var = plot_group_var,
+            time_points = x_breaks,
+            dataset_name = dataset_name
+        )
+        km_audit_path <- file.path(
+            km_dir,
+            paste0(prefix, make_filename_safe(ylab), "_km_risk_set_audit.xlsx")
+        )
+        write_readable_xlsx(
+            list(
+                Audit_Metadata = km_audit$audit_metadata,
+                Risk_Set_Counts = km_audit$risk_set_counts,
+                Risk_Set_Members = km_audit$risk_set_members,
+                Patient_Endpoints = km_audit$patient_endpoints,
+                Configured_Corrections = km_audit$configured_corrections
+            ),
+            path = km_audit_path
+        )
+        logger::log_info(sprintf("KM risk-set audit saved: %s", km_audit_path))
     }
 
     # Define time points (in months) for summary and RMST

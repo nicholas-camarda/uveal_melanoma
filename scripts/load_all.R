@@ -53,6 +53,7 @@ load_project_package("writexl") # For writing Excel files
 load_project_package("openxlsx") # For creating Excel workbooks with multiple sheets
 load_project_package("lubridate") # Date handling
 load_project_package("janitor") # Data cleaning
+load_project_package("digest") # Stable patient-level analysis-population fingerprints
 load_project_package("broom.helpers") # For broom helpers
 load_project_package("parameters") # For broom
 load_project_package("gtsummary") # Creating publication-ready tables

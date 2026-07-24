@@ -235,6 +235,14 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     step1_start_time <- Sys.time()
     display_name <- tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name)))
     log_phase(paste("STEP 1: PRIMARY OUTCOMES ANALYSIS", display_name, sep = " - "))
+    assert_survival_population_contract(
+        data = data,
+        dataset_name = dataset_name,
+        contracts = OBJECTIVE1_OS_POPULATION_CONTRACTS,
+        time_var = "tt_death_months",
+        event_var = "death_event",
+        group_var = "treatment_group"
+    )
     write_objective1_interpretation_note(output_dirs, dataset_name, prefix)
     write_objective1_subgroup_contract_note(output_dirs, dataset_name, prefix)
 
