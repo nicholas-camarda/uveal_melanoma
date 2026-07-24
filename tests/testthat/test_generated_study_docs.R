@@ -46,3 +46,23 @@ test_that("figure counts audit generator renders current-state runtime summary l
     expect_no_match(doc_text, "legacy figure")
     expect_no_match(doc_text, "5 replacements")
 })
+
+test_that("tool refresh suite writes its complete audit summary", {
+    source(here::here("scripts", "tools", "run_tool_refreshes.R"), local = TRUE)
+    output_dir <- tempfile("tool-refresh-suite-")
+    dir.create(output_dir, recursive = TRUE)
+    withr::defer(unlink(output_dir, recursive = TRUE, force = TRUE), envir = parent.frame())
+    original_processed_data_dir <- PROCESSED_DATA_DIR
+    PROCESSED_DATA_DIR <<- output_dir
+    withr::defer(
+        PROCESSED_DATA_DIR <<- original_processed_data_dir,
+        envir = parent.frame()
+    )
+
+    result <- suppressWarnings(run_tool_refresh_suite(output_dir = output_dir))
+    summary_text <- paste(readLines(result$txt_path, warn = FALSE), collapse = "\n")
+
+    expect_match(summary_text, "tool outputs:", fixed = TRUE)
+    expect_match(summary_text, "- derived_variables_documentation:", fixed = TRUE)
+    expect_match(summary_text, "- figure_counts_audit_doc:", fixed = TRUE)
+})

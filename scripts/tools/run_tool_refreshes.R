@@ -111,7 +111,7 @@ run_tool_refresh_suite <- function(
         sprintf("- %s: %s", row[["tool_name"]], paste(output_bits, collapse = "; "))
     })
 
-    writeLines(output_lines, suite_txt, append = TRUE)
+    write(output_lines, suite_txt, append = TRUE)
 
     invisible(list(
         suite_run_id = suite_run_id,
