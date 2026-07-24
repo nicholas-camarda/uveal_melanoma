@@ -79,8 +79,8 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         units = "months"
     ),
     tt_pfs_months = list(
-        description = "Progression-free survival time (recurrence OR death, whichever comes first)",
-        calculation = "pmin(tt_recurrence_months, tt_death_months, na.rm = FALSE)",
+        description = "Progression-free survival time (local recurrence, metastatic progression, or death, whichever comes first)",
+        calculation = "pmin(tt_recurrence_months, tt_mets_months, tt_death_months, na.rm = FALSE)",
         purpose = "Composite endpoint for progression-free survival analysis",
         data_type = "numeric",
         units = "months"
@@ -211,7 +211,7 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
     ),
     tt_pfs_months_analysis = list(
         description = "Progression-free survival for analysis (negative values preserved for Objective 0 hard-error validation)",
-        calculation = "pmin(tt_recurrence_months_analysis, tt_death_months_analysis, na.rm = FALSE)",
+        calculation = "pmin(tt_recurrence_months_analysis, tt_mets_months_analysis, tt_death_months_analysis, na.rm = FALSE)",
         purpose = "Analysis-ready variable for post-treatment survival models after Objective 0 chronology validation passes",
         data_type = "numeric",
         units = "months"
@@ -240,8 +240,8 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         units = "binary"
     ),
     pfs_event = list(
-        description = "Binary indicator for progression-free survival (1 = progression OR death, 0 = censored)",
-        calculation = "if_else(recurrence_event == 1 | death_event == 1, 1, 0)",
+        description = "Binary indicator for progression-free survival (1 = local recurrence, metastatic progression, or death; 0 = censored)",
+        calculation = "if_else(recurrence_event == 1 | mets_event == 1 | death_event == 1, 1, 0)",
         purpose = "Event indicator for progression-free survival analysis",
         data_type = "numeric",
         units = "binary"

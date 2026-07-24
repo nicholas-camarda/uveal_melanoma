@@ -316,8 +316,6 @@ outcome ~ treatment + age_at_diagnosis + sex + location
 
 | Outcome | Analysis Type | Location |
 |---------|---------------|----------|
-| **Local Recurrence** | Binary (yes/no) | Objective 1a |
-| **Metastatic Progression** | Binary (yes/no) | Objective 1b |
 | **Radiation Retinopathy** | Recorded toxicity burden by available follow-up | Objective 2b |
 | **Neovascular Glaucoma** | Recorded toxicity burden by available follow-up | Objective 2c |
 | **Serous Retinal Detachment (all recorded causes in the published implementation)** | Recorded toxicity burden by available follow-up | Objective 2d |
@@ -469,7 +467,7 @@ Evaluate whether treatment effects differ across patient subgroups defined by:
 
 **Method:** Stratified analysis with interaction testing
 
-The exploratory Objective 1 age subgroup uses the 63-year split. Age remains continuous in the adjusted treatment-effect models outside this subgroup display. The selected age representation is controlled by `OBJECTIVE1_AGE_SUBGROUP_VAR` in `scripts/config/modeling_policy.R`.
+The exploratory Objective 1 age subgroup uses the 63-year split. Age remains continuous in the adjusted treatment-effect models outside this subgroup display. The selected age representation is controlled by `OBJECTIVE1_AGE_SUBGROUP_VAR` in `scripts/config/modeling_policy.R`. Local recurrence, metastatic progression, overall survival, and progression-free survival subgroup effects are all estimated with Cox proportional-hazards models and reported as hazard ratios.
 
 **Steps:**
 1. Fit model within each subgroup
@@ -503,17 +501,13 @@ See [TECHNICAL.md](TECHNICAL.md#subgroup-filtering) for detailed subgroup filter
 - Overall pooled estimate
 - P-value for interaction
 
-**2. Subgroup Tables** (`*_subgroup_results.xlsx`)
-- Per-subgroup sample sizes
-- Event rates or means
-- Effect estimates with CI
-- P-values
+**2. Consolidated Diagnostic Workbooks**
+- `forest_plots/*_forest_plot_diagnostics.xlsx`
+- `tumor_height_primary/*_primary_tumor_height_diagnostics.xlsx`
+- `tumor_height_sensitivity/*_sensitivity_tumor_height_diagnostics.xlsx`
+- `*_age_decade_subgroup_sensitivity.xlsx`
 
-**3. Diagnostic Workbooks** (`*_subgroup_diagnostics.xlsx`)
-- Quality control metrics
-- Exclusion documentation
-- Missing data patterns
-- Statistical warnings
+The event-time sheets identify the outcome, endpoint type, Cox model family, hazard-ratio effect measure, time variable, event variable, and estimand. They also contain per-arm sample/event counts, effect estimates with confidence intervals, exclusions, and non-estimability reasons. When no subgroup effects are supportable, the workbook receives an explicit `Analysis_Status` sheet rather than remaining empty or failing.
 
 ### Interpretation Guidelines
 
