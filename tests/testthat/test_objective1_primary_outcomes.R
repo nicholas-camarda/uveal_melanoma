@@ -41,8 +41,8 @@ test_that("Objective 1 pipeline returns expected top-level analyses", {
     expect_true(file.exists(file.path(pipeline$output_dirs$obj1_pfs_cox, "test_progression_free_survival_probability_effect_summary.xlsx")))
 })
 
-test_that("reviewer-facing subgroup diagnostics record PRAME and T4 exclusions", {
-    pipeline <- run_objective1_test(create_test_dataset(), output_tag = "objective1_subgroup_reviewer_pruning")
+test_that("reviewer-facing subgroup diagnostics retain T4 support information", {
+    pipeline <- run_objective1_test(create_test_dataset(), output_tag = "objective1_subgroup_reviewer_support")
     withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
 
     diagnostics_files <- list.files(
@@ -54,21 +54,28 @@ test_that("reviewer-facing subgroup diagnostics record PRAME and T4 exclusions",
     expect_true(length(diagnostics_files) > 0)
 
     diagnostics <- purrr::map_dfr(diagnostics_files, function(path) {
-        sheets <- readxl::excel_sheets(path)
+        sheets <- setdiff(
+            readxl::excel_sheets(path),
+            "reviewer_subgroup_support_audit"
+        )
         purrr::map_dfr(sheets, ~ readxl::read_xlsx(path, sheet = .x))
     })
-    expect_true("reviewer_exclusion_note" %in% names(diagnostics))
+    expect_true("reviewer_support_note" %in% names(diagnostics))
     subgroup_levels <- if ("subgroup_level" %in% names(diagnostics)) diagnostics$subgroup_level else if ("level" %in% names(diagnostics)) diagnostics$level else character()
-    exclusion_notes <- if ("reviewer_exclusion_note" %in% names(diagnostics)) diagnostics$reviewer_exclusion_note else character()
-    expect_false(any(grepl("T4", subgroup_levels, fixed = TRUE) & is.na(exclusion_notes)))
-    expect_true(any(grepl("T4 excluded", exclusion_notes, fixed = TRUE)))
+    support_notes <- if ("reviewer_support_note" %in% names(diagnostics)) diagnostics$reviewer_support_note else character()
+    expect_false(any(grepl("T4", subgroup_levels, fixed = TRUE) & is.na(support_notes)))
+    expect_true(any(grepl("T4 is retained", support_notes, fixed = TRUE)))
 
-    audit_files <- diagnostics_files[purrr::map_lgl(diagnostics_files, ~ "reviewer_pruning_audit" %in% readxl::excel_sheets(.x))]
+    audit_files <- diagnostics_files[purrr::map_lgl(diagnostics_files, ~ "reviewer_subgroup_support_audit" %in% readxl::excel_sheets(.x))]
     expect_true(length(audit_files) > 0)
-    pruning_audit <- purrr::map_dfr(audit_files, ~ readxl::read_xlsx(.x, sheet = "reviewer_pruning_audit"))
-    expect_true(any(pruning_audit$subgroup_var == "gep12_prame_status"))
-    expect_true(any(pruning_audit$subgroup_var == "initial_t_stage_simple" & pruning_audit$excluded_level == "T4"))
-    expect_true(all(pruning_audit$excluded_n >= 0, na.rm = TRUE))
+    support_audit <- purrr::map_dfr(audit_files, ~ readxl::read_xlsx(.x, sheet = "reviewer_subgroup_support_audit"))
+    expect_true(any(support_audit$subgroup_var == "gep12_prame_status"))
+    expect_true(any(support_audit$subgroup_var == "initial_t_stage_simple" & support_audit$level == "T4"))
+    expect_true(all(support_audit$observed_n >= 0, na.rm = TRUE))
+    expect_true(any(
+        support_audit$level == "T4" &
+            grepl("retained in every reviewer-facing subgroup display", support_audit$reason, fixed = TRUE)
+    ))
 })
 
 test_that("Objective 1 KM plots cap display at SURVIVAL_XAXIS_MAX_MONTHS without log-rank p-values", {

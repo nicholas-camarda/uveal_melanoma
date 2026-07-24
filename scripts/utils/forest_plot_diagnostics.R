@@ -219,8 +219,12 @@ create_forest_plot_diagnostics <- function(subgroup_results, effect_measure = "H
                         ci_lower = row_data$ci_lower,
                         ci_upper = row_data$ci_upper,
                         p_value = row_data$p_value,
-                        status = "plotted",
-                        reason = "",
+                        status = if (isTRUE(var_data$modeled_continuously)) "continuous_interaction" else "plotted",
+                        reason = if (isTRUE(var_data$modeled_continuously)) {
+                            "Age entered as a numeric linear term; treatment effect evaluated at the cohort median."
+                        } else {
+                            ""
+                        },
                         other_variable_contents = "",
                         variable_order = var_index,
                         level_order = level_idx,

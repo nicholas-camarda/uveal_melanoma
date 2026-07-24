@@ -427,14 +427,13 @@ Within the first 5 years, GKSRS patients survived an average of 4.6 years compar
 
 **Layout:**
 ```
-Subgroup          n    Events   HR [95% CI]      Forest Plot    P-interact
-Overall          160     45     0.65 [0.45-0.95]     ♦             —
+Subgroup       PBT n/N  GKSRS n/N  HR [95% CI]      Forest Plot    P-interact
 Age
-  <60 years       70     18     0.55 [0.30-1.02]     ●——●
-  ≥60 years       90     27     0.72 [0.45-1.15]      ●——●          0.43
+  <63 years      8/45      7/45    0.55 [0.30-1.02]     ●——●
+  ≥63 years     12/55     11/55    0.72 [0.45-1.15]      ●——●          0.43
 Sex
-  Male            88     25     0.60 [0.35-1.03]    ●——●
-  Female          72     20     0.75 [0.42-1.35]      ●——●          0.58
+  Male           13/48     12/40    0.60 [0.35-1.03]    ●——●
+  Female          7/52      6/60    0.75 [0.42-1.35]      ●——●          0.58
 ```
 
 **Key Components:**
@@ -472,8 +471,8 @@ Sex
 **How to Read:**
 
 **Age Subgroup Example:**
-- **<60 years:** HR=0.55 (45% risk reduction)
-- **≥60 years:** HR=0.72 (28% risk reduction)
+- **<63 years:** HR=0.55 (45% risk reduction)
+- **≥63 years:** HR=0.72 (28% risk reduction)
 - **P-interact=0.43:** Difference not statistically significant
 - **Interpretation:** Treatment appears more effective in younger patients, but evidence is weak (could be chance)
 

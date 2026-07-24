@@ -176,7 +176,7 @@ write_objective1_subgroup_contract_note <- function(output_dirs, dataset_name, p
 #' @param dataset_name Character dataset/cohort identifier.
 #' @param subgroup_surface Character subgroup output family.
 #' @return Diagnostics data frame with exploratory interpretation columns.
-annotate_objective1_subgroup_diagnostics <- function(diagnostics, dataset_name, subgroup_surface, reviewer_pruning = NULL) {
+annotate_objective1_subgroup_diagnostics <- function(diagnostics, dataset_name, subgroup_surface, reviewer_support = NULL) {
     if (is.null(diagnostics) || !is.data.frame(diagnostics)) {
         return(diagnostics)
     }
@@ -188,11 +188,11 @@ annotate_objective1_subgroup_diagnostics <- function(diagnostics, dataset_name, 
     diagnostics$analysis_role <- "exploratory_support"
     diagnostics$subgroup_surface <- subgroup_surface
     diagnostics$interpretation_note <- sparse_note
-    diagnostics$reviewer_exclusion_note <- NA_character_
-    diagnostics$reviewer_excluded_level <- NA_character_
-    diagnostics$reviewer_excluded_n <- NA_integer_
+    diagnostics$reviewer_support_note <- NA_character_
+    diagnostics$reviewer_support_level <- NA_character_
+    diagnostics$reviewer_support_n <- NA_integer_
 
-    if (!is.null(reviewer_pruning)) {
+    if (!is.null(reviewer_support)) {
         variable_col <- if ("variable" %in% names(diagnostics)) {
             "variable"
         } else if ("subgroup_variable" %in% names(diagnostics)) {
@@ -203,9 +203,9 @@ annotate_objective1_subgroup_diagnostics <- function(diagnostics, dataset_name, 
         if (!is.null(variable_col)) {
             t4_mask <- diagnostics[[variable_col]] == "initial_t_stage_simple"
             if (any(t4_mask, na.rm = TRUE)) {
-                diagnostics$reviewer_exclusion_note[t4_mask] <- "T4 excluded from reviewer-facing subgroup displays due to sparse and inconsistent support."
-                diagnostics$reviewer_excluded_level[t4_mask] <- "T4"
-                diagnostics$reviewer_excluded_n[t4_mask] <- reviewer_pruning$t4_excluded_n
+                diagnostics$reviewer_support_note[t4_mask] <- "T4 is retained in every subgroup display; each outcome-specific treatment effect is shown when estimable and otherwise labeled not estimable."
+                diagnostics$reviewer_support_level[t4_mask] <- "T4"
+                diagnostics$reviewer_support_n[t4_mask] <- reviewer_support$t4_n
             }
         }
     }
@@ -220,7 +220,7 @@ annotate_objective1_subgroup_diagnostics <- function(diagnostics, dataset_name, 
 #' - 1c: Overall survival analysis (time-to-event, Kaplan-Meier + Cox regression)
 #' - 1d: Progression-free survival (time-to-event, Kaplan-Meier + Cox regression)
 #' - 1e: Tumor height changes (continuous outcome, linear regression)
-#' - 1f: Subgroup analyses by age (<=65 vs >65) and sex (Female vs Male)
+#' - 1f: Exploratory subgroup analyses by patient and tumor characteristics
 #'
 #' All analyses adjust for confounders: age_at_diagnosis, sex, location, initial_t_stage,
 #' initial_tumor_height, initial_tumor_diameter, biopsy1_gep, optic_nerve
@@ -263,7 +263,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     if (length(cohort_forest_variable_order) == 0) {
         cohort_forest_variable_order <- FOREST_PLOT_VARIABLE_ORDER
     }
-    reviewer_subgroup_pruning <- build_reviewer_subgroup_pruning_audit(data)
+    reviewer_subgroup_support <- build_reviewer_subgroup_support_audit(data)
 
     # Display the confounders that will be used for statistical adjustment
     logger::log_info(formatted(
@@ -681,7 +681,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
                 diagnostics = df_out,
                 dataset_name = dataset_name,
                 subgroup_surface = "tumor_height_primary",
-                reviewer_pruning = reviewer_subgroup_pruning
+                reviewer_support = reviewer_subgroup_support
             )
             primary_diagnostics_list[[tab_name]] <- df_out
         }
@@ -721,7 +721,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
                 diagnostics = df_out,
                 dataset_name = dataset_name,
                 subgroup_surface = "tumor_height_sensitivity",
-                reviewer_pruning = reviewer_subgroup_pruning
+                reviewer_support = reviewer_subgroup_support
             )
             sensitivity_diagnostics_list[[tab_name]] <- df_out
         }
@@ -847,6 +847,64 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     )
     pfs_subgroup_results <- pfs_subgroup_analysis$subgroup_results
 
+    # Separate exploratory age-decade sensitivity: retain the displayed <63/≥63
+    # forest-plot definition while assessing the existing ordered age bands.
+    age_decade_subgroup_var <- "age_at_diagnosis_binned"
+    age_decade_results <- list(
+        local_recurrence = analyze_treatment_effect_subgroups_binary(
+            data = data,
+            outcome_var = "recurrence1",
+            subgroup_vars = age_decade_subgroup_var,
+            confounders = confounders,
+            outcome_name = "Local Recurrence",
+            dataset_name = dataset_name
+        )$subgroup_results,
+        metastatic_progression = analyze_treatment_effect_subgroups_binary(
+            data = data,
+            outcome_var = "mets_progression",
+            subgroup_vars = age_decade_subgroup_var,
+            confounders = confounders,
+            outcome_name = "Metastatic Progression",
+            dataset_name = dataset_name
+        )$subgroup_results,
+        overall_survival = analyze_treatment_effect_subgroups_survival(
+            data = data,
+            time_var = "tt_death_months",
+            event_var = "death_event",
+            subgroup_vars = age_decade_subgroup_var,
+            confounders = confounders,
+            outcome_name = "Overall Survival",
+            dataset_name = dataset_name
+        )$subgroup_results,
+        progression_free_survival = analyze_treatment_effect_subgroups_survival(
+            data = data,
+            time_var = "tt_pfs_months",
+            event_var = "pfs_event",
+            subgroup_vars = age_decade_subgroup_var,
+            confounders = confounders,
+            outcome_name = "Progression-Free Survival",
+            dataset_name = dataset_name
+        )$subgroup_results
+    )
+    age_decade_diagnostics <- lapply(names(age_decade_results), function(outcome_key) {
+        annotate_objective1_subgroup_diagnostics(
+            diagnostics = create_forest_plot_diagnostics(
+                subgroup_results = age_decade_results[[outcome_key]],
+                effect_measure = if (outcome_key %in% c("local_recurrence", "metastatic_progression")) "OR" else "HR",
+                variable_order = age_decade_subgroup_var
+            ),
+            dataset_name = dataset_name,
+            subgroup_surface = "age_decade_sensitivity"
+        )
+    })
+    names(age_decade_diagnostics) <- names(age_decade_results)
+    age_decade_path <- file.path(
+        dirname(output_dirs$obj1_forest_plots),
+        paste0(prefix, "age_decade_subgroup_sensitivity.xlsx")
+    )
+    write_readable_xlsx(age_decade_diagnostics, age_decade_path)
+    logger::log_info(formatted(sprintf("Age-decade subgroup sensitivity written to %s", age_decade_path), indent = 1))
+
     # Create forest plot for progression-free survival
     pfs_forest_plot <- create_single_cohort_forest_plot(
         subgroup_results = pfs_subgroup_results,
@@ -952,10 +1010,10 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
             diagnostics = df,
             dataset_name = dataset_name,
             subgroup_surface = "primary_outcomes_forest_plots",
-            reviewer_pruning = reviewer_subgroup_pruning
+            reviewer_support = reviewer_subgroup_support
         )
     })
-    diagnostics_list_no_interaction[["reviewer_pruning_audit"]] <- reviewer_subgroup_pruning$audit
+    diagnostics_list_no_interaction[["reviewer_subgroup_support_audit"]] <- reviewer_subgroup_support$audit
     write_readable_xlsx(diagnostics_list_no_interaction, consolidated_forest_path)
     logger::log_info(formatted(sprintf("Forest plot diagnostics written to %s with %d tabs", consolidated_forest_path, length(diagnostics_list)), indent = 1))
 

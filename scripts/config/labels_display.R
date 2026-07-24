@@ -133,9 +133,6 @@ LEGACY_CUTOFFS <- list(
     initial_tumor_diameter = 11.0 # Diameter cutoff for small vs large tumors (median-based)
 )
 
-# Dedicated cutoff for general population median age dichotomization (~63 years)
-GENERAL_POP_MEDIAN_AGE_CUTOFF <- 63
-
 # Variables to include in baseline characteristics tables
 BASELINE_VARIABLES_TO_SUMMARIZE <- c(
     # Demographics
@@ -190,9 +187,7 @@ SURVIVAL_PLOT_SCALE <- 1.4 # Scale factor for survival plots
 
 # Variable order for forest plots and subgroup analyses
 FOREST_PLOT_VARIABLE_ORDER <- c(
-    # "age_at_diagnosis_binned", 
-    "age_at_diagnosis_general_pop_median",
-    "sex", "location",
+    OBJECTIVE1_AGE_SUBGROUP_VAR, "sex", "location",
     "initial_t_stage_simple", # "initial_t_stage",
     "gep_class_simple", # gep_class_simple is just Class 1 vs Class 2
     # "initial_tumor_height", "initial_tumor_diameter", 
@@ -202,7 +197,7 @@ FOREST_PLOT_VARIABLE_ORDER <- c(
 
 # This is used to map variable names to display names for forest plots
 FORESTPLOT_NAME_MAPPING <- list(
-    "age_at_diagnosis" = "Age at Diagnosis",
+    "age_at_diagnosis" = "Age at Diagnosis (continuous)",
     "age_at_diagnosis_binned" = "Age at Diagnosis",
     "age_at_diagnosis_general_pop_median" = "Age at Diagnosis",
     "sex" = "Sex",

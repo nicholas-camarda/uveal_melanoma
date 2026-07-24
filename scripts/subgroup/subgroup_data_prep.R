@@ -71,30 +71,12 @@ get_subgroup_levels <- function(var_name) {
     }
 }
 
-#' Drop reviewer-excluded sparse subgroup levels
-#'
-#' @param data Data frame.
-#' @param subgroup_var Character subgroup variable.
-#' @return List with filtered `data` and integer `reviewer_excluded_n`.
-drop_reviewer_excluded_subgroup_levels <- function(data, subgroup_var) {
-    if (!subgroup_var %in% names(data)) {
-        return(list(data = data, reviewer_excluded_n = 0L))
-    }
-    if (identical(subgroup_var, "initial_t_stage_simple")) {
-        t4_mask <- !is.na(data[[subgroup_var]]) & data[[subgroup_var]] == "T4"
-        reviewer_excluded_n <- sum(t4_mask)
-        data_filtered <- data %>% dplyr::filter(is.na(.data[[subgroup_var]]) | .data[[subgroup_var]] != "T4")
-        return(list(data = data_filtered, reviewer_excluded_n = as.integer(reviewer_excluded_n)))
-    }
-    list(data = data, reviewer_excluded_n = 0L)
-}
-
-#' Build reviewer-facing subgroup pruning audit counts
+#' Build reviewer-facing subgroup support audit counts
 #'
 #' @param data Cohort analytic data frame.
-#' @return List with excluded counts and audit data frame.
-build_reviewer_subgroup_pruning_audit <- function(data) {
-    t4_excluded_n <- if ("initial_t_stage_simple" %in% names(data)) {
+#' @return List with T4 counts and audit data frame.
+build_reviewer_subgroup_support_audit <- function(data) {
+    t4_n <- if ("initial_t_stage_simple" %in% names(data)) {
         sum(!is.na(data$initial_t_stage_simple) & data$initial_t_stage_simple == "T4", na.rm = TRUE)
     } else {
         0L
@@ -105,15 +87,15 @@ build_reviewer_subgroup_pruning_audit <- function(data) {
         0L
     }
     list(
-        t4_excluded_n = as.integer(t4_excluded_n),
+        t4_n = as.integer(t4_n),
         prame_excluded_n = as.integer(prame_excluded_n),
         audit = data.frame(
             subgroup_var = c("gep12_prame_status", "initial_t_stage_simple"),
-            excluded_level = c("PRAME local-recurrence subgroup surface", "T4"),
-            excluded_n = c(prame_excluded_n, t4_excluded_n),
+            level = c("PRAME local-recurrence subgroup surface", "T4"),
+            observed_n = c(prame_excluded_n, t4_n),
             reason = c(
                 "PRAME local-recurrence reviewer-facing subgroup display removed because event support is inadequate.",
-                "T4 reviewer-facing subgroup display removed because support is sparse and inconsistent."
+                "T4 is retained in every reviewer-facing subgroup display; each outcome-specific treatment effect is shown when estimable and otherwise labeled not estimable."
             ),
             stringsAsFactors = FALSE
         )
@@ -128,18 +110,64 @@ build_reviewer_subgroup_pruning_audit <- function(data) {
 #' @return List with processed data and metadata
 process_subgroup_data <- function(data, subgroup_var, confounders, include_baseline_height = FALSE) {
     if (!subgroup_var %in% names(data)) stop(sprintf("Variable '%s' not found in data", subgroup_var))
-    reviewer_exclusion <- drop_reviewer_excluded_subgroup_levels(data, subgroup_var)
-    data <- reviewer_exclusion$data
-    reviewer_excluded_n <- reviewer_exclusion$reviewer_excluded_n
+    data <- normalize_treatment_group_data(data)
+    observed_treatments <- unique(as.character(stats::na.omit(data$treatment_group)))
+    unsupported_treatments <- setdiff(observed_treatments, TREATMENT_FACTOR_LEVELS)
+    if (length(unsupported_treatments) > 0) {
+        stop(sprintf(
+            "Unsupported treatment_group values in subgroup analysis: %s",
+            paste(unsupported_treatments, collapse = ", ")
+        ))
+    }
+    data$treatment_group <- factor(
+        as.character(data$treatment_group),
+        levels = TREATMENT_FACTOR_LEVELS
+    )
     data <- data %>% dplyr::filter(!is.na(.data[[subgroup_var]]))
     if (nrow(data) == 0) stop(sprintf("No data remaining after removing missing values for '%s'", subgroup_var))
-    confounders_to_use <- if (!is.null(confounders)) confounders[confounders != subgroup_var] else NULL
+    confounders_to_exclude <- subgroup_var
+    if (
+        exists("OBJECTIVE1_AGE_SUBGROUP_OPTIONS", inherits = TRUE) &&
+            subgroup_var %in% get("OBJECTIVE1_AGE_SUBGROUP_OPTIONS", inherits = TRUE)
+    ) {
+        confounders_to_exclude <- get("OBJECTIVE1_AGE_SUBGROUP_OPTIONS", inherits = TRUE)
+    }
+    confounders_to_use <- if (!is.null(confounders)) {
+        confounders[!confounders %in% confounders_to_exclude]
+    } else {
+        NULL
+    }
     if (include_baseline_height && !"initial_tumor_height" %in% confounders_to_use) confounders_to_use <- c(confounders_to_use, "initial_tumor_height")
     processed_data <- data
     was_continuous <- is.numeric(data[[subgroup_var]]) || is.integer(data[[subgroup_var]])
     is_categorical_factor <- is.factor(data[[subgroup_var]])
     cutoff_value <- NULL
-    if (was_continuous) {
+    continuous_reference_value <- NULL
+    modeled_continuously <- was_continuous &&
+        exists("CONTINUOUS_INTERACTION_SUBGROUP_VARS", inherits = TRUE) &&
+        subgroup_var %in% get("CONTINUOUS_INTERACTION_SUBGROUP_VARS", inherits = TRUE)
+    if (modeled_continuously) {
+        continuous_reference_value <- if (
+            identical(subgroup_var, "age_at_diagnosis") &&
+                exists("OBJECTIVE1_AGE_REFERENCE_VALUE", inherits = TRUE)
+        ) {
+            get("OBJECTIVE1_AGE_REFERENCE_VALUE", inherits = TRUE)
+        } else {
+            stats::median(data[[subgroup_var]], na.rm = TRUE)
+        }
+        subgroup_var_to_use <- paste0(subgroup_var, "_centered")
+        processed_data[[subgroup_var_to_use]] <- data[[subgroup_var]] - continuous_reference_value
+        attr(processed_data[[subgroup_var_to_use]], "continuous_reference_value") <- continuous_reference_value
+        attr(processed_data[[subgroup_var_to_use]], "continuous_reference_unit") <- "years"
+        attr(processed_data[[subgroup_var_to_use]], "continuous_reference_label") <- if (
+            identical(subgroup_var, "age_at_diagnosis") &&
+                identical(continuous_reference_value, GENERAL_POP_MEDIAN_AGE_CUTOFF)
+        ) {
+            "general-population median"
+        } else {
+            "cohort median"
+        }
+    } else if (was_continuous) {
         # Check if a binned version already exists (e.g., age_at_diagnosis_binned)
         subgroup_var_binned <- paste0(subgroup_var, "_binned")
         if (subgroup_var_binned %in% names(data)) {
@@ -181,8 +209,9 @@ process_subgroup_data <- function(data, subgroup_var, confounders, include_basel
         subgroup_var_to_use = subgroup_var_to_use,
         confounders_to_use = confounders_to_use,
         was_continuous = was_continuous,
-        cutoff_value = cutoff_value,
-        reviewer_excluded_n = reviewer_excluded_n
+        modeled_continuously = modeled_continuously,
+        continuous_reference_value = continuous_reference_value,
+        cutoff_value = cutoff_value
     )
 }
 
@@ -235,6 +264,100 @@ count_subgroup_events_by_arm <- function(level_data, outcome_config) {
 fit_subgroup_model <- function(data, outcome_config, subgroup_var_to_use, confounders_to_use) {
     interaction_diagnostics <- list()
     interaction_p <- NA
+    if (is.numeric(data[[subgroup_var_to_use]]) || is.integer(data[[subgroup_var_to_use]])) {
+        continuous_reference_value <- attr(data[[subgroup_var_to_use]], "continuous_reference_value")
+        continuous_reference_unit <- attr(data[[subgroup_var_to_use]], "continuous_reference_unit") %||% "units"
+        continuous_reference_label <- attr(data[[subgroup_var_to_use]], "continuous_reference_label") %||% "reference value"
+        n_plaque <- sum(data$treatment_group == "PBT", na.rm = TRUE)
+        n_gksrs <- sum(data$treatment_group == "GKSRS", na.rm = TRUE)
+        interaction_diagnostics$modeled_continuously <- TRUE
+        interaction_diagnostics$scale <- paste("per", sub("s$", "", continuous_reference_unit))
+        interaction_diagnostics$reference_value <- continuous_reference_value
+        interaction_diagnostics$reference_label <- continuous_reference_label
+        interaction_diagnostics$level_statistics <- list()
+
+        event_counts <- count_subgroup_events_by_arm(data, outcome_config)
+        sample_ok <- n_plaque >= 2 && n_gksrs >= 2
+        events_ok <- outcome_config$type == "continuous" ||
+            (!is.null(event_counts$event_var) &&
+                !is.na(event_counts$plaque_events) &&
+                !is.na(event_counts$gksrs_events) &&
+                event_counts$plaque_events >= 1 &&
+                event_counts$gksrs_events >= 1)
+        if (!sample_ok || !events_ok) {
+            interaction_diagnostics$failure_reason <- paste(
+                c(
+                    if (!sample_ok) sprintf("Requires at least 2 patients per arm; observed PBT=%d, GKSRS=%d", n_plaque, n_gksrs),
+                    if (!events_ok) sprintf(
+                        "Requires at least 1 event per arm; observed PBT events=%s, GKSRS events=%s",
+                        ifelse(is.na(event_counts$plaque_events), "NA", event_counts$plaque_events),
+                        ifelse(is.na(event_counts$gksrs_events), "NA", event_counts$gksrs_events)
+                    )
+                ),
+                collapse = "; "
+            )
+            return(list(
+                model = NULL,
+                interaction_p = NA,
+                formula_used = NA,
+                interaction_diagnostics = interaction_diagnostics,
+                filtered_data = data,
+                modeled_continuously = TRUE
+            ))
+        }
+
+        confounders_str <- if (is.null(confounders_to_use) || length(confounders_to_use) == 0) "" else paste0(" + ", paste(confounders_to_use, collapse = " + "))
+        interaction_term <- paste0("treatment_group * ", subgroup_var_to_use)
+        if (outcome_config$type == "survival") {
+            formula_str <- paste0("Surv(", outcome_config$time_var, ", ", outcome_config$event_var, ") ~ ", interaction_term, confounders_str)
+            model <- tryCatch(coxph(as.formula(formula_str), data = data, model = TRUE), error = function(e) NULL)
+        } else if (outcome_config$type == "binary") {
+            formula_str <- paste0(outcome_config$outcome_var, " ~ ", interaction_term, confounders_str)
+            model <- tryCatch(glm(as.formula(formula_str), data = data, family = binomial()), error = function(e) NULL)
+        } else {
+            formula_str <- paste0(outcome_config$outcome_var, " ~ ", interaction_term, confounders_str)
+            model <- tryCatch(lm(as.formula(formula_str), data = data), error = function(e) NULL)
+        }
+        if (is.null(model)) {
+            interaction_diagnostics$failure_reason <- "Continuous interaction model fitting failed"
+            return(list(
+                model = NULL,
+                interaction_p = NA,
+                formula_used = formula_str,
+                interaction_diagnostics = interaction_diagnostics,
+                filtered_data = data,
+                modeled_continuously = TRUE
+            ))
+        }
+
+        attr(model, "subgroup_event_var") <- resolve_subgroup_event_count_variable(data, outcome_config)
+        attr(model, "continuous_reference_value") <- continuous_reference_value
+        attr(model, "continuous_reference_unit") <- continuous_reference_unit
+        attr(model, "continuous_reference_label") <- continuous_reference_label
+        interaction_coef_name <- get_interaction_coefficient_name(
+            model,
+            "treatment_group",
+            subgroup_var_to_use,
+            subgroup_level = NULL,
+            data
+        )
+        coefficient_table <- summary(model)$coefficients
+        if (!is.null(interaction_coef_name) && interaction_coef_name %in% rownames(coefficient_table)) {
+            p_column <- if (outcome_config$type == "continuous") "Pr(>|t|)" else "Pr(>|z|)"
+            interaction_p <- coefficient_table[interaction_coef_name, p_column]
+        } else {
+            interaction_diagnostics$failure_reason <- "Continuous treatment-by-age interaction coefficient was not found"
+        }
+        return(list(
+            model = model,
+            interaction_p = interaction_p,
+            formula_used = formula_str,
+            interaction_diagnostics = interaction_diagnostics,
+            filtered_data = data,
+            modeled_continuously = TRUE
+        ))
+    }
+
     valid_levels <- c()
     level_statistics <- list()
     subgroup_levels <- levels(data[[subgroup_var_to_use]])
@@ -367,6 +490,67 @@ fit_subgroup_model <- function(data, outcome_config, subgroup_var_to_use, confou
 #' @param original_var_name Original variable name
 #' @return Data frame of subgroup effects
 calculate_subgroup_effects <- function(model, data, subgroup_var_to_use, outcome_type, original_var_name) {
+    if (is.numeric(data[[subgroup_var_to_use]]) || is.integer(data[[subgroup_var_to_use]])) {
+        treatment_coef <- get_treatment_coefficient_name(model, "treatment_group", data)
+        if (is.null(treatment_coef)) {
+            return(data.frame())
+        }
+
+        coefficient <- stats::coef(model)[treatment_coef]
+        standard_error <- sqrt(stats::vcov(model)[treatment_coef, treatment_coef])
+        if (outcome_type == "continuous") {
+            treatment_effect <- coefficient
+            ci_lower <- coefficient - 1.96 * standard_error
+            ci_upper <- coefficient + 1.96 * standard_error
+            p_value <- summary(model)$coefficients[treatment_coef, "Pr(>|t|)"]
+        } else {
+            treatment_effect <- exp(coefficient)
+            ci_lower <- exp(coefficient - 1.96 * standard_error)
+            ci_upper <- exp(coefficient + 1.96 * standard_error)
+            p_value <- summary(model)$coefficients[treatment_coef, "Pr(>|z|)"]
+        }
+
+        outcome_config <- list(type = outcome_type)
+        if (outcome_type == "survival") {
+            outcome_config$event_var <- attr(model, "subgroup_event_var") %||% NULL
+        } else if (outcome_type == "binary") {
+            outcome_config$outcome_var <- attr(model, "subgroup_event_var") %||% NULL
+        }
+        event_counts <- count_subgroup_events_by_arm(data, outcome_config)
+        reference_value <- attr(model, "continuous_reference_value")
+        reference_unit <- attr(model, "continuous_reference_unit") %||% "units"
+        reference_name <- attr(model, "continuous_reference_label") %||% "reference value"
+        reference_label <- if (!is.null(reference_value) && is.finite(reference_value)) {
+            formatted_reference <- if (abs(reference_value - round(reference_value)) < .Machine$double.eps^0.5) {
+                sprintf("%.0f", reference_value)
+            } else {
+                sprintf("%.1f", reference_value)
+            }
+            if (identical(original_var_name, "age_at_diagnosis")) {
+                sprintf("At age %s %s (%s)", formatted_reference, reference_unit, reference_name)
+            } else {
+                sprintf("At %s %s (%s)", formatted_reference, reference_unit, reference_name)
+            }
+        } else {
+            "At the reference value"
+        }
+
+        return(data.frame(
+            subgroup_variable = original_var_name,
+            subgroup_level = reference_label,
+            n_total = nrow(data),
+            n_plaque = sum(data$treatment_group == "PBT", na.rm = TRUE),
+            n_gksrs = sum(data$treatment_group == "GKSRS", na.rm = TRUE),
+            events_plaque = event_counts$plaque_events,
+            events_gksrs = event_counts$gksrs_events,
+            treatment_effect = treatment_effect,
+            ci_lower = ci_lower,
+            ci_upper = ci_upper,
+            p_value = p_value,
+            stringsAsFactors = FALSE
+        ))
+    }
+
     subgroup_levels <- levels(data[[subgroup_var_to_use]])
     actual_levels <- unique(data[[subgroup_var_to_use]][!is.na(data[[subgroup_var_to_use]])])
     levels_to_process <- intersect(subgroup_levels, actual_levels)

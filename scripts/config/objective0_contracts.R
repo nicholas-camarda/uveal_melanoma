@@ -51,7 +51,6 @@ OBJECTIVE0_DOWNSTREAM_INPUT_CONTRACT <- tibble::tribble(
     ~objective_id, ~variable_name, ~variable_role, ~expected_domain, ~missing_policy, ~severity,
     "objective1", "treatment_group", "treatment exposure", "treatment_factor", "complete", "hard_error",
     "objective1", "age_at_diagnosis", "shared adjusted model covariate", "nonnegative_numeric", "complete", "hard_error",
-    "objective1", "age_at_diagnosis_general_pop_median", "shared adjusted model covariate", "present", "complete", "hard_error",
     "objective1", "sex", "shared adjusted model covariate", "sex_factor", "complete", "hard_error",
     "objective1", "location", "shared adjusted model covariate", "present", "complete", "hard_error",
     "objective1", "recurrence1", "local recurrence source endpoint", "yn_display", "complete", "hard_error",

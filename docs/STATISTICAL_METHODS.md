@@ -458,7 +458,7 @@ Model-facing factors use Objective 0 canonical levels or shared level-preserving
 ### Purpose
 
 Evaluate whether treatment effects differ across patient subgroups defined by:
-- Age groups
+- Age at diagnosis (<63 versus ≥63 years)
 - Sex
 - Tumor location
 - Tumor size categories
@@ -468,6 +468,8 @@ Evaluate whether treatment effects differ across patient subgroups defined by:
 ### Statistical Approach
 
 **Method:** Stratified analysis with interaction testing
+
+The exploratory Objective 1 age subgroup uses the 63-year split. Age remains continuous in the adjusted treatment-effect models outside this subgroup display. The selected age representation is controlled by `OBJECTIVE1_AGE_SUBGROUP_VAR` in `scripts/config/modeling_policy.R`.
 
 **Steps:**
 1. Fit model within each subgroup

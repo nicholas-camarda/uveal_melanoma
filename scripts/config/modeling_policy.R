@@ -37,13 +37,12 @@ SEX_FACTOR_LEVELS <- c("Female", "Male")
 # =============================================================================
 # CRITICAL: These variables define the statistical models for ALL analyses
 # - confounders: Variables adjusted for in ALL regression models (age, sex, location)
-# - subgroup_vars: Variables used for subgroup analyses (age, sex, location, tumor features)
+# - subgroup_vars: Variables used for subgroup analyses (sex, location, tumor features)
 # - continuous_subgroup_vars: Variables that need binning for categorical analysis
 # NOTE: Adding variables to confounders can cause perfect separation issues
 
-# Reviewer-response adjusted models keep age continuous to avoid reviewer-flagged
-# loss of information from dichotomization. Dichotomized age remains available for
-# descriptive and exploratory subgroup displays only.
+# Adjusted models use continuous age. The exploratory Objective 1 age subgroup
+# display is configured separately below.
 confounders <- c(
     "age_at_diagnosis", "sex", "location"
     # "internal_reflectivity",
@@ -61,15 +60,34 @@ confounders <- c(
 
 # These subgroup variables are exploratory display surfaces. They are not the
 # default adjusted-model covariate set for the reviewer-response analyses.
+GENERAL_POP_MEDIAN_AGE_CUTOFF <- 63
+OBJECTIVE1_AGE_REFERENCE_VALUE <- GENERAL_POP_MEDIAN_AGE_CUTOFF
+OBJECTIVE1_AGE_SUBGROUP_OPTIONS <- c(
+    "age_at_diagnosis",
+    "age_at_diagnosis_binned",
+    "age_at_diagnosis_general_pop_median"
+)
+OBJECTIVE1_AGE_SUBGROUP_VAR <- "age_at_diagnosis_general_pop_median"
+if (!OBJECTIVE1_AGE_SUBGROUP_VAR %in% OBJECTIVE1_AGE_SUBGROUP_OPTIONS) {
+    stop("OBJECTIVE1_AGE_SUBGROUP_VAR must name a supported age representation")
+}
+
 subgroup_vars <- c(
-    "age_at_diagnosis_general_pop_median", "sex", "location", "initial_t_stage_simple",
+    OBJECTIVE1_AGE_SUBGROUP_VAR, "sex", "location", "initial_t_stage_simple",
     #"initial_t_stage",
     "initial_tumor_height", "initial_tumor_diameter",
     "initial_overall_stage", "biopsy1_gep", "gep_class_simple", "optic_nerve"
 )
 
 # Define which subgroup variables are continuous and need binning
-continuous_subgroup_vars <- c("age_at_diagnosis", "initial_tumor_height", "initial_tumor_diameter")
+continuous_subgroup_vars <- c("initial_tumor_height", "initial_tumor_diameter")
+
+# The continuous interaction path is enabled automatically when continuous age
+# is selected as the Objective 1 age subgroup representation.
+CONTINUOUS_INTERACTION_SUBGROUP_VARS <- intersect(
+    "age_at_diagnosis",
+    OBJECTIVE1_AGE_SUBGROUP_VAR
+)
 
 # Define variables that are constant within specific cohorts and should be excluded from subgroup analysis
 # These variables have no variation within the specified cohort and cannot be used for subgroup analysis

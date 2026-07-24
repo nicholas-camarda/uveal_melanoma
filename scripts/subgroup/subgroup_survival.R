@@ -51,6 +51,7 @@ analyze_treatment_effect_subgroups_survival <- function(data, time_var, event_va
                             formula_used = NA,
                             confounders_used = processed$confounders_to_use,
                             was_continuous = processed$was_continuous,
+                            modeled_continuously = processed$modeled_continuously,
                             cutoff_value = processed$cutoff_value,
                             interaction_diagnostics = interaction_diagnostics,
                             sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics,
@@ -67,6 +68,7 @@ analyze_treatment_effect_subgroups_survival <- function(data, time_var, event_va
                             interaction_p = model_results$interaction_p, subgroup_effects = subgroup_effects, model = model_results$model,
                             subgroup_var_used = processed$subgroup_var_to_use, formula_used = model_results$formula_used,
                             confounders_used = processed$confounders_to_use, was_continuous = processed$was_continuous,
+                            modeled_continuously = processed$modeled_continuously,
                             cutoff_value = processed$cutoff_value, interaction_diagnostics = model_results$interaction_diagnostics,
                             sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics
                         )

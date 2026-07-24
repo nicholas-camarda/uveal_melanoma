@@ -391,7 +391,7 @@ age_at_diagnosis_binned = case_when(
 **Purpose:**
 
 - Mirror the CDC/SEER-reported U.S. median age (≈63 years) that clinicians use to quickly communicate “younger vs older” cohorts.
-- Provide a single binary covariate (`age_at_diagnosis_general_pop_median`) for subgroup plots and tables where finer-grained bins dilute signal.
+- Provide a binary field (`age_at_diagnosis_general_pop_median`) for cohort summaries and exploratory Objective 1 subgroup analyses.
 
 **Formula:**
 
@@ -411,9 +411,11 @@ age_at_diagnosis_general_pop_median = factor(
 
 **Key Details:**
 
-- `GENERAL_POP_MEDIAN_AGE_CUTOFF` is defined in `config_constants.R` and currently equals **63**; changing it there automatically updates the derived descriptive/subgroup field.
-- Output labels always render as “< 63 years” and “≥ 63 years” to match manuscript wording.
-- In the peer-review revision, adjusted treatment-effect models use continuous `age_at_diagnosis`; `age_at_diagnosis_general_pop_median` is retained for descriptive and exploratory subgroup displays only.
+- `GENERAL_POP_MEDIAN_AGE_CUTOFF` currently equals **63** and controls this descriptive field.
+- Output labels render as “< 63 years” and “≥ 63 years.”
+- Adjusted treatment-effect models use continuous `age_at_diagnosis`.
+- Objective 1 subgroup analyses use `age_at_diagnosis_general_pop_median`, producing separate treatment-effect estimates for the two age strata and one treatment-by-age interaction p-value.
+- `OBJECTIVE1_AGE_SUBGROUP_VAR` is the single policy setting for the Objective 1 age subgroup representation. Supported values are continuous age, the multilevel binned age field, and the 63-year split.
 
 ---
 

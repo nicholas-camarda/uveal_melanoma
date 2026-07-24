@@ -47,12 +47,29 @@ analyze_treatment_effect_subgroups_height <- function(data, subgroup_var, confou
             subgroup_var_used = processed$subgroup_var_to_use,
             formula_used = NA,
             confounders_used = processed$confounders_to_use,
+            modeled_continuously = processed$modeled_continuously,
             interaction_diagnostics = list(failure_reason = "No data after sparse-level exclusions"),
             sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics
         ))
     }
 
     model_results <- fit_subgroup_model(exclusion_result$data, outcome_config, processed$subgroup_var_to_use, processed$confounders_to_use)
+    if (is.null(model_results$model)) {
+        if (!is.null(model_results$interaction_diagnostics)) {
+            model_results$interaction_diagnostics$sparse_level_diagnostics <- exclusion_result$sparse_level_diagnostics
+        }
+        return(list(
+            interaction_p = NA,
+            subgroup_effects = data.frame(),
+            model = NULL,
+            subgroup_var_used = processed$subgroup_var_to_use,
+            formula_used = model_results$formula_used,
+            confounders_used = processed$confounders_to_use,
+            modeled_continuously = processed$modeled_continuously,
+            interaction_diagnostics = model_results$interaction_diagnostics,
+            sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics
+        ))
+    }
     data_for_effects <- if (!is.null(model_results$filtered_data)) model_results$filtered_data else exclusion_result$data
     subgroup_effects <- calculate_subgroup_effects(model_results$model, data_for_effects, processed$subgroup_var_to_use, outcome_config$type, subgroup_var)
     if (!is.null(model_results$interaction_diagnostics)) {
@@ -62,6 +79,7 @@ analyze_treatment_effect_subgroups_height <- function(data, subgroup_var, confou
         interaction_p = model_results$interaction_p, subgroup_effects = subgroup_effects, model = model_results$model,
         subgroup_var_used = processed$subgroup_var_to_use, formula_used = model_results$formula_used,
         confounders_used = processed$confounders_to_use, interaction_diagnostics = model_results$interaction_diagnostics,
+        modeled_continuously = processed$modeled_continuously,
         sparse_level_diagnostics = exclusion_result$sparse_level_diagnostics
     )
 }
