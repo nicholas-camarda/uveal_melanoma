@@ -34,6 +34,25 @@ test_that("portable CI installs rmda from its tracked upstream repository", {
     expect_false(grepl("any::rmda", workflow_text, fixed = TRUE))
 })
 
+test_that("required portable CI uses the verified frozen R environment", {
+    workflow_text <- paste(
+        readLines(here::here(".github", "workflows", "portable-tests.yml"), warn = FALSE),
+        collapse = "\n"
+    )
+
+    expect_match(workflow_text, 'r-version: "4.4.3"', fixed = TRUE)
+    expect_match(workflow_text, "use-public-rspm: false", fixed = TRUE)
+    expect_match(
+        workflow_text,
+        'cran: "https://packagemanager.posit.co/cran/__linux__/noble/2026-07-19"',
+        fixed = TRUE
+    )
+    expect_false(grepl(
+        "packagemanager\\.posit\\.co/cran/__linux__/noble/latest",
+        workflow_text
+    ))
+})
+
 test_that("lintr contract permits the repository's established mixed pipe syntax", {
     lintr_text <- paste(readLines(here::here(".lintr"), warn = FALSE), collapse = "\n")
 
