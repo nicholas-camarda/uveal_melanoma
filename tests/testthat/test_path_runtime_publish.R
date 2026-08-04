@@ -239,6 +239,72 @@ test_that("artifact registry allowlists only explicit publishable outputs", {
     expect_false(is_publishable_relative_artifact("04_GEP_Validation/unified_summary/full_cohort_simple_gep_validation_report.txt", "cohort"))
     expect_false(is_publishable_relative_artifact("04_GEP_Validation/a_metastasis_free_survival/05_summary_tables/full_cohort_mfs_validation_narrative_summary.txt", "cohort"))
     expect_true(is_publishable_relative_artifact("04_GEP_Validation/c_proportional_hazards_diagnostics/full_cohort_mfs_proportional_hazards_summary.txt", "cohort"))
+    expect_true(is_publishable_relative_artifact(
+        "01_Efficacy/h_propensity_score_sensitivity/restricted_cohort_propensity_overlap_summary.md",
+        "cohort"
+    ))
+    expect_false(is_publishable_relative_artifact(
+        "01_Efficacy/h_propensity_score_sensitivity/restricted_cohort_propensity_design_audit.rds",
+        "cohort"
+    ))
+    expect_false(is_publishable_relative_artifact(
+        "01_Efficacy/h_propensity_score_sensitivity/patient_weights.csv",
+        "cohort"
+    ))
+})
+
+test_that("propensity publication dry run includes six reader artifacts and excludes audit RDS", {
+    tmp_root <- tempfile("propensity-publish-dryrun-")
+    output_root <- file.path(tmp_root, "runtime", "Analysis")
+    export_root <- file.path(tmp_root, "export")
+    propensity_dir <- file.path(
+        output_root,
+        "uveal_restricted",
+        "01_Efficacy",
+        "h_propensity_score_sensitivity"
+    )
+    dir.create(propensity_dir, recursive = TRUE)
+    reader_basenames <- paste0(
+        "restricted_cohort_",
+        unname(OBJECTIVE1_PROPENSITY_ARTIFACT_BASENAMES[names(
+            OBJECTIVE1_PROPENSITY_ARTIFACT_BASENAMES
+        ) != "audit"])
+    )
+    audit_basename <- paste0(
+        "restricted_cohort_",
+        OBJECTIVE1_PROPENSITY_ARTIFACT_BASENAMES[["audit"]]
+    )
+    for (basename in c(reader_basenames, audit_basename)) {
+        writeLines("unit artifact", file.path(propensity_dir, basename))
+    }
+
+    old_output <- OUTPUT_DIR
+    old_merged <- MERGED_TABLES_DIR
+    old_export_root <- EXPORT_ROOT
+    old_export_analysis <- EXPORT_ANALYSIS_DIR
+    on.exit({
+        assign("OUTPUT_DIR", old_output, envir = .GlobalEnv)
+        assign("MERGED_TABLES_DIR", old_merged, envir = .GlobalEnv)
+        assign("EXPORT_ROOT", old_export_root, envir = .GlobalEnv)
+        assign("EXPORT_ANALYSIS_DIR", old_export_analysis, envir = .GlobalEnv)
+        unlink(tmp_root, recursive = TRUE, force = TRUE)
+    }, add = TRUE)
+    assign("OUTPUT_DIR", output_root, envir = .GlobalEnv)
+    assign("MERGED_TABLES_DIR", file.path(output_root, "merged_tables"), envir = .GlobalEnv)
+    assign("EXPORT_ROOT", export_root, envir = .GlobalEnv)
+    assign("EXPORT_ANALYSIS_DIR", file.path(export_root, "outputs"), envir = .GlobalEnv)
+
+    result <- publish_outputs(
+        cohorts = OBJECTIVE1_PROPENSITY_DATASET,
+        snapshot_id = "2026-08-04-propensity-unit",
+        include_merged_tables = FALSE,
+        dry_run = TRUE
+    )
+    would_copy <- result$manifest$source_path[result$manifest$status == "would_copy"]
+
+    expect_equal(result$summary$would_copy, 6L)
+    expect_setequal(basename(would_copy), reader_basenames)
+    expect_false(audit_basename %in% basename(would_copy))
 })
 
 test_that("publish_outputs dry run reports publishable outputs and excludes runtime artifacts", {

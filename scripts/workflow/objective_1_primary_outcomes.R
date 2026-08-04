@@ -569,6 +569,16 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         dataset_name = dataset_name
     )
 
+    propensity_sensitivity <- NULL
+    if (identical(dataset_name, OBJECTIVE1_PROPENSITY_DATASET)) {
+        propensity_sensitivity <- run_objective1_propensity_sensitivity(
+            data,
+            dataset_name,
+            output_dirs$obj1_propensity_sensitivity,
+            prefix
+        )
+    }
+
     # 1e. Tumor height changes
     logger::log_info(formatted("Executing analyze_tumor_height_changes: Primary and sensitivity tumor height analysis", indent = 1))
     height_changes <- analyze_tumor_height_changes(data, output_dirs, prefix, confounders)
@@ -1062,6 +1072,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
         os_5yr_capped = os_5yr_capped,
         pfs_analysis = pfs_analysis,
         pfs_5yr_capped = pfs_5yr_capped,
+        propensity_sensitivity = propensity_sensitivity,
         height_changes = height_changes,
         primary_subgroup_results = primary_subgroup_results,
         sensitivity_subgroup_results = sensitivity_subgroup_results,
