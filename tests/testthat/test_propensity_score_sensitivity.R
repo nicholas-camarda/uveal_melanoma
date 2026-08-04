@@ -17,14 +17,14 @@ create_propensity_test_data <- function(n_per_arm = 40L) {
         initial_tumor_height = 2 + ((arm_index * 11L) %% 70L) / 10,
         initial_tumor_diameter = 5 + ((arm_index * 13L) %% 130L) / 10,
         srf = factor(ifelse(arm_index %% 5L < 2L, "No", "Yes")),
-        tt_recurrence_months = seq(6, 85, length.out = n),
-        recurrence_event = rep(c(0L, 0L, 0L, 1L), length.out = n),
-        tt_mets_months = seq(7, 86, length.out = n),
-        mets_event = rep(c(0L, 0L, 1L), length.out = n),
-        tt_death_months = seq(8, 87, length.out = n),
-        death_event = rep(c(0L, 0L, 0L, 1L), length.out = n),
-        tt_pfs_months = seq(5, 84, length.out = n),
-        pfs_event = rep(c(0L, 1L), length.out = n)
+        tt_recurrence_months = 5 + arm_index * 2,
+        recurrence_event = as.integer(arm_index %% 4L == 0L),
+        tt_mets_months = 6 + arm_index * 2,
+        mets_event = as.integer(arm_index %% 3L == 0L),
+        tt_death_months = 7 + arm_index * 2,
+        death_event = as.integer(arm_index %% 4L == 1L),
+        tt_pfs_months = 4 + arm_index * 2,
+        pfs_event = as.integer(arm_index %% 2L == 0L)
     )
 }
 
@@ -174,5 +174,119 @@ test_that("propensity design rejects aliased required terms", {
     expect_error(
         fit_objective1_propensity_weights(prepared),
         "aliased or non-finite coefficients"
+    )
+})
+
+test_that("weighted endpoint models preserve order, direction, and one weight vector", {
+    prepared <- prepare_objective1_propensity_population(
+        create_propensity_test_data(),
+        "synthetic_restricted"
+    )
+    design <- fit_objective1_propensity_weights(prepared)
+    results <- fit_objective1_weighted_endpoints(design)
+
+    expect_identical(names(results$fits), names(OBJECTIVE1_SUBGROUP_OUTCOME_SPECS))
+    expect_identical(
+        results$weighted_cox_results$outcome_key,
+        names(OBJECTIVE1_SUBGROUP_OUTCOME_SPECS)
+    )
+    expect_true(all(results$weighted_cox_results$effect_measure == "HR"))
+    expect_true(all(results$weighted_cox_results$comparison == "GKSRS vs PBT"))
+    expect_true(all(results$weighted_cox_results$estimand == OBJECTIVE1_PROPENSITY_ESTIMAND))
+    expect_true(length(unique(results$weighted_cox_results$weight_fingerprint)) == 1L)
+    expect_identical(
+        unique(results$weighted_cox_results$weight_fingerprint),
+        design$weight_fingerprint
+    )
+    expect_true(all(vapply(results$fits, function(x) !is.null(x$model$naive.var), logical(1))))
+    expect_true(all(vapply(
+        results$fits,
+        function(x) identical(names(stats::coef(x$model)), "treatment_groupGKSRS"),
+        logical(1)
+    )))
+})
+
+test_that("weighted endpoint rows use the canonical schema and valid PH diagnostics", {
+    prepared <- prepare_objective1_propensity_population(
+        create_propensity_test_data(),
+        "synthetic_restricted"
+    )
+    design <- fit_objective1_propensity_weights(prepared)
+    results <- fit_objective1_weighted_endpoints(design)
+
+    expect_identical(
+        names(results$weighted_cox_results),
+        c(
+            "outcome_key", "outcome", "time_var", "event_var", "endpoint_estimand",
+            "model_family", "effect_measure", "comparison", "estimand", "weight_method",
+            "n", "events", "pbt_n", "pbt_events", "gksrs_n", "gksrs_events",
+            "weighted_ess_total", "weighted_ess_pbt", "weighted_ess_gksrs",
+            "estimate", "conf_low", "conf_high", "p_value", "ph_global_p",
+            "weight_fingerprint", "status", "interpretation"
+        )
+    )
+    expect_true(all(results$weighted_cox_results$status == "estimated"))
+    expect_true(all(results$weighted_cox_results$estimate > 0))
+    expect_true(all(results$weighted_cox_results$conf_low > 0))
+    expect_true(all(results$weighted_cox_results$conf_high > 0))
+    expect_setequal(unique(results$ph_diagnostics$term), c("treatment_group", "GLOBAL"))
+    expect_true(all(results$ph_diagnostics$status == "tested"))
+})
+
+test_that("weighted endpoint arm counts are named and row-order invariant", {
+    data <- create_propensity_test_data()
+    data <- data[rev(seq_len(nrow(data))), , drop = FALSE]
+    prepared <- prepare_objective1_propensity_population(data, "synthetic_restricted")
+    design <- fit_objective1_propensity_weights(prepared)
+    results <- fit_objective1_weighted_endpoints(design)
+
+    for (outcome_key in names(OBJECTIVE1_SUBGROUP_OUTCOME_SPECS)) {
+        spec <- OBJECTIVE1_SUBGROUP_OUTCOME_SPECS[[outcome_key]]
+        row <- results$weighted_cox_results %>%
+            dplyr::filter(.data$outcome_key == .env$outcome_key)
+        expect_equal(
+            row$pbt_n,
+            sum(design$data$treatment_group == TREATMENT_REFERENCE_LEVEL)
+        )
+        expect_equal(
+            row$gksrs_n,
+            sum(design$data$treatment_group == TREATMENT_COMPARISON_LEVEL)
+        )
+        expect_equal(
+            row$pbt_events,
+            sum(
+                design$data[[spec$event_var]][
+                    design$data$treatment_group == TREATMENT_REFERENCE_LEVEL
+                ]
+            )
+        )
+        expect_equal(
+            row$gksrs_events,
+            sum(
+                design$data[[spec$event_var]][
+                    design$data$treatment_group == TREATMENT_COMPARISON_LEVEL
+                ]
+            )
+        )
+    }
+})
+
+test_that("weighted endpoint support derives competing deaths for recurrence and metastasis", {
+    prepared <- prepare_objective1_propensity_population(
+        create_propensity_test_data(),
+        "synthetic_restricted"
+    )
+    design <- fit_objective1_propensity_weights(prepared)
+    results <- fit_objective1_weighted_endpoints(design)
+    support <- results$endpoint_support %>%
+        dplyr::filter(.data$outcome_key %in% c("local_recurrence", "metastatic_progression"))
+
+    expect_true(all(c(
+        "competing_deaths", "pbt_competing_deaths", "gksrs_competing_deaths"
+    ) %in% names(support)))
+    expect_true(all(support$competing_deaths >= 0))
+    expect_equal(
+        support$competing_deaths,
+        support$pbt_competing_deaths + support$gksrs_competing_deaths
     )
 })

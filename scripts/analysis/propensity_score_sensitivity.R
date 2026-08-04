@@ -357,3 +357,267 @@ fit_objective1_propensity_weights <- function(prepared_population) {
         population = prepared_population
     )
 }
+
+#' Validate one weighted endpoint population
+#'
+#' @param data Weighted propensity design data.
+#' @param dataset_name Dataset identifier.
+#' @param outcome_key Named Objective 1 endpoint key.
+#' @param spec Objective 1 endpoint specification.
+#' @return Endpoint support values invisibly.
+validate_objective1_weighted_endpoint <- function(data, dataset_name, outcome_key, spec) {
+    required_columns <- c(
+        "treatment_group", ".overlap_weight", spec$time_var, spec$event_var
+    )
+    missing_columns <- setdiff(required_columns, names(data))
+    if (length(missing_columns) > 0L) {
+        stop(
+            sprintf(
+                "Weighted endpoint %s is missing columns: %s.",
+                outcome_key,
+                paste(missing_columns, collapse = ", ")
+            ),
+            call. = FALSE
+        )
+    }
+    time <- suppressWarnings(as.numeric(data[[spec$time_var]]))
+    event <- suppressWarnings(as.integer(as.character(data[[spec$event_var]])))
+    if (any(is.na(time)) || any(!is.finite(time)) || any(time < 0)) {
+        stop(sprintf("Weighted endpoint %s has invalid follow-up times.", outcome_key), call. = FALSE)
+    }
+    if (any(is.na(event)) || any(!event %in% c(0L, 1L))) {
+        stop(sprintf("Weighted endpoint %s must have complete binary events.", outcome_key), call. = FALSE)
+    }
+    if (sum(event) < MINIMUM_SURVIVAL_EVENTS) {
+        stop(
+            sprintf(
+                "Weighted endpoint %s has %d events; at least %d are required.",
+                outcome_key,
+                sum(event),
+                MINIMUM_SURVIVAL_EVENTS
+            ),
+            call. = FALSE
+        )
+    }
+
+    fingerprint <- compute_survival_population_fingerprint(
+        data,
+        time_var = spec$time_var,
+        event_var = spec$event_var,
+        group_var = "treatment_group"
+    )
+    if (identical(dataset_name, OBJECTIVE1_PROPENSITY_DATASET)) {
+        expected <- OBJECTIVE1_PROPENSITY_EXPECTED_POPULATIONS %>%
+            dplyr::filter(.data$surface == .env$outcome_key)
+        if (nrow(expected) != 1L ||
+            nrow(data) != expected$n_patients[[1]] ||
+            sum(event) != expected$n_events[[1]] ||
+            !identical(fingerprint, expected$population_fingerprint[[1]])) {
+            stop(
+                sprintf(
+                    paste(
+                        "Weighted endpoint population drift for %s.",
+                        "Expected n=%s, events=%s, fingerprint=%s;",
+                        "observed n=%d, events=%d, fingerprint=%s.",
+                        "Explain row-level drift before changing expected values."
+                    ),
+                    outcome_key,
+                    expected$n_patients[[1]] %||% NA_integer_,
+                    expected$n_events[[1]] %||% NA_integer_,
+                    expected$population_fingerprint[[1]] %||% NA_character_,
+                    nrow(data),
+                    sum(event),
+                    fingerprint
+                ),
+                call. = FALSE
+            )
+        }
+    }
+
+    invisible(list(events = sum(event), fingerprint = fingerprint))
+}
+
+#' Derive named treatment and competing-event support
+#'
+#' @param data Weighted propensity design data.
+#' @param outcome_key Named endpoint key.
+#' @param spec Objective 1 endpoint specification.
+#' @return One-row support tibble.
+build_objective1_weighted_endpoint_support <- function(data, outcome_key, spec) {
+    event <- as.integer(as.character(data[[spec$event_var]]))
+    reference <- data$treatment_group == TREATMENT_REFERENCE_LEVEL
+    comparison <- data$treatment_group == TREATMENT_COMPARISON_LEVEL
+    support <- tibble::tibble(
+        outcome_key = outcome_key,
+        n = nrow(data),
+        events = sum(event),
+        pbt_n = sum(reference),
+        pbt_events = sum(event[reference]),
+        gksrs_n = sum(comparison),
+        gksrs_events = sum(event[comparison]),
+        competing_deaths = NA_integer_,
+        pbt_competing_deaths = NA_integer_,
+        gksrs_competing_deaths = NA_integer_
+    )
+
+    if (outcome_key %in% c("local_recurrence", "metastatic_progression")) {
+        competing <- prepare_competing_risk_data(
+            data,
+            time_var = spec$time_var,
+            event_var = spec$event_var,
+            group_var = "treatment_group"
+        )
+        competing_death <- competing$.cr_status == 2L
+        support$competing_deaths <- sum(competing_death)
+        support$pbt_competing_deaths <- sum(
+            competing_death & competing$group == TREATMENT_REFERENCE_LEVEL
+        )
+        support$gksrs_competing_deaths <- sum(
+            competing_death & competing$group == TREATMENT_COMPARISON_LEVEL
+        )
+    }
+
+    support
+}
+
+#' Fit all four overlap-weighted Objective 1 endpoint models
+#'
+#' @param weighted_design Output from `fit_objective1_propensity_weights()`.
+#' @return Endpoint models, canonical results, support, and PH diagnostics.
+fit_objective1_weighted_endpoints <- function(weighted_design) {
+    data <- weighted_design$data
+    dataset_name <- weighted_design$population$population_audit$dataset_name[[1]]
+    ess <- stats::setNames(
+        weighted_design$ess_summary$effective_sample_size,
+        weighted_design$ess_summary$treatment_group
+    )
+    fits <- list()
+    result_rows <- list()
+    support_rows <- list()
+    ph_rows <- list()
+    zph_objects <- list()
+
+    for (outcome_key in names(OBJECTIVE1_SUBGROUP_OUTCOME_SPECS)) {
+        spec <- OBJECTIVE1_SUBGROUP_OUTCOME_SPECS[[outcome_key]]
+        validation <- validate_objective1_weighted_endpoint(
+            data,
+            dataset_name,
+            outcome_key,
+            spec
+        )
+        support <- build_objective1_weighted_endpoint_support(data, outcome_key, spec)
+        formula <- stats::as.formula(sprintf(
+            "survival::Surv(%s, %s) ~ treatment_group",
+            spec$time_var,
+            spec$event_var
+        ))
+        model <- survival::coxph(
+            formula,
+            data = data,
+            weights = .overlap_weight,
+            robust = TRUE,
+            x = TRUE,
+            model = TRUE
+        )
+        coefficient_name <- paste0("treatment_group", TREATMENT_COMPARISON_LEVEL)
+        if (!identical(names(stats::coef(model)), coefficient_name)) {
+            stop(
+                sprintf(
+                    "Weighted endpoint %s did not estimate the required %s coefficient.",
+                    outcome_key,
+                    coefficient_name
+                ),
+                call. = FALSE
+            )
+        }
+
+        log_hr <- unname(stats::coef(model)[[1]])
+        robust_se <- sqrt(model$var[[1]])
+        z_value <- log_hr / robust_se
+        estimate <- exp(log_hr)
+        conf_low <- exp(log_hr - stats::qnorm(0.975) * robust_se)
+        conf_high <- exp(log_hr + stats::qnorm(0.975) * robust_se)
+        p_value <- 2 * stats::pnorm(abs(z_value), lower.tail = FALSE)
+
+        if (validation$events >= MINIMUM_PH_TEST_EVENTS) {
+            zph <- survival::cox.zph(model)
+            zph_table <- as.data.frame(zph$table) %>%
+                tibble::rownames_to_column("term")
+            names(zph_table)[names(zph_table) == "p"] <- "p_value"
+            ph <- zph_table %>%
+                dplyr::transmute(
+                    outcome_key = outcome_key,
+                    term = .data$term,
+                    chisq = .data$chisq,
+                    df = .data$df,
+                    p_value = .data$p_value,
+                    status = "tested"
+                )
+            ph_global_p <- ph$p_value[ph$term == "GLOBAL"][[1]]
+        } else {
+            zph <- NULL
+            ph <- tibble::tibble(
+                outcome_key = outcome_key,
+                term = c("treatment_group", "GLOBAL"),
+                chisq = NA_real_,
+                df = NA_real_,
+                p_value = NA_real_,
+                status = "not_tested_insufficient_events"
+            )
+            ph_global_p <- NA_real_
+        }
+
+        interpretation <- sprintf(
+            paste(
+                "Overlap-weighted GKSRS-versus-PBT hazard ratio in the measured",
+                "overlap population; %s."
+            ),
+            spec$estimand
+        )
+        result_rows[[outcome_key]] <- tibble::tibble(
+            outcome_key = outcome_key,
+            outcome = spec$outcome,
+            time_var = spec$time_var,
+            event_var = spec$event_var,
+            endpoint_estimand = spec$estimand,
+            model_family = "Overlap-weighted Cox proportional hazards",
+            effect_measure = spec$effect_measure,
+            comparison = sprintf(
+                "%s vs %s",
+                TREATMENT_COMPARISON_LEVEL,
+                TREATMENT_REFERENCE_LEVEL
+            ),
+            estimand = OBJECTIVE1_PROPENSITY_ESTIMAND,
+            weight_method = sprintf("Overlap weighting (%s)", OBJECTIVE1_PROPENSITY_ESTIMAND),
+            n = support$n,
+            events = support$events,
+            pbt_n = support$pbt_n,
+            pbt_events = support$pbt_events,
+            gksrs_n = support$gksrs_n,
+            gksrs_events = support$gksrs_events,
+            weighted_ess_total = unname(ess[["Total"]]),
+            weighted_ess_pbt = unname(ess[[TREATMENT_REFERENCE_LEVEL]]),
+            weighted_ess_gksrs = unname(ess[[TREATMENT_COMPARISON_LEVEL]]),
+            estimate = estimate,
+            conf_low = conf_low,
+            conf_high = conf_high,
+            p_value = p_value,
+            ph_global_p = ph_global_p,
+            weight_fingerprint = weighted_design$weight_fingerprint,
+            status = "estimated",
+            interpretation = interpretation
+        )
+        support_rows[[outcome_key]] <- support
+        ph_rows[[outcome_key]] <- ph
+        zph_objects[[outcome_key]] <- zph
+        fits[[outcome_key]] <- list(model = model, zph = zph)
+    }
+
+    list(
+        fits = fits,
+        weighted_cox_results = dplyr::bind_rows(result_rows),
+        endpoint_support = dplyr::bind_rows(support_rows),
+        ph_diagnostics = dplyr::bind_rows(ph_rows),
+        zph_objects = zph_objects
+    )
+}
