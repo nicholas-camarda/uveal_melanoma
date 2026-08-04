@@ -14,6 +14,30 @@ test_that("visual acuity sensitivity consumes Objective 0 treatment year directl
     expect_false(grepl("treatment_year_centered", source_text, fixed = TRUE))
 })
 
+test_that("tracked methods document the restricted overlap-weighted sensitivity", {
+    methods_text <- paste(
+        readLines(here::here("docs", "STATISTICAL_METHODS.md"), warn = FALSE),
+        collapse = "\n"
+    )
+    required_phrases <- c(
+        "restricted cohort", "overlap weight", "overlap population",
+        "age_at_diagnosis", "sex", "location", "initial_tumor_height",
+        "initial_tumor_diameter", "srf", "treatment_year", "robust sandwich",
+        "local recurrence", "metastatic progression", "overall survival",
+        "progression-free survival", "exploratory sensitivity"
+    )
+    for (phrase in required_phrases) {
+        expect_match(methods_text, phrase, ignore.case = TRUE)
+    }
+    expect_match(methods_text, "adjusted Cox models remain the primary analyses", ignore.case = TRUE)
+    expect_match(methods_text, "death before.*censored", ignore.case = TRUE)
+    expect_match(methods_text, "unweighted descriptive", ignore.case = TRUE)
+    expect_match(methods_text, "does not estimate.*Fine-Gray", ignore.case = TRUE)
+    expect_match(methods_text, "Objective 0.*derives.*once", ignore.case = TRUE)
+    expect_false(grepl("primary propensity", methods_text, ignore.case = TRUE))
+    expect_false(grepl("propensity[^\n]*(full cohort|stabilized IPTW|matching was used|ATE for the full)", methods_text, ignore.case = TRUE))
+})
+
 test_that("Objective 1 returns Cox-led local recurrence and metastasis time-to-event analyses", {
     pipeline <- run_objective1_test(create_test_dataset(), output_tag = "peer_review_objective1_tte_contract")
     withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())

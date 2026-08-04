@@ -80,6 +80,31 @@ Surv(time, event) ~ treatment + age_at_diagnosis + sex + location
 
 For practical reading of hazard ratios and confidence intervals, see [Cox Regression Tables (Survival Outcomes)](INTERPRETATION_GUIDE.md#cox-regression-tables-survival-outcomes).
 
+### Restricted-Cohort Propensity-Overlap Sensitivity
+
+The existing adjusted Cox models remain the primary analyses. In the restricted cohort, an exploratory sensitivity uses one shared propensity score to address measured pretreatment differences between PBT and GKSRS for local recurrence, metastatic progression, overall survival, and progression-free survival. The treatment-assignment model estimates the probability of GKSRS:
+
+```r
+treatment_group ~ age_at_diagnosis + sex + location +
+    initial_tumor_height + initial_tumor_diameter + srf + treatment_year
+```
+
+Age, tumor height, tumor diameter, and treatment year are continuous. Objective 0 derives integer `treatment_year` once from `treatment_date`, stores it in each analytic dataset, and validates it for downstream Objective 1 and Objective 2 use; downstream analyses do not derive or center year.
+
+Patients in location levels with fewer than five observations are excluded only from the propensity-model population. For propensity score $e_i=P(\mathrm{GKSRS}\mid X_i)$, overlap weights are
+
+$$
+w_i =
+\begin{cases}
+1-e_i, & \mathrm{GKSRS} \\
+e_i, & \mathrm{PBT}.
+\end{cases}
+$$
+
+These weights target the average treatment effect in the overlap population (ATO). No matching, trimming, weight capping, stabilization, or support-based filtering is applied. The same weights are reused in four treatment-only Cox models fit with robust sandwich variance; effects are reported as GKSRS-versus-PBT hazard ratios with 95% confidence intervals. Local-recurrence and metastatic-progression models estimate cause-specific hazards, with death before the endpoint censored and reported as a competing event. The existing cumulative-incidence and Gray summaries are unweighted descriptive context; Objective 1 does not estimate a propensity-adjusted Fine-Gray or cumulative-incidence treatment effect.
+
+Diagnostics report propensity-score overlap, weight distributions, effective sample size, unweighted and overlap-weighted standardized mean differences against the 0.10 threshold, and treatment/global Schoenfeld results with a combined residual figure. This sensitivity remains associational: it adjusts only measured covariates, cannot address unavailable comparable dose or quantitative tumor-proximity variables, and does not remove residual confounding. Limited outcome events also constrain precision.
+
 ### Log-Rank Test
 
 **Purpose:** Compare survival distributions between groups
@@ -260,7 +285,7 @@ For practical reading of PH tests and Schoenfeld plots, see [Interpreting Propor
 **Outputs:**
 1. **Cumulative Incidence Curves:** Probability of event over time accounting for competing events
 2. **Gray's Test:** One global statistical comparison of treatment-group cumulative-incidence curves
-3. **Fine-Gray Model:** Regression with competing risks adjustment
+3. **Fine-Gray Model:** A possible subdistribution-hazard model for a separately specified estimand; it is not estimated for the Objective 1 propensity sensitivity
 
 Objective 1 recurrence and metastatic-progression cumulative-incidence sheets report this as `gray_test_global_curve_p_value`. The same value can appear on multiple horizon rows because it describes the overall across-group curve comparison, not a separate p-value for each horizon or group.
 
@@ -392,7 +417,7 @@ For practical reading of linear-regression outputs, see [Linear Regression Table
 
 Objective 2 vision change models use the precomputed `vision_change` endpoint (`initial_vision - last_vision`, or `initial_vision - recurrence1_pretreatment_vision` for patients with local recurrence). The adjusted change-score rows include the central confounder set (`age_at_diagnosis`, `sex`, and `location`) but do not include a separate baseline-vision covariate.
 
-Reviewer-response latest-VA sensitivity uses an ANCOVA-style linear model with `last_vision` as the outcome. It adjusts for treatment group, `initial_vision`, explicit treatment-to-`last_followup` timing, viable reviewer-requested baseline predictors (`initial_tumor_height`, `initial_tumor_diameter`, `initial_t_stage_simple`, `srf`, optic-nerve involvement when variable within cohort, and centered treatment year), plus the central confounder set. The full-cohort sensitivity estimated a GKSRS-vs-PBT mean difference of -0.200 logMAR (95% CI -0.462 to 0.063; p = 0.135; n = 208). The restricted-cohort sensitivity estimated -0.126 logMAR (95% CI -0.429 to 0.177; p = 0.411; n = 126). These sensitivity results should be read as support for cautious interpretation, not causal evidence of superior functional preservation.
+Reviewer-response latest-VA sensitivity uses an ANCOVA-style linear model with `last_vision` as the outcome. It adjusts for treatment group, `initial_vision`, explicit treatment-to-`last_followup` timing, viable reviewer-requested baseline predictors (`initial_tumor_height`, `initial_tumor_diameter`, `initial_t_stage_simple`, `srf`, optic-nerve involvement when variable within cohort, and treatment year), plus the central confounder set. The full-cohort sensitivity estimated a GKSRS-vs-PBT mean difference of -0.200 logMAR (95% CI -0.462 to 0.063; p = 0.135; n = 208). The restricted-cohort sensitivity estimated -0.126 logMAR (95% CI -0.429 to 0.177; p = 0.411; n = 126). These sensitivity results should be read as support for cautious interpretation, not causal evidence of superior functional preservation.
 
 Latest-VA minimum-follow-up sensitivity outputs report explicit treatment-to-`last_followup` timing as the primary timing surface and a separately labeled proxy surface that uses derived general `follow_up_months` when explicit timing is missing. The same workbook includes a `reviewer_predictor_availability` sheet documenting requested visual-outcome predictors that were included, excluded for cohort support, or not available as structured baseline/dosimetry fields.
 

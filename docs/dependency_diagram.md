@@ -163,6 +163,7 @@ flowchart LR
 - `orchestration`
 - `output_utilities.R`
 - `plot_utilities.R`
+- `propensity_score_sensitivity.R`
 - `publish_outputs.R`
 - `reporting`
 - `rmst_visualization.R`
