@@ -361,6 +361,17 @@ test_that("propensity artifacts share exact labels, direction, and workbook valu
     )
 })
 
+test_that("weighted Schoenfeld titles identify the PH-test p-value", {
+    expect_identical(
+        format_propensity_schoenfeld_title("Overall Survival", 0.0274),
+        "Overall Survival\np = 0.027"
+    )
+    expect_identical(
+        format_propensity_schoenfeld_title("Progression-Free Survival", 0.0004),
+        "Progression-Free Survival\np < 0.001"
+    )
+})
+
 test_that("technical audit RDS reconstructs the propensity and endpoint designs", {
     data <- create_propensity_test_data()
     data$location <- as.character(data$location)

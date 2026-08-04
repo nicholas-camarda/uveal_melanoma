@@ -15,14 +15,9 @@ normalize_optic_nerve_involvement <- function(x) {
 #' @param data Analytic cohort data.
 #' @return Data frame with timing fields in months and timing-source labels.
 add_peer_review_latest_va_timing <- function(data) {
-    treatment_date <- if ("treatment_date" %in% names(data)) data$treatment_date else rep(as.Date(NA), nrow(data))
-    last_followup <- if ("last_followup" %in% names(data)) data$last_followup else rep(as.Date(NA), nrow(data))
-    explicit_months <- as.numeric(difftime(last_followup, treatment_date, units = "days")) / 30.4375
-    proxy_months <- explicit_months
-    if ("follow_up_months" %in% names(data)) {
-        follow_up_months <- suppressWarnings(as.numeric(data$follow_up_months))
-        proxy_months <- dplyr::if_else(is.na(proxy_months), follow_up_months, proxy_months)
-    }
+    analytic_timing <- add_last_vision_followup_months(data)
+    explicit_months <- analytic_timing$last_vision_followup_months_explicit
+    proxy_months <- analytic_timing$last_vision_followup_months_proxy
 
     data$explicit_latest_va_followup_months <- explicit_months
     data$proxy_latest_va_followup_months <- proxy_months
@@ -188,7 +183,7 @@ summarize_numeric_by_treatment_group <- function(data, value_var, group_var = "t
         dplyr::select(-"q1", -"q3")
 }
 
-#' Summarize general and latest-VA follow-up by treatment arm
+#' Summarize treatment-anchored and latest-VA follow-up by treatment arm
 #'
 #' @param data Analytic cohort data.
 #' @return Tibble with treatment-arm timing summaries.
@@ -196,8 +191,8 @@ summarize_followup_by_treatment_arm <- function(data) {
     data_with_va_timing <- add_peer_review_latest_va_timing(data)
 
     dplyr::bind_rows(
-        if ("follow_up_months" %in% names(data_with_va_timing)) {
-            summarize_numeric_by_treatment_group(data_with_va_timing, "follow_up_months")
+        if ("tt_death_months" %in% names(data_with_va_timing)) {
+            summarize_numeric_by_treatment_group(data_with_va_timing, "tt_death_months")
         } else {
             tibble::tibble()
         },

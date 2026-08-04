@@ -1,5 +1,9 @@
-build_objective1_output_dirs <- function(test_output_dir) {
-    build_subdivided_output_dirs(test_output_dir, "^obj1_")
+build_objective1_output_dirs <- function(test_output_dir, include_propensity_sensitivity = FALSE) {
+    dirs <- create_output_structure(
+        test_output_dir,
+        include_propensity_sensitivity = include_propensity_sensitivity
+    )
+    dirs[grepl("^obj1_", names(dirs))]
 }
 
 run_objective1_test <- function(data, output_tag = "objective1_test") {
@@ -75,7 +79,10 @@ test_that("Objective 1 invokes propensity sensitivity only for the restricted co
 
     restricted_dir <- file.path(TEST_OUTPUT_DIR, "objective1_propensity_route_restricted")
     other_dir <- file.path(TEST_OUTPUT_DIR, "objective1_propensity_route_other")
-    restricted_outputs <- build_objective1_output_dirs(restricted_dir)
+    restricted_outputs <- build_objective1_output_dirs(
+        restricted_dir,
+        include_propensity_sensitivity = TRUE
+    )
     other_outputs <- build_objective1_output_dirs(other_dir)
     purrr::walk(c(restricted_outputs, other_outputs), dir.create, recursive = TRUE, showWarnings = FALSE)
     withr::defer(unlink(restricted_dir, recursive = TRUE, force = TRUE), envir = parent.frame())

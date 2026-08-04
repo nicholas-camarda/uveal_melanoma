@@ -1124,6 +1124,20 @@ render_objective1_propensity_summary <- function(artifacts) {
     )
 }
 
+#' Format a propensity-weighted Schoenfeld panel title
+#'
+#' @param outcome Outcome label.
+#' @param p_value Schoenfeld proportional-hazards test p-value.
+#' @return Two-line panel title matching the project Schoenfeld plots.
+format_propensity_schoenfeld_title <- function(outcome, p_value) {
+    p_text <- if (p_value < 0.001) {
+        "p < 0.001"
+    } else {
+        sprintf("p = %.3f", p_value)
+    }
+    sprintf("%s\n%s", outcome, p_text)
+}
+
 #' Write all propensity sensitivity artifacts
 #'
 #' @param artifacts Structured output from
@@ -1237,10 +1251,19 @@ write_objective1_propensity_artifacts <- function(artifacts, output_dir, prefix)
             graphics::title(main = OBJECTIVE1_SUBGROUP_OUTCOME_SPECS[[outcome_key]]$outcome)
             graphics::text(0.5, 0.5, "Not tested: insufficient events")
         } else {
+            p_value <- zph$table["treatment_group", "p"]
+            panel_title <- format_propensity_schoenfeld_title(
+                OBJECTIVE1_SUBGROUP_OUTCOME_SPECS[[outcome_key]]$outcome,
+                p_value
+            )
             plot(
                 zph,
                 var = "treatment_group",
-                main = OBJECTIVE1_SUBGROUP_OUTCOME_SPECS[[outcome_key]]$outcome
+                main = panel_title
+            )
+            graphics::title(
+                main = panel_title,
+                col.main = ifelse(p_value < 0.05, "red", "darkgreen")
             )
         }
     }

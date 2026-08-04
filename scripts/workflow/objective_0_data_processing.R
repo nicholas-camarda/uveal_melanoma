@@ -30,7 +30,13 @@ build_objective_0_output_dirs <- function() {
             TRUE ~ cohort_name
         )
 
-        temp_output_dirs_by_cohort[[simplified_cohort_name]] <- create_output_structure(cohort_base_dir)
+        temp_output_dirs_by_cohort[[simplified_cohort_name]] <- create_output_structure(
+            cohort_base_dir,
+            include_propensity_sensitivity = identical(
+                cohort_name,
+                OBJECTIVE1_PROPENSITY_DATASET
+            )
+        )
     }
 
     temp_output_dirs_by_cohort

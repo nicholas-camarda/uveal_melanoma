@@ -11,6 +11,16 @@ test_that("portable CI runs required checks with fail-sensitive commands", {
     expect_false(grepl("\\|\\|[[:space:]]+true", workflow_text))
 })
 
+test_that("portable CI does not duplicate feature-branch push and PR runs", {
+    workflow_text <- paste(
+        readLines(here::here(".github", "workflows", "portable-tests.yml"), warn = FALSE),
+        collapse = "\n"
+    )
+
+    expect_match(workflow_text, "push:\n    branches:\n      - master", fixed = TRUE)
+    expect_match(workflow_text, "  pull_request:", fixed = TRUE)
+})
+
 test_that("OpenSpec records remain available without active CI enforcement", {
     workflow_text <- paste(
         readLines(here::here(".github", "workflows", "portable-tests.yml"), warn = FALSE),

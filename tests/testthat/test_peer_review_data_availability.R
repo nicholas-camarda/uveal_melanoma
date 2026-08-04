@@ -1,5 +1,50 @@
 source(here::here("scripts", "tools", "peer_review_followup_audit.R"))
 
+test_that("peer-review audit reuses the analytic latest-VA timing definition", {
+    data <- tibble::tibble(
+        treatment_date = as.Date("2020-01-31"),
+        last_followup = as.Date("2020-02-29"),
+        follow_up_months = 1
+    )
+
+    analytic_timing <- add_last_vision_followup_months(data)
+    audit_timing <- add_peer_review_latest_va_timing(data)
+
+    expect_equal(
+        audit_timing$explicit_latest_va_followup_months,
+        analytic_timing$last_vision_followup_months_explicit
+    )
+    expect_equal(
+        audit_timing$proxy_latest_va_followup_months,
+        analytic_timing$last_vision_followup_months_proxy
+    )
+})
+
+test_that("treatment-arm follow-up summary uses treatment-anchored survival time", {
+    data <- tibble::tibble(
+        treatment_group = factor(c("PBT", "PBT", "GKSRS", "GKSRS")),
+        follow_up_months = c(100, 200, 300, 400),
+        tt_death_months = c(12, 24, 30, 42),
+        treatment_date = as.Date("2020-01-01"),
+        last_followup = as.Date("2021-01-01")
+    )
+
+    summary <- summarize_followup_by_treatment_arm(data)
+    treatment_followup <- summary %>%
+        dplyr::filter(.data$variable == "tt_death_months")
+
+    expect_equal(nrow(treatment_followup), 2L)
+    expect_equal(
+        treatment_followup$median[as.character(treatment_followup$treatment_group) == "PBT"],
+        18
+    )
+    expect_equal(
+        treatment_followup$median[as.character(treatment_followup$treatment_group) == "GKSRS"],
+        36
+    )
+    expect_false("follow_up_months" %in% summary$variable)
+})
+
 test_that("peer-review follow-up audit separates explicit and proxy latest-VA timing", {
     data <- create_test_dataset() %>%
         dplyr::mutate(
