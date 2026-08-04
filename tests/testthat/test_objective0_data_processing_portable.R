@@ -20,6 +20,18 @@ test_that("Objective 0 preprocessing creates expected derived fields on syntheti
     expect_equal(derived$srd_burden_event, as.integer(derived$srd == "Y"))
 })
 
+test_that("Objective 0 derives integer treatment year from treatment date", {
+    test_data <- create_test_dataset()
+    derived <- create_derived_variables(test_data)
+
+    expect_true("treatment_year" %in% names(derived))
+    expect_type(derived$treatment_year, "integer")
+    expect_equal(
+        derived$treatment_year,
+        as.integer(format(as.Date(derived$treatment_date), "%Y"))
+    )
+})
+
 test_that("Objective 0 derivation preserves impossible endpoint times for validation", {
     test_data <- create_test_dataset()
     test_data$recurrence1[1] <- "Y"

@@ -3,6 +3,17 @@ test_that("reviewer-response adjusted models use continuous age rather than dich
     expect_false("age_at_diagnosis_general_pop_median" %in% confounders)
 })
 
+test_that("visual acuity sensitivity consumes Objective 0 treatment year directly", {
+    source_text <- paste(
+        readLines(here::here("scripts", "analysis", "vision_safety_analysis.R"), warn = FALSE),
+        collapse = "\n"
+    )
+
+    expect_match(source_text, '"Treatment year", "treatment_year", "treatment_year"', fixed = TRUE)
+    expect_false(grepl("add_visual_acuity_treatment_year", source_text, fixed = TRUE))
+    expect_false(grepl("treatment_year_centered", source_text, fixed = TRUE))
+})
+
 test_that("Objective 1 returns Cox-led local recurrence and metastasis time-to-event analyses", {
     pipeline <- run_objective1_test(create_test_dataset(), output_tag = "peer_review_objective1_tte_contract")
     withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())

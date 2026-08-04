@@ -21,6 +21,7 @@ OBJECTIVE0_GLOBAL_REQUIRED_VARIABLES <- c(
 # Derived fields Objective 0 is expected to create before downstream analysis.
 OBJECTIVE0_DERIVED_OUTPUT_MANIFEST <- c(
     "age_at_diagnosis_binned", "age_at_diagnosis_general_pop_median",
+    "treatment_year",
     "initial_tumor_height_binned",
     "initial_tumor_diameter_binned", "initial_stage_binary",
     "gep_class_simple", "prame_status", "gep12_prame_status", "recurrence1_treatment_clean",
@@ -53,6 +54,7 @@ OBJECTIVE0_DOWNSTREAM_INPUT_CONTRACT <- tibble::tribble(
     "objective1", "age_at_diagnosis", "shared adjusted model covariate", "nonnegative_numeric", "complete", "hard_error",
     "objective1", "sex", "shared adjusted model covariate", "sex_factor", "complete", "hard_error",
     "objective1", "location", "shared adjusted model covariate", "present", "complete", "hard_error",
+    "objective1", "treatment_year", "propensity baseline era covariate", "nonnegative_integer", "complete", "hard_error",
     "objective1", "recurrence1", "local recurrence source endpoint", "yn_display", "complete", "hard_error",
     "objective1", "recurrence_event", "local recurrence binary endpoint", "binary_01", "complete", "hard_error",
     "objective1", "tt_recurrence_months", "local recurrence follow-up time", "nonnegative_numeric", "optional", "hard_error",
@@ -75,6 +77,7 @@ OBJECTIVE0_DOWNSTREAM_INPUT_CONTRACT <- tibble::tribble(
     "objective2", "age_at_diagnosis_general_pop_median", "shared adjusted model covariate", "present", "complete", "hard_error",
     "objective2", "sex", "shared adjusted model covariate", "sex_factor", "complete", "hard_error",
     "objective2", "location", "shared adjusted model covariate", "present", "complete", "hard_error",
+    "objective2", "treatment_year", "visual sensitivity baseline era covariate", "nonnegative_integer", "complete", "hard_error",
     "objective2", "vision_change", "vision safety endpoint", "numeric", "optional", "warning",
     "objective2", "initial_vision", "vision change source baseline", "numeric", "optional", "warning",
     "objective2", "last_vision", "vision change source follow-up", "numeric", "optional", "warning",

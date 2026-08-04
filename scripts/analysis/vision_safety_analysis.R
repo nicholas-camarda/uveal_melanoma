@@ -474,27 +474,6 @@ objective2_toxicity_scope_note <- function() {
     )
 }
 
-#' Add treatment year for reviewer-requested visual acuity sensitivity screening
-#'
-#' @param data Data frame with a treatment_date column.
-#' @return Data frame with treatment_year when treatment_date is available.
-add_visual_acuity_treatment_year <- function(data) {
-    if (!"treatment_date" %in% names(data)) {
-        return(data)
-    }
-
-    data <- data %>%
-        mutate(
-            treatment_year = suppressWarnings(as.integer(format(as.Date(.data$treatment_date), "%Y")))
-        )
-
-    year_mean <- mean(data$treatment_year, na.rm = TRUE)
-    data %>%
-        mutate(
-            treatment_year_centered = .data$treatment_year - year_mean
-        )
-}
-
 #' Reviewer-requested visual outcome predictor candidates
 #'
 #' @return Tibble mapping reviewer-requested predictors to analytic fields.
@@ -508,7 +487,7 @@ visual_reviewer_predictor_candidates <- function() {
         "T stage", "initial_t_stage_simple", "initial_t_stage_simple", "baseline_predictor", "Available baseline T-stage grouping used elsewhere for model support.",
         "Subretinal fluid", "srf", "srf", "baseline_predictor", "Available baseline subretinal-fluid field.",
         "Optic-nerve proximity/involvement", "optic_nerve", "optic_nerve", "baseline_predictor", "Available optic-nerve involvement/abutment field; this is not a quantitative distance.",
-        "Treatment year", "treatment_year", "treatment_year_centered", "baseline_predictor", "Derived from treatment_date and centered for numerical stability.",
+        "Treatment year", "treatment_year", "treatment_year", "baseline_predictor", "Derived centrally from treatment_date during Objective 0.",
         "Macular or foveal proximity", NA_character_, NA_character_, "not_available", "No structured macular/foveal proximity or distance field is present in the checked analytic/source columns.",
         "Baseline retinal detachment", NA_character_, NA_character_, "not_available", "No baseline retinal-detachment predictor is present. The available srd/srd_cause fields are recorded Objective 2 toxicity-burden fields, not baseline adjustment variables.",
         "Radiation dose to optic disc/nerve", NA_character_, NA_character_, "not_available", "No structured cross-modality optic-disc/optic-nerve dose field is present in the checked analytic/source columns.",
@@ -631,7 +610,6 @@ select_rank_supported_linear_terms <- function(data, outcome_var, predictor_term
 analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders = NULL, dataset_name = NULL) {
     data <- normalize_treatment_group_data(data)
     data <- add_last_vision_followup_months(data)
-    data <- add_visual_acuity_treatment_year(data)
     vision_descriptive_dir <- resolve_route_output_dir(output_dirs, "obj2_vision", "descriptive")
     vision_adjusted_dir <- resolve_route_output_dir(output_dirs, "obj2_vision", "adjusted_models")
     vision_effect_summary_dir <- resolve_route_output_dir(output_dirs, "obj2_vision", "effect_summary")
