@@ -48,7 +48,14 @@ test_that("figure counts audit generator renders current-state runtime summary l
 })
 
 test_that("tool refresh suite writes its complete audit summary", {
-    source(here::here("scripts", "tools", "run_tool_refreshes.R"), local = TRUE)
+    publish_main <- main
+    refresh_env <- new.env(parent = environment())
+    sys.source(
+        here::here("scripts", "tools", "run_tool_refreshes.R"),
+        envir = refresh_env
+    )
+    expect_identical(main, publish_main)
+
     output_dir <- tempfile("tool-refresh-suite-")
     dir.create(output_dir, recursive = TRUE)
     withr::defer(unlink(output_dir, recursive = TRUE, force = TRUE), envir = parent.frame())
@@ -59,7 +66,7 @@ test_that("tool refresh suite writes its complete audit summary", {
         envir = parent.frame()
     )
 
-    result <- suppressWarnings(run_tool_refresh_suite(output_dir = output_dir))
+    result <- suppressWarnings(refresh_env$run_tool_refresh_suite(output_dir = output_dir))
     summary_text <- paste(readLines(result$txt_path, warn = FALSE), collapse = "\n")
 
     expect_match(summary_text, "tool outputs:", fixed = TRUE)
