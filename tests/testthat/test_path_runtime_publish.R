@@ -132,6 +132,38 @@ test_that("configured raw, runtime, and publish paths retain their storage roles
     expect_equal(TOOLS_OUTPUT_DIR, file.path(RUNTIME_ROOT, "tools_output"))
 })
 
+test_that("propensity sensitivity output is registered only for the restricted cohort", {
+    output_root <- tempfile("cohort-output-routing-")
+    old_output <- OUTPUT_DIR
+    on.exit({
+        assign("OUTPUT_DIR", old_output, envir = .GlobalEnv)
+        unlink(output_root, recursive = TRUE, force = TRUE)
+    }, add = TRUE)
+    assign("OUTPUT_DIR", output_root, envir = .GlobalEnv)
+
+    full <- setup_cohort_outputs("uveal_melanoma_full_cohort", "uveal_full")
+    restricted <- setup_cohort_outputs(
+        OBJECTIVE1_PROPENSITY_DATASET,
+        "uveal_restricted"
+    )
+    gksrs <- setup_cohort_outputs("uveal_melanoma_gksrs_only_cohort", "gksrs")
+
+    expect_false("obj1_propensity_sensitivity" %in% names(full$output_dirs))
+    expect_true("obj1_propensity_sensitivity" %in% names(restricted$output_dirs))
+    expect_false("obj1_propensity_sensitivity" %in% names(gksrs$output_dirs))
+    expect_false(dir.exists(file.path(
+        full$cohort_base_dir,
+        "01_Efficacy",
+        "h_propensity_score_sensitivity"
+    )))
+    expect_true(dir.exists(restricted$output_dirs$obj1_propensity_sensitivity))
+    expect_false(dir.exists(file.path(
+        gksrs$cohort_base_dir,
+        "01_Efficacy",
+        "h_propensity_score_sensitivity"
+    )))
+})
+
 test_that("initialize_runtime_dirs creates configured runtime directories", {
     tmp_root <- tempfile("runtime-init-")
     runtime_root <- file.path(tmp_root, "runtime")

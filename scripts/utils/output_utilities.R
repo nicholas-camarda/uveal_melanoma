@@ -412,7 +412,6 @@ define_objective_directory_map <- function(cohort_dir) {
         obj1_subgroup_sensitivity = file.path(cohort_dir, "01_Efficacy", "g_subgroup_analysis", "tumor_height_sensitivity"),
         # obj1_subgroup_clinical   = file.path(cohort_dir, "01_Efficacy", "g_subgroup_analysis", "clinical_outcomes"),
         obj1_forest_plots         = file.path(cohort_dir, "01_Efficacy", "g_subgroup_analysis", "forest_plots"),
-        obj1_propensity_sensitivity = file.path(cohort_dir, "01_Efficacy", "h_propensity_score_sensitivity"),
 
         # ── Objective 2: Safety / Toxicity of PBT vs GKSRS ─────────────
         obj2_vision      = file.path(cohort_dir, "02_Safety", "a_vision_changes"),
@@ -451,11 +450,20 @@ define_objective_directory_map <- function(cohort_dir) {
 #' cross-cutting outputs — then creates any missing directories on disk.
 #'
 #' @param cohort_dir Base directory for this specific cohort.
+#' @param include_propensity_sensitivity Logical; create the restricted-cohort
+#'   propensity sensitivity directory when `TRUE`.
 #' @return List of all created directory paths.
 #' @examples
 #' create_output_structure("~/Workspaces/uveal-melanoma/runtime/Analysis/uveal_full")
-create_output_structure <- function(cohort_dir) {
+create_output_structure <- function(cohort_dir, include_propensity_sensitivity = FALSE) {
     dirs <- define_objective_directory_map(cohort_dir)
+    if (isTRUE(include_propensity_sensitivity)) {
+        dirs$obj1_propensity_sensitivity <- file.path(
+            cohort_dir,
+            "01_Efficacy",
+            "h_propensity_score_sensitivity"
+        )
+    }
 
     # Expand numbered artifact subdirectories from endpoint profiles
     dirs <- append_endpoint_subdirs(dirs, "obj1_recurrence",      dirs$obj1_recurrence,      "event_support_survival")

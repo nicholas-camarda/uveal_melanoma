@@ -248,7 +248,13 @@ setup_cohort_outputs <- function(dataset_name, cohort_dir_name = NULL) {
     cohort_base_dir <- file.path(OUTPUT_DIR, cohort_dir_name)
 
     # Create the complete directory structure
-    output_dirs <- create_output_structure(cohort_base_dir)
+    output_dirs <- create_output_structure(
+        cohort_base_dir,
+        include_propensity_sensitivity = identical(
+            dataset_name,
+            OBJECTIVE1_PROPENSITY_DATASET
+        )
+    )
 
     # Log the setup
             logger::log_info(sprintf("Created output structure for %s", dataset_name))
