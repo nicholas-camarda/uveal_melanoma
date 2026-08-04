@@ -285,6 +285,111 @@ test_that("publish_outputs dry run reports publishable outputs and excludes runt
     expect_false(dir.exists(result$snapshot_dir))
 })
 
+test_that("publish CLI report gives dry-run scope and exact execute command", {
+    report <- format_publish_outputs_cli_report(
+        result = list(
+            snapshot_dir = "/tmp/export/2026-07-28",
+            dry_run = TRUE,
+            summary = list(
+                publishable_files = 2,
+                copied = 0,
+                would_copy = 2,
+                skipped = 1,
+                missing = 0,
+                failed = 0,
+                snapshot_exists = FALSE
+            )
+        ),
+        opts = list(
+            snapshot_id = "2026-07-28",
+            snapshot_id_supplied = TRUE,
+            cohorts = c("uveal_melanoma_full_cohort", "gksrs"),
+            include_merged_tables = FALSE
+        )
+    )
+
+    expect_match(report, "DRY RUN: no files were copied", fixed = TRUE)
+    expect_match(report, "Would copy: 2", fixed = TRUE)
+    expect_match(report, "Excluded by registry: 1", fixed = TRUE)
+    expect_match(
+        report,
+        "Rscript scripts/workflow/publish_outputs.R --execute --snapshot-id 2026-07-28 --cohorts uveal_melanoma_full_cohort,gksrs --no-merged-tables",
+        fixed = TRUE
+    )
+
+    default_snapshot_command <- publish_execute_command(list(
+        snapshot_id_supplied = FALSE,
+        cohorts = NULL,
+        include_merged_tables = TRUE
+    ))
+    expect_identical(
+        default_snapshot_command,
+        "Rscript scripts/workflow/publish_outputs.R --execute"
+    )
+})
+
+test_that("default publish snapshots add letter suffixes on the same day", {
+    tmp_root <- tempfile("runtime-publish-suffix-")
+    export_root <- file.path(tmp_root, "export")
+    export_analysis_root <- file.path(export_root, "Analysis")
+    dir.create(file.path(export_analysis_root, "2026-08-04"), recursive = TRUE, showWarnings = FALSE)
+    dir.create(file.path(export_analysis_root, "2026-08-04-a"), recursive = TRUE, showWarnings = FALSE)
+
+    old_export_root <- EXPORT_ROOT
+    old_export_analysis <- EXPORT_ANALYSIS_DIR
+    on.exit({
+        assign("EXPORT_ROOT", old_export_root, envir = .GlobalEnv)
+        assign("EXPORT_ANALYSIS_DIR", old_export_analysis, envir = .GlobalEnv)
+        unlink(tmp_root, recursive = TRUE, force = TRUE)
+    }, add = TRUE)
+
+    assign("EXPORT_ROOT", export_root, envir = .GlobalEnv)
+    assign("EXPORT_ANALYSIS_DIR", export_analysis_root, envir = .GlobalEnv)
+
+    expect_identical(
+        next_available_publish_snapshot_id(default_snapshot_id = "2026-08-04"),
+        "2026-08-04-b"
+    )
+})
+
+test_that("publish CLI main prints the concise report without manifest rows", {
+    tmp_root <- tempfile("runtime-publish-cli-")
+    output_root <- file.path(tmp_root, "runtime", "Analysis")
+    export_root <- file.path(tmp_root, "export")
+    export_analysis_root <- file.path(export_root, "Analysis")
+    dir.create(file.path(output_root, "uveal_full", "01_Efficacy"), recursive = TRUE, showWarnings = FALSE)
+    writeLines("report", file.path(output_root, "uveal_full", "01_Efficacy", "summary.xlsx"))
+
+    old_output <- OUTPUT_DIR
+    old_merged <- MERGED_TABLES_DIR
+    old_export_root <- EXPORT_ROOT
+    old_export_analysis <- EXPORT_ANALYSIS_DIR
+    on.exit({
+        assign("OUTPUT_DIR", old_output, envir = .GlobalEnv)
+        assign("MERGED_TABLES_DIR", old_merged, envir = .GlobalEnv)
+        assign("EXPORT_ROOT", old_export_root, envir = .GlobalEnv)
+        assign("EXPORT_ANALYSIS_DIR", old_export_analysis, envir = .GlobalEnv)
+        unlink(tmp_root, recursive = TRUE, force = TRUE)
+    }, add = TRUE)
+
+    assign("OUTPUT_DIR", output_root, envir = .GlobalEnv)
+    assign("MERGED_TABLES_DIR", file.path(output_root, "merged_tables"), envir = .GlobalEnv)
+    assign("EXPORT_ROOT", export_root, envir = .GlobalEnv)
+    assign("EXPORT_ANALYSIS_DIR", export_analysis_root, envir = .GlobalEnv)
+
+    output <- capture_output(main(list(
+        snapshot_id = "2026-07-28-cli",
+        dry_run = TRUE,
+        include_merged_tables = FALSE,
+        cohorts = "uveal_full",
+        help = FALSE
+    )))
+
+    expect_match(output, "DRY RUN: no files were copied", fixed = TRUE)
+    expect_match(output, "Next step (performs the copy):", fixed = TRUE)
+    expect_false(grepl("source_path", output, fixed = TRUE))
+})
+
 test_that("publish_outputs prefers Objective 4 markdown summaries over legacy text duplicates", {
     tmp_root <- tempfile("runtime-publish-obj4-md-")
     runtime_root <- file.path(tmp_root, "runtime")

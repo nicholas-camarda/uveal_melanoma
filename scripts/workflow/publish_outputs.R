@@ -22,6 +22,30 @@ get_file_size_bytes <- function(path) {
     as.numeric(size_value[[1]])
 }
 
+#' Find the next available date-based publish snapshot identifier
+#'
+#' Uses the current date by default, then appends `-a`, `-b`, and so on if a
+#' snapshot for that date already exists.
+#'
+#' @param default_snapshot_id Character date-based identifier to start from.
+#' @return Character scalar available snapshot identifier.
+#' @examples
+#' next_available_publish_snapshot_id("2026-08-04")
+next_available_publish_snapshot_id <- function(default_snapshot_id = format(Sys.Date(), "%Y-%m-%d")) {
+    candidate_id <- default_snapshot_id
+    suffix_index <- 0L
+
+    while (dir.exists(get_export_snapshot_dir(snapshot_id = candidate_id))) {
+        suffix_index <- suffix_index + 1L
+        if (suffix_index > length(letters)) {
+            stop("No alphabetical publish snapshot suffixes remain for this date.", call. = FALSE)
+        }
+        candidate_id <- paste0(default_snapshot_id, "-", letters[[suffix_index]])
+    }
+
+    candidate_id
+}
+
 #' Map cohort identifiers to runtime output directory names
 #'
 #' @param cohort_name Character scalar cohort identifier or directory name.
@@ -147,23 +171,31 @@ collect_publish_candidates <- function(cohorts = NULL, include_merged_tables = T
 #' a dated snapshot under synced export storage.
 #'
 #' @param cohorts Optional character vector of cohort names to publish.
-#' @param snapshot_id Character snapshot identifier (default date stamp).
+#' @param snapshot_id Optional character snapshot identifier. When omitted, the
+#'   current date is used, with alphabetical suffixes for additional snapshots
+#'   on the same day.
 #' @param include_merged_tables Logical indicating whether merged tables are
 #'   included in publishing.
 #' @param dry_run Logical indicating whether to simulate without file copies.
+#' @param log_summary Logical indicating whether to write the result summary to
+#'   the configured logger.
 #' @return List containing `snapshot_dir`, `dry_run`, `summary`, and `manifest`.
 #' @examples
 #' publish_outputs(dry_run = TRUE)
 publish_outputs <- function(
     cohorts = NULL,
-    snapshot_id = format(Sys.Date(), "%Y-%m-%d"),
+    snapshot_id = NULL,
     include_merged_tables = TRUE,
-    dry_run = TRUE
+    dry_run = TRUE,
+    log_summary = TRUE
 ) {
     if (!dir.exists(OUTPUT_DIR)) {
         stop(sprintf("Runtime output directory does not exist: %s", OUTPUT_DIR), call. = FALSE)
     }
 
+    if (is.null(snapshot_id)) {
+        snapshot_id <- next_available_publish_snapshot_id()
+    }
     snapshot_dir <- get_export_snapshot_dir(snapshot_id = snapshot_id)
     snapshot_exists <- dir.exists(snapshot_dir)
     if (snapshot_exists && !isTRUE(dry_run)) {
@@ -304,7 +336,7 @@ publish_outputs <- function(
         snapshot_dir = snapshot_dir
     )
 
-    if (exists("USE_LOGS", inherits = TRUE) && isTRUE(USE_LOGS)) {
+    if (isTRUE(log_summary) && exists("USE_LOGS", inherits = TRUE) && isTRUE(USE_LOGS)) {
         logger::log_info(sprintf(
             "Publish summary (dry_run=%s): publishable=%d copied=%d would_copy=%d skipped=%d missing=%d failed=%d",
             isTRUE(dry_run),
@@ -347,7 +379,8 @@ publish_outputs <- function(
 parse_publish_outputs_args <- function() {
     args <- commandArgs(trailingOnly = TRUE)
     opts <- list(
-        snapshot_id = format(Sys.Date(), "%Y-%m-%d"),
+        snapshot_id = NULL,
+        snapshot_id_supplied = FALSE,
         dry_run = TRUE,
         include_merged_tables = TRUE,
         cohorts = NULL,
@@ -368,8 +401,10 @@ parse_publish_outputs_args <- function() {
             opts$include_merged_tables <- FALSE
         } else if (grepl("^--snapshot-id=", arg)) {
             opts$snapshot_id <- sub("^--snapshot-id=", "", arg)
+            opts$snapshot_id_supplied <- TRUE
         } else if (identical(arg, "--snapshot-id") && i < length(args)) {
             opts$snapshot_id <- args[[i + 1L]]
+            opts$snapshot_id_supplied <- TRUE
             i <- i + 1L
         } else if (grepl("^--cohorts=", arg)) {
             cohort_value <- sub("^--cohorts=", "", arg)
@@ -412,7 +447,7 @@ print_publish_outputs_usage <- function() {
             "      [--no-merged-tables]",
             "",
             "Notes:",
-            "  --dry-run is the default and only previews the publish manifest.",
+            "  --dry-run is the default. Snapshots use YYYY-MM-DD, then -a, -b, etc. on the same day.",
             "  --execute performs the actual copy and writes publish_manifest.csv.",
             "  cohort values can be runtime dirs (uveal_full, uveal_restricted, gksrs)",
             "  or dataset ids (uveal_melanoma_full_cohort, etc.).",
@@ -421,50 +456,150 @@ print_publish_outputs_usage <- function() {
     )
 }
 
+#' Quote a publish CLI value only when the shell requires it
+#'
+#' @param value Character scalar command-line value.
+#' @return Character scalar safe to include in a shell command.
+#' @examples
+#' format_publish_cli_value("2026-04-02")
+format_publish_cli_value <- function(value) {
+    value <- as.character(value)
+    if (grepl("^[A-Za-z0-9._,/-]+$", value)) {
+        return(value)
+    }
+    shQuote(value)
+}
+
+#' Build the execute command corresponding to publish CLI options
+#'
+#' @param opts Parsed publish CLI options.
+#' @return Character scalar command that performs the publish.
+#' @examples
+#' publish_execute_command(list(snapshot_id = "2026-04-02"))
+publish_execute_command <- function(opts) {
+    command_parts <- c(
+        "Rscript scripts/workflow/publish_outputs.R",
+        "--execute"
+    )
+
+    if (isTRUE(opts$snapshot_id_supplied)) {
+        command_parts <- c(
+            command_parts,
+            "--snapshot-id",
+            format_publish_cli_value(opts$snapshot_id)
+        )
+    }
+
+    if (!is.null(opts$cohorts)) {
+        command_parts <- c(
+            command_parts,
+            "--cohorts",
+            format_publish_cli_value(paste(opts$cohorts, collapse = ","))
+        )
+    }
+    if (!isTRUE(opts$include_merged_tables)) {
+        command_parts <- c(command_parts, "--no-merged-tables")
+    }
+
+    paste(command_parts, collapse = " ")
+}
+
+#' Format a concise completion report for direct publish CLI execution
+#'
+#' @param result Result returned by `publish_outputs()`.
+#' @param opts Parsed publish CLI options.
+#' @return Character scalar CLI report.
+#' @examples
+#' format_publish_outputs_cli_report(
+#'     result = list(dry_run = TRUE, snapshot_dir = "outputs/2026-04-02", summary = list()),
+#'     opts = list(snapshot_id = "2026-04-02", cohorts = NULL, include_merged_tables = TRUE)
+#' )
+format_publish_outputs_cli_report <- function(result, opts) {
+    summary <- result$summary
+    selected_cohorts <- if (is.null(opts$cohorts)) {
+        "all detected runtime cohorts"
+    } else {
+        paste(opts$cohorts, collapse = ", ")
+    }
+    mode_line <- if (isTRUE(result$dry_run)) {
+        "DRY RUN: no files were copied"
+    } else {
+        "EXECUTED: files were copied and a manifest was written"
+    }
+
+    report_lines <- c(
+        "Publish outputs",
+        mode_line,
+        "",
+        sprintf("Snapshot ID: %s", basename(result$snapshot_dir)),
+        sprintf("Snapshot target: %s", result$snapshot_dir),
+        sprintf("Cohorts: %s", selected_cohorts),
+        sprintf("Merged tables: %s", if (isTRUE(opts$include_merged_tables)) "included" else "excluded"),
+        "",
+        "Results:",
+        sprintf("  Publishable: %d", summary$publishable_files),
+        sprintf("  Copied: %d", summary$copied),
+        sprintf("  Would copy: %d", summary$would_copy),
+        sprintf("  Excluded by registry: %d", summary$skipped),
+        sprintf("  Missing: %d", summary$missing),
+        sprintf("  Failed: %d", summary$failed)
+    )
+
+    if (isTRUE(result$dry_run) && !isTRUE(summary$snapshot_exists)) {
+        report_lines <- c(
+            report_lines,
+            "",
+            "Next step (performs the copy):",
+            paste0("  ", publish_execute_command(opts))
+        )
+    } else if (isTRUE(result$dry_run)) {
+        report_lines <- c(
+            report_lines,
+            "",
+            "Next step: this snapshot target already exists and will not be overwritten."
+        )
+    } else {
+        report_lines <- c(
+            report_lines,
+            sprintf("  Manifest: %s", file.path(result$snapshot_dir, "publish_manifest.csv"))
+        )
+    }
+
+    paste(report_lines, collapse = "\n")
+}
+
 #' Run the direct `Rscript` entry point for publishing outputs
 #'
 #' Parses CLI arguments, loads the project environment when needed, executes
-#' `publish_outputs()`, and prints a short manifest preview to stdout.
+#' `publish_outputs()`, and prints a concise publish report to stdout.
 #'
+#' @param opts Optional parsed publish CLI options. Defaults to the command-line
+#'   arguments for direct execution.
 #' @return Invisibly returns the list produced by `publish_outputs()`, or
 #'   `NULL` when showing help text.
 #' @examples
 #' \dontrun{
 #' main()
 #' }
-main <- function() {
-    opts <- parse_publish_outputs_args()
+main <- function(opts = parse_publish_outputs_args()) {
     if (isTRUE(opts$help)) {
         print_publish_outputs_usage()
         return(invisible(NULL))
     }
 
     if (!exists("OUTPUT_DIR", inherits = TRUE)) {
-        source(here::here("scripts", "load_all.R"))
+        suppressPackageStartupMessages(source(here::here("scripts", "load_all.R")))
     }
 
     result <- publish_outputs(
         cohorts = opts$cohorts,
         snapshot_id = opts$snapshot_id,
         include_merged_tables = opts$include_merged_tables,
-        dry_run = opts$dry_run
+        dry_run = opts$dry_run,
+        log_summary = FALSE
     )
 
-    cat(sprintf("Snapshot target: %s\n", result$snapshot_dir))
-    cat(sprintf("Mode: %s\n", if (isTRUE(result$dry_run)) "dry_run" else "execute"))
-    print(result$summary)
-
-    preview_cols <- intersect(
-        c("status", "source_path", "destination_path", "message"),
-        names(result$manifest)
-    )
-    if (length(preview_cols) > 0 && nrow(result$manifest) > 0) {
-        preview_manifest <- utils::head(result$manifest[, preview_cols, drop = FALSE], 10)
-        print(preview_manifest, row.names = FALSE)
-        if (nrow(result$manifest) > 10) {
-            cat(sprintf("... %d more manifest rows\n", nrow(result$manifest) - 10))
-        }
-    }
+    cat(format_publish_outputs_cli_report(result, opts), "\n", sep = "")
 
     invisible(result)
 }
