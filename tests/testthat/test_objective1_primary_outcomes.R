@@ -42,6 +42,70 @@ test_that("Objective 1 pipeline returns expected top-level analyses", {
     expect_true(file.exists(file.path(pipeline$output_dirs$obj1_pfs_cox, "test_progression_free_survival_probability_effect_summary.xlsx")))
 })
 
+test_that("Objective 1 invokes propensity sensitivity only for the restricted cohort", {
+    original_runner <- run_objective1_propensity_sensitivity
+    original_population_check <- assert_survival_population_contract
+    calls <- new.env(parent = emptyenv())
+    calls$records <- list()
+    assign(
+        "run_objective1_propensity_sensitivity",
+        function(data, dataset_name, output_dir, prefix) {
+            calls$records[[length(calls$records) + 1L]] <- list(
+                dataset_name = dataset_name,
+                output_dir = output_dir,
+                prefix = prefix
+            )
+            list(stubbed = TRUE)
+        },
+        envir = .GlobalEnv
+    )
+    withr::defer(
+        assign("run_objective1_propensity_sensitivity", original_runner, envir = .GlobalEnv),
+        envir = parent.frame()
+    )
+    assign(
+        "assert_survival_population_contract",
+        function(...) invisible(NULL),
+        envir = .GlobalEnv
+    )
+    withr::defer(
+        assign("assert_survival_population_contract", original_population_check, envir = .GlobalEnv),
+        envir = parent.frame()
+    )
+
+    restricted_dir <- file.path(TEST_OUTPUT_DIR, "objective1_propensity_route_restricted")
+    other_dir <- file.path(TEST_OUTPUT_DIR, "objective1_propensity_route_other")
+    restricted_outputs <- build_objective1_output_dirs(restricted_dir)
+    other_outputs <- build_objective1_output_dirs(other_dir)
+    purrr::walk(c(restricted_outputs, other_outputs), dir.create, recursive = TRUE, showWarnings = FALSE)
+    withr::defer(unlink(restricted_dir, recursive = TRUE, force = TRUE), envir = parent.frame())
+    withr::defer(unlink(other_dir, recursive = TRUE, force = TRUE), envir = parent.frame())
+
+    restricted_result <- run_objective_1(
+        create_test_dataset(),
+        OBJECTIVE1_PROPENSITY_DATASET,
+        restricted_outputs,
+        "restricted_cohort_",
+        confounders = c("age_at_diagnosis", "sex")
+    )
+    other_result <- run_objective_1(
+        create_test_dataset(),
+        "other_test_cohort",
+        other_outputs,
+        "other_",
+        confounders = c("age_at_diagnosis", "sex")
+    )
+
+    expect_length(calls$records, 1L)
+    expect_identical(calls$records[[1]]$dataset_name, OBJECTIVE1_PROPENSITY_DATASET)
+    expect_identical(
+        calls$records[[1]]$output_dir,
+        restricted_outputs$obj1_propensity_sensitivity
+    )
+    expect_true(isTRUE(restricted_result$propensity_sensitivity$stubbed))
+    expect_null(other_result$propensity_sensitivity)
+})
+
 test_that("Objective 1 recurrence and metastasis subgroup outputs use the Cox HR contract", {
     pipeline <- run_objective1_test(create_test_dataset(), output_tag = "objective1_subgroup_model_contract")
     withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())

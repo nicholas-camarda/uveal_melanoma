@@ -149,6 +149,7 @@ source(here("scripts", "analysis", "vision_safety_analysis.R"))
 # Source modular statistical analysis files
 source(here("scripts", "analysis", "binary_outcomes.R"))
 source(here("scripts", "analysis", "survival_outcomes.R"))
+source(here("scripts", "analysis", "propensity_score_sensitivity.R"))
 source(here("scripts", "analysis", "rmst_visualization.R"))
 
 # Source modular subgroup analysis files

@@ -933,7 +933,7 @@ evaluate_objective0_contract_values <- function(values, domain, missing_policy) 
 
     if (!is.null(allowed_values)) {
         invalid_rows <- !missing_rows & !as.character(values) %in% allowed_values
-    } else if (domain %in% c("binary_01", "event_type_012", "nonnegative_numeric", "numeric", "probability", "logical")) {
+    } else if (domain %in% c("binary_01", "event_type_012", "nonnegative_numeric", "nonnegative_integer", "numeric", "probability", "logical")) {
         numeric_values <- suppressWarnings(as.numeric(as.character(values)))
         numeric_missing <- is.na(numeric_values)
         if (domain == "binary_01") {
@@ -942,6 +942,13 @@ evaluate_objective0_contract_values <- function(values, domain, missing_policy) 
             invalid_rows <- !missing_rows & (numeric_missing | !numeric_values %in% c(0, 1, 2))
         } else if (domain == "nonnegative_numeric") {
             invalid_rows <- !missing_rows & (numeric_missing | !is.finite(numeric_values) | numeric_values < 0)
+        } else if (domain == "nonnegative_integer") {
+            invalid_rows <- !missing_rows & (
+                numeric_missing |
+                    !is.finite(numeric_values) |
+                    numeric_values < 0 |
+                    numeric_values != floor(numeric_values)
+            )
         } else if (domain == "probability") {
             invalid_rows <- !missing_rows & (numeric_missing | !is.finite(numeric_values) | numeric_values < 0 | numeric_values > 1)
         } else if (domain == "logical") {

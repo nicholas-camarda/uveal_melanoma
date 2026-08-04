@@ -12,6 +12,15 @@
 TREATMENT_FACTOR_LEVELS <- c("PBT", "GKSRS") # PBT is reference group
 TREATMENT_REFERENCE_LEVEL <- TREATMENT_FACTOR_LEVELS[1] # Explicitly define reference
 TREATMENT_COMPARISON_LEVEL <- TREATMENT_FACTOR_LEVELS[2] # Explicitly define comparison
+
+# Restricted-cohort propensity-overlap sensitivity specification
+OBJECTIVE1_PROPENSITY_DATASET <- "uveal_melanoma_restricted_cohort"
+OBJECTIVE1_PROPENSITY_COVARIATES <- c(
+    "age_at_diagnosis", "sex", "location", "initial_tumor_height",
+    "initial_tumor_diameter", "srf", "treatment_year"
+)
+OBJECTIVE1_PROPENSITY_ESTIMAND <- "ATO"
+OBJECTIVE1_PROPENSITY_BALANCE_THRESHOLD <- 0.10
 TREATMENT_LABELS <- c("PBT", "GKSRS") # For display/plotting (matches factor levels order)
 FAVOURS_LABELS <- c("Favors PBT", "Favors GKSRS") # For forest plot labels (matches factor levels order)
 

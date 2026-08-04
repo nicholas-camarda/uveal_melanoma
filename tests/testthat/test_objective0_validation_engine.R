@@ -21,6 +21,7 @@ make_objective0_validation_dataset <- function() {
         last_known_alive_date = as.Date(c("2025-02-01", "2025-02-15", "2025-03-01")),
         last_known_alive_source = c("last_height_date", "date_diagnosis", "dod"),
         treatment_date = as.Date(c("2020-01-01", "2020-01-15", "2020-02-01")),
+        treatment_year = c(2020L, 2020L, 2020L),
         date_diagnosis = as.Date(c("2019-12-15", "2020-01-01", "2020-01-20")),
         dob = as.Date(c("1965-01-01", "1960-01-01", "1955-01-01")),
         initial_tumor_height_binned = factor(c("<=10", "<=10", "<=10")),
@@ -513,6 +514,39 @@ test_that("Objective 0 contract registries do not drift from endpoint mappings",
         "gep_validation_set"
     ))
     expect_true(all(gep_contract_fields %in% contract_pairs$variable_name[contract_pairs$objective_id == "objective4"]))
+    expect_true("treatment_year" %in% OBJECTIVE0_DERIVED_OUTPUT_MANIFEST)
+    expect_true(all(c("objective1", "objective2") %in%
+        contract_pairs$objective_id[contract_pairs$variable_name == "treatment_year"]))
+    treatment_year_rows <- OBJECTIVE0_DOWNSTREAM_INPUT_CONTRACT %>%
+        dplyr::filter(.data$variable_name == "treatment_year")
+    expect_true(all(treatment_year_rows$expected_domain == "nonnegative_integer"))
+    expect_true(all(treatment_year_rows$missing_policy == "complete"))
+})
+
+test_that("Objective 0 rejects absent or incomplete downstream treatment year", {
+    registry <- OBJECTIVE0_DOWNSTREAM_INPUT_CONTRACT %>%
+        dplyr::filter(.data$variable_name == "treatment_year")
+    valid_data <- tibble::tibble(id = 1:2, treatment_year = c(2020L, 2021L))
+
+    expect_true(validate_downstream_objective_input_contract(
+        valid_data,
+        "unit",
+        registry
+    )$findings$status[[1]] == "pass")
+
+    absent <- validate_downstream_objective_input_contract(
+        dplyr::select(valid_data, -"treatment_year"),
+        "unit",
+        registry
+    )
+    incomplete <- validate_downstream_objective_input_contract(
+        dplyr::mutate(valid_data, treatment_year = c(2020L, NA_integer_)),
+        "unit",
+        registry
+    )
+
+    expect_true(any(absent$findings$status == "fail"))
+    expect_true(any(incomplete$findings$status == "fail"))
 })
 
 test_that("config_constants remains the only public config source entry point", {

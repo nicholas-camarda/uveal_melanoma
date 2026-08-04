@@ -124,7 +124,8 @@ create_derived_variables <- function(data) {
                 treatment_group == "GKSRS" ~ initial_gk_date,
                 treatment_group == "PBT" ~ initial_plaque_date,
                 TRUE ~ NA_Date_
-            )
+            ),
+            treatment_year = suppressWarnings(as.integer(format(as.Date(treatment_date), "%Y")))
         ) %>%
         mutate(treatment_group = factor(treatment_group, levels = TREATMENT_FACTOR_LEVELS)) %>%
         mutate(

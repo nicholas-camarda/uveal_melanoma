@@ -137,9 +137,11 @@ test_that("peer-review follow-up audit writes expected workbook sheets", {
     expect_true(any(audit$clickable_paths$path_role == "audit_workbook_output"))
 })
 
-test_that("peer-review on-demand audit tools are not sourced by load_all", {
+test_that("peer-review audit tools and production propensity analysis are routed correctly", {
     load_all_text <- readLines(here::here("scripts", "load_all.R"), warn = FALSE)
 
     expect_false(any(grepl("peer_review_followup_audit\\.R", load_all_text)))
-    expect_false(any(grepl("propensity_score_feasibility\\.R", load_all_text)))
+    expect_false(any(grepl("tools.*propensity_score_feasibility\\.R", load_all_text)))
+    expect_true(any(grepl("analysis.*propensity_score_sensitivity\\.R", load_all_text)))
+    expect_false(file.exists(here::here("scripts", "tools", "propensity_score_feasibility.R")))
 })

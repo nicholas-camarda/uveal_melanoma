@@ -1,12 +1,12 @@
 # Periodic refresh runner for documentation-oriented tools
 
 if (!exists("TOOLS_OUTPUT_DIR", inherits = TRUE)) {
-    source(here::here("scripts", "load_all.R"))
+    source(here::here("scripts", "load_all.R"), local = TRUE)
 }
 
-source(here::here("scripts", "tools", "derived_variables_documentation.R"))
-source(here::here("scripts", "tools", "comprehensive_variable_census.R"))
-source(here::here("scripts", "tools", "study_doc_generators.R"))
+source(here::here("scripts", "tools", "derived_variables_documentation.R"), local = TRUE)
+source(here::here("scripts", "tools", "comprehensive_variable_census.R"), local = TRUE)
+source(here::here("scripts", "tools", "study_doc_generators.R"), local = TRUE)
 
 run_tool_refresh_suite <- function(
     dataset_name = "uveal_melanoma_full_cohort",

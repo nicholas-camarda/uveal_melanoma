@@ -267,7 +267,7 @@ is_publishable_artifact <- function(path) {
 PUBLISH_ARTIFACT_REGISTRY <- list(
     cohort = c(
         "^00_General/.+\\.(xlsx|html|txt|csv|tsv)$",
-        "^01_Efficacy/.+\\.(xlsx|html|png|pdf|txt|csv|tsv)$",
+        "^01_Efficacy/.+\\.(xlsx|html|png|pdf|md|txt|csv|tsv)$",
         "^02_Safety/.+\\.(xlsx|html|png|pdf|txt|csv|tsv)$",
         "^03_Repeat_Radiation/.+\\.(xlsx|html|png|pdf|txt|csv|tsv)$",
         "^04_GEP_Validation/.+\\.(xlsx|html|png|pdf|md|txt|csv|tsv)$"
@@ -278,6 +278,7 @@ PUBLISH_ARTIFACT_REGISTRY <- list(
     excluded = c(
         "(^|/)(logs|cache|caches|tools_output|test_output|tmp|temp)(/|$)",
         "(^|/).*(?:_diagnostics\\.xlsx|_SKIPPED\\.html|_NO_CONTENT_DIAGNOSTIC\\.html|publish_manifest\\.csv)$",
+        "(^|/)01_Efficacy/h_propensity_score_sensitivity/.+\\.(csv|tsv|rds)$",
         "(^|/)04_GEP_Validation/.+(?:_validation_narrative_summary|_extrapolation_assumption_summary|_mfs_sensitivity_summary|_simple_gep_validation_report|_exploratory_no_gep_summary)\\.txt$"
     )
 )
