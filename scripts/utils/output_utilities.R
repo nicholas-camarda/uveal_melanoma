@@ -412,6 +412,7 @@ define_objective_directory_map <- function(cohort_dir) {
         obj1_subgroup_sensitivity = file.path(cohort_dir, "01_Efficacy", "g_subgroup_analysis", "tumor_height_sensitivity"),
         # obj1_subgroup_clinical   = file.path(cohort_dir, "01_Efficacy", "g_subgroup_analysis", "clinical_outcomes"),
         obj1_forest_plots         = file.path(cohort_dir, "01_Efficacy", "g_subgroup_analysis", "forest_plots"),
+        obj1_propensity_sensitivity = file.path(cohort_dir, "01_Efficacy", "h_propensity_score_sensitivity"),
 
         # ── Objective 2: Safety / Toxicity of PBT vs GKSRS ─────────────
         obj2_vision      = file.path(cohort_dir, "02_Safety", "a_vision_changes"),

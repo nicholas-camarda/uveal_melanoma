@@ -11,6 +11,17 @@ OBJECTIVE1_OS_POPULATION_CONTRACTS <- tibble::tribble(
     "uveal_melanoma_full_cohort",            "tt_death_months", "death_event", "treatment_group", 260L,         57L,       "111d11adbdf35be35d6c53764ba0e3d41c9929582f4b513ddc6c4a1ac6adbf6e", "Approved after audited source-date corrections for IDs 125 and 211."
 )
 
+# Production propensity populations are approval-controlled. Any change in
+# size or fingerprint requires row-level audit and scientific approval.
+OBJECTIVE1_PROPENSITY_EXPECTED_POPULATIONS <- tibble::tribble(
+    ~surface, ~n_patients, ~n_events, ~population_fingerprint,
+    "propensity_membership", 164L, NA_integer_, "356d947d6528af641d7ec2c870314616a69f328977636d448d1ffe92546ae180",
+    "local_recurrence", 164L, 18L, "bdd8cfb1610996e7d805dddca1a80f269f66fef4fd58faca1ac12cceecc33dd6",
+    "metastatic_progression", 164L, 28L, "0796dd46c5740a05abc5c99d1534dfe75f12124d205e1a0f7712c0c2eda08b71",
+    "overall_survival", 164L, 39L, "ed18b406e5e73752bdf98c7d9104e4c1024f0d31563d9200cdb748c8b0e6de7d",
+    "progression_free_survival", 164L, 51L, "320fdfac66a6cacdb719935ee633b6146c36d793e9b4729261330ac532edb2ad"
+)
+
 # Objective 1 treatment-by-subgroup comparisons use one event-time contract.
 # The binary recurrence/metastasis outputs remain descriptive event support;
 # inferential subgroup effects use Cox models and are reported as HRs.
