@@ -33,7 +33,7 @@ The core documentation set is intentionally split by role so updates have one pr
 
 | Topic | Primary home | What stays here |
 |-------|--------------|-----------------|
-| Running the project and finding outputs | `README.md` | Short overview, entry commands, output map, and links outward |
+| Running the project and finding outputs | `README.md` | Short overview, entry commands, default path model, output map, and links outward |
 | Derived variables and endpoint definitions | `CALCULATIONS.md` | Cross-links only when implementation context is needed |
 | Statistical methods, assumptions, and thresholds | `STATISTICAL_METHODS.md` | References to scripts or artifact contracts only when needed for implementation clarity |
 | Output-reading guidance | `INTERPRETATION_GUIDE.md` | References to where artifacts are generated, not how to interpret them |
@@ -119,7 +119,7 @@ This three-cohort design addresses key clinical and methodological challenges:
 
 ### Dataset Identities and Construction
 
-The analytic datasets in `~/Workspaces/uveal-melanoma/runtime/Analytic Dataset/` are not separate raw sources. They are three derived views of the same cleaned and fully processed master table, created once in Objective 0 and then reused by Objectives 1-4.
+The runtime analytic-data directory described in the [README path model](../README.md#path-model) contains three derived views of the same cleaned and fully processed master table. These are not separate raw sources: Objective 0 creates them once and Objectives 1-4 reuse them.
 
 | Dataset file | Runtime dataset id | Output folder | What it means | How it is constructed | Why it exists |
 |--------------|--------------------|---------------|---------------|-----------------------|---------------|
@@ -133,7 +133,7 @@ These three files should be interpreted as intentionally overlapping analytic co
 - The **restricted cohort** is the clinically balanced subset of the full cohort.
 - The **GKSRS-only cohort** is the clinically excluded-from-PBT subset of the full cohort.
 
-The additional files in `~/Workspaces/uveal-melanoma/runtime/Analytic Dataset/` support consistent downstream reporting:
+The additional files in that runtime analytic-data directory support consistent downstream reporting:
 
 | Supporting file | What it contains | Why it is saved |
 |-----------------|------------------|-----------------|
@@ -188,7 +188,7 @@ Patients are classified into three vital status categories for summary reporting
 Analysis outputs follow a **cohort → objective → sub-objective** structure:
 
 ```
-~/Workspaces/uveal-melanoma/runtime/
+Runtime output root (see the [README path model](../README.md#path-model))
 ├── Analytic Dataset/               # Processed RDS files and runtime metadata
 │   ├── uveal_melanoma_full_cohort.rds
 │   ├── uveal_melanoma_restricted_cohort.rds
@@ -209,10 +209,11 @@ Analysis outputs follow a **cohort → objective → sub-objective** structure:
 │   │   │   ├── d_progression_free_survival/
 │   │   │   ├── e_tumor_height_primary/    # 01_descriptive, 02_models, 03_timing_audit
 │   │   │   ├── f_tumor_height_sensitivity/  # flat sensitivity regression outputs
-│   │   │   └── g_subgroup_analysis/
-│   │   │       ├── tumor_height_primary/
-│   │   │       ├── tumor_height_sensitivity/
-│   │   │       └── forest_plots/
+│   │   │   ├── g_subgroup_analysis/
+│   │   │   │   ├── tumor_height_primary/
+│   │   │   │   ├── tumor_height_sensitivity/
+│   │   │   │   └── forest_plots/
+│   │   │   └── h_propensity_score_sensitivity/  # restricted cohort only
 │   │   ├── 02_Safety/
 │   │   │   ├── a_vision_changes/          # 01_descriptive … 04_sensitivity
 │   │   │   ├── b_retinopathy/             # 01_descriptive, 02_adjusted_models, 03_effect_summary
@@ -232,7 +233,7 @@ Analysis outputs follow a **cohort → objective → sub-objective** structure:
 ├── test_output/                    # Testing artifacts
 └── tools_output/                   # Documentation/audit tool artifacts
 
-~/Library/CloudStorage/OneDrive-Personal/Project Vault/Research/uveal-melanoma/
+Configured export root
 ├── Original Files/                 # Authoritative raw input data
 └── outputs/
     └── <YYYY-MM-DD>/               # Published final deliverables only
@@ -323,7 +324,7 @@ scripts/
 
 ### Tool Refresh Outputs
 
-Documentation-oriented utilities under [scripts/tools](../scripts/tools) write their canonical runtime artifacts to `~/Workspaces/uveal-melanoma/runtime/tools_output/`, which is the path behind `TOOLS_OUTPUT_DIR` in [scripts/utils/config_constants.R](../scripts/utils/config_constants.R).
+Documentation-oriented utilities under [scripts/tools](../scripts/tools) write their canonical runtime artifacts to the configured `tools_output/` folder (see the [README path model](../README.md#path-model)).
 
 The current refresh entry point is [scripts/tools/run_tool_refreshes.R](../scripts/tools/run_tool_refreshes.R). It orchestrates the documentation-focused tools, writes per-tool run summaries, and leaves behind a suite-level manifest so periodic refreshes can be audited without opening the workbooks themselves.
 
@@ -478,6 +479,7 @@ The manual-correction sheet includes the corrected field, rationale, confidence 
 | **1e. Tumor Height (Primary)** | Linear regression with the shared covariate set (`age_at_diagnosis`, `sex`, `location`) | `analyze_tumor_height_changes()` | Descriptive summaries/plots (`01_descriptive/`), primary regression (`02_models/`), timing audit (`03_timing_audit/`) | `{cohort}/01_Efficacy/e_tumor_height_primary/` |
 | **1f. Tumor Height (Sensitivity)** | Internal diagnostic change-score model including baseline tumor height, which is also part of the outcome definition | `analyze_tumor_height_changes()` | Flat folder: sensitivity regression models (.html) and diagnostics (.xlsx) only | `{cohort}/01_Efficacy/f_tumor_height_sensitivity/` |
 | **1g. Subgroup Analysis** | Interaction testing across patient subgroups | `analyze_treatment_effect_subgroups_*()` | Subgroup tables (.xlsx), forest plots (.png), diagnostics (.xlsx) | `{cohort}/01_Efficacy/g_subgroup_analysis/` |
+| **Restricted propensity-overlap sensitivity** | Supplemental treatment-only overlap-weighted Cox models for four Objective 1 endpoints | `run_objective1_propensity_sensitivity()` | Workbook, overlap/balance/forest/Schoenfeld plots, narrative summary, and runtime-only design audit; the Schoenfeld plot includes treatment and global p-values | `uveal_restricted/01_Efficacy/h_propensity_score_sensitivity/` only |
 
 **Objective 1 artifact routing:** proportional-hazards diagnostics are colocated per survival endpoint (`06_ph_diagnostics/` for recurrence/mets; `05_ph_diagnostics/` for OS/PFS). HR effect summaries and PH interpretation columns live in each endpoint's Cox folder, not in survival-rate summary folders. The former centralized `h_proportional_hazards_diagnostics/` folder is no longer written.
 
@@ -636,7 +638,6 @@ Objective 0 contract responsibilities:
 
 **Key Settings:**
 ```r
-INPUT_FILENAME <- "your_data_file.xlsx"
 RECREATE_ANALYTIC_DATASETS <- FALSE
 USE_LOGS <- TRUE
 VERBOSE <- TRUE

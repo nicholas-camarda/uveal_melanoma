@@ -27,6 +27,7 @@ Key sub-objectives:
 - `1e. Tumor height change (primary)`: evaluate change from `initial_tumor_height` to `last_height` with timing-audit context
 - `1f. Tumor height change (sensitivity)`: internal diagnostic change-score sensitivity that includes baseline tumor height even though baseline height is part of the change-score outcome; this is not a reviewer-facing answer to the timing or clinical-relevance concern
 - `1g. Subgroup analysis`: evaluate whether efficacy patterns differ across baseline subgroups
+- `Restricted-cohort propensity-overlap sensitivity`: a supplemental, restricted-cohort-only analysis of local recurrence, metastatic progression, overall survival, and progression-free survival. It uses overlap weights to target the population with measured covariate overlap; the conventional adjusted Cox models remain the primary analyses.
 
 Tumor-height note:
 
