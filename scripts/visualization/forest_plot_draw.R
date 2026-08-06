@@ -74,6 +74,11 @@ create_forest_plot <- function(subgroup_results,
 #' @param favours_labels Character vector of length 2 for axis labels (e.g., c("Favors GKSRS", "Favors PBT"))
 #' @param clip Numeric vector of length 2 for clipping range (default: c(0.1, 10))
 #' @param title Character string for plot title (optional)
+#' @param include_interaction_p Logical; include the interaction p-value column
+#'   (default `TRUE` for subgroup plots).
+#' @param label_column Character string for the first table-column header.
+#' @param include_variable_header Logical; include a per-variable header row
+#'   (default `TRUE` for subgroup plots).
 #' @return A forestploter object
 create_single_cohort_forest_plot <- function(subgroup_results,
                                              outcome_name,
@@ -83,7 +88,10 @@ create_single_cohort_forest_plot <- function(subgroup_results,
                                              effect_measure = "HR",
                                              favours_labels = NULL,
                                              clip = NULL,
-                                             title = NULL) {
+                                             title = NULL,
+                                             include_interaction_p = TRUE,
+                                             label_column = "Subgroup",
+                                             include_variable_header = TRUE) {
     # Check that variable_order is provided
     if (missing(variable_order) || is.null(variable_order)) {
         stop("variable_order must be provided to ensure consistency across cohorts")
@@ -99,7 +107,15 @@ create_single_cohort_forest_plot <- function(subgroup_results,
     treatment_colors <- tryCatch(get_treatment_palette(treatment_levels), error = function(e) NULL)
 
     # Create the formatted data for forestploter
-    plot_data <- create_forest_plot_data(subgroup_results, variable_order, treatment_labels, effect_measure)
+    plot_data <- create_forest_plot_data(
+        subgroup_results = subgroup_results,
+        variable_order = variable_order,
+        treatment_labels = treatment_labels,
+        effect_measure = effect_measure,
+        include_interaction_p = include_interaction_p,
+        label_column = label_column,
+        include_variable_header = include_variable_header
+    )
 
     # Set default title
     if (is.null(title)) {
@@ -175,11 +191,14 @@ create_single_cohort_forest_plot <- function(subgroup_results,
         vertline_lty = "solid",
         vertline_col = "black",
         footnote_gp = gpar(cex = 0.8),
+        # Establish a publication-style hierarchy for the title and table
+        # headers while preserving the existing title alignment.
+        title_gp = gpar(cex = 1.30, fontface = "bold", col = "black"),
         # Header formatting - this controls the column headers
         colhead = list(
             fg_params = list(
                 fontface = "bold",
-                cex = 1.0,
+                cex = 1.05,
                 hjust = 0.5,
                 x = 0.5
             )
@@ -234,7 +253,11 @@ create_single_cohort_forest_plot <- function(subgroup_results,
         theme = tm,
         title = title
     )
-    fp <- style_forest_interaction_status_cells(fp, plot_data)
+    fp <- style_forest_interaction_status_cells(
+        fp,
+        plot_data,
+        include_interaction_p = include_interaction_p
+    )
 
     # Attach diagnostics for external retrieval
     attr(fp, "diagnostics") <- plot_data$diagnostics

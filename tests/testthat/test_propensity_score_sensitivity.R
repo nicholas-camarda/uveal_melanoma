@@ -300,7 +300,6 @@ test_that("propensity artifacts share exact labels, direction, and workbook valu
     endpoints <- fit_objective1_weighted_endpoints(design)
     artifacts <- build_objective1_propensity_artifacts(design, endpoints)
 
-    expect_identical(artifacts$plots$forest$labels$x, "Overlap-weighted HR (95% CI)")
     expect_true(all(artifacts$weighted_cox_results$comparison == "GKSRS vs PBT"))
     expect_setequal(
         unique(artifacts$plots$balance$data$weighting),
@@ -359,6 +358,61 @@ test_that("propensity artifacts share exact labels, direction, and workbook valu
             "competing_deaths", "pbt_competing_deaths", "gksrs_competing_deaths"
         )])
     )
+})
+
+test_that("propensity forest plot reuses the centralized HR, CI, and p-value renderer", {
+    prepared <- prepare_objective1_propensity_population(
+        create_propensity_test_data(),
+        "synthetic_restricted"
+    )
+    design <- fit_objective1_propensity_weights(prepared)
+    endpoints <- fit_objective1_weighted_endpoints(design)
+    artifacts <- build_objective1_propensity_artifacts(design, endpoints)
+    forest_results <- create_objective1_propensity_forest_results(
+        endpoints$weighted_cox_results
+    )
+    plot_data <- create_forest_plot_data(
+        subgroup_results = forest_results,
+        variable_order = "outcome",
+        treatment_labels = TREATMENT_LABELS,
+        effect_measure = "HR",
+        include_interaction_p = FALSE,
+        label_column = "Outcome",
+        include_variable_header = FALSE
+    )
+
+    expect_true(inherits(artifacts$plots$forest, "forestplot"))
+    expect_equal(attr(artifacts$plots$forest, "forest_row_count"), 4L)
+    expect_equal(ncol(plot_data$data_frame), 6L)
+    expect_identical(
+        names(plot_data$data_frame),
+        c("Outcome", "PBT n/N", "GKSRS n/N", " ", "HR (95% CI)", "p-value")
+    )
+    expect_identical(
+        plot_data$data_frame$Outcome,
+        endpoints$weighted_cox_results$outcome
+    )
+    expect_false("Int p" %in% names(plot_data$data_frame))
+    expect_identical(
+        plot_data$data_frame[["HR (95% CI)"]],
+        sprintf(
+            "%.2f (%.2f, %.2f)",
+            endpoints$weighted_cox_results$estimate,
+            endpoints$weighted_cox_results$conf_low,
+            endpoints$weighted_cox_results$conf_high
+        )
+    )
+    expect_identical(
+        plot_data$data_frame[["p-value"]],
+        vapply(
+            endpoints$weighted_cox_results$p_value,
+            forest_format_p_value,
+            character(1)
+        )
+    )
+    expect_true(all(plot_data$est_values == endpoints$weighted_cox_results$estimate))
+    expect_true(all(plot_data$lower_values == endpoints$weighted_cox_results$conf_low))
+    expect_true(all(plot_data$upper_values == endpoints$weighted_cox_results$conf_high))
 })
 
 test_that("weighted Schoenfeld titles identify the PH-test p-value", {

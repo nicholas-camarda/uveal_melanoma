@@ -12,7 +12,7 @@ test_that("portable smoke path writes simple GEP outputs and dry-run publish on 
     withr::defer(unlink(cohort_root, recursive = TRUE), envir = parent.frame())
 
     results <- simple_gep_validation(
-        data = create_test_dataset(),
+        data = create_synthetic_ci_dataset(),
         output_dirs = output_dirs,
         prefix = "smoke_",
         dataset_name = "uveal_melanoma_restricted_cohort"

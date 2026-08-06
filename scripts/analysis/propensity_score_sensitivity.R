@@ -814,7 +814,18 @@ build_propensity_technical_audit <- function(weighted_design,
         analysis_specification = analysis_specification,
         provenance = list(
             generated_at_utc = format(Sys.time(), tz = "UTC", usetz = TRUE),
-            session_info = utils::sessionInfo(),
+            # Keep the audit portable: full sessionInfo() embeds absolute
+            # library paths, which can expose a maintainer's local username.
+            session_info = list(
+                r_version = as.character(getRversion()),
+                platform = R.version$platform,
+                attached_packages = sort(.packages()),
+                package_versions = vapply(
+                    sort(.packages()),
+                    function(pkg) as.character(utils::packageVersion(pkg)),
+                    character(1)
+                )
+            ),
             fingerprints = list(
                 design_input = compute_propensity_design_input_fingerprint(original),
                 membership = weighted_design$population$population_audit$population_fingerprint,
@@ -843,11 +854,74 @@ build_propensity_technical_audit <- function(weighted_design,
     )
 }
 
-#' Build all reader-facing and technical propensity artifacts
+#' Adapt weighted propensity endpoint results to the centralized forest contract
 #'
-#' @param weighted_design Weighted propensity design.
-#' @param endpoint_results Weighted endpoint results.
-#' @return Structured artifact object used by every writer.
+#' The shared forest renderer is subgroup-oriented, while propensity endpoints
+#' are outcome rows. This adapter keeps that translation local to the
+#' propensity module and preserves the canonical HR/CI/p-value formatting.
+#'
+#' @param weighted_cox_results Canonical weighted endpoint result rows.
+#' @return Subgroup-shaped result list accepted by the centralized renderer.
+create_objective1_propensity_forest_results <- function(weighted_cox_results) {
+    required_columns <- c(
+        "outcome", "n", "pbt_n", "pbt_events", "gksrs_n", "gksrs_events",
+        "estimate", "conf_low", "conf_high", "p_value"
+    )
+    missing_columns <- setdiff(required_columns, names(weighted_cox_results))
+    if (length(missing_columns) > 0L) {
+        stop(
+            sprintf(
+                "Propensity forest results are missing required columns: %s.",
+                paste(missing_columns, collapse = ", ")
+            ),
+            call. = FALSE
+        )
+    }
+
+    outcome_order <- as.character(weighted_cox_results$outcome)
+    subgroup_effects <- weighted_cox_results %>%
+        dplyr::transmute(
+            subgroup_variable = "outcome",
+            subgroup_level = as.character(.data$outcome),
+            n_total = as.numeric(.data$n),
+            n_plaque = as.numeric(.data$pbt_n),
+            n_gksrs = as.numeric(.data$gksrs_n),
+            events_plaque = as.numeric(.data$pbt_events),
+            events_gksrs = as.numeric(.data$gksrs_events),
+            treatment_effect = as.numeric(.data$estimate),
+            ci_lower = as.numeric(.data$conf_low),
+            ci_upper = as.numeric(.data$conf_high),
+            p_value = as.numeric(.data$p_value)
+        )
+
+    list(
+        outcome = list(
+            interaction_p = NA_real_,
+            subgroup_effects = subgroup_effects,
+            modeled_continuously = FALSE,
+            interaction_diagnostics = list(
+                original_level_order = outcome_order
+            )
+        )
+    )
+}
+
+create_objective1_propensity_forest_plot <- function(weighted_cox_results) {
+    create_single_cohort_forest_plot(
+        subgroup_results = create_objective1_propensity_forest_results(weighted_cox_results),
+        outcome_name = "Propensity-Overlap Sensitivity",
+        cohort_name = "Restricted Cohort",
+        treatment_labels = TREATMENT_LABELS,
+        variable_order = "outcome",
+        effect_measure = "HR",
+        favours_labels = FAVOURS_LABELS,
+        title = "Restricted-cohort propensity-overlap sensitivity",
+        include_interaction_p = FALSE,
+        label_column = "Outcome",
+        include_variable_header = FALSE
+    )
+}
+
 build_objective1_propensity_artifacts <- function(weighted_design, endpoint_results) {
     dataset_name <- weighted_design$population$population_audit$dataset_name[[1]]
     specification_table <- tibble::tribble(
@@ -948,35 +1022,9 @@ build_objective1_propensity_artifacts <- function(weighted_design, endpoint_resu
         ) +
         ggplot2::theme_minimal(base_size = 12)
 
-    forest_data <- endpoint_results$weighted_cox_results %>%
-        dplyr::mutate(
-            outcome = factor(.data$outcome, levels = rev(.data$outcome)),
-            result_label = sprintf(
-                "%.2f (%.2f, %.2f); p=%s",
-                .data$estimate,
-                .data$conf_low,
-                .data$conf_high,
-                format.pval(.data$p_value, digits = 2, eps = 0.001)
-            )
-        )
-    forest_plot <- ggplot2::ggplot(
-        forest_data,
-        ggplot2::aes(y = .data$outcome, x = .data$estimate)
-    ) +
-        ggplot2::geom_vline(xintercept = 1, linetype = "dashed", color = "grey45") +
-        ggplot2::geom_errorbarh(
-            ggplot2::aes(xmin = .data$conf_low, xmax = .data$conf_high),
-            height = 0.18
-        ) +
-        ggplot2::geom_point(size = 2.8) +
-        ggplot2::scale_x_log10() +
-        ggplot2::labs(
-            title = "Restricted-cohort propensity-overlap sensitivity",
-            subtitle = "GKSRS versus PBT; restricted-cohort average treatment effect in the overlap population",
-            x = "Overlap-weighted HR (95% CI)",
-            y = NULL
-        ) +
-        ggplot2::theme_minimal(base_size = 12)
+    forest_plot <- create_objective1_propensity_forest_plot(
+        endpoint_results$weighted_cox_results
+    )
 
     analysis_specification <- list(
         specification = specification_table,
@@ -1225,11 +1273,15 @@ write_objective1_propensity_artifacts <- function(artifacts, output_dir, prefix)
         width = DEFAULT_PLOT_WIDTH, height = DEFAULT_PLOT_HEIGHT,
         dpi = PLOT_DPI, bg = "white"
     )
-    ggplot2::ggsave(
-        output_paths[["results_forest_plot"]], artifacts$plots$forest,
-        width = DEFAULT_PLOT_WIDTH, height = SMALL_PLOT_HEIGHT,
-        dpi = PLOT_DPI, bg = "white"
+    grDevices::png(
+        output_paths[["results_forest_plot"]],
+        width = FOREST_PLOT_WIDTH,
+        height = compute_forest_plot_height(artifacts$plots$forest),
+        units = PLOT_UNITS,
+        res = PLOT_DPI
     )
+    plot(artifacts$plots$forest)
+    grDevices::dev.off()
 
     grDevices::png(
         output_paths[["weighted_schoenfeld_plot"]],
