@@ -290,7 +290,8 @@ synthetic_ci_required_columns <- function() {
     "gep12_prame_status", "gep_validation_set", "tt_mets_months",
     "mets_event", "tt_death_months", "tt_death_years",
     "melanoma_death_event", "competing_death_event",
-    "expected_mfs_5yr", "expected_mss_5yr", "initial_tumor_height",
+    "expected_mfs_5yr", "expected_mss_5yr",
+    "mfs_analysis_eligible", "mss_analysis_eligible", "initial_tumor_height",
     "age_at_diagnosis", "sex"
   )
 }
@@ -373,6 +374,8 @@ create_synthetic_ci_dataset <- function(n = 48L, seed = SYNTHETIC_CI_FIXTURE_SEE
       competing_death_event = as.integer(rep(0L, n)),
       expected_mfs_5yr = expected_mfs,
       expected_mss_5yr = expected_mss,
+      mfs_analysis_eligible = TRUE,
+      mss_analysis_eligible = TRUE,
       initial_tumor_height = round(rlnorm(n, meanlog = log(3.8), sdlog = 0.28), 1),
       age_at_diagnosis = round(rnorm(n, mean = 65, sd = 8), 0),
       sex = factor(
