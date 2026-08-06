@@ -551,12 +551,14 @@ test_that("publish_outputs creates a new snapshot and rejects existing snapshot 
     writeLines("merged", file.path(output_root, "merged_tables", "merged_baseline.csv"))
 
     old_output <- OUTPUT_DIR
+    old_logs <- LOGS_DIR
     old_merged <- MERGED_TABLES_DIR
     old_export_root <- EXPORT_ROOT
     old_export_analysis <- EXPORT_ANALYSIS_DIR
 
     on.exit({
         assign("OUTPUT_DIR", old_output, envir = .GlobalEnv)
+        assign("LOGS_DIR", old_logs, envir = .GlobalEnv)
         assign("MERGED_TABLES_DIR", old_merged, envir = .GlobalEnv)
         assign("EXPORT_ROOT", old_export_root, envir = .GlobalEnv)
         assign("EXPORT_ANALYSIS_DIR", old_export_analysis, envir = .GlobalEnv)
@@ -564,9 +566,14 @@ test_that("publish_outputs creates a new snapshot and rejects existing snapshot 
     }, add = TRUE)
 
     assign("OUTPUT_DIR", output_root, envir = .GlobalEnv)
+    assign("LOGS_DIR", file.path(runtime_root, "logs"), envir = .GlobalEnv)
     assign("MERGED_TABLES_DIR", file.path(output_root, "merged_tables"), envir = .GlobalEnv)
     assign("EXPORT_ROOT", export_root, envir = .GlobalEnv)
     assign("EXPORT_ANALYSIS_DIR", export_analysis_root, envir = .GlobalEnv)
+
+    clean_log <- file.path(LOGS_DIR, "txt", "run_log_20260806_000000.txt")
+    dir.create(dirname(clean_log), recursive = TRUE, showWarnings = FALSE)
+    writeLines("[INFO] analysis completed", clean_log)
 
     first_publish <- publish_outputs(snapshot_id = "2026-03-25-publish", dry_run = FALSE)
     expect_true(dir.exists(first_publish$snapshot_dir))
