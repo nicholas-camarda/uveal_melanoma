@@ -15,11 +15,14 @@ git clone https://github.com/nicholas-camarda/uveal-melanoma.git
 cd uveal-melanoma
 ```
 
-2. Install R package dependencies.
+2. Restore the locked R 4.4.3 package environment.
 
 ```sh
 Rscript scripts/bootstrap_packages.R
 ```
+
+The committed `renv.lock` is the source of truth for package versions. The
+repository does not use npm or maintain a Node dependency lockfile.
 
 3. Place the shared input spreadsheet in the expected raw-data folder.
 
@@ -41,7 +44,7 @@ The [path model](#path-model) below shows the default output layout and how to r
 
 ### Prerequisites
 
-- R 4.4 or newer
+- R 4.4.3
 - Access to the project input spreadsheet
 - A local clone of this repository
 
@@ -94,12 +97,21 @@ main_execution()
 ### Run tests
 
 ```sh
-# Portable regression suite
-Rscript scripts/tools/run_testthat.R tests/testthat
+# Fast, data-free suite used by the required pull-request check
+Rscript scripts/tools/run_testthat.R tests/testthat --filter '^(ci_contract|path_runtime_publish|forest_plot_labels|objective0_data_processing_portable|objective1_subgroup_policy|objective4_gep_analysis_portable|sparse_factor_handling|propensity_score_sensitivity|synthetic_fixture_contract)$'
+Rscript scripts/tools/run_testthat.R tests/integration --filter 'portable_smoke'
 
-# Local integration suite (requires local cohort data)
+# Full data-free regression suite
+Rscript scripts/tools/run_testthat.R tests/testthat
+Rscript scripts/tools/run_testthat.R tests/integration --filter 'portable_smoke'
+
+# Broader local integration suite (requires the private cohort data)
 OCULAR_RUN_INTEGRATION_TESTS=true Rscript scripts/tools/run_testthat.R tests/integration
 ```
+
+The synthetic fixture exercises portable schema, missingness, censoring, GEP,
+PRAME, treatment, sparse-group, and one-arm paths. It is not a substitute for
+the local data-backed validation of scientific estimates.
 
 ## Path Model
 

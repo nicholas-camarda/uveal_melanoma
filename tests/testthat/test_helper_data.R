@@ -234,3 +234,127 @@ create_test_dataset <- function() {
     optic_nerve = rep(c("Involved", "Not Involved"), each = 10)
   )
 }
+
+# This fixture is deliberately separate from create_test_dataset(). The latter
+# mirrors the date-heavy input contract used by Objective 0 and several unit
+# tests; this fixture is the small, data-free contract used by portable CI.
+# Values are rounded synthetic proportions inspired by the study design, not
+# copied observations or estimates from the clinical workbook.
+SYNTHETIC_CI_FIXTURE_VERSION <- "2026-08-06.1"
+SYNTHETIC_CI_FIXTURE_SEED <- 20260806L
+SYNTHETIC_CI_TREATMENT_LEVELS <- c("PBT", "GKSRS")
+SYNTHETIC_CI_COHORT_LEVELS <- c("full", "restricted", "gksrs_only")
+SYNTHETIC_CI_GEP_LEVELS <- c("Class 1", "Class 2")
+
+synthetic_ci_required_columns <- function() {
+  c(
+    "treatment_group", "consort_group", "synthetic_cohort",
+    "gep_class_simple", "biopsy1_gep", "biopsy1_gep_mfs", "biopsy1_gep_mss", "prame_status",
+    "gep12_prame_status", "gep_validation_set", "tt_mets_months",
+    "mets_event", "tt_death_months", "tt_death_years",
+    "melanoma_death_event", "competing_death_event",
+    "expected_mfs_5yr", "expected_mss_5yr", "initial_tumor_height",
+    "age_at_diagnosis", "sex"
+  )
+}
+
+#' Generate the small deterministic cohort used by portable CI.
+#'
+#' The generator has no filesystem or clinical-data dependency. It intentionally
+#' omits patient identifiers, calendar dates, and free-text fields while still
+#' exercising both treatments, all supported cohort labels, missing values,
+#' censoring, sparse groups, GEP/PRAME values, and one-arm GKSRS-only data.
+create_synthetic_ci_dataset <- function(n = 48L, seed = SYNTHETIC_CI_FIXTURE_SEED) {
+  if (length(n) != 1L || is.na(n) || n < 24L || n != as.integer(n)) {
+    stop("n must be one integer of at least 24 rows.", call. = FALSE)
+  }
+  if (length(seed) != 1L || is.na(seed)) {
+    stop("seed must be one non-missing value.", call. = FALSE)
+  }
+
+  withr::with_seed(seed, {
+    n <- as.integer(n)
+    synthetic_cohort <- factor(
+      rep(SYNTHETIC_CI_COHORT_LEVELS, length.out = n),
+      levels = SYNTHETIC_CI_COHORT_LEVELS
+    )
+
+    treatment_group <- sample(
+      SYNTHETIC_CI_TREATMENT_LEVELS,
+      size = n,
+      replace = TRUE,
+      prob = c(0.42, 0.58)
+    )
+    # Guarantee coverage for the two comparison arms and a one-arm cohort.
+    treatment_group[seq_len(min(4L, n))] <- c("PBT", "GKSRS", "GKSRS", "PBT")
+    treatment_group[synthetic_cohort == "gksrs_only"] <- "GKSRS"
+    treatment_group <- factor(treatment_group, levels = SYNTHETIC_CI_TREATMENT_LEVELS)
+
+    gep_class <- sample(
+      SYNTHETIC_CI_GEP_LEVELS,
+      size = n,
+      replace = TRUE,
+      prob = c(0.62, 0.38)
+    )
+    gep_class[seq_len(min(2L, n))] <- SYNTHETIC_CI_GEP_LEVELS
+    gep_class <- factor(gep_class, levels = SYNTHETIC_CI_GEP_LEVELS)
+
+    mets_event <- rbinom(n, size = 1L, prob = 0.28)
+    mets_event[seq_len(min(2L, n))] <- c(1L, 0L)
+    tt_mets_months <- sample(c(18, 30, 42, 54, 66, 78, 96), n, replace = TRUE)
+    tt_mets_months[mets_event == 1L] <- sample(c(18, 30, 42, 54), sum(mets_event == 1L), replace = TRUE)
+
+    death_event <- rbinom(n, size = 1L, prob = 0.16)
+    death_event[seq_len(min(2L, n))] <- c(1L, 0L)
+    tt_death_months <- sample(c(24, 36, 48, 60, 72, 84, 108), n, replace = TRUE)
+    tt_death_months[death_event == 1L] <- sample(c(24, 36, 48, 60), sum(death_event == 1L), replace = TRUE)
+
+    expected_mfs <- ifelse(gep_class == "Class 1", 0.82, 0.58)
+    expected_mss <- ifelse(gep_class == "Class 1", 0.91, 0.70)
+    expected_mfs <- as.numeric(expected_mfs)
+    expected_mss <- as.numeric(expected_mss)
+
+    prame_status <- sample(c("Negative", "Positive"), n, replace = TRUE, prob = c(0.55, 0.45))
+    prame_status[c(9L, min(27L, n))] <- NA_character_
+
+    tibble::tibble(
+      treatment_group = treatment_group,
+      consort_group = treatment_group,
+      synthetic_cohort = synthetic_cohort,
+      gep_class_simple = gep_class,
+      biopsy1_gep = factor(as.character(gep_class), levels = SYNTHETIC_CI_GEP_LEVELS),
+      biopsy1_gep_mfs = expected_mfs,
+      biopsy1_gep_mss = expected_mss,
+      prame_status = factor(prame_status, levels = c("Negative", "Positive")),
+      gep12_prame_status = factor(prame_status, levels = c("Negative", "Positive")),
+      gep_validation_set = rep("Eligible", n),
+      tt_mets_months = as.numeric(tt_mets_months),
+      mets_event = as.integer(mets_event),
+      tt_death_months = as.numeric(tt_death_months),
+      tt_death_years = as.numeric(tt_death_months / 12),
+      melanoma_death_event = as.integer(death_event),
+      competing_death_event = as.integer(rep(0L, n)),
+      expected_mfs_5yr = expected_mfs,
+      expected_mss_5yr = expected_mss,
+      initial_tumor_height = round(rlnorm(n, meanlog = log(3.8), sdlog = 0.28), 1),
+      age_at_diagnosis = round(rnorm(n, mean = 65, sd = 8), 0),
+      sex = factor(
+        sample(c("Female", "Male"), n, replace = TRUE, prob = c(0.48, 0.52)),
+        levels = c("Female", "Male")
+      ),
+      mfs_event_5yr = as.integer(tt_mets_months <= 60 & mets_event == 1L),
+      mss_event_5yr = as.integer(tt_death_months <= 60 & death_event == 1L)
+    ) %>%
+      dplyr::mutate(
+        initial_tumor_height = dplyr::if_else(
+          dplyr::row_number() %in% c(7L, min(31L, n)),
+          NA_real_,
+          initial_tumor_height
+        )
+      ) %>%
+      structure(
+        synthetic_fixture_version = SYNTHETIC_CI_FIXTURE_VERSION,
+        synthetic_fixture_seed = seed
+      )
+  })
+}
