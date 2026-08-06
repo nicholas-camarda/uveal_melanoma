@@ -290,3 +290,67 @@ test_that("all GEP Class levels remain visible with outcome-specific estimabilit
         "^1.35 "
     )
 })
+
+test_that("both PRAME status levels remain visible with outcome-specific estimability", {
+    required_prame_levels <- c("Negative", "Positive")
+    expect_identical(FOREST_PLOT_REQUIRED_LEVELS$gep12_prame_status, required_prame_levels)
+
+    subgroup_results <- list(
+        gep12_prame_status = list(
+            interaction_p = NA_real_,
+            subgroup_effects = data.frame(
+                subgroup_variable = "gep12_prame_status",
+                subgroup_level = "Negative",
+                n_total = 55,
+                n_plaque = 28,
+                n_gksrs = 27,
+                events_plaque = 2,
+                events_gksrs = 1,
+                treatment_effect = 1.20,
+                ci_lower = 0.55,
+                ci_upper = 2.60,
+                p_value = 0.64,
+                stringsAsFactors = FALSE
+            ),
+            interaction_diagnostics = list(
+                original_level_order = required_prame_levels,
+                level_statistics = list(
+                    Negative = list(
+                        n_total = 55,
+                        n_plaque = 28,
+                        n_gksrs = 27,
+                        events_plaque = 2,
+                        events_gksrs = 1,
+                        exclusion_reason = ""
+                    ),
+                    Positive = list(
+                        n_total = 26,
+                        n_plaque = 13,
+                        n_gksrs = 13,
+                        events_plaque = 0,
+                        events_gksrs = 0,
+                        exclusion_reason = "Event count: Requires ≥1 event per arm"
+                    )
+                )
+            )
+        )
+    )
+
+    plot_data <- create_forest_plot_data(
+        subgroup_results = subgroup_results,
+        variable_order = "gep12_prame_status",
+        treatment_labels = TREATMENT_LABELS,
+        effect_measure = "HR"
+    )
+    displayed_levels <- trimws(plot_data$data_frame$Subgroup[-1])
+
+    expect_identical(displayed_levels, required_prame_levels)
+    expect_match(
+        plot_data$data_frame$`HR (95% CI)`[-1][displayed_levels == "Negative"],
+        "^1.20 "
+    )
+    expect_identical(
+        plot_data$data_frame$`HR (95% CI)`[-1][displayed_levels == "Positive"],
+        "Not estimable"
+    )
+})

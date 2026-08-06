@@ -199,10 +199,16 @@ test_that("reviewer-facing subgroup diagnostics retain T4 support information", 
     expect_false(any(grepl("T4", subgroup_levels, fixed = TRUE) & is.na(support_notes)))
     expect_true(any(grepl("T4 is retained", support_notes, fixed = TRUE)))
 
+    prame_rows <- diagnostics[diagnostics$variable == "gep12_prame_status", , drop = FALSE]
+    expect_true(nrow(prame_rows) > 0)
+    prame_label_columns <- intersect(c("subgroup_level", "level"), names(prame_rows))
+    prame_labels <- unique(unlist(prame_rows[prame_label_columns], use.names = FALSE))
+    expect_true(all(c("Negative", "Positive") %in% as.character(prame_labels)))
+
     audit_files <- diagnostics_files[purrr::map_lgl(diagnostics_files, ~ "reviewer_subgroup_support_audit" %in% readxl::excel_sheets(.x))]
     expect_true(length(audit_files) > 0)
     support_audit <- purrr::map_dfr(audit_files, ~ readxl::read_xlsx(.x, sheet = "reviewer_subgroup_support_audit"))
-    expect_true(any(support_audit$subgroup_var == "gep12_prame_status"))
+    expect_false(any(support_audit$subgroup_var == "gep12_prame_status"))
     expect_true(any(support_audit$subgroup_var == "initial_t_stage_simple" & support_audit$level == "T4"))
     expect_true(all(support_audit$observed_n >= 0, na.rm = TRUE))
     expect_true(any(

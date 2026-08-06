@@ -81,20 +81,13 @@ build_reviewer_subgroup_support_audit <- function(data) {
     } else {
         0L
     }
-    prame_excluded_n <- if ("gep12_prame_status" %in% names(data)) {
-        sum(!is.na(data$gep12_prame_status), na.rm = TRUE)
-    } else {
-        0L
-    }
     list(
         t4_n = as.integer(t4_n),
-        prame_excluded_n = as.integer(prame_excluded_n),
         audit = data.frame(
-            subgroup_var = c("gep12_prame_status", "initial_t_stage_simple"),
-            level = c("PRAME local-recurrence subgroup surface", "T4"),
-            observed_n = c(prame_excluded_n, t4_n),
+            subgroup_var = "initial_t_stage_simple",
+            level = "T4",
+            observed_n = t4_n,
             reason = c(
-                "PRAME local-recurrence reviewer-facing subgroup display removed because event support is inadequate.",
                 "T4 is retained in every reviewer-facing subgroup display; each outcome-specific treatment effect is shown when estimable and otherwise labeled not estimable."
             ),
             stringsAsFactors = FALSE

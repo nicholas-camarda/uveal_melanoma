@@ -190,6 +190,7 @@ FOREST_PLOT_VARIABLE_ORDER <- c(
     OBJECTIVE1_AGE_SUBGROUP_VAR, "sex", "location",
     "initial_t_stage_simple", # "initial_t_stage",
     "gep_class_simple", # gep_class_simple is just Class 1 vs Class 2
+    "gep12_prame_status",
     # "initial_tumor_height", "initial_tumor_diameter", 
     # "biopsy1_gep", 
     "optic_nerve"
@@ -221,6 +222,10 @@ FOREST_PLOT_REQUIRED_LEVELS <- list(
         "Class 2",
         "GEP Failed/Indeterminate",
         "GEP Not Tested"
+    ),
+    gep12_prame_status = c(
+        "Negative",
+        "Positive"
     )
 )
 
