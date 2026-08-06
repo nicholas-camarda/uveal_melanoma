@@ -136,6 +136,21 @@ get_canonical_factor_level_expectations <- function() {
             reference = "Negative",
             critical = FALSE
         ),
+        exploratory_gep_group = list(
+            levels = c("Class 1", "Class 2", "GEP Failed/Indeterminate", "GEP Not Tested"),
+            reference = "Class 1",
+            critical = FALSE
+        ),
+        no_gep_group = list(
+            levels = c("GEP Failed/Indeterminate", "GEP Not Tested"),
+            reference = "GEP Failed/Indeterminate",
+            critical = FALSE
+        ),
+        vision_line_change_bucket = list(
+            levels = VISION_LINE_CHANGE_CATEGORY_LEVELS,
+            reference = VISION_LINE_CHANGE_CATEGORY_LEVELS[[1]],
+            critical = FALSE
+        ),
         initial_t_stage_simple = list(
             levels = c("T1", "T2", "T3", "T4"),
             reference = "T1",

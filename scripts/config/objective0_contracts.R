@@ -25,7 +25,12 @@ OBJECTIVE0_DERIVED_OUTPUT_MANIFEST <- c(
     "initial_tumor_height_binned",
     "initial_tumor_diameter_binned", "initial_stage_binary",
     "gep_class_simple", "prame_status", "gep12_prame_status", "recurrence1_treatment_clean",
-    "retinopathy_burden_event", "nvg_burden_event", "srd_burden_event"
+    "retinopathy_burden_event", "nvg_burden_event", "srd_burden_event",
+    "vision_change", "vision_line_change", "vision_line_change_bucket",
+    "last_vision_followup_months_explicit", "last_vision_followup_months_proxy",
+    "last_vision_followup_timing_source", "last_vision_followup_months",
+    "exploratory_gep_group", "no_gep_group", "ciliary_involvement",
+    "optic_nerve_involvement"
 )
 
 # Compatibility aliases preserve existing callers while tests/docs use the
@@ -79,6 +84,12 @@ OBJECTIVE0_DOWNSTREAM_INPUT_CONTRACT <- tibble::tribble(
     "objective2", "location", "shared adjusted model covariate", "present", "complete", "hard_error",
     "objective2", "treatment_year", "visual sensitivity baseline era covariate", "nonnegative_integer", "complete", "hard_error",
     "objective2", "vision_change", "vision safety endpoint", "numeric", "optional", "warning",
+    "objective2", "vision_line_change", "Snellen line-change numeric endpoint", "numeric", "optional", "warning",
+    "objective2", "vision_line_change_bucket", "fixed Snellen line-change bucket", "vision_line_change_bucket", "optional", "warning",
+    "objective2", "last_vision_followup_months_explicit", "explicit treatment-to-last-follow-up timing", "nonnegative_numeric", "optional", "warning",
+    "objective2", "last_vision_followup_months_proxy", "proxy latest-VA timing", "nonnegative_numeric", "optional", "warning",
+    "objective2", "last_vision_followup_timing_source", "latest-VA timing source", "vision_followup_timing_source", "optional", "warning",
+    "objective2", "last_vision_followup_months", "primary latest-VA timing", "nonnegative_numeric", "optional", "warning",
     "objective2", "initial_vision", "vision change source baseline", "numeric", "optional", "warning",
     "objective2", "last_vision", "vision change source follow-up", "numeric", "optional", "warning",
     "objective2", "recurrence1_pretreatment_vision", "vision change recurrence source", "numeric", "optional", "warning",
@@ -111,6 +122,10 @@ OBJECTIVE0_DOWNSTREAM_INPUT_CONTRACT <- tibble::tribble(
     "objective4", "biopsy1_gep_mfs", "GEP expected MFS source", "probability", "optional", "hard_error",
     "objective4", "biopsy1_gep_mss", "GEP expected MSS source", "probability", "optional", "hard_error",
     "objective4", "gep_class_simple", "GEP class endpoint", "gep_class_simple", "optional", "hard_error",
+    "objective4", "exploratory_gep_group", "exploratory GEP group", "gep_class_simple", "optional", "warning",
+    "objective4", "no_gep_group", "no-GEP exploratory group", "no_gep_group", "optional", "warning",
+    "objective4", "ciliary_involvement", "ciliary involvement exploratory predictor", "binary_01", "optional", "warning",
+    "objective4", "optic_nerve_involvement", "optic-nerve involvement exploratory predictor", "binary_01", "optional", "warning",
     "objective4", "prame_status", "PRAME endpoint", "prame_status", "optional", "hard_error",
     "objective4", "gep12_prame_status", "Class 1/2 PRAME endpoint", "gep12_prame_status", "optional", "warning",
     "objective4", "gep_validation_set", "GEP availability label", "gep_validation_set", "complete", "hard_error",

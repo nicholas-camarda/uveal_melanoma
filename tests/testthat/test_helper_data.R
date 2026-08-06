@@ -82,6 +82,7 @@ create_test_dataset <- function() {
     ),
     recurrence2 = rep("N", 20),
     recurrence2_date = rep(as.Date(NA), 20),
+    recurrence1_treatment_clean = ifelse(recurrence1 == "Y", "GKSRS", NA_character_),
 
     # Metastasis variables needed by create_derived_variables
     mets_progression = case_when(
@@ -128,6 +129,8 @@ create_test_dataset <- function() {
     last_vision = final_vision,
     recurrence1_pretreatment_vision = final_vision,
     vision_change = baseline_vision - final_vision,
+    vision_line_change = compute_line_change_lines(vision_change),
+    vision_line_change_bucket = assign_line_change_bucket(vision_line_change),
 
     # Objective 2 adverse events
     retinopathy = c(
@@ -213,10 +216,44 @@ create_test_dataset <- function() {
     expected_mss_7yr = c(rep(0.75, 10), rep(0.1, 10)),
     expected_mss_10yr = c(rep(0.65, 10), rep(0.05, 10)),
 
+    # Canonical Objective 0 risk, eligibility, event-type, and time fields
+    predicted_mfs_risk_5yr = 1 - expected_mfs_5yr,
+    predicted_mfs_risk_7yr = 1 - expected_mfs_7yr,
+    predicted_mfs_risk_10yr = 1 - expected_mfs_10yr,
+    predicted_mss_risk_5yr = 1 - expected_mss_5yr,
+    predicted_mss_risk_7yr = 1 - expected_mss_7yr,
+    predicted_mss_risk_10yr = 1 - expected_mss_10yr,
+
     # Time-specific event indicators for GEP analysis
     mfs_event_5yr = c(rep(0, 10), rep(1, 10)),
     mfs_event_7yr = c(rep(0, 10), rep(1, 10)),
     mfs_event_10yr = c(rep(0, 10), rep(1, 10)),
+    mss_event_5yr = as.integer(tt_death_years <= 5 & melanoma_death_event == 1),
+    mss_event_7yr = as.integer(tt_death_years <= 7 & melanoma_death_event == 1),
+    mss_event_10yr = as.integer(tt_death_years <= 10 & melanoma_death_event == 1),
+    event_type_mss_5yr = dplyr::case_when(
+      melanoma_death_event == 1 & tt_death_years <= 5 ~ 1L,
+      competing_death_event == 1 & tt_death_years <= 5 ~ 2L,
+      TRUE ~ 0L
+    ),
+    event_type_mss_7yr = dplyr::case_when(
+      melanoma_death_event == 1 & tt_death_years <= 7 ~ 1L,
+      competing_death_event == 1 & tt_death_years <= 7 ~ 2L,
+      TRUE ~ 0L
+    ),
+    event_type_mss_10yr = dplyr::case_when(
+      melanoma_death_event == 1 & tt_death_years <= 10 ~ 1L,
+      competing_death_event == 1 & tt_death_years <= 10 ~ 2L,
+      TRUE ~ 0L
+    ),
+    tt_mfs_5yr = pmin(tt_mets_months, 60),
+    tt_mfs_7yr = pmin(tt_mets_months, 84),
+    tt_mfs_10yr = pmin(tt_mets_months, 120),
+    tt_mss_5yr = pmin(tt_death_years, 5),
+    tt_mss_7yr = pmin(tt_death_years, 7),
+    tt_mss_10yr = pmin(tt_death_years, 10),
+    mfs_analysis_eligible = TRUE,
+    mss_analysis_eligible = TRUE,
 
     # Demographics
     age_at_diagnosis = c(

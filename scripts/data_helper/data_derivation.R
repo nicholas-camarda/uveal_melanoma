@@ -85,6 +85,40 @@ derive_objective2_toxicity_burden_fields <- function(data) {
     data
 }
 
+#' Derive canonical latest visual-acuity follow-up timing fields
+#'
+#' The explicit treatment-to-last-follow-up timing is the primary field. The
+#' general recorded follow-up duration is retained as a separately labeled
+#' proxy for sensitivity reporting when the explicit date is unavailable.
+#'
+#' @param data Data frame containing Objective 0 treatment and follow-up fields.
+#' @return Data frame with canonical latest-VA timing fields added.
+derive_last_vision_followup_fields <- function(data) {
+    explicit_months <- rep(NA_real_, nrow(data))
+    if (all(c("treatment_date", "last_followup") %in% names(data))) {
+        explicit_months <- suppressWarnings(lubridate::time_length(
+            lubridate::interval(data$treatment_date, data$last_followup),
+            unit = "months"
+        ))
+    }
+
+    proxy_months <- explicit_months
+    if ("follow_up_months" %in% names(data)) {
+        follow_up_months <- suppressWarnings(as.numeric(data$follow_up_months))
+        proxy_months <- dplyr::if_else(is.na(proxy_months), follow_up_months, proxy_months)
+    }
+
+    data$last_vision_followup_months_explicit <- explicit_months
+    data$last_vision_followup_months_proxy <- proxy_months
+    data$last_vision_followup_timing_source <- dplyr::case_when(
+        !is.na(explicit_months) ~ "explicit_last_followup",
+        is.na(explicit_months) & !is.na(proxy_months) ~ "proxy_general_recorded_followup",
+        TRUE ~ "missing_timing"
+    )
+    data$last_vision_followup_months <- data$last_vision_followup_months_explicit
+    data
+}
+
 #' Create derived variables for the full dataset
 #'
 #' Adds derived variables (dates, follow-up, time-to-event, event indicators, etc.) to the full data frame.
@@ -230,6 +264,11 @@ create_derived_variables <- function(data) {
                 recurrence1 == "Y" ~ initial_vision - recurrence1_pretreatment_vision,
                 TRUE ~ initial_vision - last_vision
             ),
+            # Canonical Snellen line-change representation. The observed-range
+            # label remains a downstream display concern; this fixed bucket is
+            # stable across cohorts and persists unsupported levels.
+            vision_line_change = compute_line_change_lines(vision_change),
+            vision_line_change_bucket = assign_line_change_bucket(vision_line_change),
         ) %>%
         mutate(
             recurrence_event = if_else(recurrence1 == "Y", 1, 0, missing = 0),
@@ -279,6 +318,22 @@ create_derived_variables <- function(data) {
                 biopsy1_gep %in% GEP_FAILED_OR_INDETERMINATE_RAW_LEVELS ~ "GEP Failed/Indeterminate",
                 biopsy1_gep %in% GEP_NOT_TESTED_RAW_LEVELS ~ "GEP Not Tested",
                 TRUE ~ NA_character_
+            ),
+            exploratory_gep_group = gep_class_simple,
+            no_gep_group = case_when(
+                gep_class_simple == "GEP Failed/Indeterminate" ~ "GEP Failed/Indeterminate",
+                gep_class_simple == "GEP Not Tested" ~ "GEP Not Tested",
+                TRUE ~ NA_character_
+            ),
+            ciliary_involvement = as.integer(grepl(
+                "cilio|ciliary",
+                as.character(location),
+                ignore.case = TRUE
+            )),
+            optic_nerve_involvement = case_when(
+                tolower(trimws(as.character(optic_nerve))) %in% c("y", "yes", "1", "true", "involved") ~ 1L,
+                tolower(trimws(as.character(optic_nerve))) %in% c("n", "no", "0", "false", "not involved") ~ 0L,
+                TRUE ~ NA_integer_
             ),
             expected_mfs_5yr = biopsy1_gep_mfs,
             expected_mfs_7yr = case_when(
@@ -423,6 +478,7 @@ create_derived_variables <- function(data) {
         ) %>%
         mutate()
 
+    new_data <- derive_last_vision_followup_fields(new_data)
     new_data <- refresh_gep_analysis_flags(new_data)
 
     new_variables <- setdiff(colnames(new_data), old_variables)

@@ -138,6 +138,69 @@ apply_criteria <- function(data) {
     ))
 }
 
+#' Validate raw values before fixed-level factor coercion
+#'
+#' @param data Data frame containing raw or display-oriented factor inputs.
+#'
+#' @return Invisibly returns the input data after validation.
+#'
+assert_known_raw_factor_values <- function(data) {
+    allowed_values <- list(
+        location = c(
+            "Choroidal", "Choroid", "Ciliary_Body", "Ciliary Body",
+            "Cilio_Choroidal", "Cilio-Choroidal", "Conjunctival",
+            "Irido_Ciliary", "Irido-Ciliary", "Iris"
+        ),
+        optic_nerve = c(
+            YN_RAW_LEVELS, YN_DISPLAY_LABELS,
+            "Involved", "Not Involved", "Positive", "Negative"
+        ),
+        biopsy1_gep = unique(c(
+            GEP_DEFINITIVE_RAW_LEVELS,
+            GEP_FAILED_OR_INDETERMINATE_RAW_LEVELS,
+            GEP_NOT_TESTED_RAW_LEVELS,
+            "DISCORDANT CASTLE RESULTS: Class 1A, PRAME not reported",
+            "Class 1 PRAME Negative", "Class 1 PRAME Positive",
+            "Class 2 PRAME Negative", "Class 2 PRAME Positive",
+            "GEP Failed/Indeterminate", "GEP Not Tested", "Class 1", "Class 2"
+        ))
+    )
+
+    unexpected <- list()
+    for (variable_name in names(allowed_values)) {
+        if (!variable_name %in% names(data)) {
+            next
+        }
+
+        observed <- unique(stats::na.omit(trimws(as.character(data[[variable_name]]))))
+        unexpected_values <- setdiff(observed, allowed_values[[variable_name]])
+        if (length(unexpected_values) > 0) {
+            unexpected[[variable_name]] <- unexpected_values
+        }
+    }
+
+    if (length(unexpected) > 0) {
+        details <- vapply(
+            names(unexpected),
+            function(variable_name) sprintf(
+                "%s: %s",
+                variable_name,
+                paste(unexpected[[variable_name]], collapse = ", ")
+            ),
+            character(1)
+        )
+        stop(
+            paste(
+                "Unexpected raw factor values detected before factor coercion:",
+                paste(details, collapse = "; ")
+            ),
+            call. = FALSE
+        )
+    }
+
+    invisible(data)
+}
+
 #' Prepare factor levels for key variables
 #'
 #' Converts relevant variables to factors with specified levels and orderings for analysis and modeling.
@@ -147,6 +210,8 @@ apply_criteria <- function(data) {
 #' @return A list with element `data` containing factored patient-level data
 prepare_factor_levels <- function(data) {
     logger::log_info("Preparing factor levels for variables")
+
+    assert_known_raw_factor_values(data)
 
     data <- data %>%
         mutate(
@@ -229,6 +294,16 @@ prepare_factor_levels <- function(data) {
                     TRUE ~ NA_character_
                 ),
                 levels = c("Class 1", "Class 2", "GEP Failed/Indeterminate", "GEP Not Tested"), ordered = FALSE
+            ),
+            exploratory_gep_group = factor(
+                as.character(exploratory_gep_group),
+                levels = c("Class 1", "Class 2", "GEP Failed/Indeterminate", "GEP Not Tested"),
+                ordered = FALSE
+            ),
+            no_gep_group = factor(
+                as.character(no_gep_group),
+                levels = c("GEP Failed/Indeterminate", "GEP Not Tested"),
+                ordered = FALSE
             ),
             prame_status = factor(prame_status, levels = c("Negative", "Positive", "Unknown", "Not Available"), ordered = FALSE)
         )

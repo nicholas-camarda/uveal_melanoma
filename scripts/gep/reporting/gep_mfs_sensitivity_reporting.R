@@ -138,7 +138,7 @@ collect_objective4_endpoint_followup_summary <- function(data,
                                                          eligibility_filter,
                                                          event_prefix,
                                                          time_horizon_years = 5) {
-    prepared_data <- refresh_gep_analysis_flags(data)
+    prepared_data <- data
     if ("treatment_group" %in% names(prepared_data)) {
         prepared_data <- normalize_treatment_group_data(prepared_data, columns = "treatment_group")
     }
@@ -749,9 +749,29 @@ build_objective4_mfs_event_diagnostics <- function(data) {
 #' @param dataset_name Optional dataset identifier for display restoration.
 #'
 #' @return Data frame restricted to `mfs_analysis_eligible` rows with the
-#'   derived sensitivity columns needed for reporting.
+#'   canonical Objective 0 sensitivity columns needed for reporting.
 prepare_objective4_mfs_sensitivity_data <- function(data, dataset_name = NULL) {
-    prepared_data <- refresh_gep_analysis_flags(data)
+    required_canonical_fields <- c(
+        "mfs_analysis_eligible",
+        "expected_mfs_5yr",
+        "predicted_mfs_risk_5yr",
+        "mfs_event_5yr",
+        "tt_mets_months",
+        "recurrence1_treatment_clean",
+        "gep_class_simple"
+    )
+    missing_canonical_fields <- setdiff(required_canonical_fields, names(data))
+    if (length(missing_canonical_fields) > 0) {
+        stop(sprintf(
+            paste(
+                "Objective 4 MFS sensitivity reporting requires canonical Objective 0 fields:",
+                "%s"
+            ),
+            paste(missing_canonical_fields, collapse = ", ")
+        ))
+    }
+
+    prepared_data <- data
 
     if ("treatment_group" %in% names(prepared_data)) {
         prepared_data <- normalize_treatment_group_data(prepared_data, columns = "treatment_group")
@@ -759,10 +779,6 @@ prepare_objective4_mfs_sensitivity_data <- function(data, dataset_name = NULL) {
 
     prepared_data <- restore_gep_display_variables(prepared_data, dataset_name = dataset_name)
     cohort_label <- format_objective4_gep_cohort_label(dataset_name)
-
-    if (!"mfs_analysis_eligible" %in% names(prepared_data)) {
-        prepared_data$mfs_analysis_eligible <- FALSE
-    }
 
     prepared_data <- add_objective4_operational_followup_status(prepared_data)
     eligible_data <- prepared_data %>%
@@ -774,33 +790,12 @@ prepare_objective4_mfs_sensitivity_data <- function(data, dataset_name = NULL) {
         rep(NA_character_, nrow(eligible_data))
     }
 
-    expected_mfs_5yr <- if ("expected_mfs_5yr" %in% names(eligible_data)) {
-        as.numeric(eligible_data$expected_mfs_5yr)
-    } else if ("biopsy1_gep_mfs" %in% names(eligible_data)) {
-        as.numeric(eligible_data$biopsy1_gep_mfs)
-    } else {
-        rep(NA_real_, nrow(eligible_data))
-    }
+    expected_mfs_5yr <- as.numeric(eligible_data$expected_mfs_5yr)
+    predicted_mfs_risk_5yr <- as.numeric(eligible_data$predicted_mfs_risk_5yr)
+    observed_events_5yr <- as.integer(!is.na(eligible_data$mfs_event_5yr) & eligible_data$mfs_event_5yr == 1)
 
-    predicted_mfs_risk_5yr <- if ("predicted_mfs_risk_5yr" %in% names(eligible_data)) {
-        as.numeric(eligible_data$predicted_mfs_risk_5yr)
-    } else {
-        1 - expected_mfs_5yr
-    }
-
-    observed_events_5yr <- if ("mfs_event_5yr" %in% names(eligible_data)) {
-        as.integer(!is.na(eligible_data$mfs_event_5yr) & eligible_data$mfs_event_5yr == 1)
-    } else {
-        rep(0L, nrow(eligible_data))
-    }
-
-    salvage_treatment <- if ("recurrence1_treatment_clean" %in% names(eligible_data)) {
-        salvage_values <- as.character(eligible_data$recurrence1_treatment_clean)
-        salvage_values[is.na(salvage_values) | salvage_values == ""] <- "None/Unknown"
-        salvage_values
-    } else {
-        rep("None/Unknown", nrow(eligible_data))
-    }
+    salvage_treatment <- as.character(eligible_data$recurrence1_treatment_clean)
+    salvage_treatment[is.na(salvage_treatment) | salvage_treatment == ""] <- "None/Unknown"
 
     both_initial_modalities <- if (all(c("initial_gk", "initial_plaque") %in% names(eligible_data))) {
         as.character(eligible_data$initial_gk) == "Y" & as.character(eligible_data$initial_plaque) == "Y"

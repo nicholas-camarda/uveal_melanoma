@@ -166,7 +166,9 @@ Vision loss is **expected** after radiation treatment due to:
 - **Step 1: LogMAR delta** — compute `delta_logMAR = initial_logMAR - follow_up_logMAR` (or use the pre-salvage value for recurrence patients). Positive deltas therefore indicate improved acuity (lower logMAR at follow-up); negative deltas indicate vision loss.
 - **Step 2: Snellen lines** — convert logMAR deltas into integer line counts via nearest-line rounding with halves rounded away from zero: `lines = round_half_away_from_zero(delta_logMAR / 0.1)`. One Snellen line equals 0.1 logMAR, so `-0.2 -> -2`, `-0.3 -> -3`, and `+0.2 -> +2`.
 - **Historical note** — before commit `6df27eb` (March 16, 2026), the helper used `ceiling(delta_logMAR / 0.1)` for positive changes and `floor(delta_logMAR / 0.1)` for negative changes. That older rule pushed every non-zero partial line away from zero, so values such as `+0.04` and `-0.04` were counted as `+1` and `-1` lines instead of `0`.
-- **Step 3: Labels & distribution categories** — translate counts into ordered labels through `vision_helpers.R::categorize_line_change()` and aggregate them into the 7-level `Snellen Line Change Distribution` with `assign_line_change_bucket()`. Distribution levels are centrally defined in `config_constants.R::VISION_LINE_CHANGE_CATEGORY_LEVELS` (≥3-, 2-, 1-line improvement; Stable [0-line change]; 1-, 2-, ≥3-line loss). Under the current nearest-line rule, non-zero logMAR deltas with absolute magnitude less than 0.05 round to `0` and therefore contribute to the stable bucket rather than the adjacent 1-line categories.
+- **Step 3: Labels & distribution categories** — translate counts into ordered labels through `vision_helpers.R::categorize_line_change()` and aggregate them into the 7-level `Snellen Line Change Distribution` with `assign_line_change_bucket()`. Distribution levels are centrally defined in `config/labels_display.R::VISION_LINE_CHANGE_CATEGORY_LEVELS` (≥3-, 2-, 1-line improvement; Stable [0-line change]; 1-, 2-, ≥3-line loss). Under the current nearest-line rule, non-zero logMAR deltas with absolute magnitude less than 0.05 round to `0` and therefore contribute to the stable bucket rather than the adjacent 1-line categories.
+- Objective 0 persists `vision_line_change` and `vision_line_change_bucket` in every analytic cohort. The fixed bucket levels remain available even when a cohort has no observations in one or more levels; downstream modeling may filter unsupported rows without merging categories.
+- Objective 0 also persists `last_vision_followup_months_explicit`, `last_vision_followup_months_proxy`, `last_vision_followup_timing_source`, and the primary `last_vision_followup_months` field. Explicit treatment-to-`last_followup` timing is primary; general `follow_up_months` is retained only as a labeled proxy when explicit timing is unavailable.
 - **Step 4: Manuscript-facing summary row** — the `Snellen Line Change` median/min/max and mean row shown in Objective 2 tables is a direct conversion of the displayed logMAR summary row, not a separately summarized transformed variable. This keeps the reported logMAR and Snellen summaries numerically aligned.
 
 **Outputs (Objective 2 / `a_vision_changes/` subfolder):**
@@ -181,6 +183,19 @@ Vision loss is **expected** after radiation treatment due to:
 8. `*_vision_effect_summary.xlsx` — one-sheet effect summary workbook combining descriptive, unadjusted, adjusted, and latest-VA sensitivity rows for logMAR Vision Change, Latest LogMAR Vision, Snellen Line Change, and Snellen Line Change Distribution. Workbook inference conventions follow the fitted model family: linear rows use mean differences with Wald CIs/p-values, logistic rows use ORs with model-based Wald CIs and the pipeline's standard term-level p-values, Cox rows use HRs with native Cox CIs/p-values, and ordinal rows use proportional-odds ORs with 95% Wald CIs plus likelihood-ratio-test p-values. Vision-change rows state that the implemented change-score model does not add baseline vision as a separate covariate; the separate latest-VA sensitivity uses final logMAR as the outcome.
 
 For reader-facing interpretation of these outputs, see [INTERPRETATION_GUIDE.md](INTERPRETATION_GUIDE.md#understanding-regression-outputs).
+
+---
+
+## Exploratory GEP Variables
+
+Objective 0 creates the deterministic exploratory GEP fields used by the no-GEP and baseline-predictor reports:
+
+- `exploratory_gep_group` mirrors `gep_class_simple` with fixed levels for Class 1, Class 2, GEP Failed/Indeterminate, and GEP Not Tested.
+- `no_gep_group` retains the two unsupported GEP groups without pooling them.
+- `ciliary_involvement` identifies ciliary/cilio-choroidal location.
+- `optic_nerve_involvement` normalizes recognized yes/no or involved/not-involved source values to `1`/`0`; unrecognized values remain missing for Objective 0 validation.
+
+These fields are not pseudo-imputed and do not alter the canonical dataset during downstream diagnostic modeling. Cohort-dependent GEP thresholds remain diagnostic-only and are reported without overwriting observed GEP values.
 
 ---
 

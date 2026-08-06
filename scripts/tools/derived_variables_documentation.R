@@ -163,6 +163,57 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "numeric",
         units = "mm"
     ),
+    vision_change = list(
+        description = "Change in visual acuity from initial to final or recurrence-pre-treatment vision",
+        calculation = "case_when(recurrence1 == 'Y' ~ initial_vision - recurrence1_pretreatment_vision, TRUE ~ initial_vision - last_vision)",
+        purpose = "Canonical logMAR vision-change endpoint for Objective 2",
+        data_type = "numeric",
+        units = "logMAR"
+    ),
+    vision_line_change = list(
+        description = "Integer Snellen-line representation of canonical logMAR vision change",
+        calculation = "compute_line_change_lines(vision_change)",
+        purpose = "Reusable exact line-change endpoint across cohorts and reports",
+        data_type = "numeric",
+        units = "Snellen lines"
+    ),
+    vision_line_change_bucket = list(
+        description = "Fixed seven-level Snellen line-change distribution bucket",
+        calculation = "assign_line_change_bucket(vision_line_change)",
+        purpose = "Stable ordinal vision-change representation with levels retained when unsupported",
+        data_type = "factor",
+        units = "categorical"
+    ),
+
+    # ===== LATEST VISUAL-ACUITY TIMING VARIABLES =====
+    last_vision_followup_months_explicit = list(
+        description = "Treatment-to-last-follow-up duration for explicit latest-VA timing",
+        calculation = "time_length(interval(treatment_date, last_followup), 'months')",
+        purpose = "Primary latest-VA minimum-follow-up timing field",
+        data_type = "numeric",
+        units = "months"
+    ),
+    last_vision_followup_months_proxy = list(
+        description = "Latest-VA timing using explicit timing when available and general follow-up otherwise",
+        calculation = "if_else(is.na(last_vision_followup_months_explicit), follow_up_months, last_vision_followup_months_explicit)",
+        purpose = "Separately labeled proxy sensitivity timing field",
+        data_type = "numeric",
+        units = "months"
+    ),
+    last_vision_followup_timing_source = list(
+        description = "Source label for explicit, proxy, or missing latest-VA timing",
+        calculation = "case_when(!is.na(explicit) ~ 'explicit_last_followup', !is.na(proxy) ~ 'proxy_general_recorded_followup', TRUE ~ 'missing_timing')",
+        purpose = "Prevents proxy timing from being mistaken for explicit timing",
+        data_type = "character",
+        units = "categorical"
+    ),
+    last_vision_followup_months = list(
+        description = "Primary latest-VA timing field equal to explicit treatment-to-last-follow-up timing",
+        calculation = "last_vision_followup_months_explicit",
+        purpose = "Stable primary timing input for latest-VA sensitivity analyses",
+        data_type = "numeric",
+        units = "months"
+    ),
 
     # ===== PRE-TREATMENT FLAGS =====
     mets_before_treatment = list(
@@ -279,6 +330,34 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         purpose = "Primary GEP variable for survival analysis and validation",
         data_type = "character",
         units = "categorical"
+    ),
+    exploratory_gep_group = list(
+        description = "Stable exploratory GEP group retaining definitive and unsupported GEP levels",
+        calculation = "gep_class_simple with Objective 0 fixed factor levels",
+        purpose = "Exploratory GEP comparisons without downstream level reconstruction",
+        data_type = "factor",
+        units = "categorical"
+    ),
+    no_gep_group = list(
+        description = "Exploratory grouping of GEP Failed/Indeterminate versus GEP Not Tested",
+        calculation = "case_when(gep_class_simple == 'GEP Failed/Indeterminate' ~ 'GEP Failed/Indeterminate', gep_class_simple == 'GEP Not Tested' ~ 'GEP Not Tested', TRUE ~ NA)",
+        purpose = "No-GEP exploratory comparisons with both fixed levels retained",
+        data_type = "factor",
+        units = "categorical"
+    ),
+    ciliary_involvement = list(
+        description = "Binary indicator for ciliary or cilio-choroidal tumor location",
+        calculation = "as.integer(grepl('cilio|ciliary', location, ignore.case = TRUE))",
+        purpose = "Deterministic exploratory GEP predictor",
+        data_type = "integer",
+        units = "binary"
+    ),
+    optic_nerve_involvement = list(
+        description = "Binary indicator for optic-nerve involvement or abutment",
+        calculation = "case_when(raw optic_nerve is yes/involved ~ 1, raw optic_nerve is no/not involved ~ 0, TRUE ~ NA)",
+        purpose = "Deterministic exploratory GEP predictor",
+        data_type = "integer",
+        units = "binary"
     ),
     expected_mfs_5yr = list(
         description = "Expected 5-year metastasis-free survival from GEP",

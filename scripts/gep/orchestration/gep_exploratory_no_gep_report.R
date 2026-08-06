@@ -168,6 +168,10 @@ preserve_exploratory_factor_levels <- function(values) {
 get_exploratory_no_gep_required_columns <- function() {
     c(
         "gep_class_simple",
+        "exploratory_gep_group",
+        "no_gep_group",
+        "ciliary_involvement",
+        "optic_nerve_involvement",
         "sex",
         "location",
         "initial_t_stage_simple",
@@ -204,9 +208,15 @@ assert_exploratory_no_gep_preconditions <- function(data,
         ))
     }
 
-    gep_values <- unique(as.character(stats::na.omit(data$gep_class_simple)))
     required_groups <- c("Class 1", "Class 2", "GEP Failed/Indeterminate", "GEP Not Tested")
-    missing_groups <- setdiff(required_groups, gep_values)
+    available_levels <- function(values) {
+        if (is.factor(values)) {
+            return(levels(values))
+        }
+        unique(as.character(stats::na.omit(values)))
+    }
+
+    missing_groups <- setdiff(required_groups, available_levels(data$gep_class_simple))
 
     if (length(missing_groups) > 0) {
         stop(sprintf(
@@ -216,6 +226,18 @@ assert_exploratory_no_gep_preconditions <- function(data,
             ),
             dataset_name,
             paste(missing_groups, collapse = ", ")
+        ))
+    }
+
+    missing_exploratory_groups <- setdiff(required_groups, available_levels(data$exploratory_gep_group))
+    if (length(missing_exploratory_groups) > 0) {
+        stop(sprintf(
+            paste(
+                "Exploratory no-GEP analysis requires the Objective 0 exploratory GEP groups.",
+                "The prepared cohort for %s is missing: %s"
+            ),
+            dataset_name,
+            paste(missing_exploratory_groups, collapse = ", ")
         ))
     }
 
@@ -370,10 +392,10 @@ build_exploratory_no_gep_followup_block <- function(prepared_data, dataset_name 
 
 #' Prepare Data for Exploratory No-GEP Modeling
 #'
-#' Restores GEP display labels, derives the exploratory grouping variables,
-#' standardizes the candidate baseline predictors, collapses sparse factor
-#' levels using the existing rare-category helper, and prepares screened model
-#' datasets for the surrogate and direct-risk models.
+#' Consumes Objective 0 GEP display/group fields, standardizes the candidate
+#' baseline predictors, applies model-specific sparse-level exclusions using the
+#' existing diagnostic helper, and prepares screened model datasets for the
+#' surrogate and direct-risk models.
 #'
 #' @param data The analytic cohort.
 #' @param dataset_name Dataset identifier used by existing restoration helpers.
@@ -385,23 +407,13 @@ prepare_exploratory_no_gep_data <- function(data, dataset_name = "uveal_melanoma
 
     prepared <- data %>%
         dplyr::mutate(
-            exploratory_gep_group = preserve_exploratory_factor_levels(.data$gep_class_simple),
-            no_gep_group = dplyr::case_when(
-                .data$exploratory_gep_group == "GEP Failed/Indeterminate" ~ "GEP Failed/Indeterminate",
-                .data$exploratory_gep_group == "GEP Not Tested" ~ "GEP Not Tested",
-                TRUE ~ NA_character_
-            ),
-            ciliary_involvement = as.integer(grepl("cilio|ciliary", as.character(.data$location), ignore.case = TRUE)),
+            exploratory_gep_group = preserve_exploratory_factor_levels(.data$exploratory_gep_group),
+            no_gep_group = preserve_exploratory_factor_levels(.data$no_gep_group),
             sex = preserve_exploratory_factor_levels(.data$sex),
             location = preserve_exploratory_factor_levels(.data$location),
             initial_t_stage_simple = preserve_exploratory_factor_levels(.data$initial_t_stage_simple),
             internal_reflectivity = preserve_exploratory_factor_levels(.data$internal_reflectivity),
             srf = preserve_exploratory_factor_levels(.data$srf),
-            optic_nerve_involvement = dplyr::case_when(
-                as.character(.data$optic_nerve) %in% c("Yes", "Y", "Involved") ~ 1L,
-                as.character(.data$optic_nerve) %in% c("No", "N", "Not Involved") ~ 0L,
-                TRUE ~ NA_integer_
-            ),
             mfs_event_5yr = as.integer(.data$mfs_event_5yr),
             mss_event_5yr = as.integer(.data$mss_event_5yr)
         ) %>%

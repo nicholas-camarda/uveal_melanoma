@@ -213,6 +213,24 @@ run_my_analysis <- function(dataset_name, objectives_to_run = c(0, 1, 2, 3, 4)) 
         return(invisible(results))
     }
 
+    # Standalone downstream objectives must validate the persisted Objective 0
+    # dataset without invoking the artifact-writing Objective 0 reload path.
+    if (!(0 %in% objectives_to_run)) {
+        results$objective_0_cached_rds_validation <- validate_existing_objective0_rds(dataset_name)
+        if (!isTRUE(results$objective_0_cached_rds_validation$success)) {
+            fatal_issues <- append_issue(
+                fatal_issues,
+                sprintf(
+                    "objective_0_cached_rds_validation_failed:%s",
+                    paste(
+                        results$objective_0_cached_rds_validation$validation_errors %||% "unknown",
+                        collapse = ","
+                    )
+                )
+            )
+        }
+    }
+
     if (length(fatal_issues) > 0) {
         results$run_state <- determine_run_state(fatal_issues, warning_issues)
         results$had_errors <- TRUE
