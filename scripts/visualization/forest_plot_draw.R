@@ -234,6 +234,7 @@ create_single_cohort_forest_plot <- function(subgroup_results,
         theme = tm,
         title = title
     )
+    fp <- style_forest_interaction_status_cells(fp, plot_data)
 
     # Attach diagnostics for external retrieval
     attr(fp, "diagnostics") <- plot_data$diagnostics

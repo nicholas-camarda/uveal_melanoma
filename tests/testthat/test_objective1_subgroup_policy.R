@@ -354,3 +354,87 @@ test_that("both PRAME status levels remain visible with outcome-specific estimab
         "Not estimable"
     )
 })
+
+test_that("interaction status labels are explicit and render without weakening header hierarchy", {
+    status_results <- list(
+        single_supported = list(
+            interaction_p = NA_real_,
+            subgroup_effects = data.frame(),
+            interaction_diagnostics = list(
+                model_status = "single_supported_level_treatment_model",
+                interaction_test_status = "not_testable_single_supported_level",
+                original_level_order = "A",
+                level_statistics = list(A = list(n_total = 20, n_plaque = 10, n_gksrs = 10))
+            )
+        ),
+        no_supported = list(
+            interaction_p = NA_real_,
+            subgroup_effects = data.frame(),
+            interaction_diagnostics = list(
+                model_status = "no_supported_levels",
+                interaction_test_status = "not_testable_no_supported_levels",
+                original_level_order = c("A", "B"),
+                level_statistics = list(
+                    A = list(n_total = 8, n_plaque = 4, n_gksrs = 4),
+                    B = list(n_total = 6, n_plaque = 3, n_gksrs = 3)
+                )
+            )
+        ),
+        model_failure = list(
+            interaction_p = NA_real_,
+            subgroup_effects = data.frame(),
+            interaction_diagnostics = list(
+                model_status = "model_failure",
+                interaction_test_status = "model_failure",
+                failure_reason = "Interaction model fitting failed",
+                model_error = "synthetic failure",
+                original_level_order = "A",
+                level_statistics = list(A = list(n_total = 20, n_plaque = 10, n_gksrs = 10))
+            )
+        )
+    )
+
+    plot_data <- create_forest_plot_data(
+        subgroup_results = status_results,
+        variable_order = names(status_results),
+        treatment_labels = TREATMENT_LABELS,
+        effect_measure = "HR"
+    )
+
+    header_rows <- c(1L, 2L, 3L)
+    expect_identical(
+        plot_data$data_frame$`Int p`[header_rows],
+        c("Not testable", "Not estimable", "Model failed")
+    )
+    expect_identical(plot_data$interaction_status_rows, header_rows)
+    expect_true(all(plot_data$font_face[header_rows] == "bold"))
+    expect_true(all(plot_data$text_size[header_rows] == 1.0))
+
+    diagnostics <- create_forest_plot_diagnostics(
+        status_results,
+        variable_order = names(status_results)
+    )
+    header_diagnostics <- diagnostics[diagnostics$level == "__HEADER__", , drop = FALSE]
+    expect_identical(
+        header_diagnostics$status,
+        c(
+            "interaction_not_testable_single_level",
+            "not_estimable_no_supported_levels",
+            "model_failure"
+        )
+    )
+    expect_true(any(grepl("Interaction testing not possible", header_diagnostics$reason, fixed = TRUE)))
+    expect_true(any(grepl("Interaction not estimable", header_diagnostics$reason, fixed = TRUE)))
+    expect_true(any(grepl("synthetic failure", header_diagnostics$reason, fixed = TRUE)))
+
+    output_path <- file.path(tempdir(), "forest_interaction_status_smoke.png")
+    plot_obj <- create_forest_plot(
+        subgroup_results = status_results,
+        outcome_name = "Interaction Status Smoke Test",
+        effect_measure = "HR",
+        dataset_name = "Test",
+        output_path = output_path
+    )
+    expect_s3_class(plot_obj, "forestplot")
+    expect_true(file.exists(output_path))
+})

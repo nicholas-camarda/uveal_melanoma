@@ -26,6 +26,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
     is_summary <- c()
     font_face <- c()
     text_size <- c()
+    interaction_status_rows <- integer(0)
     missing_interaction_vars <- character(0) # Track variables where interaction p could not be estimated
     diagnostics_rows <- list()
     show_event_counts <- toupper(effect_measure) %in% c("HR", "OR", "RR")
@@ -37,24 +38,23 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
     effect_header <- sprintf("%s (95%% CI)", effect_measure)
 
     interaction_header_status <- function(var_data) {
-        if (!is.null(var_data$interaction_p) && is.finite(var_data$interaction_p)) {
-            return("header")
+        get_forest_interaction_header_status(var_data)
+    }
+
+    interaction_display_label <- function(var_data) {
+        interaction_p <- if (!is.null(var_data)) var_data$interaction_p else NA_real_
+        if (length(interaction_p) == 1L && is.finite(interaction_p)) {
+            return(forest_format_p_value(interaction_p))
         }
-        test_status <- var_data$interaction_diagnostics$interaction_test_status %||% ""
-        model_status <- var_data$interaction_diagnostics$model_status %||% ""
-        if (identical(test_status, "not_testable_single_supported_level")) {
-            return("interaction_not_testable_single_level")
+
+        status <- interaction_header_status(var_data)
+        if (identical(status, "not_estimable_no_supported_levels")) {
+            return("Not estimable")
         }
-        if (identical(model_status, "no_supported_levels")) {
-            return("not_estimable_no_supported_levels")
+        if (identical(status, "model_failure")) {
+            return("Model failed")
         }
-        if (identical(model_status, "model_failure") || identical(test_status, "model_failure")) {
-            return("model_failure")
-        }
-        if (identical(test_status, "reduced_model_failure") || identical(test_status, "interaction_test_failure")) {
-            return("interaction_test_failure")
-        }
-        "header"
+        "Not testable"
     }
 
     # Handle empty variable_order case
@@ -87,6 +87,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
             is_summary = logical(),
             font_face = character(),
             text_size = numeric(),
+            interaction_status_rows = integer(),
             missing_interaction_vars = character(),
             diagnostics = data.frame()
         ))
@@ -110,9 +111,11 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
             no_data_row$` ` <- paste(rep(" ", 20), collapse = " ")
             no_data_row$`HR (95% CI)` <- ""
             no_data_row$`p-value` <- ""
-            no_data_row$`Interaction p` <- ""
+            no_data_row$`Interaction p` <- "Not estimable"
 
-            all_rows[[length(all_rows) + 1]] <- no_data_row
+            no_data_row_index <- length(all_rows) + 1L
+            all_rows[[no_data_row_index]] <- no_data_row
+            interaction_status_rows <- c(interaction_status_rows, no_data_row_index)
             est_values <- c(est_values, NaN)
             lower_values <- c(lower_values, NaN)
             upper_values <- c(upper_values, NaN)
@@ -134,24 +137,14 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
         var_header$` ` <- paste(rep(" ", 20), collapse = " ")
         var_header$`HR (95% CI)` <- ""
         var_header$`p-value` <- ""
-        # Check for interaction p-value and capture failure reason
-        if (!is.null(subgroup_results[[var_name]]$interaction_p) && !is.na(subgroup_results[[var_name]]$interaction_p)) {
-            var_header$`Interaction p` <- forest_format_p_value(subgroup_results[[var_name]]$interaction_p)
-            interaction_failure_reason <- "" # No reason needed when successful
-        } else {
-            var_header$`Interaction p` <- ""
+        # Use explicit status text whenever interaction heterogeneity cannot be tested.
+        interaction_p_value <- subgroup_results[[var_name]]$interaction_p
+        has_interaction_p <- length(interaction_p_value) == 1L && is.finite(interaction_p_value)
+        var_header$`Interaction p` <- interaction_display_label(subgroup_results[[var_name]])
+        if (!has_interaction_p) {
             missing_interaction_vars <- c(missing_interaction_vars, var_name)
-
-            # Get failure reason from interaction diagnostics
-            if (!is.null(subgroup_results[[var_name]]$interaction_diagnostics) &&
-                !is.null(subgroup_results[[var_name]]$interaction_diagnostics$failure_reason)) {
-                interaction_failure_reason <- subgroup_results[[var_name]]$interaction_diagnostics$failure_reason
-            } else if (!is.null(subgroup_results[[var_name]]$error)) {
-                interaction_failure_reason <- subgroup_results[[var_name]]$error
-            } else {
-                interaction_failure_reason <- "Unknown - no diagnostics available"
-            }
         }
+        interaction_failure_reason <- get_forest_interaction_failure_reason(subgroup_results[[var_name]])
 
         # diagnostics for header
         diagnostics_rows[[length(diagnostics_rows) + 1]] <- data.frame(
@@ -165,13 +158,17 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
             treatment_effect = NA,
             ci_lower = NA,
             ci_upper = NA,
-            p_value = subgroup_results[[var_name]]$interaction_p,
+            p_value = interaction_p_value,
             status = interaction_header_status(subgroup_results[[var_name]]),
-            reason = if (interaction_failure_reason == "") "" else paste("Missing interaction p-value:", interaction_failure_reason),
+            reason = interaction_failure_reason,
             stringsAsFactors = FALSE
         )
 
-        all_rows[[length(all_rows) + 1]] <- var_header
+        header_row_index <- length(all_rows) + 1L
+        all_rows[[header_row_index]] <- var_header
+        if (!has_interaction_p) {
+            interaction_status_rows <- c(interaction_status_rows, header_row_index)
+        }
         est_values <- c(est_values, NaN)
         lower_values <- c(lower_values, NaN)
         upper_values <- c(upper_values, NaN)
@@ -619,11 +616,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
         interaction_diag <- subgroup_results[[var_name]]$interaction_diagnostics
         interaction_failure_reason <- ""
         if (is.null(interaction_p) || is.na(interaction_p)) {
-            if (!is.null(interaction_diag) && !is.null(interaction_diag$failure_reason)) {
-                interaction_failure_reason <- paste("Missing interaction p-value:", interaction_diag$failure_reason)
-            } else {
-                interaction_failure_reason <- "Missing interaction p-value: No valid test could be performed (insufficient data or model failure)"
-            }
+            interaction_failure_reason <- get_forest_interaction_failure_reason(subgroup_results[[var_name]])
         }
         # Always add header row to combined_diagnostics, using the same column names as the factor level rows
         header_row <- data.frame(
@@ -707,8 +700,8 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                         ci_lower = NA,
                         ci_upper = NA,
                         p_value = var_result$interaction_p,
-                        status = "header",
-                        reason = paste("Missing interaction p-value:", diag$failure_reason),
+                        status = interaction_header_status(var_result),
+                        reason = get_forest_interaction_failure_reason(var_result),
                         stringsAsFactors = FALSE
                     )
                     combined_diagnostics[[length(combined_diagnostics) + 1]] <- header_row
@@ -759,6 +752,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
         is_summary = is_summary,
         font_face = font_face,
         text_size = text_size,
+        interaction_status_rows = interaction_status_rows,
         missing_interaction_vars = missing_interaction_vars,
         diagnostics = diagnostics_df
     ))

@@ -1,5 +1,27 @@
 # Forest Plot Formatting
 
+#' Style explicit interaction-test status text without weakening header hierarchy
+#'
+#' Variable headers remain bold; only the non-numeric status in the interaction
+#' column is italicized and slightly smaller, matching the existing unsupported-level style.
+style_forest_interaction_status_cells <- function(fp, plot_data, status_column = 7L) {
+    status_rows <- plot_data$interaction_status_rows %||% integer(0)
+    if (length(status_rows) == 0) {
+        return(fp)
+    }
+
+    for (row_idx in status_rows) {
+        fp <- edit_plot(
+            fp,
+            row = row_idx,
+            col = status_column,
+            which = "text",
+            gp = gpar(fontface = "italic", col = "black", cex = 0.85, hjust = 0.5)
+        )
+    }
+    fp
+}
+
 #' Apply post-processing formatting for better appearance
 #'
 #' @param fp A forestploter object

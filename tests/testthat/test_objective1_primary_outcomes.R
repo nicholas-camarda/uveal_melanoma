@@ -680,7 +680,7 @@ test_that("PRAME uses the generic single-supported-level path and retains Positi
     expect_equal(sum(positive_row), 1L)
     expect_match(plot_data$data_frame$`HR (95% CI)`[negative_row], "^[0-9.]+ ")
     expect_identical(plot_data$data_frame$`HR (95% CI)`[positive_row], "Not estimable")
-    expect_identical(plot_data$data_frame$`Int p`[[1]], "")
+    expect_identical(plot_data$data_frame$`Int p`[[1]], "Not testable")
     expect_identical(
         plot_data$diagnostics$status[plot_data$diagnostics$subgroup_level == "Positive"],
         "not_estimable_interaction_exclusion"

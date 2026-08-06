@@ -1,3 +1,71 @@
+#' Resolve the diagnostic status for a forest-plot interaction header
+#'
+#' The status is intentionally separate from the numeric interaction p-value:
+#' an unavailable p-value is a diagnostic state, not a numeric result.
+get_forest_interaction_header_status <- function(var_data) {
+    interaction_p <- if (!is.null(var_data)) var_data$interaction_p else NA_real_
+    if (length(interaction_p) == 1L && is.finite(interaction_p)) {
+        return("header")
+    }
+
+    diagnostics <- if (!is.null(var_data) && is.list(var_data$interaction_diagnostics)) {
+        var_data$interaction_diagnostics
+    } else {
+        list()
+    }
+    test_status <- diagnostics$interaction_test_status %||% ""
+    model_status <- diagnostics$model_status %||% ""
+
+    if (identical(test_status, "not_testable_single_supported_level")) {
+        return("interaction_not_testable_single_level")
+    }
+    if (identical(model_status, "no_supported_levels")) {
+        return("not_estimable_no_supported_levels")
+    }
+    if (identical(model_status, "model_failure") || identical(test_status, "model_failure")) {
+        return("model_failure")
+    }
+    if (identical(test_status, "reduced_model_failure") || identical(test_status, "interaction_test_failure")) {
+        return("interaction_test_failure")
+    }
+    "header"
+}
+
+#' Build an explicit diagnostic explanation for an unavailable interaction p-value
+get_forest_interaction_failure_reason <- function(var_data) {
+    interaction_p <- if (!is.null(var_data)) var_data$interaction_p else NA_real_
+    if (length(interaction_p) == 1L && is.finite(interaction_p)) {
+        return("")
+    }
+
+    diagnostics <- if (!is.null(var_data) && is.list(var_data$interaction_diagnostics)) {
+        var_data$interaction_diagnostics
+    } else {
+        list()
+    }
+    status <- get_forest_interaction_header_status(var_data)
+    detail <- diagnostics$failure_reason %||% "No valid interaction test was available"
+    if (is.null(detail) || is.na(detail) || !nzchar(as.character(detail))) {
+        detail <- "No valid interaction test was available"
+    }
+
+    if (identical(status, "interaction_not_testable_single_level")) {
+        return(paste("Interaction testing not possible:", detail))
+    }
+    if (identical(status, "not_estimable_no_supported_levels")) {
+        return(paste("Interaction not estimable:", detail))
+    }
+    if (identical(status, "model_failure")) {
+        model_error <- diagnostics$model_error %||% ""
+        detail_parts <- c(detail, if (nzchar(as.character(model_error))) paste("Model error:", model_error) else character(0))
+        return(paste("Interaction model failure:", paste(unique(detail_parts), collapse = "; ")))
+    }
+    if (identical(status, "interaction_test_failure")) {
+        return(paste("Interaction testing failure:", detail))
+    }
+    paste("Interaction p-value unavailable:", detail)
+}
+
 #' Create forest plot diagnostics from raw subgroup data
 #'
 #' @param subgroup_results List of subgroup analysis results
@@ -14,27 +82,6 @@ create_forest_plot_diagnostics <- function(subgroup_results, effect_measure = "H
             "age_at_diagnosis", "sex", "location", "initial_t_stage",
             "initial_tumor_height", "initial_tumor_diameter", "biopsy1_gep", "optic_nerve"
         )
-    }
-
-    interaction_header_status <- function(var_data) {
-        if (!is.null(var_data$interaction_p) && is.finite(var_data$interaction_p)) {
-            return("header")
-        }
-        test_status <- var_data$interaction_diagnostics$interaction_test_status %||% ""
-        model_status <- var_data$interaction_diagnostics$model_status %||% ""
-        if (identical(test_status, "not_testable_single_supported_level")) {
-            return("interaction_not_testable_single_level")
-        }
-        if (identical(model_status, "no_supported_levels")) {
-            return("not_estimable_no_supported_levels")
-        }
-        if (identical(model_status, "model_failure") || identical(test_status, "model_failure")) {
-            return("model_failure")
-        }
-        if (identical(test_status, "reduced_model_failure") || identical(test_status, "interaction_test_failure")) {
-            return("interaction_test_failure")
-        }
-        "header"
     }
 
     # Process each variable in order
@@ -69,12 +116,7 @@ create_forest_plot_diagnostics <- function(subgroup_results, effect_measure = "H
         level_stats <- if (!is.null(var_data$interaction_diagnostics)) var_data$interaction_diagnostics$level_statistics else NULL
         level_names <- if (!is.null(level_stats)) names(level_stats) else character(0)
         header_interaction_p <- if (!is.null(var_data$interaction_p)) var_data$interaction_p else NA
-        header_reason <- ""
-        if (is.null(header_interaction_p) || is.na(header_interaction_p)) {
-            if (!is.null(var_data$interaction_diagnostics) && !is.null(var_data$interaction_diagnostics$failure_reason)) {
-                header_reason <- paste("Missing interaction p-value:", var_data$interaction_diagnostics$failure_reason)
-            }
-        }
+        header_reason <- get_forest_interaction_failure_reason(var_data)
         sparse_removal_note <- ""
         if (!is.null(var_data$sparse_level_diagnostics) &&
             is.data.frame(var_data$sparse_level_diagnostics) &&
@@ -113,7 +155,7 @@ create_forest_plot_diagnostics <- function(subgroup_results, effect_measure = "H
             ci_lower = NA,
             ci_upper = NA,
             p_value = header_interaction_p,
-            status = interaction_header_status(var_data),
+            status = get_forest_interaction_header_status(var_data),
             reason = header_reason,
             other_variable_contents = sparse_removal_note,
             variable_order = var_index,
