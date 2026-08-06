@@ -16,6 +16,27 @@ create_forest_plot_diagnostics <- function(subgroup_results, effect_measure = "H
         )
     }
 
+    interaction_header_status <- function(var_data) {
+        if (!is.null(var_data$interaction_p) && is.finite(var_data$interaction_p)) {
+            return("header")
+        }
+        test_status <- var_data$interaction_diagnostics$interaction_test_status %||% ""
+        model_status <- var_data$interaction_diagnostics$model_status %||% ""
+        if (identical(test_status, "not_testable_single_supported_level")) {
+            return("interaction_not_testable_single_level")
+        }
+        if (identical(model_status, "no_supported_levels")) {
+            return("not_estimable_no_supported_levels")
+        }
+        if (identical(model_status, "model_failure") || identical(test_status, "model_failure")) {
+            return("model_failure")
+        }
+        if (identical(test_status, "reduced_model_failure") || identical(test_status, "interaction_test_failure")) {
+            return("interaction_test_failure")
+        }
+        "header"
+    }
+
     # Process each variable in order
     for (var_index in seq_along(variable_order)) {
         var_name <- variable_order[var_index]
@@ -92,7 +113,7 @@ create_forest_plot_diagnostics <- function(subgroup_results, effect_measure = "H
             ci_lower = NA,
             ci_upper = NA,
             p_value = header_interaction_p,
-            status = "header",
+            status = interaction_header_status(var_data),
             reason = header_reason,
             other_variable_contents = sparse_removal_note,
             variable_order = var_index,
@@ -261,7 +282,13 @@ create_forest_plot_diagnostics <- function(subgroup_results, effect_measure = "H
                             ci_lower = NA,
                             ci_upper = NA,
                             p_value = NA,
-                            status = "skipped_insufficient_sample",
+                            status = if (identical(diag$model_status, "no_supported_levels")) {
+                                "not_estimable_no_supported_levels"
+                            } else if (identical(diag$model_status, "model_failure")) {
+                                "not_estimable_model_failure"
+                            } else {
+                                "not_estimable_interaction_exclusion"
+                            },
                             reason = if (!is.null(stats$exclusion_reason) && nzchar(stats$exclusion_reason)) stats$exclusion_reason else "Insufficient data to fit model",
                         other_variable_contents = "",
                         variable_order = var_index,
@@ -315,6 +342,15 @@ create_forest_plot_diagnostics <- function(subgroup_results, effect_measure = "H
     })
 
     diagnostics_df <- do.call(rbind, normalized)
+
+    diagnostics_df$estimability_method_note <- if (exists("get_subgroup_estimability_method_note", mode = "function")) {
+        get_subgroup_estimability_method_note()
+    } else {
+        paste(
+            "Unsupported subgroup levels remain displayed as not estimable.",
+            "Treatment effects are reported only for finite supported models; interaction p-values are omitted when fewer than two levels are estimable."
+        )
+    }
 
     if ("variable_order" %in% names(diagnostics_df)) {
         diagnostics_df$variable_order[is.na(diagnostics_df$variable_order)] <- Inf

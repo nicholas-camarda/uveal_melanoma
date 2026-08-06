@@ -515,7 +515,9 @@ test_that("Objective 1 centralized interpretation and subgroup contract notes ar
     note_lines <- readLines(obj1_note, warn = FALSE)
     expect_true(any(grepl("Cox-led time-to-event inference", note_lines, fixed = TRUE)))
     expect_true(any(grepl("descriptive support", note_lines, fixed = TRUE)))
-    expect_true(any(grepl("consolidated multi-sheet Excel", readLines(subgroup_note, warn = FALSE), fixed = TRUE)))
+    subgroup_note_lines <- readLines(subgroup_note, warn = FALSE)
+    expect_true(any(grepl("consolidated multi-sheet Excel", subgroup_note_lines, fixed = TRUE)))
+    expect_true(any(grepl("Unsupported subgroup levels remain displayed as not estimable", subgroup_note_lines, fixed = TRUE)))
 })
 
 test_that("Objective 1 subgroup diagnostics label exploratory support surfaces", {
@@ -537,10 +539,11 @@ test_that("Objective 1 subgroup diagnostics label exploratory support surfaces",
     primary_sheet <- readxl::read_xlsx(primary_workbook, sheet = readxl::excel_sheets(primary_workbook)[[1]])
     forest_sheet <- readxl::read_xlsx(forest_workbook, sheet = readxl::excel_sheets(forest_workbook)[[1]])
 
-    expect_true(all(c("analysis_role", "subgroup_surface", "interpretation_note") %in% names(primary_sheet)))
-    expect_true(all(c("analysis_role", "subgroup_surface", "interpretation_note") %in% names(forest_sheet)))
+    expect_true(all(c("analysis_role", "subgroup_surface", "interpretation_note", "estimability_method_note") %in% names(primary_sheet)))
+    expect_true(all(c("analysis_role", "subgroup_surface", "interpretation_note", "estimability_method_note") %in% names(forest_sheet)))
     expect_true(all(primary_sheet$analysis_role == "exploratory_support"))
     expect_true(any(grepl("exploratory support", primary_sheet$interpretation_note, fixed = TRUE)))
+    expect_true(any(grepl("interaction p-values are omitted", primary_sheet$estimability_method_note, fixed = TRUE)))
 })
 
 test_that("Objective 1 subgroup event diagnostics use the modeled endpoint", {
@@ -574,6 +577,146 @@ test_that("Objective 1 subgroup event diagnostics use the modeled endpoint", {
     expect_equal(pfs_result$interaction_diagnostics$level_statistics$A$events_gksrs, 1)
     expect_equal(attr(pfs_result$model, "subgroup_event_var"), "pfs_event")
     expect_equal(levels(pfs_result$filtered_data$subgroup_flag), c("A", "B"))
+    expect_equal(pfs_result$interaction_diagnostics$supported_level_count, 2L)
+    expect_identical(pfs_result$interaction_diagnostics$model_status, "interaction_model_fitted")
+    expect_identical(pfs_result$interaction_diagnostics$interaction_test_status, "tested")
+})
+
+test_that("a single supported categorical level receives a treatment effect without interaction testing", {
+    single_level_data <- tibble::tibble(
+        treatment_group = factor(
+            c("PBT", "PBT", "GKSRS", "GKSRS", "PBT", "PBT", "GKSRS", "GKSRS"),
+            levels = c("PBT", "GKSRS")
+        ),
+        subgroup_flag = factor(
+            c("A", "A", "A", "A", "B", "B", "B", "B"),
+            levels = c("A", "B")
+        ),
+        binary_outcome = c(0, 1, 1, 1, 0, 0, 1, 1),
+        follow_up = c(4, 8, 5, 9, 4, 7, 5, 8),
+        survival_event = c(1, 0, 1, 1, 0, 0, 1, 1),
+        continuous_outcome = c(1, 2, 3, 4, 1, 2, 3, 4)
+    )
+
+    binary_result <- fit_subgroup_model(
+        data = single_level_data,
+        outcome_config = list(type = "binary", outcome_var = "binary_outcome"),
+        subgroup_var_to_use = "subgroup_flag",
+        confounders_to_use = NULL
+    )
+    survival_result <- fit_subgroup_model(
+        data = single_level_data,
+        outcome_config = list(type = "survival", time_var = "follow_up", event_var = "survival_event"),
+        subgroup_var_to_use = "subgroup_flag",
+        confounders_to_use = NULL
+    )
+    linear_data <- single_level_data[c(1:4, 5, 7), ]
+    linear_result <- fit_subgroup_model(
+        data = linear_data,
+        outcome_config = list(type = "continuous", outcome_var = "continuous_outcome"),
+        subgroup_var_to_use = "subgroup_flag",
+        confounders_to_use = NULL
+    )
+
+    expect_identical(binary_result$interaction_diagnostics$supported_levels, "A")
+    expect_identical(binary_result$interaction_diagnostics$interaction_test_status, "not_testable_single_supported_level")
+    expect_identical(binary_result$interaction_diagnostics$model_status, "single_supported_level_treatment_model")
+    expect_true(is.na(binary_result$interaction_p))
+    expect_equal(levels(binary_result$filtered_data$subgroup_flag), "A")
+    expect_equal(nrow(calculate_subgroup_effects(binary_result$model, binary_result$filtered_data, "subgroup_flag", "binary", "subgroup_flag")), 1L)
+
+    expect_identical(survival_result$interaction_diagnostics$supported_levels, "A")
+    expect_identical(survival_result$interaction_diagnostics$interaction_test_status, "not_testable_single_supported_level")
+    expect_true(is.finite(calculate_subgroup_effects(survival_result$model, survival_result$filtered_data, "subgroup_flag", "survival", "subgroup_flag")$treatment_effect))
+
+    expect_identical(linear_result$interaction_diagnostics$supported_levels, "A")
+    expect_identical(linear_result$interaction_diagnostics$interaction_test_status, "not_testable_single_supported_level")
+    expect_true(is.finite(calculate_subgroup_effects(linear_result$model, linear_result$filtered_data, "subgroup_flag", "continuous", "subgroup_flag")$treatment_effect))
+})
+
+test_that("PRAME uses the generic single-supported-level path and retains Positive in the forest display", {
+    prame_data <- tibble::tibble(
+        treatment_group = factor(
+            c("PBT", "PBT", "GKSRS", "GKSRS", "PBT", "PBT", "GKSRS", "GKSRS"),
+            levels = c("PBT", "GKSRS")
+        ),
+        gep12_prame_status = factor(
+            c("Negative", "Negative", "Negative", "Negative", "Positive", "Positive", "Positive", "Positive"),
+            levels = c("Negative", "Positive")
+        ),
+        follow_up = c(4, 8, 5, 9, 4, 7, 5, 8),
+        recurrence_event = c(1, 0, 1, 1, 0, 0, 1, 1)
+    )
+
+    result <- fit_subgroup_model(
+        data = prame_data,
+        outcome_config = list(type = "survival", time_var = "follow_up", event_var = "recurrence_event"),
+        subgroup_var_to_use = "gep12_prame_status",
+        confounders_to_use = NULL
+    )
+    effects <- calculate_subgroup_effects(
+        result$model,
+        result$filtered_data,
+        "gep12_prame_status",
+        "survival",
+        "gep12_prame_status"
+    )
+    plot_data <- create_forest_plot_data(
+        subgroup_results = list(
+            gep12_prame_status = list(
+                interaction_p = result$interaction_p,
+                subgroup_effects = effects,
+                interaction_diagnostics = result$interaction_diagnostics
+            )
+        ),
+        variable_order = "gep12_prame_status",
+        treatment_labels = TREATMENT_LABELS,
+        effect_measure = "HR"
+    )
+
+    negative_row <- grepl("Negative", plot_data$data_frame$Subgroup, fixed = TRUE)
+    positive_row <- grepl("Positive", plot_data$data_frame$Subgroup, fixed = TRUE)
+    expect_equal(sum(negative_row), 1L)
+    expect_equal(sum(positive_row), 1L)
+    expect_match(plot_data$data_frame$`HR (95% CI)`[negative_row], "^[0-9.]+ ")
+    expect_identical(plot_data$data_frame$`HR (95% CI)`[positive_row], "Not estimable")
+    expect_identical(plot_data$data_frame$`Int p`[[1]], "")
+    expect_identical(
+        plot_data$diagnostics$status[plot_data$diagnostics$subgroup_level == "Positive"],
+        "not_estimable_interaction_exclusion"
+    )
+})
+
+test_that("zero-supported levels and genuine model failures remain distinct diagnostics", {
+    zero_supported <- fit_subgroup_model(
+        data = tibble::tibble(
+            treatment_group = factor(c("PBT", "PBT", "GKSRS", "GKSRS", "PBT", "PBT", "GKSRS", "GKSRS"), levels = c("PBT", "GKSRS")),
+            subgroup_flag = factor(rep(c("A", "B"), each = 4), levels = c("A", "B")),
+            follow_up = rep(5, 8),
+            event = rep(0, 8)
+        ),
+        outcome_config = list(type = "survival", time_var = "follow_up", event_var = "event"),
+        subgroup_var_to_use = "subgroup_flag",
+        confounders_to_use = NULL
+    )
+    expect_null(zero_supported$model)
+    expect_identical(zero_supported$interaction_diagnostics$model_status, "no_supported_levels")
+    expect_identical(zero_supported$interaction_diagnostics$interaction_test_status, "not_testable_no_supported_levels")
+    expect_equal(names(zero_supported$interaction_diagnostics$level_statistics), c("A", "B"))
+
+    model_failure <- fit_subgroup_model(
+        data = tibble::tibble(
+            treatment_group = factor(rep(c("PBT", "GKSRS"), 4), levels = c("PBT", "GKSRS")),
+            subgroup_flag = factor(rep(c("A", "B"), each = 4), levels = c("A", "B")),
+            outcome = c(1, 2, 3, 4, 2, 3, 4, 5)
+        ),
+        outcome_config = list(type = "continuous", outcome_var = "outcome"),
+        subgroup_var_to_use = "subgroup_flag",
+        confounders_to_use = "missing_confounder"
+    )
+    expect_null(model_failure$model)
+    expect_identical(model_failure$interaction_diagnostics$model_status, "model_failure")
+    expect_true(nzchar(model_failure$interaction_diagnostics$model_error))
 })
 
 test_that("Objective 1 survival endpoints register typed artifact subfolders", {

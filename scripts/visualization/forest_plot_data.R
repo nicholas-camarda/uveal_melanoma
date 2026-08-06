@@ -36,6 +36,27 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
     )
     effect_header <- sprintf("%s (95%% CI)", effect_measure)
 
+    interaction_header_status <- function(var_data) {
+        if (!is.null(var_data$interaction_p) && is.finite(var_data$interaction_p)) {
+            return("header")
+        }
+        test_status <- var_data$interaction_diagnostics$interaction_test_status %||% ""
+        model_status <- var_data$interaction_diagnostics$model_status %||% ""
+        if (identical(test_status, "not_testable_single_supported_level")) {
+            return("interaction_not_testable_single_level")
+        }
+        if (identical(model_status, "no_supported_levels")) {
+            return("not_estimable_no_supported_levels")
+        }
+        if (identical(model_status, "model_failure") || identical(test_status, "model_failure")) {
+            return("model_failure")
+        }
+        if (identical(test_status, "reduced_model_failure") || identical(test_status, "interaction_test_failure")) {
+            return("interaction_test_failure")
+        }
+        "header"
+    }
+
     # Handle empty variable_order case
     if (length(variable_order) == 0) {
         # Return empty data structure
@@ -145,7 +166,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
             ci_lower = NA,
             ci_upper = NA,
             p_value = subgroup_results[[var_name]]$interaction_p,
-            status = "header",
+            status = interaction_header_status(subgroup_results[[var_name]]),
             reason = if (interaction_failure_reason == "") "" else paste("Missing interaction p-value:", interaction_failure_reason),
             stringsAsFactors = FALSE
         )
@@ -617,7 +638,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
             ci_lower = NA,
             ci_upper = NA,
             p_value = interaction_p,
-            status = "header",
+            status = interaction_header_status(subgroup_results[[var_name]]),
             reason = interaction_failure_reason,
             stringsAsFactors = FALSE
         )

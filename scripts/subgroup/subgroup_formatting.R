@@ -81,8 +81,34 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
         result <- subgroup_results[[var_name]]
 
         # Skip if result is missing or malformed
-        if (is.null(result) || is.null(result$subgroup_effects) ||
-            !is.data.frame(result$subgroup_effects) || nrow(result$subgroup_effects) == 0) {
+        if (is.null(result)) {
+            next
+        }
+
+        se <- if (is.data.frame(result$subgroup_effects)) result$subgroup_effects else data.frame()
+        level_stats <- if (!is.null(result$interaction_diagnostics) &&
+            is.list(result$interaction_diagnostics$level_statistics)) {
+            result$interaction_diagnostics$level_statistics
+        } else {
+            list()
+        }
+        diagnostic_order <- if (!is.null(result$interaction_diagnostics$original_level_order)) {
+            as.character(result$interaction_diagnostics$original_level_order)
+        } else {
+            names(level_stats)
+        }
+        effect_levels <- if (nrow(se) > 0 && "subgroup_level" %in% names(se)) {
+            as.character(se$subgroup_level)
+        } else {
+            character(0)
+        }
+        required_levels <- if (exists("get_required_forest_levels", mode = "function")) {
+            get_required_forest_levels(var_name)
+        } else {
+            character(0)
+        }
+        display_levels <- unique(c(diagnostic_order, effect_levels, required_levels))
+        if (length(display_levels) == 0) {
             next
         }
 
@@ -96,7 +122,7 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
         interaction_p_text <- if (!is.null(result$interaction_p) && !is.na(result$interaction_p)) {
             format_p_value(result$interaction_p)
         } else {
-            "NA"
+            ""
         }
 
         # Create a header row for this variable
@@ -113,51 +139,64 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
         )
         all_table_rows[[length(all_table_rows) + 1]] <- header_row
 
-        # Extract subgroup effects data frame
-        se <- result$subgroup_effects
-        # Required columns for a valid subgroup effect row
-        req <- c("subgroup_level", "n_total", "n_plaque", "n_gksrs", "treatment_effect", "ci_lower", "ci_upper", "p_value")
+        if (!is.null(result$sparse_level_diagnostics) &&
+            is.data.frame(result$sparse_level_diagnostics) &&
+            nrow(result$sparse_level_diagnostics) > 0) {
+            note_text <- paste(
+                sprintf(
+                    "%s (n=%d; %s)",
+                    result$sparse_level_diagnostics$level,
+                    result$sparse_level_diagnostics$observed_n,
+                    result$sparse_level_diagnostics$reason
+                ),
+                collapse = "; "
+            )
+            sparse_notes <- c(sparse_notes, sprintf(
+                "Excluded sparse levels for %s: %s",
+                variable_display_name,
+                note_text
+            ))
+        }
 
-        # Only proceed if all required columns are present
-        if (all(req %in% names(se))) {
-            if (!is.null(result$sparse_level_diagnostics) &&
-                is.data.frame(result$sparse_level_diagnostics) &&
-                nrow(result$sparse_level_diagnostics) > 0) {
-                note_text <- paste(
-                    sprintf(
-                        "%s (n=%d; %s)",
-                        result$sparse_level_diagnostics$level,
-                        result$sparse_level_diagnostics$observed_n,
-                        result$sparse_level_diagnostics$reason
-                    ),
-                    collapse = "; "
-                )
-                sparse_notes <- c(sparse_notes, sprintf(
-                    "Excluded sparse levels for %s: %s",
-                    variable_display_name,
-                    note_text
-                ))
+        # Keep every modeled/display level in the exported table. Unsupported
+        # levels receive counts and an explicit Not estimable label.
+        for (level_name in display_levels) {
+            effect_idx <- if (nrow(se) > 0 && "subgroup_level" %in% names(se)) {
+                match(level_name, as.character(se$subgroup_level))
+            } else {
+                NA_integer_
             }
-            # Iterate over each subgroup level row
-            for (i in seq_len(nrow(se))) {
-                rd <- se[i, ]
-                # Skip rows with missing effect or CI
-                if (is.na(rd$treatment_effect) || is.na(rd$ci_lower) || is.na(rd$ci_upper)) next
+            has_effect <- !is.na(effect_idx) && all(c(
+                "n_total", "n_plaque", "n_gksrs", "treatment_effect", "ci_lower", "ci_upper", "p_value"
+            ) %in% names(se))
+            rd <- if (has_effect) se[effect_idx, , drop = FALSE] else NULL
+            effect_value <- if (has_effect) suppressWarnings(as.numeric(rd$treatment_effect)) else NA_real_
+            lower_value <- if (has_effect) suppressWarnings(as.numeric(rd$ci_lower)) else NA_real_
+            upper_value <- if (has_effect) suppressWarnings(as.numeric(rd$ci_upper)) else NA_real_
+            finite_effect <- has_effect && all(is.finite(c(effect_value, lower_value, upper_value)))
 
-                # Create a data row for this subgroup level
-                row <- data.frame(
-                    Subgroup.Level = as.character(rd$subgroup_level),
-                    Sample.Size = sprintf("%d (%d/%d)", rd$n_total, rd$n_plaque, rd$n_gksrs),
-                    Effect = sprintf("%.2f", rd$treatment_effect),
-                    CI = sprintf("(%.2f, %.2f)", rd$ci_lower, rd$ci_upper),
-                    P.value = format_p_value(rd$p_value),
-                    Interaction.P = "",
-                    is_header = FALSE,
-                    variable_name = var_name,
-                    stringsAsFactors = FALSE
-                )
-                all_table_rows[[length(all_table_rows) + 1]] <- row
+            stats <- level_stats[[level_name]]
+            n_total <- if (!is.null(stats$n_total)) stats$n_total else if (has_effect) rd$n_total else NA
+            n_plaque <- if (!is.null(stats$n_plaque)) stats$n_plaque else if (has_effect) rd$n_plaque else NA
+            n_gksrs <- if (!is.null(stats$n_gksrs)) stats$n_gksrs else if (has_effect) rd$n_gksrs else NA
+            sample_size <- if (all(is.finite(c(n_total, n_plaque, n_gksrs)))) {
+                sprintf("%d (%d/%d)", n_total, n_plaque, n_gksrs)
+            } else {
+                ""
             }
+
+            row <- data.frame(
+                Subgroup.Level = level_name,
+                Sample.Size = sample_size,
+                Effect = if (finite_effect) sprintf("%.2f", effect_value) else "Not estimable",
+                CI = if (finite_effect) sprintf("(%.2f, %.2f)", lower_value, upper_value) else "",
+                P.value = if (finite_effect) format_p_value(rd$p_value) else "",
+                Interaction.P = "",
+                is_header = FALSE,
+                variable_name = var_name,
+                stringsAsFactors = FALSE
+            )
+            all_table_rows[[length(all_table_rows) + 1]] <- row
         }
     }
 
@@ -195,10 +234,10 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
                     # Bold variable header rows (where Sample.Size is empty and Interaction.P not empty)
                     tab_style(
                         style = cell_text(weight = "bold"),
-                        locations = cells_body(rows = Sample.Size == "" & Interaction.P != "")
+                        locations = cells_body(rows = Sample.Size == "" & Subgroup.Level != "")
                     ) %>%
                     tab_source_note(gt::html(paste0(
-                        as.character("CI = confidence interval"),
+                        as.character(paste("CI = confidence interval.", get_subgroup_estimability_method_note())),
                         if (length(sparse_notes) > 0) paste0("<br><br>", paste(unique(sparse_notes), collapse = "<br><br>")) else ""
                     )))
                 save_gt_html(gt_tbl, filename = html_path)
@@ -213,6 +252,20 @@ format_subgroup_analysis_results <- function(subgroup_results, outcome_name, eff
                     "</body></html>"
                 )
                 try(writeLines(diagnostic, html_path), silent = TRUE)
+            }
+        )
+        tryCatch(
+            {
+                write_readable_xlsx(
+                    list(
+                        Subgroup_Analysis = excel_table,
+                        Methods_Note = data.frame(Note = get_subgroup_estimability_method_note(), stringsAsFactors = FALSE)
+                    ),
+                    output_path
+                )
+            },
+            error = function(e) {
+                warning(sprintf("Subgroup Excel generation failed for %s: %s", output_path, e$message))
             }
         )
     }

@@ -1,5 +1,18 @@
 # Subgroup Data Preparation and Common Helpers
 
+#' Standard methods note for estimability-aware subgroup outputs
+#'
+#' This text is shared by subgroup tables, forest-plot diagnostics, and the
+#' Objective 1 artifact contract so the display rule is documented once.
+get_subgroup_estimability_method_note <- function() {
+    paste(
+        "Unsupported subgroup levels remain displayed as not estimable.",
+        "Treatment effects are reported only when a supported model produces finite estimates and confidence limits;",
+        "interaction p-values are omitted when fewer than two levels support interaction modeling.",
+        "A single-level estimate is a stratum-specific treatment effect and does not establish treatment-effect modification."
+    )
+}
+
 #' Get cutoff value for a variable (clinical or legacy)
 #' @param var_name Variable name
 #' @param data Data frame (for median calc)
@@ -414,46 +427,125 @@ fit_subgroup_model <- function(data, outcome_config, subgroup_var_to_use, confou
         )
     }
     interaction_diagnostics$level_statistics <- level_statistics
+    interaction_diagnostics$supported_levels <- as.character(valid_levels)
+    interaction_diagnostics$supported_level_count <- length(valid_levels)
     excluded_levels <- setdiff(subgroup_levels, valid_levels)
     if (length(excluded_levels) > 0) {
         interaction_diagnostics$excluded_level_names <- paste(excluded_levels, collapse = ", ")
     }
+    for (level_name in names(level_statistics)) {
+        level_statistics[[level_name]]$supported_for_interaction <- level_name %in% valid_levels
+    }
+    interaction_diagnostics$level_statistics <- level_statistics
 
     if (length(valid_levels) == 0) {
-        interaction_diagnostics$failure_reason <- "No subgroup levels met minimum sample/event requirements"
-        return(list(model = NULL, interaction_p = NA, formula_used = NA, interaction_diagnostics = interaction_diagnostics, filtered_data = NULL))
+        interaction_diagnostics$model_status <- "no_supported_levels"
+        interaction_diagnostics$interaction_test_status <- "not_testable_no_supported_levels"
+        interaction_diagnostics$failure_reason <- "No subgroup levels met minimum sample/event requirements; no treatment model was fit"
+        return(list(
+            model = NULL,
+            interaction_p = NA,
+            formula_used = NA,
+            interaction_diagnostics = interaction_diagnostics,
+            filtered_data = NULL
+        ))
     }
     filtered_data <- data[data[[subgroup_var_to_use]] %in% valid_levels, ]
     filtered_data[[subgroup_var_to_use]] <- factor(filtered_data[[subgroup_var_to_use]], levels = valid_levels)
     confounders_str <- if (is.null(confounders_to_use) || length(confounders_to_use) == 0) "" else paste(" + ", paste(confounders_to_use, collapse = " + "))
+
+    # A single supported level has a valid within-level treatment contrast, but
+    # there is no subgroup contrast left with which to test heterogeneity.
+    if (length(valid_levels) == 1) {
+        treatment_formula_str <- if (outcome_config$type == "survival") {
+            paste0("Surv(", outcome_config$time_var, ", ", outcome_config$event_var, ") ~ treatment_group", confounders_str)
+        } else {
+            paste0(outcome_config$outcome_var, " ~ treatment_group", confounders_str)
+        }
+        model_error <- NULL
+        model <- tryCatch(
+            {
+                if (outcome_config$type == "survival") {
+                    coxph(as.formula(treatment_formula_str), data = filtered_data, model = TRUE)
+                } else if (outcome_config$type == "binary") {
+                    glm(as.formula(treatment_formula_str), data = filtered_data, family = binomial())
+                } else {
+                    lm(as.formula(treatment_formula_str), data = filtered_data)
+                }
+            },
+            error = function(e) {
+                model_error <<- conditionMessage(e)
+                NULL
+            }
+        )
+        if (is.null(model)) {
+            interaction_diagnostics$model_status <- "model_failure"
+            interaction_diagnostics$interaction_test_status <- "not_testable_single_supported_level"
+            interaction_diagnostics$failure_reason <- "Single-supported-level treatment model fitting failed"
+            interaction_diagnostics$model_error <- model_error %||% "Unknown model fitting error"
+            return(list(
+                model = NULL,
+                interaction_p = NA,
+                formula_used = treatment_formula_str,
+                interaction_diagnostics = interaction_diagnostics,
+                filtered_data = filtered_data
+            ))
+        }
+        attr(model, "subgroup_event_var") <- resolve_subgroup_event_count_variable(filtered_data, outcome_config)
+        interaction_diagnostics$model_status <- "single_supported_level_treatment_model"
+        interaction_diagnostics$interaction_test_status <- "not_testable_single_supported_level"
+        interaction_diagnostics$failure_reason <- "Interaction testing not possible: only one subgroup level met minimum sample/event requirements"
+        return(list(
+            model = model,
+            interaction_p = NA,
+            formula_used = treatment_formula_str,
+            interaction_diagnostics = interaction_diagnostics,
+            filtered_data = filtered_data
+        ))
+    }
+
     interaction_term <- paste0("treatment_group * ", subgroup_var_to_use)
+    model_error <- NULL
+    no_int_error <- NULL
     if (outcome_config$type == "survival") {
         formula_str <- paste0("Surv(", outcome_config$time_var, ", ", outcome_config$event_var, ") ~ ", interaction_term, confounders_str)
-        model <- tryCatch(coxph(as.formula(formula_str), data = filtered_data, model = TRUE), error = function(e) NULL)
-        no_int <- tryCatch(coxph(as.formula(paste0("Surv(", outcome_config$time_var, ", ", outcome_config$event_var, ") ~ ", "treatment_group + ", subgroup_var_to_use, confounders_str)), data = filtered_data, model = TRUE), error = function(e) NULL)
+        model <- tryCatch(coxph(as.formula(formula_str), data = filtered_data, model = TRUE), error = function(e) { model_error <<- conditionMessage(e); NULL })
+        no_int <- tryCatch(coxph(as.formula(paste0("Surv(", outcome_config$time_var, ", ", outcome_config$event_var, ") ~ ", "treatment_group + ", subgroup_var_to_use, confounders_str)), data = filtered_data, model = TRUE), error = function(e) { no_int_error <<- conditionMessage(e); NULL })
     } else if (outcome_config$type == "binary") {
         formula_str <- paste0(outcome_config$outcome_var, " ~ ", interaction_term, confounders_str)
-        model <- tryCatch(glm(as.formula(formula_str), data = filtered_data, family = binomial()), error = function(e) NULL)
-        no_int <- tryCatch(glm(as.formula(paste0(outcome_config$outcome_var, " ~ treatment_group + ", subgroup_var_to_use, confounders_str)), data = filtered_data, family = binomial()), error = function(e) NULL)
+        model <- tryCatch(glm(as.formula(formula_str), data = filtered_data, family = binomial()), error = function(e) { model_error <<- conditionMessage(e); NULL })
+        no_int <- tryCatch(glm(as.formula(paste0(outcome_config$outcome_var, " ~ treatment_group + ", subgroup_var_to_use, confounders_str)), data = filtered_data, family = binomial()), error = function(e) { no_int_error <<- conditionMessage(e); NULL })
     } else {
         formula_str <- paste0(outcome_config$outcome_var, " ~ ", interaction_term, confounders_str)
-        model <- tryCatch(lm(as.formula(formula_str), data = filtered_data), error = function(e) NULL)
-        no_int <- tryCatch(lm(as.formula(paste0(outcome_config$outcome_var, " ~ treatment_group + ", subgroup_var_to_use, confounders_str)), data = filtered_data), error = function(e) NULL)
+        model <- tryCatch(lm(as.formula(formula_str), data = filtered_data), error = function(e) { model_error <<- conditionMessage(e); NULL })
+        no_int <- tryCatch(lm(as.formula(paste0(outcome_config$outcome_var, " ~ treatment_group + ", subgroup_var_to_use, confounders_str)), data = filtered_data), error = function(e) { no_int_error <<- conditionMessage(e); NULL })
     }
     if (is.null(model)) {
-        interaction_diagnostics$failure_reason <- "Model fitting failed"
-        return(list(model = NULL, interaction_p = NA, formula_used = NA, interaction_diagnostics = interaction_diagnostics, filtered_data = filtered_data))
+        interaction_diagnostics$model_status <- "model_failure"
+        interaction_diagnostics$interaction_test_status <- "model_failure"
+        interaction_diagnostics$failure_reason <- "Interaction model fitting failed"
+        interaction_diagnostics$model_error <- model_error %||% "Unknown model fitting error"
+        return(list(model = NULL, interaction_p = NA, formula_used = formula_str, interaction_diagnostics = interaction_diagnostics, filtered_data = filtered_data))
     }
+    interaction_diagnostics$model_status <- "interaction_model_fitted"
     attr(model, "subgroup_event_var") <- resolve_subgroup_event_count_variable(filtered_data, outcome_config)
     subgroup_levels <- levels(filtered_data[[subgroup_var_to_use]])
     if (length(subgroup_levels) == 2) {
         interaction_coef_name <- get_interaction_coefficient_name(model, "treatment_group", subgroup_var_to_use, subgroup_levels[2], filtered_data)
         if (!is.null(interaction_coef_name) && interaction_coef_name %in% rownames(summary(model)$coefficients)) {
             interaction_p <- if (outcome_config$type == "continuous") summary(model)$coefficients[interaction_coef_name, "Pr(>|t|)"] else summary(model)$coefficients[interaction_coef_name, "Pr(>|z|)"]
+            interaction_diagnostics$interaction_test_status <- "tested"
         } else {
             interaction_p <- NA
+            interaction_diagnostics$interaction_test_status <- "interaction_coefficient_not_found"
+            interaction_diagnostics$failure_reason <- "Interaction coefficient was not found"
         }
     } else {
+        if (is.null(no_int)) {
+            interaction_diagnostics$interaction_test_status <- "reduced_model_failure"
+            interaction_diagnostics$failure_reason <- "Interaction testing failed: reduced no-interaction model fitting failed"
+            interaction_diagnostics$reduced_model_error <- no_int_error %||% "Unknown reduced-model fitting error"
+        }
         interaction_test <- tryCatch(
             {
                 if (outcome_config$type == "survival") anova(no_int, model) else if (outcome_config$type == "binary") anova(no_int, model, test = "Chisq") else anova(no_int, model)
@@ -468,8 +560,13 @@ fit_subgroup_model <- function(data, outcome_config, subgroup_var_to_use, confou
             } else {
                 interaction_p <- interaction_test$`Pr(>F)`[2]
             }
+            interaction_diagnostics$interaction_test_status <- "tested"
         } else {
             interaction_p <- NA
+            if (is.null(interaction_diagnostics$failure_reason)) {
+                interaction_diagnostics$interaction_test_status <- "interaction_test_failure"
+                interaction_diagnostics$failure_reason <- "Interaction testing failed"
+            }
         }
     }
     list(model = model, interaction_p = interaction_p, formula_used = formula_str, interaction_diagnostics = interaction_diagnostics, filtered_data = filtered_data)

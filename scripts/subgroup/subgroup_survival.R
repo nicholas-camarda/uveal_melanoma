@@ -63,7 +63,11 @@ analyze_treatment_effect_subgroups_survival <- function(data, time_var, event_va
                         if (!is.null(model_results$interaction_diagnostics)) {
                             model_results$interaction_diagnostics$sparse_level_diagnostics <- exclusion_result$sparse_level_diagnostics
                         }
-                        subgroup_effects <- calculate_subgroup_effects(model_results$model, data_for_effects, processed$subgroup_var_to_use, outcome_config$type, subgroup_var)
+                        subgroup_effects <- if (is.null(model_results$model)) {
+                            data.frame()
+                        } else {
+                            calculate_subgroup_effects(model_results$model, data_for_effects, processed$subgroup_var_to_use, outcome_config$type, subgroup_var)
+                        }
                         list(
                             interaction_p = model_results$interaction_p, subgroup_effects = subgroup_effects, model = model_results$model,
                             subgroup_var_used = processed$subgroup_var_to_use, formula_used = model_results$formula_used,

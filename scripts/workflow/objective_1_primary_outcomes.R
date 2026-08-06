@@ -165,7 +165,10 @@ write_objective1_subgroup_contract_note <- function(output_dirs, dataset_name, p
         "",
         "Companion artifacts include subgroup forest plots and subgroup interaction RDS objects.",
         "Per-subgroup HTML files are ancillary previews when emitted by the existing formatter.",
-        "Subgroup analyses are exploratory support analyses and should not be interpreted as confirmatory interaction evidence."
+        "Subgroup analyses are exploratory support analyses and should not be interpreted as confirmatory interaction evidence.",
+        "",
+        "ESTIMABILITY-AWARE SUBGROUP DISPLAY NOTE",
+        get_subgroup_estimability_method_note()
     ), note_path)
     invisible(note_path)
 }
@@ -206,6 +209,7 @@ annotate_objective1_subgroup_diagnostics <- function(
     diagnostics$analysis_role <- "exploratory_support"
     diagnostics$subgroup_surface <- subgroup_surface
     diagnostics$interpretation_note <- sparse_note
+    diagnostics$estimability_method_note <- get_subgroup_estimability_method_note()
     diagnostics$reviewer_support_note <- NA_character_
     diagnostics$reviewer_support_level <- NA_character_
     diagnostics$reviewer_support_n <- NA_integer_
@@ -272,6 +276,7 @@ finalize_objective1_subgroup_diagnostic_sheets <- function(
             model_status = "NOT_ESTIMABLE",
             observed_treatment_arms = observed_label,
             reason = reason,
+            estimability_method_note = get_subgroup_estimability_method_note(),
             stringsAsFactors = FALSE
         )
     )
