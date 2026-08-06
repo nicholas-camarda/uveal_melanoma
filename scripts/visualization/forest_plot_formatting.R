@@ -1,10 +1,62 @@
 # Forest Plot Formatting
 
+#' Align forest-plot body columns and style interaction-test status text
+#'
+#' Keep subgroup labels left-aligned with their existing indentation, center
+#' numeric/table columns under their headers, and retain a restrained style for
+#' non-numeric interaction-test statuses.
+align_forest_plot_body_columns <- function(fp, status_column = 7L) {
+    # forestploter's table body is laid out by gridExtra. Explicitly editing
+    # the text grobs is required; placing hjust only in gpar() does not move
+    # an existing text grob's x anchor.
+    column_anchors <- c(
+        subgroup = 0.05,
+        treatment_1 = 0.5,
+        treatment_2 = 0.5,
+        ci = 0.5,
+        estimate = 0.5,
+        p_value = 0.5,
+        interaction_p = 0.5
+    )
+
+    if (status_column != 7L) {
+        column_anchors[status_column] <- 0.5
+    }
+
+    for (column_index in seq_along(column_anchors)) {
+        anchor <- unname(column_anchors[[column_index]])
+        fp <- edit_plot(
+            fp,
+            col = column_index,
+            which = "text",
+            x = grid::unit(anchor, "npc"),
+            hjust = anchor
+        )
+    }
+
+    fp
+}
+
+#' Align the subgroup header with the left-anchored row-label column
+align_forest_plot_headers <- function(fp, subgroup_column = 1L) {
+    edit_plot(
+        fp,
+        part = "header",
+        col = subgroup_column,
+        which = "text",
+        x = grid::unit(0.05, "npc"),
+        hjust = 0
+    )
+}
+
 #' Style explicit interaction-test status text without weakening header hierarchy
 #'
 #' Variable headers remain bold; only the non-numeric status in the interaction
 #' column is italicized and slightly smaller, matching the existing unsupported-level style.
 style_forest_interaction_status_cells <- function(fp, plot_data, status_column = 7L) {
+    fp <- align_forest_plot_body_columns(fp, status_column = status_column)
+    fp <- align_forest_plot_headers(fp)
+
     status_rows <- plot_data$interaction_status_rows %||% integer(0)
     if (length(status_rows) == 0) {
         return(fp)
@@ -16,7 +68,9 @@ style_forest_interaction_status_cells <- function(fp, plot_data, status_column =
             row = row_idx,
             col = status_column,
             which = "text",
-            gp = gpar(fontface = "italic", col = "black", cex = 0.85, hjust = 0.5)
+            x = grid::unit(0.5, "npc"),
+            hjust = 0.5,
+            gp = gpar(fontface = "italic", col = "black", cex = 0.85)
         )
     }
     fp

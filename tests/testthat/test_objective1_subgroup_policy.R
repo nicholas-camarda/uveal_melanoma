@@ -404,7 +404,7 @@ test_that("interaction status labels are explicit and render without weakening h
     header_rows <- c(1L, 2L, 3L)
     expect_identical(
         plot_data$data_frame$`Int p`[header_rows],
-        c("Not testable", "Not estimable", "Model failed")
+        c("Not estimable", "Not estimable", "Model failed")
     )
     expect_identical(plot_data$interaction_status_rows, header_rows)
     expect_true(all(plot_data$font_face[header_rows] == "bold"))
@@ -437,4 +437,25 @@ test_that("interaction status labels are explicit and render without weakening h
     )
     expect_s3_class(plot_obj, "forestplot")
     expect_true(file.exists(output_path))
+
+    core_ids <- which(plot_obj$layout$name == "core-fg")
+    expect_true(length(core_ids) > 0)
+    expected_anchors <- c(0.05, rep(0.5, 6))
+    for (column_index in seq_along(expected_anchors)) {
+        column_ids <- core_ids[plot_obj$layout$l[core_ids] == column_index + 1L]
+        expect_true(length(column_ids) > 0)
+        for (grob_id in column_ids) {
+            expect_equal(as.numeric(plot_obj$grobs[[grob_id]]$x), expected_anchors[[column_index]])
+            expect_equal(plot_obj$grobs[[grob_id]]$hjust, expected_anchors[[column_index]])
+        }
+    }
+
+    header_ids <- which(plot_obj$layout$name == "colhead-fg")
+    expected_header_anchors <- c(0.05, rep(0.5, 6))
+    for (column_index in seq_along(expected_header_anchors)) {
+        column_ids <- header_ids[plot_obj$layout$l[header_ids] == column_index + 1L]
+        expect_equal(length(column_ids), 1L)
+        expect_equal(as.numeric(plot_obj$grobs[[column_ids]]$x), expected_header_anchors[[column_index]])
+        expect_equal(plot_obj$grobs[[column_ids]]$hjust, if (column_index == 1L) 0 else 0.5)
+    }
 })

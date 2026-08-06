@@ -48,13 +48,10 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
         }
 
         status <- interaction_header_status(var_data)
-        if (identical(status, "not_estimable_no_supported_levels")) {
-            return("Not estimable")
-        }
-        if (identical(status, "model_failure")) {
+        if (status %in% c("model_failure", "interaction_test_failure")) {
             return("Model failed")
         }
-        "Not testable"
+        "Not estimable"
     }
 
     # Handle empty variable_order case
