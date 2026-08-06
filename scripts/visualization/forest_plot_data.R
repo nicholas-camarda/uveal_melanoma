@@ -6,8 +6,29 @@
 #' @param variable_order Character vector of variables to include (enforced for consistency)
 #' @param treatment_labels Character vector of treatment labels
 #' @param effect_measure Character string for effect measure
+#' @param include_interaction_p Logical; include the interaction p-value column
+#'   (default `TRUE` for subgroup plots).
+#' @param label_column Character string for the first table-column header.
+#' @param include_variable_header Logical; include a per-variable header row
+#'   (default `TRUE` for subgroup plots).
 #' @return List with formatted data for forestploter
-create_forest_plot_data <- function(subgroup_results, variable_order, treatment_labels, effect_measure) {
+create_forest_plot_data <- function(subgroup_results, variable_order, treatment_labels, effect_measure,
+                                    include_interaction_p = TRUE,
+                                    label_column = "Subgroup",
+                                    include_variable_header = TRUE) {
+    if (length(include_interaction_p) != 1L || is.na(include_interaction_p)) {
+        stop("include_interaction_p must be a single non-missing logical value")
+    }
+    include_interaction_p <- isTRUE(include_interaction_p)
+    if (length(label_column) != 1L || is.na(label_column) || !nzchar(label_column)) {
+        stop("label_column must be a single non-empty character value")
+    }
+    label_column <- as.character(label_column)
+    if (length(include_variable_header) != 1L || is.na(include_variable_header)) {
+        stop("include_variable_header must be a single non-missing logical value")
+    }
+    include_variable_header <- isTRUE(include_variable_header)
+
     treatment_labels <- as.character(treatment_labels)
     treatment_count_columns <- c(PBT = "PBT_n", GKSRS = "GKSRS_n")
     if (
@@ -76,6 +97,10 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
             "p-value",
             "Int p"
         )
+        if (!include_interaction_p) {
+            empty_data_frame[["Int p"]] <- NULL
+        }
+        colnames(empty_data_frame)[1] <- label_column
 
         return(list(
             data_frame = empty_data_frame,
@@ -164,18 +189,20 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
             stringsAsFactors = FALSE
         )
 
-        header_row_index <- length(all_rows) + 1L
-        all_rows[[header_row_index]] <- var_header
-        if (!has_interaction_p) {
-            interaction_status_rows <- c(interaction_status_rows, header_row_index)
+        if (include_variable_header) {
+            header_row_index <- length(all_rows) + 1L
+            all_rows[[header_row_index]] <- var_header
+            if (!has_interaction_p) {
+                interaction_status_rows <- c(interaction_status_rows, header_row_index)
+            }
+            est_values <- c(est_values, NaN)
+            lower_values <- c(lower_values, NaN)
+            upper_values <- c(upper_values, NaN)
+            is_summary <- c(is_summary, TRUE)
+            subgroup_level_rows <- c(subgroup_level_rows, FALSE)
+            font_face <- c(font_face, "bold")
+            text_size <- c(text_size, 0.95)
         }
-        est_values <- c(est_values, NaN)
-        lower_values <- c(lower_values, NaN)
-        upper_values <- c(upper_values, NaN)
-        is_summary <- c(is_summary, TRUE)
-        subgroup_level_rows <- c(subgroup_level_rows, FALSE)
-        font_face <- c(font_face, "bold")
-        text_size <- c(text_size, 0.95)
 
         # Check if data exists for this variable
         if (var_name %in% names(subgroup_results)) {
@@ -552,6 +579,9 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
             "p-value",
             "Int p"
         )
+        if (!include_interaction_p) {
+            final_df[["Int p"]] <- NULL
+        }
         # Reset vectors to empty
         est_values <- numeric()
         lower_values <- numeric()
@@ -563,28 +593,30 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
 
     source_count_values <- final_df[, unname(treatment_count_columns), drop = FALSE]
     displayed_count_columns <- unname(treatment_count_columns[treatment_labels])
-    final_df <- final_df[
-        ,
-        c(
-            "Subgroup",
-            displayed_count_columns,
-            " ",
-            "HR (95% CI)",
-            "p-value",
-            "Interaction p"
-        ),
-        drop = FALSE
-    ]
+    final_columns <- c(
+        "Subgroup",
+        displayed_count_columns,
+        " ",
+        "HR (95% CI)",
+        "p-value"
+    )
+    if (include_interaction_p) {
+        final_columns <- c(final_columns, "Interaction p")
+    }
+    final_df <- final_df[, final_columns, drop = FALSE]
 
     # Set proper column names that will become the forestploter headers
-    colnames(final_df) <- c(
-        "Subgroup",
+    final_column_names <- c(
+        label_column,
         unname(arm_count_headers),
         " ", # Blank column for CI
         effect_header,
-        "p-value",
-        "Int p"
+        "p-value"
     )
+    if (include_interaction_p) {
+        final_column_names <- c(final_column_names, "Int p")
+    }
+    colnames(final_df) <- final_column_names
     for (treatment_key in treatment_labels) {
         displayed_header <- unname(arm_count_headers[treatment_key])
         source_column <- unname(treatment_count_columns[treatment_key])

@@ -5,7 +5,8 @@
 #' Keep subgroup labels left-aligned with explicit row-role anchors, center
 #' numeric/table columns under their headers, and retain a restrained style for
 #' non-numeric interaction-test statuses.
-align_forest_plot_body_columns <- function(fp, status_column = 7L) {
+align_forest_plot_body_columns <- function(fp, status_column = 7L,
+                                           include_interaction_p = TRUE) {
     # forestploter's table body is laid out by gridExtra. Explicitly editing
     # the text grobs is required; placing hjust only in gpar() does not move
     # an existing text grob's x anchor.
@@ -15,11 +16,13 @@ align_forest_plot_body_columns <- function(fp, status_column = 7L) {
         treatment_2 = 0.5,
         ci = 0.5,
         estimate = 0.5,
-        p_value = 0.5,
-        interaction_p = 0.5
+        p_value = 0.5
     )
+    if (isTRUE(include_interaction_p)) {
+        column_anchors <- c(column_anchors, interaction_p = 0.5)
+    }
 
-    if (status_column != 7L) {
+    if (!is.null(status_column) && status_column >= 1L && status_column <= length(column_anchors)) {
         column_anchors[status_column] <- 0.5
     }
 
@@ -88,10 +91,19 @@ align_forest_plot_subgroup_levels <- function(fp, plot_data,
 #'
 #' Variable headers remain bold; only the non-numeric status in the interaction
 #' column is italicized and slightly smaller, matching the existing unsupported-level style.
-style_forest_interaction_status_cells <- function(fp, plot_data, status_column = 7L) {
-    fp <- align_forest_plot_body_columns(fp, status_column = status_column)
+style_forest_interaction_status_cells <- function(fp, plot_data, status_column = 7L,
+                                                  include_interaction_p = TRUE) {
+    fp <- align_forest_plot_body_columns(
+        fp,
+        status_column = status_column,
+        include_interaction_p = include_interaction_p
+    )
     fp <- align_forest_plot_headers(fp)
     fp <- align_forest_plot_subgroup_levels(fp, plot_data)
+
+    if (!isTRUE(include_interaction_p)) {
+        return(fp)
+    }
 
     status_rows <- plot_data$interaction_status_rows %||% integer(0)
     if (length(status_rows) == 0) {
