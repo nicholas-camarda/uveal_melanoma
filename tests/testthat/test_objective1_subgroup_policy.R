@@ -408,7 +408,7 @@ test_that("interaction status labels are explicit and render without weakening h
     )
     expect_identical(plot_data$interaction_status_rows, header_rows)
     expect_true(all(plot_data$font_face[header_rows] == "bold"))
-    expect_true(all(plot_data$text_size[header_rows] == 1.0))
+    expect_true(all(plot_data$text_size[header_rows] == 0.95))
 
     diagnostics <- create_forest_plot_diagnostics(
         status_results,
@@ -440,13 +440,16 @@ test_that("interaction status labels are explicit and render without weakening h
 
     core_ids <- which(plot_obj$layout$name == "core-fg")
     expect_true(length(core_ids) > 0)
+    body_rows <- sort(unique(plot_obj$layout$t[core_ids]))
+    expect_length(body_rows, nrow(plot_data$data_frame))
     expected_anchors <- c(0.05, rep(0.5, 6))
+    expected_hjust <- c(0, rep(0.5, 6))
     for (column_index in seq_along(expected_anchors)) {
         column_ids <- core_ids[plot_obj$layout$l[core_ids] == column_index + 1L]
         expect_true(length(column_ids) > 0)
         for (grob_id in column_ids) {
             expect_equal(as.numeric(plot_obj$grobs[[grob_id]]$x), expected_anchors[[column_index]])
-            expect_equal(plot_obj$grobs[[grob_id]]$hjust, expected_anchors[[column_index]])
+            expect_equal(plot_obj$grobs[[grob_id]]$hjust, expected_hjust[[column_index]])
         }
     }
 
@@ -457,5 +460,113 @@ test_that("interaction status labels are explicit and render without weakening h
         expect_equal(length(column_ids), 1L)
         expect_equal(as.numeric(plot_obj$grobs[[column_ids]]$x), expected_header_anchors[[column_index]])
         expect_equal(plot_obj$grobs[[column_ids]]$hjust, if (column_index == 1L) 0 else 0.5)
+        expect_equal(plot_obj$grobs[[column_ids]]$gp$cex, 1.05)
+    }
+
+    title_ids <- which(plot_obj$layout$name == "plot.title")
+    expect_length(title_ids, 1L)
+    expect_equal(plot_obj$grobs[[title_ids]]$gp$cex, 1.30)
+
+    factor_header_ids <- core_ids[
+        plot_obj$layout$l[core_ids] == 2L &
+            plot_obj$layout$t[core_ids] %in% body_rows[!plot_data$subgroup_level_rows]
+    ]
+    expect_length(factor_header_ids, 3L)
+    for (grob_id in factor_header_ids) {
+        expect_equal(plot_obj$grobs[[grob_id]]$gp$cex, 0.95)
+    }
+})
+
+test_that("subgroup levels use one explicit anchor across plain, italic, and long labels", {
+    subgroup_results <- list(
+        synthetic_alignment_factor = list(
+            interaction_p = 0.42,
+            subgroup_effects = data.frame(
+                subgroup_variable = rep("synthetic_alignment_factor", 2),
+                subgroup_level = c("Failed or Indeterminate", "Long Plain Level"),
+                n_total = c(40, 60),
+                n_plaque = c(20, 30),
+                n_gksrs = c(20, 30),
+                events_plaque = c(3, 6),
+                events_gksrs = c(2, 5),
+                treatment_effect = c(1.15, 0.85),
+                ci_lower = c(0.45, 0.40),
+                ci_upper = c(2.95, 1.80),
+                p_value = c(0.72, 0.64),
+                stringsAsFactors = FALSE
+            ),
+            modeled_continuously = FALSE,
+            interaction_diagnostics = list(
+                original_level_order = c("Short", "Failed or Indeterminate", "Long Plain Level"),
+                level_statistics = list(
+                    Short = list(
+                        n_total = 12,
+                        n_plaque = 6,
+                        n_gksrs = 6,
+                        events_plaque = 0,
+                        events_gksrs = 0,
+                        exclusion_reason = "Event count: requires an event in each arm"
+                    ),
+                    "Failed or Indeterminate" = list(
+                        n_total = 40,
+                        n_plaque = 20,
+                        n_gksrs = 20,
+                        events_plaque = 3,
+                        events_gksrs = 2,
+                        exclusion_reason = ""
+                    ),
+                    "Long Plain Level" = list(
+                        n_total = 60,
+                        n_plaque = 30,
+                        n_gksrs = 30,
+                        events_plaque = 6,
+                        events_gksrs = 5,
+                        exclusion_reason = ""
+                    )
+                )
+            )
+        )
+    )
+
+    plot_data <- create_forest_plot_data(
+        subgroup_results = subgroup_results,
+        variable_order = names(subgroup_results),
+        treatment_labels = TREATMENT_LABELS,
+        effect_measure = "HR"
+    )
+
+    expect_identical(
+        plot_data$data_frame$Subgroup,
+        c("Synthetic Alignment Factor", "Short", "Failed or Indeterminate", "Long Plain Level")
+    )
+    expect_identical(plot_data$subgroup_level_rows, c(FALSE, TRUE, TRUE, TRUE))
+    expect_false(any(grepl("^\\s", plot_data$data_frame$Subgroup)))
+
+    plot_obj <- create_single_cohort_forest_plot(
+        subgroup_results = subgroup_results,
+        outcome_name = "Synthetic Alignment",
+        cohort_name = "Synthetic Cohort",
+        treatment_labels = TREATMENT_LABELS,
+        variable_order = names(subgroup_results),
+        effect_measure = "HR",
+        favours_labels = FAVOURS_LABELS
+    )
+
+    core_ids <- which(plot_obj$layout$name == "core-fg" & plot_obj$layout$l == 2L)
+    body_rows <- sort(unique(plot_obj$layout$t[core_ids]))
+    expect_length(body_rows, nrow(plot_data$data_frame))
+
+    level_ids <- core_ids[plot_obj$layout$t[core_ids] %in% body_rows[plot_data$subgroup_level_rows]]
+    header_ids <- core_ids[plot_obj$layout$t[core_ids] %in% body_rows[!plot_data$subgroup_level_rows]]
+    expect_length(level_ids, sum(plot_data$subgroup_level_rows))
+    expect_length(header_ids, sum(!plot_data$subgroup_level_rows))
+
+    for (grob_id in level_ids) {
+        expect_equal(as.numeric(plot_obj$grobs[[grob_id]]$x), 0.10)
+        expect_equal(plot_obj$grobs[[grob_id]]$hjust, 0)
+    }
+    for (grob_id in header_ids) {
+        expect_equal(as.numeric(plot_obj$grobs[[grob_id]]$x), 0.05)
+        expect_equal(plot_obj$grobs[[grob_id]]$hjust, 0)
     }
 })

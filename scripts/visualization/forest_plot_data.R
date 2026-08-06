@@ -24,6 +24,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
     lower_values <- c()
     upper_values <- c()
     is_summary <- c()
+    subgroup_level_rows <- logical()
     font_face <- c()
     text_size <- c()
     interaction_status_rows <- integer(0)
@@ -82,6 +83,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
             lower_values = numeric(),
             upper_values = numeric(),
             is_summary = logical(),
+            subgroup_level_rows = logical(),
             font_face = character(),
             text_size = numeric(),
             interaction_status_rows = integer(),
@@ -117,6 +119,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
             lower_values <- c(lower_values, NaN)
             upper_values <- c(upper_values, NaN)
             is_summary <- c(is_summary, TRUE)
+            subgroup_level_rows <- c(subgroup_level_rows, FALSE)
             font_face <- c(font_face, "italic")
             text_size <- c(text_size, 0.8)
             next
@@ -170,8 +173,9 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
         lower_values <- c(lower_values, NaN)
         upper_values <- c(upper_values, NaN)
         is_summary <- c(is_summary, TRUE)
+        subgroup_level_rows <- c(subgroup_level_rows, FALSE)
         font_face <- c(font_face, "bold")
-        text_size <- c(text_size, 1.0)
+        text_size <- c(text_size, 0.95)
 
         # Check if data exists for this variable
         if (var_name %in% names(subgroup_results)) {
@@ -209,7 +213,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                 next
             } else if (length(ordered_levels) == 0) {
                 no_data_row <- data.frame(
-                    Subgroup = "  No data available",
+                    Subgroup = "No data available",
                     PBT_n = "",
                     GKSRS_n = "",
                     stringsAsFactors = FALSE
@@ -224,6 +228,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                 lower_values <- c(lower_values, NaN)
                 upper_values <- c(upper_values, NaN)
                 is_summary <- c(is_summary, TRUE)
+                subgroup_level_rows <- c(subgroup_level_rows, TRUE)
                 font_face <- c(font_face, "italic")
                 text_size <- c(text_size, 0.8)
             } else {
@@ -266,7 +271,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                             )
 
                             non_estimable_row <- data.frame(
-                                Subgroup = sprintf("  %s", display_level),
+                                Subgroup = trimws(display_level),
                                 PBT_n = format_forest_treatment_count(events_plaque, row_data$n_plaque, row_data$n_total, show_event_counts),
                                 GKSRS_n = format_forest_treatment_count(events_gksrs, row_data$n_gksrs, row_data$n_total, show_event_counts),
                                 stringsAsFactors = FALSE
@@ -281,6 +286,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                             lower_values <- c(lower_values, NaN)
                             upper_values <- c(upper_values, NaN)
                             is_summary <- c(is_summary, FALSE)
+                            subgroup_level_rows <- c(subgroup_level_rows, TRUE)
                             font_face <- c(font_face, "italic")
                             text_size <- c(text_size, 0.85)
                             next
@@ -306,7 +312,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                                 )
 
                                 non_estimable_row <- data.frame(
-                                    Subgroup = sprintf("  %s", display_level),
+                                    Subgroup = trimws(display_level),
                                     PBT_n = format_forest_treatment_count(events_plaque, row_data$n_plaque, row_data$n_total, show_event_counts),
                                     GKSRS_n = format_forest_treatment_count(events_gksrs, row_data$n_gksrs, row_data$n_total, show_event_counts),
                                     stringsAsFactors = FALSE
@@ -321,6 +327,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                                 lower_values <- c(lower_values, NaN)
                                 upper_values <- c(upper_values, NaN)
                                 is_summary <- c(is_summary, FALSE)
+                                subgroup_level_rows <- c(subgroup_level_rows, TRUE)
                                 font_face <- c(font_face, "italic")
                                 text_size <- c(text_size, 0.85)
                                 next
@@ -346,7 +353,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                             )
 
                             non_estimable_row <- data.frame(
-                                Subgroup = sprintf("  %s", display_level),
+                                Subgroup = trimws(display_level),
                                 PBT_n = format_forest_treatment_count(events_plaque, row_data$n_plaque, row_data$n_total, show_event_counts),
                                 GKSRS_n = format_forest_treatment_count(events_gksrs, row_data$n_gksrs, row_data$n_total, show_event_counts),
                                 stringsAsFactors = FALSE
@@ -361,6 +368,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                             lower_values <- c(lower_values, NaN)
                             upper_values <- c(upper_values, NaN)
                             is_summary <- c(is_summary, FALSE)
+                            subgroup_level_rows <- c(subgroup_level_rows, TRUE)
                             font_face <- c(font_face, "italic")
                             text_size <- c(text_size, 0.85)
                             next
@@ -384,7 +392,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                         )
 
                         subgroup_row <- data.frame(
-                            Subgroup = sprintf("  %s", display_level),
+                            Subgroup = trimws(display_level),
                             PBT_n = format_forest_treatment_count(events_plaque, row_data$n_plaque, row_data$n_total, show_event_counts),
                             GKSRS_n = format_forest_treatment_count(events_gksrs, row_data$n_gksrs, row_data$n_total, show_event_counts),
                             stringsAsFactors = FALSE
@@ -404,6 +412,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                         lower_values <- c(lower_values, row_data$ci_lower)
                         upper_values <- c(upper_values, row_data$ci_upper)
                         is_summary <- c(is_summary, FALSE)
+                        subgroup_level_rows <- c(subgroup_level_rows, TRUE)
                         font_face <- c(font_face, "plain")
                         text_size <- c(text_size, 0.9)
                         next
@@ -429,7 +438,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                     }
 
                     non_estimable_row <- data.frame(
-                        Subgroup = sprintf("  %s", level_label),
+                        Subgroup = trimws(level_label),
                         PBT_n = if (non_estimable_meta$has_arm_counts) {
                             format_forest_treatment_count(
                                 non_estimable_meta$events_plaque,
@@ -458,6 +467,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
                     lower_values <- c(lower_values, NaN)
                     upper_values <- c(upper_values, NaN)
                     is_summary <- c(is_summary, FALSE)
+                    subgroup_level_rows <- c(subgroup_level_rows, TRUE)
                     font_face <- c(font_face, "italic")
                     text_size <- c(text_size, 0.85)
                     rendered_level_keys <- c(rendered_level_keys, raw_level)
@@ -483,7 +493,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
         } else {
             # Variable missing from results
             no_data_row <- data.frame(
-                Subgroup = "  No data available",
+                Subgroup = "No data available",
                 PBT_n = "",
                 GKSRS_n = "",
                 stringsAsFactors = FALSE
@@ -500,6 +510,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
             lower_values <- c(lower_values, NaN)
             upper_values <- c(upper_values, NaN)
             is_summary <- c(is_summary, TRUE)
+            subgroup_level_rows <- c(subgroup_level_rows, TRUE)
             font_face <- c(font_face, "italic")
             text_size <- c(text_size, 0.8)
         }
@@ -518,6 +529,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
         lower_values <- lower_values[valid_indices]
         upper_values <- upper_values[valid_indices]
         is_summary <- is_summary[valid_indices]
+        subgroup_level_rows <- subgroup_level_rows[valid_indices]
         font_face <- font_face[valid_indices]
         text_size <- text_size[valid_indices]
     } else {
@@ -747,6 +759,7 @@ create_forest_plot_data <- function(subgroup_results, variable_order, treatment_
         lower_values = lower_values,
         upper_values = upper_values,
         is_summary = is_summary,
+        subgroup_level_rows = subgroup_level_rows,
         font_face = font_face,
         text_size = text_size,
         interaction_status_rows = interaction_status_rows,

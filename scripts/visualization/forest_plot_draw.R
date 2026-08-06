@@ -175,11 +175,14 @@ create_single_cohort_forest_plot <- function(subgroup_results,
         vertline_lty = "solid",
         vertline_col = "black",
         footnote_gp = gpar(cex = 0.8),
+        # Establish a publication-style hierarchy for the title and table
+        # headers while preserving the existing title alignment.
+        title_gp = gpar(cex = 1.30, fontface = "bold", col = "black"),
         # Header formatting - this controls the column headers
         colhead = list(
             fg_params = list(
                 fontface = "bold",
-                cex = 1.0,
+                cex = 1.05,
                 hjust = 0.5,
                 x = 0.5
             )

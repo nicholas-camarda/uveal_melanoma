@@ -2,7 +2,7 @@
 
 #' Align forest-plot body columns and style interaction-test status text
 #'
-#' Keep subgroup labels left-aligned with their existing indentation, center
+#' Keep subgroup labels left-aligned with explicit row-role anchors, center
 #' numeric/table columns under their headers, and retain a restrained style for
 #' non-numeric interaction-test statuses.
 align_forest_plot_body_columns <- function(fp, status_column = 7L) {
@@ -25,12 +25,13 @@ align_forest_plot_body_columns <- function(fp, status_column = 7L) {
 
     for (column_index in seq_along(column_anchors)) {
         anchor <- unname(column_anchors[[column_index]])
+        hjust <- if (column_index == 1L) 0 else anchor
         fp <- edit_plot(
             fp,
             col = column_index,
             which = "text",
             x = grid::unit(anchor, "npc"),
-            hjust = anchor
+            hjust = hjust
         )
     }
 
@@ -49,6 +50,40 @@ align_forest_plot_headers <- function(fp, subgroup_column = 1L) {
     )
 }
 
+#' Align every subgroup level at one stable indentation anchor
+#'
+#' Leading spaces are not a reliable visual indentation mechanism because their
+#' rendered width varies with font face and device. Use explicit grob
+#' positioning instead so plain, italic, short, and long level labels share the
+#' same left edge across every forest plot.
+align_forest_plot_subgroup_levels <- function(fp, plot_data,
+                                              subgroup_column = 1L,
+                                              level_anchor = 0.10) {
+    level_rows <- plot_data$subgroup_level_rows %||% logical()
+    if (is.logical(level_rows)) {
+        level_rows <- which(level_rows)
+    } else {
+        level_rows <- as.integer(level_rows)
+    }
+
+    if (length(level_rows) == 0L) {
+        return(fp)
+    }
+
+    for (row_idx in level_rows) {
+        fp <- edit_plot(
+            fp,
+            row = row_idx,
+            col = subgroup_column,
+            which = "text",
+            x = grid::unit(level_anchor, "npc"),
+            hjust = 0
+        )
+    }
+
+    fp
+}
+
 #' Style explicit interaction-test status text without weakening header hierarchy
 #'
 #' Variable headers remain bold; only the non-numeric status in the interaction
@@ -56,6 +91,7 @@ align_forest_plot_headers <- function(fp, subgroup_column = 1L) {
 style_forest_interaction_status_cells <- function(fp, plot_data, status_column = 7L) {
     fp <- align_forest_plot_body_columns(fp, status_column = status_column)
     fp <- align_forest_plot_headers(fp)
+    fp <- align_forest_plot_subgroup_levels(fp, plot_data)
 
     status_rows <- plot_data$interaction_status_rows %||% integer(0)
     if (length(status_rows) == 0) {
