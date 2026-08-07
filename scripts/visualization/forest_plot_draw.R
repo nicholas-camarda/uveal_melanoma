@@ -191,6 +191,9 @@ create_single_cohort_forest_plot <- function(subgroup_results,
         vertline_lty = "solid",
         vertline_col = "black",
         footnote_gp = gpar(cex = 0.8),
+        # Keep numeric tick labels horizontal but slightly smaller so nearby
+        # log-scale labels remain distinct without shrinking the table text.
+        xaxis_gp = gpar(cex = 0.9),
         # Establish a publication-style hierarchy for the title and table
         # headers while preserving the existing title alignment.
         title_gp = gpar(cex = 1.30, fontface = "bold", col = "black"),

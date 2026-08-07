@@ -1,3 +1,56 @@
+#' Find and validate the latest completed analysis log before publishing
+#'
+#' The publish process creates its own logger file when it loads the project.
+#' Exclude that current-process file so the check examines the latest analysis
+#' log that existed before publishing started.
+assert_latest_analysis_log_clean <- function() {
+    log_dir <- file.path(LOGS_DIR, "txt")
+    log_paths <- if (dir.exists(log_dir)) {
+        list.files(
+            log_dir,
+            pattern = "^run_log_[0-9]{8}_[0-9]{6}\\.txt$",
+            full.names = TRUE
+        )
+    } else {
+        character()
+    }
+
+    current_log <- if (exists("log_file", inherits = TRUE)) {
+        file.path(log_dir, basename(get("log_file", inherits = TRUE)))
+    } else {
+        character()
+    }
+    log_paths <- setdiff(normalizePath(log_paths, winslash = "/", mustWork = FALSE), current_log)
+    if (length(log_paths) == 0) {
+        stop(sprintf("Cannot publish: no completed analysis log found under %s", log_dir), call. = FALSE)
+    }
+
+    log_info <- file.info(log_paths)
+    latest_log <- log_paths[[order(log_info$mtime, decreasing = TRUE)[[1]]]]
+    log_lines <- tryCatch(
+        readLines(latest_log, warn = FALSE),
+        error = function(e) stop(sprintf("Cannot read latest analysis log %s: %s", latest_log, e$message), call. = FALSE)
+    )
+    error_lines <- grepl(
+        "\\[ERROR\\]|\\bERROR\\b|\\bError in\\b|\\bExecution halted\\b|ANALYSES COMPLETED WITH ERRORS",
+        log_lines,
+        ignore.case = TRUE,
+        perl = TRUE
+    )
+    if (any(error_lines)) {
+        stop(
+            paste(
+                sprintf("Cannot publish: latest analysis log contains errors: %s", latest_log),
+                paste(head(log_lines[error_lines], 20L), collapse = "\\n"),
+                sep = "\\n"
+            ),
+            call. = FALSE
+        )
+    }
+
+    latest_log
+}
+
 #' Normalize a path for stable publish comparisons
 #'
 #' @param path Character scalar file or directory path.
@@ -193,6 +246,11 @@ publish_outputs <- function(
         stop(sprintf("Runtime output directory does not exist: %s", OUTPUT_DIR), call. = FALSE)
     }
 
+    latest_analysis_log <- NULL
+    if (!isTRUE(dry_run)) {
+        latest_analysis_log <- assert_latest_analysis_log_clean()
+    }
+
     if (is.null(snapshot_id)) {
         snapshot_id <- next_available_publish_snapshot_id()
     }
@@ -354,7 +412,8 @@ publish_outputs <- function(
         snapshot_dir = snapshot_dir,
         dry_run = isTRUE(dry_run),
         summary = summary,
-        manifest = manifest
+        manifest = manifest,
+        latest_analysis_log = latest_analysis_log
     )
 }
 
@@ -544,6 +603,10 @@ format_publish_outputs_cli_report <- function(result, opts) {
         sprintf("  Missing: %d", summary$missing),
         sprintf("  Failed: %d", summary$failed)
     )
+
+    if (!is.null(result$latest_analysis_log)) {
+        report_lines <- c(report_lines, sprintf("  Latest analysis log checked: %s", result$latest_analysis_log))
+    }
 
     if (isTRUE(result$dry_run) && !isTRUE(summary$snapshot_exists)) {
         report_lines <- c(
