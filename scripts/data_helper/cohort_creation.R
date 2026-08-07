@@ -308,6 +308,27 @@ prepare_factor_levels <- function(data) {
             prame_status = factor(prame_status, levels = c("Negative", "Positive", "Unknown", "Not Available"), ordered = FALSE)
         )
 
+    # Derive the canonical exploratory GEP fields after the existing simple-GEP
+    # normalization so missing raw GEP values retain the validated
+    # "GEP Not Tested" level rather than becoming missing values.
+    data <- data %>%
+        mutate(
+            exploratory_gep_group = factor(
+                as.character(gep_class_simple),
+                levels = c("Class 1", "Class 2", "GEP Failed/Indeterminate", "GEP Not Tested"),
+                ordered = FALSE
+            ),
+            no_gep_group = factor(
+                case_when(
+                    as.character(gep_class_simple) == "GEP Failed/Indeterminate" ~ "GEP Failed/Indeterminate",
+                    as.character(gep_class_simple) == "GEP Not Tested" ~ "GEP Not Tested",
+                    TRUE ~ NA_character_
+                ),
+                levels = c("GEP Failed/Indeterminate", "GEP Not Tested"),
+                ordered = FALSE
+            )
+        )
+
     # Create collapsed T-stage variable (T1..T4) if needed
     data <- data %>% mutate(
         initial_t_stage_simple = factor(

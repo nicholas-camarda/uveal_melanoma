@@ -93,7 +93,8 @@ validate_existing_objective0_rds <- function(dataset_name) {
     cached_data <- readRDS(data_path)
     validation_result <- validate_processing_pipeline(
         cached_data,
-        stop_on_failure = FALSE
+        stop_on_failure = FALSE,
+        cohort_name = dataset_name
     )
     validation_result$metadata <- c(
         validation_result$metadata %||% list(),

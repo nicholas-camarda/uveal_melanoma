@@ -2042,7 +2042,8 @@ validate_processing_pipeline <- function(data,
                                          stop_on_failure = TRUE,
                                          input_audit = NULL,
                                          removal_log = NULL,
-                                         reconciliation_audit = NULL) {
+                                         reconciliation_audit = NULL,
+                                         cohort_name = NULL) {
     logger::log_info("=== COMPREHENSIVE DATA PROCESSING VALIDATION ===")
 
     findings <- empty_validation_findings()
@@ -2085,7 +2086,10 @@ validate_processing_pipeline <- function(data,
         )
         findings <- dplyr::bind_rows(findings, processed_file_finding)
     } else {
-        single_result <- collect_single_cohort_validation(data, "single_dataset")
+        single_result <- collect_single_cohort_validation(
+            data,
+            cohort_name %||% "single_dataset"
+        )
         findings <- dplyr::bind_rows(findings, single_result$validation_findings)
         details <- dplyr::bind_rows(details, single_result$detail_tables)
         validated_cohorts <- unique(c(validated_cohorts, single_result$validated_cohorts))

@@ -27,6 +27,45 @@ determine_run_state <- function(fatal_issues = character(), warning_issues = cha
     "success"
 }
 
+# Walk plain workflow result lists iteratively. Model objects are deliberately
+# treated as leaves: many are list-backed S3 objects with recursive internals.
+walk_status_tree <- function(x, visit, path = "root") {
+    values <- list(x)
+    paths <- list(path)
+
+    while (length(values) > 0) {
+        index <- length(values)
+        current_value <- values[[index]]
+        current_path <- paths[[index]]
+        values[[index]] <- NULL
+        paths[[index]] <- NULL
+
+        if (is.null(current_value)) {
+            next
+        }
+        if (is.data.frame(current_value)) {
+            visit(current_value, current_path)
+            next
+        }
+        if (!is.list(current_value) ||
+            (!is.null(class(current_value)) && !identical(class(current_value), "list"))) {
+            next
+        }
+
+        visit(current_value, current_path)
+        child_names <- names(current_value)
+        if (is.null(child_names)) {
+            child_names <- as.character(seq_along(current_value))
+        }
+        for (i in rev(seq_along(current_value))) {
+            values[[length(values) + 1L]] <- current_value[[i]]
+            paths[[length(paths) + 1L]] <- paste0(current_path, "$", child_names[[i]])
+        }
+    }
+
+    invisible(NULL)
+}
+
 #' Collect expected warning signals from nested workflow results
 #'
 #' @param x Arbitrary workflow result object.
@@ -35,49 +74,33 @@ determine_run_state <- function(fatal_issues = character(), warning_issues = cha
 collect_expected_warning_signals <- function(x, path = "root") {
     warning_issues <- character()
 
-    if (is.null(x)) {
-        return(warning_issues)
-    }
+    walk_status_tree(x, function(current_value, current_path) {
+        if (is.data.frame(current_value)) {
+            if ("Analysis_Status" %in% names(current_value) && any(current_value$Analysis_Status == "skipped", na.rm = TRUE)) {
+                warning_issues <<- append_issue(warning_issues, paste0(current_path, ":rmst_skipped"))
+            }
+            if ("status" %in% names(current_value) && any(grepl("skipped|insufficient|no_event_of_interest", current_value$status), na.rm = TRUE)) {
+                warning_issues <<- append_issue(warning_issues, paste0(current_path, ":status_skip"))
+            }
+            if (all(c("variable", "reason", "retained_values", "non_missing_n") %in% names(current_value)) && nrow(current_value) > 0) {
+                warning_issues <<- append_issue(warning_issues, paste0(current_path, ":covariates_dropped"))
+            }
+            return(invisible(NULL))
+        }
 
-    if (is.data.frame(x)) {
-        if ("Analysis_Status" %in% names(x) && any(x$Analysis_Status == "skipped", na.rm = TRUE)) {
-            warning_issues <- append_issue(warning_issues, paste0(path, ":rmst_skipped"))
-        }
-        if ("status" %in% names(x) && any(grepl("skipped|insufficient|no_event_of_interest", x$status), na.rm = TRUE)) {
-            warning_issues <- append_issue(warning_issues, paste0(path, ":status_skip"))
-        }
-        if (all(c("variable", "reason", "retained_values", "non_missing_n") %in% names(x)) && nrow(x) > 0) {
-            warning_issues <- append_issue(warning_issues, paste0(path, ":covariates_dropped"))
-        }
-        return(warning_issues)
-    }
-
-    if (is.list(x)) {
-        if (!is.null(x$feasibility)) {
-            model_statuses <- x$feasibility$models %||% list()
+        if (!is.null(current_value$feasibility)) {
+            model_statuses <- current_value$feasibility$models %||% list()
             skipped_models <- vapply(model_statuses, function(model_status) {
                 identical(model_status$status %||% NA_character_, "skipped")
             }, logical(1))
             if (any(skipped_models)) {
-                warning_issues <- append_issue(warning_issues, paste0(path, ":competing_risk_feasibility"))
+                warning_issues <<- append_issue(warning_issues, paste0(current_path, ":competing_risk_feasibility"))
             }
         }
-        if (!is.null(x$warning_issues) && length(x$warning_issues) > 0) {
-            warning_issues <- c(warning_issues, unlist(x$warning_issues, use.names = FALSE))
+        if (!is.null(current_value$warning_issues) && length(current_value$warning_issues) > 0) {
+            warning_issues <<- c(warning_issues, unlist(current_value$warning_issues, use.names = FALSE))
         }
-
-        child_names <- names(x)
-        if (is.null(child_names)) {
-            child_names <- seq_along(x)
-        }
-
-        for (i in seq_along(x)) {
-            warning_issues <- c(
-                warning_issues,
-                collect_expected_warning_signals(x[[i]], path = paste0(path, "$", child_names[[i]]))
-            )
-        }
-    }
+    }, path = path)
 
     unique(warning_issues)
 }
@@ -90,43 +113,27 @@ collect_expected_warning_signals <- function(x, path = "root") {
 collect_unexpected_failure_signals <- function(x, path = "root") {
     fatal_issues <- character()
 
-    if (is.null(x)) {
-        return(fatal_issues)
-    }
-
-    if (is.data.frame(x)) {
-        if ("Analysis_Status" %in% names(x) && any(x$Analysis_Status == "failed", na.rm = TRUE)) {
-            fatal_issues <- append_issue(fatal_issues, paste0(path, ":analysis_failed"))
+    walk_status_tree(x, function(current_value, current_path) {
+        if (is.data.frame(current_value)) {
+            if ("Analysis_Status" %in% names(current_value) && any(current_value$Analysis_Status == "failed", na.rm = TRUE)) {
+                fatal_issues <<- append_issue(fatal_issues, paste0(current_path, ":analysis_failed"))
+            }
+            if ("status" %in% names(current_value) && any(current_value$status == "failed", na.rm = TRUE)) {
+                fatal_issues <<- append_issue(fatal_issues, paste0(current_path, ":status_failed"))
+            }
+            return(invisible(NULL))
         }
-        if ("status" %in% names(x) && any(x$status == "failed", na.rm = TRUE)) {
-            fatal_issues <- append_issue(fatal_issues, paste0(path, ":status_failed"))
-        }
-        return(fatal_issues)
-    }
 
-    if (is.list(x)) {
-        if (!is.null(x$unexpected_failures) && length(x$unexpected_failures) > 0) {
-            fatal_issues <- c(
+        if (!is.null(current_value$unexpected_failures) && length(current_value$unexpected_failures) > 0) {
+            fatal_issues <<- c(
                 fatal_issues,
-                paste0(path, ":unexpected:", unlist(x$unexpected_failures, use.names = FALSE))
+                paste0(current_path, ":unexpected:", unlist(current_value$unexpected_failures, use.names = FALSE))
             )
         }
-        if (!is.null(x$status) && identical(x$status, "failed")) {
-            fatal_issues <- append_issue(fatal_issues, paste0(path, ":status_failed"))
+        if (!is.null(current_value$status) && identical(current_value$status, "failed")) {
+            fatal_issues <<- append_issue(fatal_issues, paste0(current_path, ":status_failed"))
         }
-
-        child_names <- names(x)
-        if (is.null(child_names)) {
-            child_names <- seq_along(x)
-        }
-
-        for (i in seq_along(x)) {
-            fatal_issues <- c(
-                fatal_issues,
-                collect_unexpected_failure_signals(x[[i]], path = paste0(path, "$", child_names[[i]]))
-            )
-        }
-    }
+    }, path = path)
 
     unique(fatal_issues)
 }
