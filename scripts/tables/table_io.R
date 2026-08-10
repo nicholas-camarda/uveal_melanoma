@@ -855,6 +855,9 @@ write_diagnostics_workbook <- function(diagnostics, diagnostics_path) {
             if (!is.null(diagnostics$sparse_level_diagnostics)) {
                 workbook_data$Sparse_level_diagnostics <- diagnostics$sparse_level_diagnostics
             }
+            if (!is.null(diagnostics$model_excluded_rows)) {
+                workbook_data$Model_excluded_rows <- diagnostics$model_excluded_rows
+            }
             if (!is.null(diagnostics$raw_model_output)) {
                 if (is.data.frame(diagnostics$raw_model_output)) {
                     raw_output_formatted <- diagnostics$raw_model_output
@@ -1168,24 +1171,35 @@ build_sample_size_source_note <- function(sample_size_summary) {
 
     row <- sample_size_summary[1, , drop = FALSE]
     initial_n <- row$initial_n
-    modeled_n <- row$modeled_n
+    input_n <- if ("input_n" %in% names(row)) row$input_n else row$modeled_n
+    fitted_n <- if ("fitted_n" %in% names(row)) row$fitted_n else row$modeled_n
     removed_n <- row$removed_n
     removed_pct <- row$removed_pct
     reason <- row$removal_reason %||% "Pre-model exclusions"
 
-    if (is.na(initial_n) || is.na(modeled_n) || is.na(removed_n)) {
+    if (is.na(initial_n) || is.na(input_n) || is.na(removed_n)) {
         return(NULL)
     }
 
+    if (is.na(fitted_n)) {
+        return(sprintf(
+            "Sample size audit: %d participants entered the model-eligibility dataset; no fitted model was produced (%d removed before fitting; %s).",
+            as.integer(input_n),
+            as.integer(removed_n),
+            if (!is.null(removed_pct) && !is.na(removed_pct)) sprintf("%.1f%%", removed_pct) else "n/a"
+        ))
+    }
+
     if (removed_n == 0) {
-        return(sprintf("Sample size audit: %d participants entered the model; no rows were excluded prior to fitting.", modeled_n))
+        return(sprintf("Sample size audit: %d participants entered the model and %d were fitted; no rows were excluded.", input_n, fitted_n))
     }
 
     pct_text <- if (!is.null(removed_pct) && !is.na(removed_pct)) sprintf("%.1f%%", removed_pct) else "n/a"
     sprintf(
-        "Sample size audit: %d provided, %d modeled (%d removed; %s, %s).",
+        "Sample size audit: %d provided, %d entered the model, %d were fitted (%d removed; %s, %s).",
         as.integer(initial_n),
-        as.integer(modeled_n),
+        as.integer(input_n),
+        as.integer(fitted_n),
         as.integer(removed_n),
         pct_text,
         reason

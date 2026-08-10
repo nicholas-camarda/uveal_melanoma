@@ -316,6 +316,50 @@ test_that("PH diagnostics are skipped below the configured event floor", {
   expect_true(file.exists(file.path(test_output_dir, "unit_proportional_hazards_diagnostics_SKIPPED.html")))
   expect_true(file.exists(file.path(test_output_dir, "unit_proportional_hazards_diagnostics_diagnostics.xlsx")))
   expect_false(file.exists(file.path(test_output_dir, "unit_proportional_hazards_tests.xlsx")))
+
+  skip_summary <- readxl::read_xlsx(
+    file.path(test_output_dir, "unit_proportional_hazards_diagnostics_diagnostics.xlsx"),
+    sheet = "Skip_summary"
+  )
+  expect_true(all(c("input_n", "fitted_n") %in% skip_summary$metric))
+  expect_equal(skip_summary$value[skip_summary$metric == "input_n"], "10")
+  expect_equal(skip_summary$value[skip_summary$metric == "fitted_n"], "10")
+})
+
+test_that("successful PH diagnostics report input and fitted N", {
+  test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective3_ph_sample_size")
+  dir.create(test_output_dir, recursive = TRUE, showWarnings = FALSE)
+  withr::defer(unlink(test_output_dir, recursive = TRUE), envir = parent.frame())
+
+  ph_test_data <- tibble::tibble(
+    time_months = seq(5, 24),
+    status = rep(c(1, 0), 10),
+    treatment_group = factor(rep(c("PBT", "GKSRS"), 10))
+  )
+  ph_model <- survival::coxph(
+    survival::Surv(time_months, status) ~ treatment_group,
+    data = ph_test_data,
+    model = TRUE
+  )
+
+  ph_result <- test_proportional_hazards_assumption(
+    cox_model = ph_model,
+    outcome_name = "Unit Test Survival",
+    output_dir = test_output_dir,
+    file_prefix = "unit_",
+    dataset_name = "test_cohort",
+    input_n = nrow(ph_test_data),
+    fitted_n = get_model_fitted_n(ph_model)
+  )
+
+  expect_true(is.data.frame(ph_result$ph_summary))
+  expect_true(all(ph_result$ph_summary$input_n == nrow(ph_test_data)))
+  expect_true(all(ph_result$ph_summary$fitted_n == nrow(ph_test_data)))
+  ph_workbook <- readxl::read_xlsx(
+    file.path(test_output_dir, "unit_proportional_hazards_tests.xlsx")
+  )
+  expect_true(all(c("input_n", "fitted_n") %in% names(ph_workbook)))
+  expect_true(all(ph_workbook$input_n == ph_workbook$fitted_n))
 })
 
 test_that("generic PH diagnostics helper writes skip artifacts when Cox is unavailable", {

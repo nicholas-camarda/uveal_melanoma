@@ -82,6 +82,7 @@ test_that("create_comprehensive_diagnostics exposes sparse-level diagnostics sch
 
 test_that("fitted-model diagnostics obtain analytic N from the fitted object", {
     test_data <- data.frame(
+        id = seq_len(6),
         outcome = c(0.13, 0.21, NA_real_, 0.37, 0.52, 0.68),
         treatment_group = factor(rep(c("Control", "Treatment"), each = 3)),
         age = c(50, 55, 60, 65, 70, 75)
@@ -119,6 +120,22 @@ test_that("fitted-model diagnostics obtain analytic N from the fitted object", {
     expect_equal(stats::nobs(model_fit), 5L)
     expect_equal(result$sample_size_summary$modeled_n, stats::nobs(model_fit))
     expect_equal(result$sample_size_summary$removed_n, 1L)
+    expect_equal(result$model_summary$fitted_n, 5L)
+    expect_equal(result$model_summary$initial_n, 6L)
+    expect_equal(result$model_summary$input_n, 6L)
+    expect_equal(result$model_summary$n_total, 5L)
+    expect_equal(result$model_summary$prefit_excluded_n, 0L)
+    expect_equal(result$model_summary$complete_case_excluded_n, 1L)
+    expect_equal(result$model_summary$total_excluded_n, 1L)
+    expect_identical(result$model_summary$sample_size_reconciliation, "reconciled")
+    expect_equal(result$sample_size_summary$input_n, 6L)
+    expect_equal(result$sample_size_summary$fitted_n, 5L)
+    expect_equal(result$sample_size_summary$prefit_excluded_n, 0L)
+    expect_equal(result$sample_size_summary$complete_case_excluded_n, 1L)
+    expect_equal(result$sample_size_summary$total_excluded_n, 1L)
+    expect_equal(result$model_excluded_rows$row_index, 3L)
+    expect_identical(result$model_excluded_rows$row_id, "3")
+    expect_identical(result$model_excluded_rows$exclusion_stage, "model_fit")
 })
 
 test_that("Cox fitted-model diagnostics count modeled rows rather than events", {
@@ -168,6 +185,122 @@ test_that("Cox fitted-model diagnostics count modeled rows rather than events", 
     expect_equal(as.integer(summary(model_fit)$nevent), 6L)
     expect_equal(result$sample_size_summary$modeled_n, 12L)
     expect_equal(result$sample_size_summary$removed_n, 0L)
+    expect_equal(result$model_summary$fitted_n, 12L)
+    expect_equal(result$model_summary$initial_n, 12L)
+    expect_equal(result$model_summary$input_n, 12L)
+    expect_equal(result$model_summary$n_total, 12L)
+    expect_equal(result$model_summary$complete_case_excluded_n, 0L)
+    expect_identical(result$model_summary$sample_size_reconciliation, "reconciled")
+})
+
+test_that("model summary puts the fitted sample size alongside model metadata", {
+    test_data <- data.frame(
+        outcome = c(0, 1, 0, 1, NA_real_, 0),
+        treatment_group = factor(c("Control", "Treatment", "Control", "Treatment", "Control", "Treatment")),
+        age = c(50, 55, 60, 65, 70, 75),
+        stringsAsFactors = FALSE
+    )
+    model_fit <- stats::glm(outcome ~ treatment_group + age, data = test_data, family = binomial())
+    table_result <- create_gtsummary_table(
+        model_fit = model_fit,
+        effect_measure = "OR",
+        analysis_name = "front_of_workbook_n_test",
+        data = test_data,
+        outcome_var = "outcome",
+        confounders = "age",
+        outcome_type = "binary"
+    )
+
+    result <- create_comprehensive_diagnostics(
+        model_fit = model_fit,
+        data = test_data,
+        outcome_var = "outcome",
+        predictor_vars = "treatment_group",
+        confounders = "age",
+        analysis_name = "front_of_workbook_n_test",
+        dataset_name = "test_dataset",
+        table_result = table_result
+    )
+
+    expect_equal(result$model_summary$fitted_n, 5L)
+    expect_equal(result$model_summary$input_n, 6L)
+    expect_true(all(c(
+        "input_n", "fitted_n", "prefit_excluded_n", "complete_case_excluded_n",
+        "total_excluded_n", "reported_input_n", "sample_size_reconciliation"
+    ) %in% names(result$model_summary)))
+    expect_lt(match("fitted_n", names(result$model_summary)), match("n_events", names(result$model_summary)))
+})
+
+test_that("skipped diagnostics distinguish eligible input rows from fitted rows", {
+    summary <- build_sample_size_summary_tab(
+        filter_stats = list(initial_n = 40L, model_n = 37L, removed_n = 3L),
+        dataset_name = "test_dataset",
+        analysis_name = "skipped_n_test",
+        input_n = 37L,
+        fitted_n = NA_integer_
+    )
+
+    expect_equal(summary$initial_n, 40L)
+    expect_equal(summary$input_n, 37L)
+    expect_true(is.na(summary$fitted_n))
+    expect_equal(summary$prefit_excluded_n, 3L)
+    expect_true(is.na(summary$complete_case_excluded_n))
+    expect_true(is.na(summary$total_excluded_n))
+    expect_identical(summary$sample_size_reconciliation, "not_fitted")
+})
+
+test_that("sample-size diagnostics flag stale prefit counts instead of hiding them", {
+    test_data <- data.frame(
+        outcome = c(0.2, 0.4, 0.6, 0.8),
+        treatment_group = factor(c("Control", "Treatment", "Control", "Treatment")),
+        stringsAsFactors = FALSE
+    )
+    model_fit <- stats::lm(outcome ~ treatment_group, data = test_data)
+    audit <- build_model_sample_size_audit(
+        model_fit = model_fit,
+        data = test_data,
+        filter_stats = list(initial_n = 4L, model_n = 3L)
+    )
+
+    expect_identical(audit$prefit_filter_reconciliation, "mismatch")
+    expect_identical(audit$sample_size_reconciliation, "inconsistent")
+})
+
+test_that("supported fitted model classes use their model-frame row count", {
+    set.seed(42)
+    n <- 30L
+    test_data <- data.frame(
+        id = seq_len(n),
+        continuous_outcome = seq_len(n) / 10,
+        binary_outcome = sample(c(0, 1), n, replace = TRUE),
+        ordinal_outcome = ordered(sample(c("low", "mid", "high"), n, replace = TRUE), levels = c("low", "mid", "high")),
+        time_months = seq(10, 9 + n),
+        status = sample(c(0, 1), n, replace = TRUE),
+        treatment_group = factor(sample(c("Control", "Treatment"), n, replace = TRUE)),
+        age = stats::rnorm(n, 60, 10),
+        stringsAsFactors = FALSE
+    )
+    test_data$continuous_outcome[n] <- NA_real_
+    test_data$binary_outcome[n] <- NA_real_
+    test_data$ordinal_outcome[n] <- NA
+
+    models <- list(
+        linear = stats::lm(continuous_outcome ~ treatment_group + age, data = test_data),
+        logistic = stats::glm(binary_outcome ~ treatment_group + age, data = test_data, family = binomial()),
+        ordinal = MASS::polr(ordinal_outcome ~ treatment_group + age, data = test_data, Hess = TRUE, model = TRUE),
+        cox = survival::coxph(survival::Surv(time_months, status) ~ treatment_group + age, data = test_data, model = TRUE)
+    )
+
+    audits <- lapply(models, function(model_fit) {
+        build_model_sample_size_audit(
+            model_fit = model_fit,
+            data = test_data,
+            filter_stats = list(initial_n = nrow(test_data), model_n = nrow(test_data))
+        )
+    })
+
+    expect_equal(unname(vapply(audits, `[[`, integer(1), "fitted_n")), c(29L, 29L, 29L, 30L))
+    expect_true(all(vapply(audits, `[[`, character(1), "sample_size_reconciliation") == "reconciled"))
 })
 
 test_that("diagnostics workbook omits redundant excluded rows worksheet", {
@@ -240,9 +373,13 @@ test_that("diagnostics workbook omits redundant excluded rows worksheet", {
 
     diagnostics_path <- file.path(output_dir, "unit_test_analysis_diagnostics.xlsx")
     sheets <- readxl::excel_sheets(diagnostics_path)
+    model_summary <- readxl::read_xlsx(diagnostics_path, sheet = "Model_summary")
 
     expect_true("Sparse_level_diagnostics" %in% sheets)
+    expect_true("Model_excluded_rows" %in% sheets)
     expect_false("Excluded_Rows" %in% sheets)
+    expect_true(all(c("input_n", "fitted_n", "n_total") %in% names(model_summary)))
+    expect_equal(model_summary$fitted_n, model_summary$n_total)
 })
 
 test_that("shared skip diagnostics render structured HTML and workbook tabs", {
