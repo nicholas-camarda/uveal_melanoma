@@ -150,7 +150,7 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
         filter_stats,
         dataset_name,
         analysis_name,
-        modeled_n = stats::nobs(model_fit)
+        modeled_n = nrow(stats::model.frame(model_fit))
     )
 
     # === UNIFIED RAW MODEL OUTPUT ===
