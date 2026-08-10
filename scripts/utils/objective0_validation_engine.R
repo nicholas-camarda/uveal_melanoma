@@ -1038,6 +1038,7 @@ validate_downstream_objective_input_contract <- function(data,
         }
 
         issue_type <- ifelse(contract_result$missing_rows[issue_index], "missing_required_value", "invalid_domain_value")
+        observed_values <- data[[variable_name]][issue_index]
         domain_issues[[length(domain_issues) + 1L]] <- tibble::tibble(
             objective_id = contract_row$objective_id[[1]],
             variable_name = variable_name,
@@ -1047,7 +1048,7 @@ validate_downstream_objective_input_contract <- function(data,
             issue_type = issue_type,
             id = data$id[issue_index] %||% NA_character_,
             row_index = issue_index,
-            observed_value = as.character(data[[variable_name]][issue_index])
+            observed_value = as.character(observed_values)
         )
     }
 

@@ -257,6 +257,33 @@ test_that("downstream objective input contract catches missing and invalid input
     expect_true(any(missing_details$variable_name == "recurrence_event"))
 })
 
+test_that("downstream objective input contract records multiple issues for one field", {
+    registry <- tibble::tibble(
+        objective_id = "objective2",
+        variable_name = "vision_change",
+        variable_role = "vision safety endpoint",
+        expected_domain = "numeric",
+        missing_policy = "complete",
+        severity = "warning"
+    )
+    contract_data <- tibble::tibble(
+        id = 1:4,
+        vision_change = c(NA_real_, NA_real_, NA_real_, NA_real_)
+    )
+
+    validation_result <- validate_downstream_objective_input_contract(
+        contract_data,
+        "unit",
+        registry
+    )
+    invalid_details <- validation_result$details %>%
+        dplyr::filter(.data$detail_sheet == "Downstream_Input_Invalid")
+
+    expect_equal(nrow(invalid_details), 4L)
+    expect_equal(invalid_details$id, 1:4)
+    expect_true(all(invalid_details$variable_name == "vision_change"))
+})
+
 test_that("Objective 2 optic nerve contract allows missing full-cohort descriptors", {
     contract_data <- make_objective0_validation_dataset()
     contract_data$optic_nerve[1] <- NA

@@ -43,6 +43,34 @@ test_that("Objective 0 derives integer treatment year from treatment date", {
     )
 })
 
+test_that("untreated recurrence retains latest vision for the primary-treatment VA endpoint", {
+    test_data <- create_test_dataset()[1, ]
+    test_data$recurrence1 <- "Y"
+    test_data$recurrence1_treatment <- NA_character_
+    test_data$recurrence1_treatment_date <- as.Date(NA)
+    test_data$initial_vision <- 0.1
+    test_data$last_vision <- 0.4
+    test_data$recurrence1_pretreatment_vision <- 0.9
+
+    derived <- create_derived_variables(test_data)
+
+    expect_equal(derived$vision_change, -0.3)
+})
+
+test_that("confirmed recurrence retreatment uses the eligible pre-salvage vision", {
+    test_data <- create_test_dataset()[1, ]
+    test_data$recurrence1 <- "Y"
+    test_data$recurrence1_treatment <- "GKSRS"
+    test_data$recurrence1_treatment_date <- as.Date("2021-01-01")
+    test_data$initial_vision <- 0.1
+    test_data$last_vision <- 0.4
+    test_data$recurrence1_pretreatment_vision <- 0.9
+
+    derived <- create_derived_variables(test_data)
+
+    expect_equal(derived$vision_change, -0.8)
+})
+
 test_that("Objective 0 derivation preserves impossible endpoint times for validation", {
     test_data <- create_test_dataset()
     test_data$recurrence1[1] <- "Y"

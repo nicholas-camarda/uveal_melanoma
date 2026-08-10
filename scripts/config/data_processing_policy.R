@@ -16,6 +16,7 @@ SPECIFIC_PATIENTS_TO_EXCLUDE <- c(271) # Patient 271: all supporting documentati
 # published into each cohort's 00_General audit workbooks.
 MANUAL_DATE_CORRECTIONS <- tibble::tribble(
     ~study_id, ~column_name,           ~corrected_value,       ~correction_reason,                                                                 ~confidence_tier, ~supporting_columns,
+    "45",      "initial_gk_date",      as.Date("2023-11-14"),  "Initial GK treatment date confirmed as November 14, 2023 in the adjudicated source record.",                        "high",          "date_ophtho_consult,date_diagnosis,date_rad_onc_consult,recurrence1_date,last_followup",
     "125",     "initial_gk_date",      as.Date("2017-06-13"),  "Initial GK treatment year aligned to the clustered 2017 consult, diagnosis, and liver-staging chronology.", "high",          "date_ophtho_consult,date_diagnosis,date_rad_onc_consult,date_initial_liver_staging",
     "211",     "date_diagnosis",       as.Date("2014-01-28"),  "Diagnosis year aligned to the 2014 plaque treatment and radiation-oncology consult chronology.",                  "high",          "date_ophtho_consult,date_rad_onc_consult,initial_plaque_date,last_followup",
     "211",     "date_ophtho_consult",  as.Date("2014-01-21"),  "Ophthalmology consult year aligned to the same 2014 treatment chronology as the corrected diagnosis date.",          "high",          "date_diagnosis,date_rad_onc_consult,initial_plaque_date,last_followup",

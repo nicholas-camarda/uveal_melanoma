@@ -146,7 +146,12 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
     model_diagnostics_tab <- create_model_diagnostics_tab(model_fit, dataset_name, analysis_name, effect_measure, coefs, extreme_diagnostics, filtered_variables)
     data_characteristics_tab <- create_data_characteristics_tab(dataset_name, analysis_name, predictor_vars, confounders, outcome_var, data)
     sparse_level_diagnostics_tab <- create_sparse_level_diagnostics_tab(sparse_level_diagnostics)
-    sample_size_summary_tab <- build_sample_size_summary_tab(filter_stats, dataset_name, analysis_name, modeled_n = nrow(data))
+    sample_size_summary_tab <- build_sample_size_summary_tab(
+        filter_stats,
+        dataset_name,
+        analysis_name,
+        modeled_n = nrow(stats::model.frame(model_fit))
+    )
 
     # === UNIFIED RAW MODEL OUTPUT ===
     raw_model_output_tab <- create_raw_model_output_tab(
@@ -208,12 +213,9 @@ build_sample_size_summary_tab <- function(filter_stats, dataset_name, analysis_n
     }
 
     initial_n <- stats$initial_n %||% modeled_n
-    model_n <- stats$model_n %||% modeled_n
-    removed_n <- stats$removed_n %||% pmax(initial_n - modeled_n, 0)
-    removed_pct <- stats$removed_pct
-    if (is.null(removed_pct) || is.na(removed_pct)) {
-        removed_pct <- if (initial_n > 0) round((initial_n - model_n) / initial_n * 100, 1) else 0
-    }
+    model_n <- modeled_n
+    removed_n <- pmax(initial_n - model_n, 0)
+    removed_pct <- if (initial_n > 0) round(removed_n / initial_n * 100, 1) else 0
 
     data.frame(
         dataset_name = dataset_name,

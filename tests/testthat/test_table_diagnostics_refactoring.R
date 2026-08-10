@@ -80,6 +80,96 @@ test_that("create_comprehensive_diagnostics exposes sparse-level diagnostics sch
     expect_equal(result$filtering_summary$rows_removed, 0)
 })
 
+test_that("fitted-model diagnostics obtain analytic N from the fitted object", {
+    test_data <- data.frame(
+        outcome = c(0.13, 0.21, NA_real_, 0.37, 0.52, 0.68),
+        treatment_group = factor(rep(c("Control", "Treatment"), each = 3)),
+        age = c(50, 55, 60, 65, 70, 75)
+    )
+    model_fit <- stats::lm(outcome ~ treatment_group + age, data = test_data)
+
+    table_result <- create_gtsummary_table(
+        model_fit = model_fit,
+        effect_measure = "MD",
+        analysis_name = "fitted_n_test",
+        data = test_data,
+        outcome_var = "outcome",
+        confounders = "age",
+        outcome_type = "continuous"
+    )
+
+    result <- create_comprehensive_diagnostics(
+        model_fit = model_fit,
+        data = test_data,
+        outcome_var = "outcome",
+        predictor_vars = "treatment_group",
+        confounders = "age",
+        analysis_name = "fitted_n_test",
+        dataset_name = "test_dataset",
+        table_result = table_result,
+        filter_stats = list(
+            initial_n = nrow(test_data),
+            model_n = nrow(test_data),
+            removed_n = 0L,
+            removed_pct = 0,
+            removal_reason = "No prefit exclusions"
+        )
+    )
+
+    expect_equal(stats::nobs(model_fit), 5L)
+    expect_equal(result$sample_size_summary$modeled_n, stats::nobs(model_fit))
+    expect_equal(result$sample_size_summary$removed_n, 1L)
+})
+
+test_that("Cox fitted-model diagnostics count modeled rows rather than events", {
+    test_data <- data.frame(
+        time_months = c(10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21),
+        status = c(1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1),
+        treatment_group = factor(
+            rep(c("Control", "Treatment"), 6),
+            levels = c("Control", "Treatment")
+        )
+    )
+    model_fit <- survival::coxph(
+        survival::Surv(time_months, status) ~ treatment_group,
+        data = test_data,
+        model = TRUE
+    )
+
+    table_result <- create_gtsummary_table(
+        model_fit = model_fit,
+        effect_measure = "HR",
+        analysis_name = "cox_fitted_n_test",
+        data = test_data,
+        outcome_var = "status",
+        confounders = character(),
+        outcome_type = "survival"
+    )
+
+    result <- create_comprehensive_diagnostics(
+        model_fit = model_fit,
+        data = test_data,
+        outcome_var = "status",
+        predictor_vars = "treatment_group",
+        confounders = character(),
+        analysis_name = "cox_fitted_n_test",
+        dataset_name = "test_dataset",
+        table_result = table_result,
+        filter_stats = list(
+            initial_n = nrow(test_data),
+            model_n = nrow(test_data),
+            removed_n = 0L,
+            removed_pct = 0,
+            removal_reason = "No prefit exclusions"
+        )
+    )
+
+    expect_equal(as.integer(model_fit$n), 12L)
+    expect_equal(as.integer(summary(model_fit)$nevent), 6L)
+    expect_equal(result$sample_size_summary$modeled_n, 12L)
+    expect_equal(result$sample_size_summary$removed_n, 0L)
+})
+
 test_that("diagnostics workbook omits redundant excluded rows worksheet", {
     set.seed(456)
 
