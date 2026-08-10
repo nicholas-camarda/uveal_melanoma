@@ -258,10 +258,11 @@ create_derived_variables <- function(data) {
                 TRUE ~ last_height - initial_tumor_height
             ),
             # Vision change: Per project goals 2a
-            # Formula: initial_vision - last_vision (or recurrence1_pretreatment_vision)
+            # Formula: initial_vision - last_vision, substituting the eligible
+            # pre-salvage vision only for confirmed recurrence retreatment.
             # Negative = vision worsened (higher logMAR), Positive = vision improved
             vision_change = case_when(
-                recurrence1 == "Y" ~ initial_vision - recurrence1_pretreatment_vision,
+                recurrence1 == "Y" & !is.na(recurrence1_treatment_date) ~ initial_vision - recurrence1_pretreatment_vision,
                 TRUE ~ initial_vision - last_vision
             ),
             # Canonical Snellen line-change representation. The observed-range

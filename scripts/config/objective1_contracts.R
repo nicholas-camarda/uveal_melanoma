@@ -8,7 +8,7 @@
 OBJECTIVE1_OS_POPULATION_CONTRACTS <- tibble::tribble(
     ~dataset_name,                            ~time_var,          ~event_var,    ~group_var,          ~n_patients, ~n_events, ~population_fingerprint,                                           ~approval_note,
     "uveal_melanoma_restricted_cohort",      "tt_death_months", "death_event", "treatment_group", 167L,         39L,       "27c6c7e097e14ef6714ff4e1a2d9338f274b56fea4fb8ec5982a38c32cd695e4", "Approved after audited source-date corrections for IDs 125 and 211.",
-    "uveal_melanoma_full_cohort",            "tt_death_months", "death_event", "treatment_group", 260L,         57L,       "111d11adbdf35be35d6c53764ba0e3d41c9929582f4b513ddc6c4a1ac6adbf6e", "Approved after audited source-date corrections for IDs 125 and 211."
+    "uveal_melanoma_full_cohort",            "tt_death_months", "death_event", "treatment_group", 260L,         57L,       "baf54f9b3c6de607fddb44efa23860ab8368f33a8dc7ca39a8a0ca0379b82362", "Approved after the audited patient-45 initial-GK date correction and previously audited source-date corrections for IDs 125 and 211; only patient 45 changed in the full-cohort OS population, with cohort size and event count unchanged."
 )
 
 # Production propensity populations are approval-controlled. Any change in

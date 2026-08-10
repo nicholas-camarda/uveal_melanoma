@@ -61,14 +61,14 @@ test_that("event/date reconciliation writes a single row-level review workbook i
 
 test_that("manual date corrections apply configured raw-date overrides and emit an audit trail", {
     input_data <- tibble::tibble(
-        id = c(125, 211),
-        date_diagnosis = as.POSIXct(c("2017-05-16 00:00:00", "2024-01-28 00:00:00"), tz = "UTC"),
-        date_ophtho_consult = as.POSIXct(c("2017-05-16 00:00:00", "2024-01-21 00:00:00"), tz = "UTC"),
-        date_rad_onc_consult = as.POSIXct(c("2017-05-16 00:00:00", "2014-03-01 00:00:00"), tz = "UTC"),
-        date_initial_liver_staging = as.POSIXct(c("2017-05-26 00:00:00", NA), tz = "UTC"),
-        initial_gk_date = as.POSIXct(c("2007-06-13 00:00:00", NA), tz = "UTC"),
-        initial_plaque_date = as.POSIXct(c(NA, "2014-03-31 00:00:00"), tz = "UTC"),
-        last_followup = as.POSIXct(c("2024-09-24 00:00:00", "2019-08-01 00:00:00"), tz = "UTC")
+        id = c(45, 125, 211),
+        date_diagnosis = as.POSIXct(c("2023-09-28 00:00:00", "2017-05-16 00:00:00", "2024-01-28 00:00:00"), tz = "UTC"),
+        date_ophtho_consult = as.POSIXct(c("2023-09-28 00:00:00", "2017-05-16 00:00:00", "2024-01-21 00:00:00"), tz = "UTC"),
+        date_rad_onc_consult = as.POSIXct(c("2023-10-18 00:00:00", "2017-05-16 00:00:00", "2014-03-01 00:00:00"), tz = "UTC"),
+        date_initial_liver_staging = as.POSIXct(c(NA, "2017-05-26 00:00:00", NA), tz = "UTC"),
+        initial_gk_date = as.POSIXct(c("2024-11-14 00:00:00", "2007-06-13 00:00:00", NA), tz = "UTC"),
+        initial_plaque_date = as.POSIXct(c(NA, NA, "2014-03-31 00:00:00"), tz = "UTC"),
+        last_followup = as.POSIXct(c("2024-11-21 00:00:00", "2024-09-24 00:00:00", "2019-08-01 00:00:00"), tz = "UTC")
     )
 
     correction_result <- apply_manual_date_corrections(
@@ -78,11 +78,12 @@ test_that("manual date corrections apply configured raw-date overrides and emit 
         source_workbook = "unit_source.xlsx"
     )
 
+    expect_equal(as.Date(correction_result$data$initial_gk_date[correction_result$data$id == 45]), as.Date("2023-11-14"))
     expect_equal(as.Date(correction_result$data$initial_gk_date[correction_result$data$id == 125]), as.Date("2017-06-13"))
     expect_equal(as.Date(correction_result$data$date_diagnosis[correction_result$data$id == 211]), as.Date("2014-01-28"))
     expect_equal(as.Date(correction_result$data$date_ophtho_consult[correction_result$data$id == 211]), as.Date("2014-01-21"))
     expect_true(inherits(correction_result$data$date_diagnosis, "POSIXct"))
-    expect_equal(nrow(correction_result$audit_rows), 3)
+    expect_equal(nrow(correction_result$audit_rows), 4)
     expect_true(all(c(
         "study_id",
         "column_name",
