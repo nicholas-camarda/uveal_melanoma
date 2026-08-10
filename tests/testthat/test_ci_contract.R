@@ -1,9 +1,11 @@
-test_that("portable CI exposes one stable fast required check and a manual full suite", {
+test_that("portable CI exposes one stable fast required check, post-merge validation, and a manual full suite", {
     workflow_path <- here::here(".github", "workflows", "portable-tests.yml")
     expect_true(file.exists(workflow_path))
 
     workflow_text <- paste(readLines(workflow_path, warn = FALSE), collapse = "\n")
     expect_match(workflow_text, "pull_request:", fixed = TRUE)
+    expect_match(workflow_text, "push:", fixed = TRUE)
+    expect_match(workflow_text, "- master", fixed = TRUE)
     expect_match(workflow_text, "workflow_dispatch:", fixed = TRUE)
     expect_match(workflow_text, "suite:", fixed = TRUE)
     expect_match(workflow_text, "- fast", fixed = TRUE)
@@ -11,7 +13,6 @@ test_that("portable CI exposes one stable fast required check and a manual full 
     expect_match(workflow_text, "name: required", fixed = TRUE)
     expect_match(workflow_text, "cancel-in-progress:", fixed = TRUE)
     expect_match(workflow_text, "runs-on: ubuntu-24.04", fixed = TRUE)
-    expect_false(grepl("\n  push:", workflow_text, fixed = TRUE))
     expect_false(grepl("ubuntu-latest", workflow_text, fixed = TRUE))
     expect_false(grepl("continue-on-error", workflow_text, fixed = TRUE))
     expect_false(grepl("\\|\\|[[:space:]]+true", workflow_text))
@@ -58,6 +59,7 @@ test_that("portable CI runs fail-sensitive fast and synthetic commands", {
     expect_match(workflow_text, "scripts/tools/run_testthat.R tests/integration --filter", fixed = TRUE)
     expect_match(workflow_text, "portable_smoke", fixed = TRUE)
     expect_match(workflow_text, "lintr::lint_package()", fixed = TRUE)
+    expect_match(workflow_text, "github.event_name == 'push'", fixed = TRUE)
     expect_match(workflow_text, "if: ${{ github.event_name == 'pull_request'", fixed = TRUE)
     expect_match(workflow_text, "inputs.suite == 'full'", fixed = TRUE)
 })
