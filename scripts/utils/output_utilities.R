@@ -1825,9 +1825,22 @@ merge_adverse_events_tables <- function(full_cohort_data, restricted_cohort_data
                 }
 
                 if (has_vision_change) {
-                    line_counts <- compute_line_change_lines(data$vision_change)
+                    required_vision_fields <- c("vision_line_change", "vision_line_change_bucket")
+                    missing_vision_fields <- setdiff(required_vision_fields, names(data))
+                    if (length(missing_vision_fields) > 0) {
+                        stop(sprintf(
+                            "Objective 0 vision fields are required for adverse-outcome summaries: %s",
+                            paste(missing_vision_fields, collapse = ", ")
+                        ))
+                    }
+
+                    line_counts <- data$vision_line_change
                     line_levels <- line_change_label_levels(line_counts)
-                    bucket_levels <- VISION_LINE_CHANGE_CATEGORY_LEVELS
+                    bucket_levels <- if (is.factor(data$vision_line_change_bucket)) {
+                        levels(data$vision_line_change_bucket)
+                    } else {
+                        VISION_LINE_CHANGE_CATEGORY_LEVELS
+                    }
 
                     vision_change_tbl <- NULL
                     line_change_tbl <- NULL
@@ -1886,8 +1899,11 @@ merge_adverse_events_tables <- function(full_cohort_data, restricted_cohort_data
                     if (any(!is.na(line_counts))) {
                         line_change_bucket_tbl <- data %>%
                             mutate(
-                                vision_line_change_bucket = assign_line_change_bucket(line_counts),
-                                vision_line_change_bucket = factor(vision_line_change_bucket, levels = bucket_levels, ordered = TRUE)
+                                vision_line_change_bucket = factor(
+                                    as.character(.data$vision_line_change_bucket),
+                                    levels = bucket_levels,
+                                    ordered = TRUE
+                                )
                             ) %>%
                             filter(!is.na(vision_line_change_bucket)) %>%
                             select(treatment_group, vision_line_change_bucket) %>%

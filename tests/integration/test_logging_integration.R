@@ -59,9 +59,20 @@ skip_if_local_data_unavailable()
   test_that("Objective 4 logs produce valid JSON entries with context and idempotent setup", {
     dataset <- "uveal_melanoma_full_cohort"
     prepare_test_inputs(dataset)
+    old_validate_existing_objective0_rds <- validate_existing_objective0_rds
+    withr::defer(assign(
+      "validate_existing_objective0_rds",
+      old_validate_existing_objective0_rds,
+      envir = .GlobalEnv
+    ))
 
     log_file <- tempfile(fileext = ".log")
     setup_logging(log_path = log_file, level = "INFO", progress = FALSE, context_in_file = TRUE)
+    # The integration fixture predates the full Objective 0 persisted-data
+    # contract; keep this test focused on logging output and context fields.
+    assign("validate_existing_objective0_rds", function(dataset_name) {
+      list(success = TRUE, dataset_name = dataset_name, validation_errors = character())
+    }, envir = .GlobalEnv)
     invisible(with_log_context(cohort = dataset, objective = "objective_4_gep_analysis", subobjective = NULL, expr = {
       run_specific_objective(dataset, 4)
     }))

@@ -224,6 +224,11 @@ test_that("standard MSS validation exposes a competing-risk primary lane", {
     test_data$tt_death_months[competing_rows] <- seq(18, 54, length.out = length(competing_rows))
     test_data$mss_event_5yr <- as.integer(test_data$melanoma_death_event == 1L & test_data$tt_death_months <= 60)
     test_data$tt_death_years <- test_data$tt_death_months / 12
+    test_data$event_type_mss_5yr <- dplyr::case_when(
+        test_data$melanoma_death_event == 1L & test_data$tt_death_months <= 60 ~ 1L,
+        test_data$competing_death_event == 1L & test_data$tt_death_months <= 60 ~ 2L,
+        TRUE ~ 0L
+    )
 
     result <- perform_standard_mss_validation(
         data = test_data,

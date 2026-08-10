@@ -494,6 +494,13 @@ get_objective0_contract_allowed_values <- function(domain) {
         yn_raw_or_display = c(YN_RAW_LEVELS, YN_DISPLAY_LABELS),
         sex_factor = SEX_FACTOR_LEVELS,
         gep_class_simple = c("Class 1", "Class 2", "GEP Failed/Indeterminate", "GEP Not Tested"),
+        no_gep_group = c("GEP Failed/Indeterminate", "GEP Not Tested"),
+        vision_line_change_bucket = VISION_LINE_CHANGE_CATEGORY_LEVELS,
+        vision_followup_timing_source = c(
+            "explicit_last_followup",
+            "proxy_general_recorded_followup",
+            "missing_timing"
+        ),
         prame_status = c("Negative", "Positive", "Unknown", "Not Available"),
         gep12_prame_status = c("Negative", "Positive"),
         gep_validation_set = c("Eligible", "No GEP Data"),
@@ -2035,7 +2042,8 @@ validate_processing_pipeline <- function(data,
                                          stop_on_failure = TRUE,
                                          input_audit = NULL,
                                          removal_log = NULL,
-                                         reconciliation_audit = NULL) {
+                                         reconciliation_audit = NULL,
+                                         cohort_name = NULL) {
     logger::log_info("=== COMPREHENSIVE DATA PROCESSING VALIDATION ===")
 
     findings <- empty_validation_findings()
@@ -2078,7 +2086,10 @@ validate_processing_pipeline <- function(data,
         )
         findings <- dplyr::bind_rows(findings, processed_file_finding)
     } else {
-        single_result <- collect_single_cohort_validation(data, "single_dataset")
+        single_result <- collect_single_cohort_validation(
+            data,
+            cohort_name %||% "single_dataset"
+        )
         findings <- dplyr::bind_rows(findings, single_result$validation_findings)
         details <- dplyr::bind_rows(details, single_result$detail_tables)
         validated_cohorts <- unique(c(validated_cohorts, single_result$validated_cohorts))

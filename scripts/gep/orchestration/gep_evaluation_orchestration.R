@@ -26,8 +26,6 @@ analyze_gep_mfs_validation <- function(data,
                                        prefix = "") {
     logger::log_info("Starting GEP Metastasis-Free Survival validation analysis")
 
-    data <- refresh_gep_analysis_flags(data)
-
     if (is.null(output_dirs) || is.null(output_dirs$obj4_mfs)) {
         stop("analyze_gep_mfs_validation() requires an output_dirs list with obj4_mfs entry")
     }
@@ -382,8 +380,6 @@ analyze_gep_mss_validation <- function(data,
                                        prefix = "") {
     logger::log_info("Starting GEP Melanoma-Specific Survival validation analysis")
     logger::log_info(formatted("DEBUG: Function entry point reached", indent = 1))
-
-    data <- refresh_gep_analysis_flags(data)
 
     if (is.null(output_dirs) || is.null(output_dirs$obj4_mss)) {
         stop("analyze_gep_mss_validation() requires an output_dirs list with obj4_mss entry")

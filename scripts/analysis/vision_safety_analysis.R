@@ -333,28 +333,18 @@ safe_numeric_range_summary <- function(values) {
 #' @param data Data frame.
 #' @return Data frame with explicit and proxy latest-VA timing fields.
 add_last_vision_followup_months <- function(data) {
-    explicit_months <- rep(NA_real_, nrow(data))
-    if (all(c("treatment_date", "last_followup") %in% names(data))) {
-        explicit_months <- suppressWarnings(lubridate::time_length(
-            lubridate::interval(data$treatment_date, data$last_followup),
-            unit = "months"
-        ))
-    }
-
-    proxy_months <- explicit_months
-    if ("follow_up_months" %in% names(data)) {
-        follow_up_months <- suppressWarnings(as.numeric(data$follow_up_months))
-        proxy_months <- dplyr::if_else(is.na(proxy_months), follow_up_months, proxy_months)
-    }
-
-    data$last_vision_followup_months_explicit <- explicit_months
-    data$last_vision_followup_months_proxy <- proxy_months
-    data$last_vision_followup_timing_source <- dplyr::case_when(
-        !is.na(explicit_months) ~ "explicit_last_followup",
-        is.na(explicit_months) & !is.na(proxy_months) ~ "proxy_general_recorded_followup",
-        TRUE ~ "missing_timing"
+    canonical_fields <- c(
+        "last_vision_followup_months_explicit",
+        "last_vision_followup_months_proxy",
+        "last_vision_followup_timing_source",
+        "last_vision_followup_months"
     )
-    data$last_vision_followup_months <- data$last_vision_followup_months_explicit
+    if (!all(canonical_fields %in% names(data))) {
+        # Compatibility path for small diagnostic/test fixtures that predate
+        # the Objective 0 fields. Production analytic RDS inputs already carry
+        # these fields and pass through without downstream derivation.
+        data <- derive_last_vision_followup_fields(data)
+    }
     data
 }
 
@@ -624,9 +614,9 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
     # Preserve the full analytic set for descriptive summaries/tests (no location filtering)
     summary_data <- data_with_vision_change %>%
         mutate(
-            vision_line_change = compute_line_change_lines(vision_change),
-            vision_line_change_label = categorize_line_change(vision_change),
-            vision_line_change_bucket = assign_line_change_bucket(vision_line_change)
+            # The numeric line change and fixed bucket are canonical Objective 0
+            # fields. Only the observed-range display label is built here.
+            vision_line_change_label = categorize_line_change(vision_change)
         )
     vision_change_contract_note <- paste(
         "Vision endpoint is visual-acuity change score",
@@ -680,9 +670,6 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
 
     vision_model_data <- exclusion_result$data
     line_change_model_data <- vision_model_data %>%
-        mutate(
-            vision_line_change = compute_line_change_lines(vision_change)
-        ) %>%
         filter(!is.na(vision_line_change))
 
     line_change_filter_stats <- exclusion_result$filter_stats
@@ -704,10 +691,6 @@ analyze_visual_acuity_changes <- function(data, output_dirs, prefix, confounders
     }
 
     ordinal_model_data <- vision_model_data %>%
-        mutate(
-            vision_line_change = compute_line_change_lines(vision_change),
-            vision_line_change_bucket = assign_line_change_bucket(vision_line_change)
-        ) %>%
         filter(!is.na(vision_line_change_bucket)) %>%
         mutate(
             vision_line_change_bucket = factor(

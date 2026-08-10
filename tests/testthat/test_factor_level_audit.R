@@ -16,6 +16,9 @@ test_that("canonical factor expectations cover the core model-facing variables",
         "gep_class_simple",
         "prame_status",
         "gep12_prame_status",
+        "exploratory_gep_group",
+        "no_gep_group",
+        "vision_line_change_bucket",
         "initial_t_stage_simple"
     )
 
@@ -23,6 +26,17 @@ test_that("canonical factor expectations cover the core model-facing variables",
     expect_identical(expectations$treatment_group$levels, TREATMENT_FACTOR_LEVELS)
     expect_identical(expectations$srf$levels, YN_DISPLAY_LABELS)
     expect_identical(expectations$initial_t_stage_simple$levels, c("T1", "T2", "T3", "T4"))
+})
+
+test_that("Objective 0 rejects unexpected raw predictor values before coercion", {
+    expect_error(
+        prepare_factor_levels(tibble::tibble(optic_nerve = "Maybe")),
+        "Unexpected raw factor values detected before factor coercion"
+    )
+    expect_error(
+        prepare_factor_levels(tibble::tibble(location = "Unexpected location")),
+        "Unexpected raw factor values detected before factor coercion"
+    )
 })
 
 test_that("stable factor coercion preserves existing factor levels", {

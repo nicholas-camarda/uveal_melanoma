@@ -65,6 +65,49 @@ load_existing_analytic_cohorts <- function(expected_cohorts = get_expected_analy
     )
 }
 
+#' Validate one cached Objective 0 RDS without writing workflow artifacts
+#'
+#' This is the read-only gate used by standalone Objectives 1-4. It deliberately
+#' validates the requested cached dataset directly rather than calling
+#' `run_objective_0()`, whose reload path refreshes summaries, validation
+#' artifacts, and study documentation.
+#'
+#' @param dataset_name Character scalar cached analytic dataset name.
+#' @return Structured Objective 0 validation result with read-only metadata.
+validate_existing_objective0_rds <- function(dataset_name) {
+    data_path <- file.path(PROCESSED_DATA_DIR, paste0(dataset_name, ".rds"))
+    if (!file.exists(data_path)) {
+        return(list(
+            success = FALSE,
+            validated_cohorts = character(),
+            validation_errors = paste0("processed_file_missing:", basename(data_path)),
+            metadata = list(
+                objective0_dataset_mode = "validate_cached_rds_read_only",
+                dataset_name = dataset_name,
+                data_path = data_path,
+                read_only = TRUE
+            )
+        ))
+    }
+
+    cached_data <- readRDS(data_path)
+    validation_result <- validate_processing_pipeline(
+        cached_data,
+        stop_on_failure = FALSE,
+        cohort_name = dataset_name
+    )
+    validation_result$metadata <- c(
+        validation_result$metadata %||% list(),
+        list(
+            objective0_dataset_mode = "validate_cached_rds_read_only",
+            dataset_name = dataset_name,
+            data_path = data_path,
+            read_only = TRUE
+        )
+    )
+    validation_result
+}
+
 load_existing_objective0_removal_log <- function(output_dirs) {
     if (is.null(output_dirs) || is.null(output_dirs$full_cohort$baseline_characteristics)) {
         return(NULL)

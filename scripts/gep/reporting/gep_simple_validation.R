@@ -919,7 +919,22 @@ summarize_simple_mss_actual_by_class <- function(mss_data,
 simple_gep_validation <- function(data, output_dirs, prefix, dataset_name = NULL) {
     logger::log_info("Starting SIMPLE GEP validation (Project Goals)")
 
-    data <- refresh_gep_analysis_flags(data)
+    required_canonical_fields <- c(
+        "expected_mfs_5yr", "expected_mss_5yr",
+        "mfs_event_5yr", "mss_event_5yr",
+        "mfs_analysis_eligible", "mss_analysis_eligible",
+        "tt_mets_months", "tt_death_months"
+    )
+    missing_canonical_fields <- setdiff(required_canonical_fields, names(data))
+    if (length(missing_canonical_fields) > 0) {
+        stop(sprintf(
+            paste(
+                "Simple GEP validation requires canonical Objective 0 fields:",
+                "%s"
+            ),
+            paste(missing_canonical_fields, collapse = ", ")
+        ))
+    }
 
     # Resolve directories
     mfs_dir <- output_dirs$obj4_mfs
@@ -933,8 +948,8 @@ simple_gep_validation <- function(data, output_dirs, prefix, dataset_name = NULL
         if (!dir.exists(d)) dir.create(d, recursive = TRUE, showWarnings = FALSE)
     }
 
-    expected_mfs_col <- if ("expected_mfs_5yr" %in% names(data)) "expected_mfs_5yr" else "biopsy1_gep_mfs"
-    expected_mss_col <- if ("expected_mss_5yr" %in% names(data)) "expected_mss_5yr" else "biopsy1_gep_mss"
+    expected_mfs_col <- "expected_mfs_5yr"
+    expected_mss_col <- "expected_mss_5yr"
     mss_time_col <- dplyr::case_when(
         "tt_death_months" %in% names(data) ~ "tt_death_months",
         "tt_death_years" %in% names(data) ~ "tt_death_years",

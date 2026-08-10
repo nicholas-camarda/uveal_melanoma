@@ -80,6 +80,25 @@ make_objective0_validation_dataset <- function() {
         srd_burden_event = c(1L, 0L, 0L),
         height_change = c(-1, 0.5, -0.2),
         vision_change = c(0.1, -0.2, 0),
+        vision_line_change = c(1, -2, 0),
+        vision_line_change_bucket = factor(
+            c("1-line improvement", "2-line loss", "Stable (0-line change)"),
+            levels = VISION_LINE_CHANGE_CATEGORY_LEVELS
+        ),
+        last_vision_followup_months_explicit = c(60, 60, 60),
+        last_vision_followup_months_proxy = c(60, 60, 60),
+        last_vision_followup_timing_source = rep("explicit_last_followup", 3),
+        last_vision_followup_months = c(60, 60, 60),
+        exploratory_gep_group = factor(
+            c("Class 1", "Class 2", "Class 1"),
+            levels = c("Class 1", "Class 2", "GEP Failed/Indeterminate", "GEP Not Tested")
+        ),
+        no_gep_group = factor(
+            rep(NA_character_, 3),
+            levels = c("GEP Failed/Indeterminate", "GEP Not Tested")
+        ),
+        ciliary_involvement = c(0L, 1L, 0L),
+        optic_nerve_involvement = c(0L, 0L, 0L),
         consort_group = c("eligible_both", "eligible_both", "eligible_both"),
         optic_nerve = factor(c("No", "No", "No"), levels = c("No", "Yes")),
         gep_validation_set = c("Eligible", "Eligible", "Eligible"),
@@ -569,6 +588,30 @@ test_that("config_constants remains the only public config source entry point", 
         "STANDARD_TABLE_LABELS"
     )
     expect_true(all(vapply(required_objects, exists, logical(1), inherits = TRUE)))
+})
+
+test_that("cached Objective 0 RDS validation is read-only", {
+    processed_dir <- tempfile("objective0-cached-rds-")
+    dir.create(processed_dir, recursive = TRUE, showWarnings = FALSE)
+    withr::defer(unlink(processed_dir, recursive = TRUE, force = TRUE), envir = parent.frame())
+
+    dataset_name <- "unit_cached_objective0"
+    saveRDS(
+        make_objective0_validation_dataset(),
+        file.path(processed_dir, paste0(dataset_name, ".rds"))
+    )
+
+    previous_processed_dir <- PROCESSED_DATA_DIR
+    assign("PROCESSED_DATA_DIR", processed_dir, envir = .GlobalEnv)
+    withr::defer(assign("PROCESSED_DATA_DIR", previous_processed_dir, envir = .GlobalEnv), envir = parent.frame())
+
+    before <- sort(list.files(processed_dir, all.files = TRUE, no.. = TRUE))
+    validation_result <- validate_existing_objective0_rds(dataset_name)
+    after <- sort(list.files(processed_dir, all.files = TRUE, no.. = TRUE))
+
+    expect_true(validation_result$success)
+    expect_true(isTRUE(validation_result$metadata$read_only))
+    expect_equal(after, before)
 })
 
 test_that("Objective 0 validation artifacts are written into 00_General", {

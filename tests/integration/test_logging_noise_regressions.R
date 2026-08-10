@@ -143,6 +143,7 @@ test_that("cohort-specific objectives retain cohort tags", {
     old_run_objective_2 <- run_objective_2
     old_run_objective_3 <- run_objective_3
     old_run_objective_4 <- run_objective_4
+    old_validate_existing_objective0_rds <- validate_existing_objective0_rds
 
     on.exit({
         assign("PROCESSED_DATA_DIR", old_processed_data_dir, envir = .GlobalEnv)
@@ -152,6 +153,7 @@ test_that("cohort-specific objectives retain cohort tags", {
         assign("run_objective_2", old_run_objective_2, envir = .GlobalEnv)
         assign("run_objective_3", old_run_objective_3, envir = .GlobalEnv)
         assign("run_objective_4", old_run_objective_4, envir = .GlobalEnv)
+        assign("validate_existing_objective0_rds", old_validate_existing_objective0_rds, envir = .GlobalEnv)
         set_log_context(replace = TRUE)
     }, add = TRUE)
 
@@ -181,6 +183,12 @@ test_that("cohort-specific objectives retain cohort tags", {
     assign("run_objective_4", function(data, dataset_name, output_dirs, prefix, confounders = NULL) {
         logger::log_info("Objective 4 marker")
         list()
+    }, envir = .GlobalEnv)
+    # This test isolates logging context and deliberately uses a one-column
+    # placeholder RDS; the Objective 0 validation gate has its own contract
+    # coverage and is bypassed here so the logging assertions remain focused.
+    assign("validate_existing_objective0_rds", function(dataset_name) {
+        list(success = TRUE, dataset_name = dataset_name, validation_errors = character())
     }, envir = .GlobalEnv)
 
     expect_no_error(run_my_analysis(dataset_name, objectives_to_run = c(1, 2, 3, 4)))

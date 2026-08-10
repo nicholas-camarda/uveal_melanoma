@@ -230,7 +230,14 @@ prepare_mss_competing_risk_validation_data <- function(data,
                                                        melanoma_event_var = "melanoma_death_event",
                                                        competing_event_var = "competing_death_event") {
     expected_var <- expected_var %||% paste0("expected_mss_", timepoint, "yr")
-    required_vars <- c(time_var, expected_var, melanoma_event_var, competing_event_var)
+    canonical_event_type_var <- paste0("event_type_mss_", timepoint, "yr")
+    required_vars <- c(
+        time_var,
+        expected_var,
+        melanoma_event_var,
+        competing_event_var,
+        canonical_event_type_var
+    )
     missing_vars <- setdiff(required_vars, names(data))
     if (length(missing_vars) > 0) {
         stop(sprintf(
@@ -246,11 +253,9 @@ prepare_mss_competing_risk_validation_data <- function(data,
             predicted_risk = 1 - .data$predicted_survival,
             melanoma_event = suppressWarnings(as.integer(.data[[melanoma_event_var]])),
             competing_event = suppressWarnings(as.integer(.data[[competing_event_var]])),
-            event_type = dplyr::case_when(
-                .data$melanoma_event == 1L ~ 1L,
-                .data$competing_event == 1L ~ 2L,
-                TRUE ~ 0L
-            )
+            # Canonical Objective 0 event precedence is retained; the generic
+            # event_type name is only a package-facing projection.
+            event_type = suppressWarnings(as.integer(.data[[canonical_event_type_var]]))
         ) %>%
         dplyr::filter(
             is.finite(.data$observed_time),

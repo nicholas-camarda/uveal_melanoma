@@ -11,8 +11,19 @@ test_that("Objective 0 preprocessing creates expected derived fields on syntheti
         "mss_event_5yr",
         "retinopathy_burden_event",
         "nvg_burden_event",
-        "srd_burden_event"
+        "srd_burden_event",
+        "vision_line_change",
+        "vision_line_change_bucket",
+        "last_vision_followup_months_explicit",
+        "last_vision_followup_months_proxy",
+        "last_vision_followup_timing_source",
+        "exploratory_gep_group",
+        "no_gep_group",
+        "ciliary_involvement",
+        "optic_nerve_involvement"
     ) %in% names(derived)))
+    expect_equal(derived$vision_line_change, compute_line_change_lines(derived$vision_change))
+    expect_identical(levels(derived$vision_line_change_bucket), VISION_LINE_CHANGE_CATEGORY_LEVELS)
     expect_true(all(stats::na.omit(derived$gep_validation_set) %in% c("Eligible", "No GEP Data")))
     expect_false(any(derived$gep_validation_set %in% c("Training", "Testing"), na.rm = TRUE))
     expect_equal(derived$retinopathy_burden_event, as.integer(derived$retinopathy == "Y"))
