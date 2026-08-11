@@ -349,37 +349,21 @@ create_comprehensive_diagnostics <- function(model_fit, data, outcome_var, predi
     ))
 }
 
-#' Build a single-row sample size audit table used in diagnostics and HTML notes
+#' Build a stage-by-stage sample size flow used in diagnostics and HTML notes
 build_sample_size_summary_tab <- function(filter_stats, dataset_name, analysis_name, modeled_n = NULL, input_n = NULL, fitted_n = NULL) {
-    if (is.null(input_n)) {
-        input_n <- modeled_n %||% filter_stats$model_n %||% filter_stats$initial_n %||% NA_integer_
-    }
-    if (is.null(fitted_n)) {
-        fitted_n <- modeled_n
-    }
-
-    default_stats <- list(
-        initial_n = input_n,
-        model_n = input_n,
-        removed_n = 0L,
-        removed_pct = 0,
-        removal_reason = "No rows removed prior to modeling"
-    )
-
-    if (is.null(filter_stats)) {
-        stats <- default_stats
-    } else {
-        stats <- utils::modifyList(default_stats, filter_stats)
-    }
-
+    stats <- filter_stats %||% list()
+    inferred_input_n <- input_n %||% modeled_n %||% stats$model_n %||% stats$initial_n %||% NA_integer_
+    input_n <- as.integer(inferred_input_n)
     initial_n <- as.integer(stats$initial_n %||% input_n)
-    input_n <- as.integer(input_n)
-    fitted_n <- if (is.null(fitted_n) || length(fitted_n) == 0 || is.na(fitted_n)) NA_integer_ else as.integer(fitted_n)
+    fitted_n <- if (is.null(fitted_n)) modeled_n else fitted_n
+    fitted_n <- if (is.null(fitted_n) || length(fitted_n) == 0 || is.na(fitted_n)) {
+        NA_integer_
+    } else {
+        as.integer(fitted_n)
+    }
+
     prefit_excluded_n <- if (is.finite(initial_n) && is.finite(input_n)) initial_n - input_n else NA_integer_
     complete_case_excluded_n <- if (is.finite(input_n) && is.finite(fitted_n)) input_n - fitted_n else NA_integer_
-    total_excluded_n <- if (is.finite(initial_n) && is.finite(fitted_n)) initial_n - fitted_n else NA_integer_
-    removed_n <- if (is.finite(total_excluded_n)) total_excluded_n else prefit_excluded_n
-    removed_pct <- if (is.finite(initial_n) && initial_n > 0 && is.finite(removed_n)) round(removed_n / initial_n * 100, 1) else NA_real_
     reported_input_n <- as.numeric(stats$model_n %||% NA_real_)
     prefit_filter_reconciliation <- if (!is.finite(reported_input_n)) {
         "not_provided"
@@ -388,39 +372,87 @@ build_sample_size_summary_tab <- function(filter_stats, dataset_name, analysis_n
     } else {
         "mismatch"
     }
-    reconciliation <- if (!is.finite(fitted_n)) {
+    sample_size_reconciliation <- if (!is.finite(fitted_n)) {
         "not_fitted"
-    } else if (initial_n == prefit_excluded_n + complete_case_excluded_n + fitted_n &&
-        prefit_filter_reconciliation %in% c("matched", "not_provided")) {
+    } else if (isTRUE(
+        is.finite(initial_n) &&
+            is.finite(prefit_excluded_n) &&
+            is.finite(complete_case_excluded_n) &&
+            initial_n == prefit_excluded_n + complete_case_excluded_n + fitted_n &&
+            prefit_filter_reconciliation %in% c("matched", "not_provided")
+    )) {
         "reconciled"
     } else {
         "inconsistent"
     }
-    removal_reason <- stats$removal_reason
-    if (is.finite(complete_case_excluded_n) && complete_case_excluded_n > 0) {
-        removal_reason <- paste(
-            removal_reason,
-            sprintf("Model complete-case exclusions (n=%d)", complete_case_excluded_n),
-            sep = "; "
-        )
+    prefit_reason <- stats$removal_reason %||% "No pre-fit exclusions"
+    if (length(prefit_reason) == 0 || is.na(prefit_reason[[1]])) {
+        prefit_reason <- "No pre-fit exclusions"
+    } else {
+        prefit_reason <- as.character(prefit_reason[[1]])
+    }
+    if (!is.finite(prefit_excluded_n) || prefit_excluded_n == 0L) {
+        prefit_reason <- "No pre-fit exclusions"
+    }
+    fitted_reason <- if (is.finite(fitted_n)) {
+        if (!is.finite(complete_case_excluded_n)) {
+            "Model complete-case exclusions could not be determined"
+        } else if (isTRUE(complete_case_excluded_n > 0L)) {
+            "Model complete-case exclusions; see Model_excluded_rows"
+        } else {
+            "No model complete-case exclusions"
+        }
+    } else {
+        "No fitted model was produced"
+    }
+    transition_pct <- function(excluded_n, previous_n) {
+        if (is.finite(excluded_n) && is.finite(previous_n) && previous_n > 0) {
+            round(excluded_n / previous_n * 100, 1)
+        } else {
+            NA_real_
+        }
     }
 
     data.frame(
         dataset_name = dataset_name,
         analysis_name = analysis_name,
-        initial_n = as.integer(initial_n),
-        input_n = as.integer(input_n),
-        fitted_n = fitted_n,
-        modeled_n = fitted_n,
-        prefit_excluded_n = as.integer(prefit_excluded_n),
-        complete_case_excluded_n = as.integer(complete_case_excluded_n),
-        total_excluded_n = as.integer(total_excluded_n),
-        reported_input_n = if (is.finite(reported_input_n)) as.integer(reported_input_n) else NA_integer_,
-        prefit_filter_reconciliation = prefit_filter_reconciliation,
-        removed_n = as.integer(removed_n),
-        removed_pct = removed_pct,
-        removal_reason = removal_reason,
-        sample_size_reconciliation = reconciliation,
+        stage_order = 1:3,
+        stage = c(
+            "Initial analysis cohort",
+            "Model input after pre-fit exclusions",
+            "Fitted model-frame rows"
+        ),
+        n = c(initial_n, input_n, fitted_n),
+        excluded_from_previous_n = c(
+            NA_integer_,
+            prefit_excluded_n,
+            complete_case_excluded_n
+        ),
+        excluded_pct = c(
+            NA_real_,
+            transition_pct(prefit_excluded_n, initial_n),
+            transition_pct(complete_case_excluded_n, input_n)
+        ),
+        exclusion_reason = c(
+            "Starting analysis cohort",
+            prefit_reason,
+            fitted_reason
+        ),
+        source = c(
+            "filter_stats$initial_n",
+            "rows passed to model fitting",
+            "stats::model.frame(model_fit)"
+        ),
+        status = c(
+            "available",
+            if (is.finite(fitted_n)) "available" else "not_fitted",
+            if (is.finite(fitted_n)) "fitted" else "not_fitted"
+        ),
+        reconciliation = c(
+            "not_applicable",
+            prefit_filter_reconciliation,
+            sample_size_reconciliation
+        ),
         stringsAsFactors = FALSE
     )
 }

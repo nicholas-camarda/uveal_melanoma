@@ -846,6 +846,12 @@ write_diagnostics_workbook <- function(diagnostics, diagnostics_path) {
             if (!is.null(diagnostics$model_summary)) {
                 workbook_data$Model_summary <- diagnostics$model_summary
             }
+            if (!is.null(diagnostics$sample_size_summary)) {
+                workbook_data$Sample_size_summary <- diagnostics$sample_size_summary
+            }
+            if (!is.null(diagnostics$model_excluded_rows)) {
+                workbook_data$Model_excluded_rows <- diagnostics$model_excluded_rows
+            }
             if (!is.null(diagnostics$model_diagnostics)) {
                 workbook_data$Model_diagnostics <- diagnostics$model_diagnostics
             }
@@ -854,9 +860,6 @@ write_diagnostics_workbook <- function(diagnostics, diagnostics_path) {
             }
             if (!is.null(diagnostics$sparse_level_diagnostics)) {
                 workbook_data$Sparse_level_diagnostics <- diagnostics$sparse_level_diagnostics
-            }
-            if (!is.null(diagnostics$model_excluded_rows)) {
-                workbook_data$Model_excluded_rows <- diagnostics$model_excluded_rows
             }
             if (!is.null(diagnostics$raw_model_output)) {
                 if (is.data.frame(diagnostics$raw_model_output)) {
@@ -878,9 +881,6 @@ write_diagnostics_workbook <- function(diagnostics, diagnostics_path) {
             }
             if (!is.null(diagnostics$reference_levels)) {
                 workbook_data$Reference_Levels <- diagnostics$reference_levels
-            }
-            if (!is.null(diagnostics$sample_size_summary)) {
-                workbook_data$Sample_size_summary <- diagnostics$sample_size_summary
             }
             if (!is.null(diagnostics$covariate_variation)) {
                 workbook_data$Covariate_variation <- diagnostics$covariate_variation
@@ -1169,39 +1169,70 @@ build_sample_size_source_note <- function(sample_size_summary) {
         return(NULL)
     }
 
-    row <- sample_size_summary[1, , drop = FALSE]
-    initial_n <- row$initial_n
-    input_n <- if ("input_n" %in% names(row)) row$input_n else row$modeled_n
-    fitted_n <- if ("fitted_n" %in% names(row)) row$fitted_n else row$modeled_n
-    removed_n <- row$removed_n
-    removed_pct <- row$removed_pct
-    reason <- row$removal_reason %||% "Pre-model exclusions"
+    required_columns <- c("stage", "n", "excluded_from_previous_n", "exclusion_reason")
+    if (!all(required_columns %in% names(sample_size_summary))) {
+        return(NULL)
+    }
 
-    if (is.na(initial_n) || is.na(input_n) || is.na(removed_n)) {
+    stage_row <- function(stage_name) {
+        rows <- sample_size_summary[sample_size_summary$stage == stage_name, , drop = FALSE]
+        if (nrow(rows) == 0) NULL else rows[1, , drop = FALSE]
+    }
+    initial_row <- stage_row("Initial analysis cohort")
+    input_row <- stage_row("Model input after pre-fit exclusions")
+    fitted_row <- stage_row("Fitted model-frame rows")
+    if (is.null(initial_row) || is.null(input_row) || is.null(fitted_row)) {
+        return(NULL)
+    }
+
+    initial_n <- initial_row$n[[1]]
+    input_n <- input_row$n[[1]]
+    fitted_n <- fitted_row$n[[1]]
+    prefit_excluded_n <- input_row$excluded_from_previous_n[[1]]
+    complete_case_excluded_n <- fitted_row$excluded_from_previous_n[[1]]
+    prefit_reason <- input_row$exclusion_reason[[1]]
+
+    if (is.na(initial_n) || is.na(input_n) || is.na(prefit_excluded_n)) {
         return(NULL)
     }
 
     if (is.na(fitted_n)) {
         return(sprintf(
-            "Sample size audit: %d participants entered the model-eligibility dataset; no fitted model was produced (%d removed before fitting; %s).",
+            "Sample size audit: %d initial participants; %d entered the model-eligibility dataset; no fitted model was produced (%d pre-fit exclusions: %s).",
+            as.integer(initial_n),
             as.integer(input_n),
-            as.integer(removed_n),
-            if (!is.null(removed_pct) && !is.na(removed_pct)) sprintf("%.1f%%", removed_pct) else "n/a"
+            as.integer(prefit_excluded_n),
+            prefit_reason
         ))
     }
 
-    if (removed_n == 0) {
-        return(sprintf("Sample size audit: %d participants entered the model and %d were fitted; no rows were excluded.", input_n, fitted_n))
+    if (prefit_excluded_n == 0 && complete_case_excluded_n == 0) {
+        return(sprintf(
+            "Sample size audit: %d initial participants; %d entered the model and %d were fitted; no rows were excluded.",
+            as.integer(initial_n),
+            as.integer(input_n),
+            as.integer(fitted_n)
+        ))
     }
 
-    pct_text <- if (!is.null(removed_pct) && !is.na(removed_pct)) sprintf("%.1f%%", removed_pct) else "n/a"
+    exclusion_parts <- character()
+    if (prefit_excluded_n > 0) {
+        exclusion_parts <- c(
+            exclusion_parts,
+            sprintf("%d pre-fit exclusions: %s", as.integer(prefit_excluded_n), prefit_reason)
+        )
+    }
+    if (complete_case_excluded_n > 0) {
+        exclusion_parts <- c(
+            exclusion_parts,
+            sprintf("%d complete-case exclusions; see Model_excluded_rows", as.integer(complete_case_excluded_n))
+        )
+    }
     sprintf(
-        "Sample size audit: %d provided, %d entered the model, %d were fitted (%d removed; %s, %s).",
+        "Sample size audit: %d initial participants; %d entered the model; %d were fitted (%s).",
         as.integer(initial_n),
         as.integer(input_n),
         as.integer(fitted_n),
-        as.integer(removed_n),
-        pct_text,
-        reason
+        paste(exclusion_parts, collapse = "; ")
     )
 }
