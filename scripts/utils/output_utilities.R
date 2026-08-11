@@ -1346,7 +1346,7 @@ create_all_combined_forest_plots <- function(base_dir, cohort_names = c("full", 
                         treatment_labels = c("GKSRS", "PBT"),
                         variable_order = FOREST_PLOT_VARIABLE_ORDER,
                         effect_measure = effect_measure,
-                        favours_labels = c("Favors GKSRS", "Favors PBT")
+                        favours_labels = FAVOURS_LABELS
                     )
 
                     # Save the plot

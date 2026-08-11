@@ -22,7 +22,7 @@ OBJECTIVE1_PROPENSITY_COVARIATES <- c(
 OBJECTIVE1_PROPENSITY_ESTIMAND <- "ATO"
 OBJECTIVE1_PROPENSITY_BALANCE_THRESHOLD <- 0.10
 TREATMENT_LABELS <- c("PBT", "GKSRS") # For display/plotting (matches factor levels order)
-FAVOURS_LABELS <- c("Favors PBT", "Favors GKSRS") # For forest plot labels (matches factor levels order)
+FAVOURS_LABELS <- c("Favors GKSRS", "Favors PBT") # Left/right for GKSRS-versus-PBT contrasts: lower adverse-event hazards or more-negative tumor-height change favor GKSRS
 
 # Validation: Ensure consistency with TREATMENT_LABELS
 if (!all(TREATMENT_LABELS %in% TREATMENT_FACTOR_LEVELS)) {
