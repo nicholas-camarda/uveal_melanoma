@@ -194,42 +194,6 @@ collect_reconciliation_validation_findings <- function(reconciliation_audit = NU
         )
     }
 
-    manual_date_corrections <- tibble::as_tibble(reconciliation_audit$manual_date_corrections %||% empty_manual_date_correction_audit_rows())
-    findings <- dplyr::bind_rows(
-        findings,
-        new_validation_finding(
-            check_id = "manual_date_corrections_applied",
-            finding_group = "data_quality",
-            scope = "global",
-            severity = "info",
-            status = "info",
-            metric = "n_manual_date_corrections",
-            value = nrow(manual_date_corrections),
-            message = if (nrow(manual_date_corrections) > 0) {
-                sprintf(
-                    "Applied %d versioned manual raw-date correction(s); review the Manual_Date_Corrections sheet for the audit trail.",
-                    nrow(manual_date_corrections)
-                )
-            } else {
-                "No versioned manual raw-date corrections were applied during loading."
-            },
-            affected_n = nrow(manual_date_corrections),
-            affected_ids = collapse_affected_ids(manual_date_corrections$study_id %||% character())
-        )
-    )
-
-    if (nrow(manual_date_corrections) > 0) {
-        details <- dplyr::bind_rows(
-            details,
-            new_validation_detail_table(
-                detail_sheet = "Manual_Date_Corrections",
-                data = manual_date_corrections,
-                scope = "global",
-                check_id = "manual_date_corrections_applied"
-            )
-        )
-    }
-
     list(findings = findings, details = details)
 }
 

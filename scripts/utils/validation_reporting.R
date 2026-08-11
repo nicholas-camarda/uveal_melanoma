@@ -245,25 +245,10 @@ read_existing_reconciliation_summary <- function(general_dir, cohort_key) {
     )
 }
 
-#' Read persisted manual date corrections for validation-bundle reuse
-#'
-#' @param general_dir Objective 0 `00_General` directory for a cohort.
-#' @param cohort_key Short cohort key such as `full_cohort`.
-#' @return Manual date correction audit tibble.
-read_existing_manual_date_corrections <- function(general_dir, cohort_key) {
-    read_existing_reconciliation_sheet(
-        general_dir = general_dir,
-        cohort_key = cohort_key,
-        sheet_name = "Manual_Date_Corrections",
-        empty_table = empty_manual_date_correction_audit_rows()
-    )
-}
-
 #' Rehydrate persisted Objective 0 audit state during reload-mode runs
 #'
-#' Recovers existing reconciliation and manual-correction sheets so reload-mode
-#' validation bundles do not erase audit details that were created during the
-#' original raw-data recreation pass.
+#' Recovers existing reconciliation sheets so reload-mode validation bundles do
+#' not erase audit details created during the original raw-data recreation pass.
 #'
 #' @param output_dirs Objective output directory list from `build_objective_0_output_dirs()`.
 #' @return List with `audit_by_cohort`, validation `findings`, and `details`.
@@ -300,14 +285,13 @@ rehydrate_objective0_audit_state <- function(output_dirs) {
             )
             audit_by_cohort[[cohort_key]] <- list(
                 reconciliation_summary = empty_event_date_audit_summary(),
-                reconciled_changes = empty_event_date_audit_rows(),
-                manual_date_corrections = empty_manual_date_correction_audit_rows()
+                reconciled_changes = empty_event_date_audit_rows()
             )
             next
         }
 
         workbook_sheets <- tryCatch(readxl::excel_sheets(workbook_path), error = function(e) character())
-        expected_sheets <- c("Reconciliation_Summary", "Reconciled_Changes", "Manual_Date_Corrections")
+        expected_sheets <- c("Reconciliation_Summary", "Reconciled_Changes")
         missing_sheets <- setdiff(expected_sheets, workbook_sheets)
         if (length(missing_sheets) > 0) {
             findings <- dplyr::bind_rows(
@@ -337,14 +321,9 @@ rehydrate_objective0_audit_state <- function(output_dirs) {
         reconciled_changes <- read_existing_reconciliation_sheet(
             general_dir, cohort_key, "Reconciled_Changes", empty_event_date_audit_rows()
         )
-        manual_date_corrections <- read_existing_reconciliation_sheet(
-            general_dir, cohort_key, "Manual_Date_Corrections", empty_manual_date_correction_audit_rows()
-        )
-
         audit_by_cohort[[cohort_key]] <- list(
             reconciliation_summary = reconciliation_summary,
-            reconciled_changes = reconciled_changes,
-            manual_date_corrections = manual_date_corrections
+            reconciled_changes = reconciled_changes
         )
 
         if (nrow(reconciled_changes) > 0) {
@@ -531,16 +510,6 @@ write_objective0_validation_artifacts <- function(validation_result,
             read_existing_reconciliation_summary(general_dir, cohort_key)
         }
 
-        manual_date_corrections <- if (!is.null(reconciliation_audit) &&
-            !is.null(reconciliation_audit$manual_date_corrections)) {
-            tibble::as_tibble(reconciliation_audit$manual_date_corrections)
-        } else if (!is.null(cohort_rehydrated_audit) &&
-            !is.null(cohort_rehydrated_audit$manual_date_corrections)) {
-            tibble::as_tibble(cohort_rehydrated_audit$manual_date_corrections)
-        } else {
-            read_existing_manual_date_corrections(general_dir, cohort_key)
-        }
-
         workbook_sheets <- list(
             Validation_Summary = summary_table,
             Validation_Provenance = provenance_table,
@@ -553,8 +522,7 @@ write_objective0_validation_artifacts <- function(validation_result,
                 dplyr::filter(.data$finding_group %in% c("cohort_rules", "cross_cohort", "raw_input", "downstream_input_contract")),
             Data_Quality_Checks = relevant_findings %>%
                 dplyr::filter(.data$finding_group %in% c("data_quality", "date_checks", "derived_ranges", "structure", "endpoint_chronology", "objective0_reload_audit")),
-            Reconciliation_Summary = reconciliation_summary,
-            Manual_Date_Corrections = manual_date_corrections
+            Reconciliation_Summary = reconciliation_summary
         )
 
         if (nrow(detail_tables) > 0) {

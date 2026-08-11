@@ -1329,16 +1329,6 @@ build_km_risk_set_audit <- function(data,
         dplyr::select(dplyr::all_of(endpoint_cols)) %>%
         dplyr::arrange(.data[[group_var]], .data[[id_col]])
 
-    configured_corrections <- if (exists("MANUAL_DATE_CORRECTIONS", inherits = TRUE)) {
-        get("MANUAL_DATE_CORRECTIONS", inherits = TRUE) %>%
-            dplyr::filter(as.character(.data$study_id) %in% as.character(audit_data[[id_col]]))
-    } else {
-        tibble::tibble(
-            study_id = character(), column_name = character(), corrected_value = as.Date(character()),
-            correction_reason = character(), confidence_tier = character(), supporting_columns = character()
-        )
-    }
-
     list(
         audit_metadata = tibble::tibble(
             field = c("dataset_name", "patient_id_column", "time_variable", "event_variable", "group_variable", "analyzable_patients", "events", "population_fingerprint"),
@@ -1350,8 +1340,7 @@ build_km_risk_set_audit <- function(data,
         ),
         risk_set_counts = risk_set_counts,
         risk_set_members = risk_set_members,
-        patient_endpoints = patient_endpoints,
-        configured_corrections = configured_corrections
+        patient_endpoints = patient_endpoints
     )
 }
 
@@ -1915,8 +1904,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
                 Audit_Metadata = km_audit$audit_metadata,
                 Risk_Set_Counts = km_audit$risk_set_counts,
                 Risk_Set_Members = km_audit$risk_set_members,
-                Patient_Endpoints = km_audit$patient_endpoints,
-                Configured_Corrections = km_audit$configured_corrections
+                Patient_Endpoints = km_audit$patient_endpoints
             ),
             path = km_audit_path
         )
