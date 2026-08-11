@@ -1,6 +1,6 @@
 # Uveal Melanoma Treatment Outcomes Analysis
 
-This repository contains the analysis pipeline for comparing clinical outcomes after Gamma Knife stereotactic radiosurgery (GKSRS) and proton beam therapy (PBT) in uveal melanoma. It produces cohort-specific tables, figures, workbooks, and validation outputs for efficacy, safety, repeat-radiation, and biomarker-validation workflows.
+This repository contains the analysis pipeline for comparing clinical outcomes after Gamma Knife stereotactic radiosurgery (GKSRS) and plaque brachytherapy (PBT) in uveal melanoma. It produces cohort-specific tables, figures, workbooks, and validation outputs for efficacy, safety, repeat-radiation, and biomarker-validation workflows.
 
 ## Quick Start
 
