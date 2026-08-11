@@ -907,7 +907,8 @@ build_survival_skip_diagnostics <- function(data,
         filter_stats = filter_stats,
         dataset_name = dataset_name,
         analysis_name = analysis_name,
-        modeled_n = modeled_n
+        input_n = modeled_n,
+        fitted_n = NA_integer_
     )
     total_events <- if (!is.null(data) && is.data.frame(data) && event_var %in% names(data)) {
         sum(coerce_binary_outcome_vector(data[[event_var]]) == 1, na.rm = TRUE)
@@ -948,7 +949,8 @@ build_survival_skip_diagnostics <- function(data,
         narrative_lines = narrative_lines,
         sample_size_summary = sample_size_summary,
         skip_summary = build_skip_summary_tab(list(
-            modeled_n = modeled_n,
+            input_n = modeled_n,
+            fitted_n = NA_integer_,
             total_events = total_events,
             censored_n = censored_count,
             censoring_percent = censoring_percent,
@@ -1401,6 +1403,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             median_times = NULL,
             cox_model = NULL,
             cox_table = NULL,
+            cox_input_data = data,
             diagnostics = early_skip_diagnostics
         ))
     }
@@ -1483,6 +1486,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             cox_model = NULL,
             cox_table = NULL,
             ph_diagnostics = NULL,
+            cox_input_data = km_data,
             diagnostics = skip_diagnostics
         ))
     }
@@ -2441,6 +2445,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
         cox_model = cox_result$model,
         cox_table = cox_result$table,
         ph_diagnostics = NULL,
+        cox_input_data = cox_data,
         diagnostics = cox_result$diagnostics,
         hazard_ratio_summary = hazard_ratio_summary,
         unexpected_failures = rmst_unexpected_failures %||% character()
@@ -2665,6 +2670,7 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_d
             survival_rates = NULL,
             cox_model = NULL,
             cox_table = NULL,
+            cox_input_data = pfs2_data,
             diagnostics = pfs2_skip_diagnostics,
             censoring_support = pfs2_censoring_support,
             interpretation_guardrails = pfs2_interpretation_guardrails,
@@ -2780,6 +2786,7 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_d
             survival_rates = NULL,
             cox_model = NULL,
             cox_table = NULL,
+            cox_input_data = pfs2_data,
             diagnostics = pfs2_skip_diagnostics,
             censoring_support = pfs2_censoring_support,
             interpretation_guardrails = pfs2_interpretation_guardrails,
@@ -2826,7 +2833,7 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_d
         output_dir = if (!is.null(output_dirs)) resolve_route_output_dir(output_dirs, "obj3_pfs2", "ph") else getwd(),
         file_prefix = paste0(prefix, make_filename_safe("PFS-2 Probability (Freedom from 2nd Recurrence)"), "_"),
         dataset_name = dataset_name,
-        data = pfs2_data,
+        data = pfs2_survival$cox_input_data,
         time_var = "tt_pfs2_months",
         event_var = "pfs2_event",
         variables = c("recurrence1_treatment_clean", confounders),
@@ -2898,12 +2905,16 @@ run_or_skip_proportional_hazards_diagnostics <- function(cox_model,
                                                          sparse_level_diagnostics = NULL,
                                                          modeled_n = NULL) {
     if (!is.null(cox_model) && inherits(cox_model, "coxph")) {
+        fitted_n <- get_model_fitted_n(cox_model)
+        input_n <- if (!is.null(data) && is.data.frame(data)) nrow(data) else fitted_n
         return(test_proportional_hazards_assumption(
             cox_model = cox_model,
             outcome_name = outcome_name,
             output_dir = output_dir,
             file_prefix = file_prefix,
-            dataset_name = dataset_name
+            dataset_name = dataset_name,
+            input_n = input_n,
+            fitted_n = fitted_n
         ))
     }
 
@@ -2973,6 +2984,8 @@ run_or_skip_proportional_hazards_diagnostics <- function(cox_model,
 #' @param output_dir Directory path where diagnostic files should be saved
 #' @param file_prefix Prefix for output files
 #' @param dataset_name Name of the dataset for labeling
+#' @param input_n Number of rows provided to Cox model fitting, when known
+#' @param fitted_n Number of rows in the fitted Cox model frame, when known
 #' @details PH diagnostics are only attempted when the fitted Cox model has at
 #'   least `MINIMUM_PH_TEST_EVENTS` observed events. Below that event floor, the
 #'   function writes skipped HTML/workbook artifacts instead of returning `NULL`
@@ -2980,7 +2993,7 @@ run_or_skip_proportional_hazards_diagnostics <- function(cox_model,
 #'   function writes an unavailable-artifact bundle with model context.
 #' @return List containing Schoenfeld test results and plot paths when testing
 #'   succeeds, or skip/unavailable diagnostics when PH testing is not feasible.
-test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Survival", output_dir = NULL, file_prefix = "", dataset_name = NULL) {
+test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Survival", output_dir = NULL, file_prefix = "", dataset_name = NULL, input_n = NULL, fitted_n = NULL) {
     logger::log_info(sprintf("Testing proportional hazards assumption for %s", outcome_name))
 
     # Check if model is valid
@@ -2999,6 +3012,11 @@ test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Surv
     if (!dir.exists(output_dir)) {
         dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
     }
+
+    fitted_n <- fitted_n %||% get_model_fitted_n(cox_model)
+    input_n <- input_n %||% fitted_n
+    fitted_n <- as.integer(fitted_n)
+    input_n <- as.integer(input_n)
 
     total_events <- tryCatch(cox_model$nevent, error = function(...) NA_integer_)
     if (!is.na(total_events) && total_events < MINIMUM_PH_TEST_EVENTS) {
@@ -3039,6 +3057,8 @@ test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Surv
                 "Schoenfeld residual proportional hazards tests require adequate event support."
             ),
             skip_summary = build_skip_summary_tab(list(
+                input_n = input_n,
+                fitted_n = fitted_n,
                 patients_in_model = total_patients,
                 events_observed = total_events,
                 minimum_required_events = MINIMUM_PH_TEST_EVENTS
@@ -3253,6 +3273,8 @@ test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Surv
             ),
             skip_summary = build_skip_summary_tab(list(
                 status = "unavailable",
+                input_n = input_n,
+                fitted_n = fitted_n,
                 patients_in_model = total_patients,
                 events_observed = total_events,
                 error = error_obj$message
@@ -3322,6 +3344,13 @@ test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Surv
             )
 
             ph_summary_with_global <- rbind(ph_summary[var_names != "GLOBAL", ], global_test)
+            ph_summary_with_global$input_n <- input_n
+            ph_summary_with_global$fitted_n <- fitted_n
+            ph_summary_with_global$n_events <- total_events
+            ph_summary_with_global <- ph_summary_with_global[, c(
+                "input_n", "fitted_n", "n_events",
+                setdiff(names(ph_summary_with_global), c("input_n", "fitted_n", "n_events"))
+            ), drop = FALSE]
 
             # Save summary table
             write_readable_xlsx(
@@ -3469,6 +3498,9 @@ test_proportional_hazards_assumption <- function(cox_model, outcome_name = "Surv
             cat(paste(rep("=", 50), collapse = ""), "\n\n", file = summary_filename, append = TRUE)
             cat(sprintf("Analysis: %s\n", outcome_name), file = summary_filename, append = TRUE)
             cat(sprintf("Dataset: %s\n", ifelse(is.null(dataset_name), "Not specified", dataset_name)),
+                file = summary_filename, append = TRUE
+            )
+            cat(sprintf("Input N: %d\nFitted N: %d\nEvents observed: %d\n", input_n, fitted_n, total_events),
                 file = summary_filename, append = TRUE
             )
             cat(sprintf("Test Date: %s\n\n", Sys.time()), file = summary_filename, append = TRUE)

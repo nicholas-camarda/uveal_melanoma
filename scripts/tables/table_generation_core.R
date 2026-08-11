@@ -146,7 +146,8 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
             filter_stats = filter_stats,
             dataset_name = dataset_name,
             analysis_name = analysis_name,
-            modeled_n = nrow(data)
+            input_n = nrow(data),
+            fitted_n = NA_integer_
         )
         diagnostics <- build_skip_report_diagnostics(
             status = "skipped",
@@ -161,7 +162,8 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
             skip_summary = build_skip_summary_tab(list(
                 status = "skipped",
                 model_type = model_type,
-                modeled_n = nrow(data)
+                input_n = nrow(data),
+                fitted_n = NA_integer_
             )),
             sparse_level_diagnostics = create_sparse_level_diagnostics_tab(sparse_level_diagnostics),
             event_support = if (identical(model_type, "logistic") || identical(model_type, "cox")) {
@@ -289,7 +291,8 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
             filter_stats = filter_stats,
             dataset_name = dataset_name,
             analysis_name = analysis_name,
-            modeled_n = nrow(data)
+            input_n = nrow(data),
+            fitted_n = get_model_fitted_n(model_fit)
         )
         diagnostics <- build_skip_report_diagnostics(
             status = "unavailable",
@@ -304,7 +307,8 @@ generate_regression_table <- function(data, outcome_var, predictor_vars, confoun
             skip_summary = build_skip_summary_tab(list(
                 status = "unavailable",
                 model_type = model_type,
-                modeled_n = nrow(data)
+                input_n = nrow(data),
+                fitted_n = if (is.null(model_fit)) NA_integer_ else get_model_fitted_n(model_fit)
             )),
             sparse_level_diagnostics = sparse_level_diagnostics,
             event_support = if (identical(model_type, "logistic") || identical(model_type, "cox")) {

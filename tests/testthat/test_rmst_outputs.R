@@ -91,10 +91,12 @@ test_that("RMST, KM, and Cox models share filtered cohort", {
     expect_true(all(result$rmst_analysis$Group1_Name == "PBT"))
     expect_true(all(result$rmst_analysis$Group2_Name == "GKSRS"))
 
-    modeled_n <- tryCatch({
-        result$diagnostics$sample_size_summary$modeled_n[1]
+    fitted_n <- tryCatch({
+        result$diagnostics$sample_size_summary$n[
+            result$diagnostics$sample_size_summary$stage == "Fitted model-frame rows"
+        ][1]
     }, error = function(e) NA_real_)
-    expect_equal(as.numeric(modeled_n), cox_n_expected)
+    expect_equal(as.numeric(fitted_n), cox_n_expected)
 })
 
 test_that("RMST skip rows retain explicit feasibility metadata", {

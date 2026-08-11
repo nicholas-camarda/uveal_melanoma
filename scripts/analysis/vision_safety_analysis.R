@@ -1861,7 +1861,8 @@ analyze_radiation_complications <- function(data, sequela_type, confounders = NU
             filter_stats = exclusion_result$filter_stats,
             dataset_name = dataset_name,
             analysis_name = logistic_analysis_name,
-            modeled_n = nrow(model_data)
+            input_n = nrow(model_data),
+            fitted_n = NA_integer_
         )
 
         save_skipped_model_outputs(

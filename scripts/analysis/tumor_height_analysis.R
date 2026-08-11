@@ -203,7 +203,8 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders)
             filter_stats = exclusion_result$filter_stats,
             dataset_name = "tumor_height",
             analysis_name = "height_change_primary",
-            modeled_n = nrow(data_model_ready)
+            input_n = nrow(data_model_ready),
+            fitted_n = NA_integer_
         )
         diagnostics_stub <- list(
             table = NULL,
@@ -270,7 +271,8 @@ analyze_tumor_height_changes <- function(data, output_dirs, prefix, confounders)
             filter_stats = exclusion_result$filter_stats,
             dataset_name = "tumor_height",
             analysis_name = "height_change_sensitivity",
-            modeled_n = nrow(data_model_ready)
+            input_n = nrow(data_model_ready),
+            fitted_n = NA_integer_
         )
         diagnostics_stub <- list(
             table = NULL,
