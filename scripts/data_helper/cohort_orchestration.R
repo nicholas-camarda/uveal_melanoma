@@ -118,8 +118,7 @@ create_analytic_dataset <- function(output_dirs = NULL, validate_after_saving = 
                     source_workbook = reconciliation_audit$source_workbook,
                     id_column = reconciliation_audit$id_column,
                     output_dir = general_dir,
-                    artifact_filename = sprintf("%s_event_data_reconcilitation.xlsx", cohort_key),
-                    manual_date_corrections = reconciliation_audit$manual_date_corrections
+                    artifact_filename = sprintf("%s_event_data_reconcilitation.xlsx", cohort_key)
                 )
                 published_paths[[cohort_key]] <- audit_paths
                 logger::log_info(formatted(sprintf(

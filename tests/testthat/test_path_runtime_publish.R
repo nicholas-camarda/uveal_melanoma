@@ -586,3 +586,9 @@ test_that("publish_outputs creates a new snapshot and rejects existing snapshot 
         regexp = "Snapshot target already exists"
     )
 })
+test_that("configured raw input uses the versioned NDC workbook", {
+    expect_identical(
+        INPUT_FILENAME,
+        "Ocular Melanoma Master Spreadsheet REVISED FOR STATS (08-11-26 NDC).xlsx"
+    )
+})

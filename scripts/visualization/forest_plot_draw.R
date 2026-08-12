@@ -99,7 +99,7 @@ create_single_cohort_forest_plot <- function(subgroup_results,
 
     # Set default favours labels if not provided
     if (is.null(favours_labels)) {
-        favours_labels <- paste0("Favors ", treatment_labels)
+        favours_labels <- FAVOURS_LABELS
     }
 
     # Resolve treatment colors via centralized palette (if two labels provided)
@@ -194,6 +194,11 @@ create_single_cohort_forest_plot <- function(subgroup_results,
         # Keep numeric tick labels horizontal but slightly smaller so nearby
         # log-scale labels remain distinct without shrinking the table text.
         xaxis_gp = gpar(cex = 0.9),
+        # Keep direction arrows inside the CI axis. Smaller end-anchored labels
+        # prevent long treatment names from pushing an arrow beyond the scale.
+        arrow_label_just = "end",
+        arrow_length = 0.04,
+        arrow_gp = gpar(fontsize = 9, lwd = 0.8, col = "black"),
         # Establish a publication-style hierarchy for the title and table
         # headers while preserving the existing title alignment.
         title_gp = gpar(cex = 1.30, fontface = "bold", col = "black"),
@@ -251,7 +256,7 @@ create_single_cohort_forest_plot <- function(subgroup_results,
         ref_line = if (use_log_scale) 1 else 0,
         arrow_lab = favours_labels,
         xlim = clip,
-        xticks = xticks,
+        ticks_at = xticks,
         x_trans = if (use_log_scale) "log" else "none",
         theme = tm,
         title = title

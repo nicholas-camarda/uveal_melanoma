@@ -463,8 +463,7 @@ For a collaborator-facing overview of the study aims, subgroup scope, and cohort
 
 Objective 0 is the upstream preparation stage for every downstream cohort and analysis. It owns raw-data cleaning, validation, derived-variable creation, cohort construction, and the publication of cohort-level audit artifacts into each cohort's `00_General/` directory.
 
-**Objective 0 audit-trail note:** loader-side event/date reconciliations are published into each cohort's `00_General/` directory as a single stable workbook named `{cohort_name}_event_data_reconcilitation.xlsx`, alongside the cohort summary and removed-patient artifacts. That workbook now carries both the event/date reconciliation sheets and a `Manual_Date_Corrections` sheet for any versioned raw-date corrections applied during loading.
-The manual-correction sheet includes the corrected field, rationale, confidence tier, supporting columns, supporting values, and simple support-gap metrics so reviewers can see whether the corrected value improves local chronology rather than relying on an undocumented override.
+**Objective 0 audit-trail note:** loader-side event/date reconciliations are published into each cohort's `00_General/` directory as a single stable workbook named `{cohort_name}_event_data_reconcilitation.xlsx`, alongside the cohort summary and removed-patient artifacts. Record-specific source corrections belong in a versioned raw workbook and its `Revision Log`; Objective 0 does not overwrite source dates during loading. The revision log records the corrected field, before and after values, rationale, confidence tier, and supporting columns so reviewers can inspect the source-level decision without relying on an undocumented override.
 
 **Objective 0 chronology note:** treatment-before-diagnosis gaps larger than `7` days are hard-stop validation failures. Reverse-order gaps of `1-7` days are retained as warnings and published for manual review in the validation bundle instead of being silently rewritten.
 
@@ -623,7 +622,7 @@ Filtering logic implemented in `subgroup_data_prep.R`:
 
 Private config modules under `scripts/config/`:
 - `project_paths.R`: project roots, runtime/export paths, publish artifact registry, and path helpers
-- `data_processing_policy.R`: source workbook filename, manual exclusions, manual date corrections, date/time constants, and data-quality thresholds
+- `data_processing_policy.R`: source workbook filename, manual exclusions, date/time constants, and data-quality thresholds
 - `modeling_policy.R`: treatment/factor levels, confounders, subgroup variables, sparse-level policy, and model feasibility thresholds
 - `gep_policy.R`: Objective 4 GEP constants, definitive-label policy, and grouping specifications
 - `objective0_contracts.R`: Objective 0 structural requirements, derived-output manifest, downstream input contract, Objective 2 toxicity mapping, Objective 3 PFS-2 contract, and Objective 4 GEP derivation contract

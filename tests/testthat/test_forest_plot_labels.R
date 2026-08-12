@@ -38,6 +38,109 @@ md_forest_plot_results <- list(
     )
 )
 
+collect_forest_text_labels <- function(grob) {
+    labels <- if (!is.null(grob$label)) as.character(grob$label) else character()
+    children <- c(
+        if (!is.null(grob$grobs)) grob$grobs else list(),
+        if (!is.null(grob$children)) as.list(grob$children) else list()
+    )
+    for (child in children) {
+        labels <- c(labels, collect_forest_text_labels(child))
+    }
+    labels
+}
+
+test_that("configured forest arrows match the GKSRS-versus-PBT adverse-outcome contrast", {
+    plot_obj <- create_single_cohort_forest_plot(
+        subgroup_results = binary_forest_plot_results,
+        outcome_name = "Local Recurrence",
+        treatment_labels = TREATMENT_LABELS,
+        variable_order = names(binary_forest_plot_results),
+        effect_measure = "HR",
+        favours_labels = FAVOURS_LABELS
+    )
+
+    arrow_labels <- collect_forest_text_labels(plot_obj)
+    arrow_labels <- arrow_labels[grepl("^Favors ", arrow_labels)]
+
+    expect_identical(arrow_labels, c("Favors GKSRS", "Favors PBT"))
+})
+
+test_that("default forest arrows match the GKSRS-versus-PBT adverse-outcome contrast", {
+    plot_obj <- create_single_cohort_forest_plot(
+        subgroup_results = binary_forest_plot_results,
+        outcome_name = "Local Recurrence",
+        treatment_labels = TREATMENT_LABELS,
+        variable_order = names(binary_forest_plot_results),
+        effect_measure = "HR"
+    )
+
+    arrow_labels <- collect_forest_text_labels(plot_obj)
+    arrow_labels <- arrow_labels[grepl("^Favors ", arrow_labels)]
+
+    expect_identical(arrow_labels, c("Favors GKSRS", "Favors PBT"))
+})
+
+test_that("continuous tumor-height arrows match the signed change contrast", {
+    plot_obj <- create_single_cohort_forest_plot(
+        subgroup_results = md_forest_plot_results,
+        outcome_name = "Tumor Height Change",
+        treatment_labels = TREATMENT_LABELS,
+        variable_order = names(md_forest_plot_results),
+        effect_measure = "MD"
+    )
+
+    arrow_labels <- collect_forest_text_labels(plot_obj)
+    arrow_labels <- arrow_labels[grepl("^Favors ", arrow_labels)]
+
+    # height_change = follow-up minus baseline: more-negative values mean
+    # greater shrinkage, so the left side favors the GKSRS coefficient.
+    expect_identical(arrow_labels, c("Favors GKSRS", "Favors PBT"))
+})
+
+test_that("propensity forest axis uses readable symmetric log ticks", {
+    propensity_results <- tibble::tibble(
+        outcome = c(
+            "Local Recurrence", "Metastatic Progression",
+            "Overall Survival", "Progression-Free Survival"
+        ),
+        n = 164,
+        pbt_n = 100,
+        pbt_events = c(10, 19, 27, 33),
+        gksrs_n = 64,
+        gksrs_events = c(8, 9, 12, 18),
+        estimate = c(1.53, 0.71, 0.87, 0.94),
+        conf_low = c(0.57, 0.30, 0.41, 0.50),
+        conf_high = c(4.10, 1.67, 1.84, 1.78),
+        p_value = c(0.40, 0.43, 0.71, 0.85)
+    )
+    plot_obj <- create_objective1_propensity_forest_plot(propensity_results)
+    xaxis <- plot_obj$grobs[[grep("^xaxis-", plot_obj$layout$name)]]
+
+    expect_identical(
+        as.character(xaxis$children$label$label),
+        c("0.25", "0.5", "1", "2", "4")
+    )
+})
+
+test_that("forest direction arrows stay anchored to the plotted axis", {
+    plot_obj <- create_single_cohort_forest_plot(
+        subgroup_results = binary_forest_plot_results,
+        outcome_name = "Local Recurrence",
+        treatment_labels = TREATMENT_LABELS,
+        variable_order = names(binary_forest_plot_results),
+        effect_measure = "HR"
+    )
+    arrow_grob <- plot_obj$grobs[[grep("^arrow-", plot_obj$layout$name)]]
+
+    expect_identical(arrow_grob$children$arrow.text.left$just, "left")
+    expect_identical(arrow_grob$children$arrow.text.right$just, "right")
+    expect_identical(grid::unitType(arrow_grob$children$arrow.left$x0), "npc")
+    expect_identical(grid::unitType(arrow_grob$children$arrow.right$x0), "npc")
+    expect_equal(as.numeric(arrow_grob$children$arrow.left$x0), 0)
+    expect_equal(as.numeric(arrow_grob$children$arrow.right$x0), 1)
+})
+
 test_that("forest plot count headers use compact n/N notation", {
     binary_plot_data <- create_forest_plot_data(
         subgroup_results = binary_forest_plot_results,

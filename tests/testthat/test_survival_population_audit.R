@@ -93,4 +93,5 @@ test_that("KM risk-set audit preserves counts and patient membership", {
         "id", "treatment_group", "tt_death_months", "death_event",
         "treatment_date", "last_known_alive_date", "last_known_alive_source"
     ) %in% names(audit$patient_endpoints)))
+    expect_false("configured_corrections" %in% names(audit))
 })

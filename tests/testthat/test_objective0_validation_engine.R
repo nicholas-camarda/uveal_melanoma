@@ -678,17 +678,7 @@ test_that("Objective 0 validation artifacts are written into 00_General", {
             n_event_set_to_no_missing_date = 0L,
             n_rows_reconciled = 0L
         ),
-        audit_rows = empty_event_date_audit_rows(),
-        manual_date_corrections = tibble::tibble(
-            source_workbook = "unit.xlsx",
-            id_column = "id",
-            study_id = "11",
-            column_name = "date_diagnosis",
-            original_value = "2020-01-01",
-            corrected_value = "2010-01-01",
-            correction_reason = "Unit-test audit row",
-            action_taken = "manual_source_date_correction"
-        )
+        audit_rows = empty_event_date_audit_rows()
     )
 
     written_paths <- write_objective0_validation_artifacts(
@@ -709,15 +699,15 @@ test_that("Objective 0 validation artifacts are written into 00_General", {
         "Factor_Level_Checks",
         "Cohort_Rule_Checks",
         "Data_Quality_Checks",
-        "Reconciliation_Summary",
-        "Manual_Date_Corrections"
+        "Reconciliation_Summary"
     ) %in% bundle_sheets))
+    expect_false("Manual_Date_Corrections" %in% bundle_sheets)
 
     provenance <- readxl::read_xlsx(written_paths$full_cohort$bundle_path, sheet = "Validation_Provenance")
     expect_true(any(provenance$field == "objective0_dataset_mode"))
 })
 
-test_that("reload audit rehydration preserves reconciliation and manual correction sheets", {
+test_that("reload audit rehydration preserves reconciliation sheets", {
     output_root <- tempfile("objective0-reload-audit-")
     dir.create(output_root, recursive = TRUE, showWarnings = FALSE)
     withr::defer(unlink(output_root, recursive = TRUE, force = TRUE), envir = parent.frame())
@@ -741,22 +731,6 @@ test_that("reload audit rehydration preserves reconciliation and manual correcti
         n_event_set_to_no_missing_date = 0L,
         n_rows_reconciled = 1L
     )
-    manual_date_corrections <- tibble::tibble(
-        source_workbook = "unit.xlsx",
-        id_column = "id",
-        study_id = "42",
-        column_name = "date_diagnosis",
-        original_value = "2020-01-01",
-        corrected_value = "2010-01-01",
-        correction_reason = "Unit-test persisted correction",
-        confidence_tier = "high",
-        supporting_columns = "last_followup",
-        supporting_values = "2011-01-01",
-        original_support_gap_days = 3650,
-        corrected_support_gap_days = 365,
-        gap_improvement_days = 3285,
-        action_taken = "manual_source_date_correction"
-    )
     reconciled_changes <- empty_event_date_audit_rows() %>%
         dplyr::add_row(
             source_workbook = "unit.xlsx",
@@ -778,8 +752,7 @@ test_that("reload audit rehydration preserves reconciliation and manual correcti
         list(
             Audit_Metadata = tibble::tibble(generated_at = "unit"),
             Reconciliation_Summary = reconciliation_summary,
-            Reconciled_Changes = reconciled_changes,
-            Manual_Date_Corrections = manual_date_corrections
+            Reconciled_Changes = reconciled_changes
         ),
         file.path(general_dir, "full_cohort_event_data_reconcilitation.xlsx")
     )
@@ -805,9 +778,8 @@ test_that("reload audit rehydration preserves reconciliation and manual correcti
     expect_equal(nrow(rehydrated$findings), 0)
     expect_true(file.exists(written_paths$full_cohort$bundle_path))
     rehydrated_summary <- readxl::read_xlsx(written_paths$full_cohort$bundle_path, sheet = "Reconciliation_Summary")
-    rehydrated_manual <- readxl::read_xlsx(written_paths$full_cohort$bundle_path, sheet = "Manual_Date_Corrections")
     expect_equal(rehydrated_summary$n_rows_reconciled[[1]], 1)
-    expect_equal(rehydrated_manual$study_id[[1]], "42")
+    expect_false("Manual_Date_Corrections" %in% readxl::excel_sheets(written_paths$full_cohort$bundle_path))
     expect_true(any(validation_result$detail_tables$detail_sheet == "Event_Date_Reconciliations"))
 })
 

@@ -399,7 +399,7 @@ test_that("Objective 1 writes patient-level KM risk-set audit workbooks", {
     expect_true(file.exists(audit_path))
     expect_setequal(
         readxl::excel_sheets(audit_path),
-        c("Audit_Metadata", "Risk_Set_Counts", "Risk_Set_Members", "Patient_Endpoints", "Configured_Corrections")
+        c("Audit_Metadata", "Risk_Set_Counts", "Risk_Set_Members", "Patient_Endpoints")
     )
 })
 
