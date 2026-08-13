@@ -33,12 +33,6 @@ create_analytic_dataset <- function(output_dirs = NULL, validate_after_saving = 
         logger::log_info(formatted(sprintf("Cohort '%s': %d patients", cohort, nrow(factored_filtered_data[[cohort]]))))
     }
 
-    # Save pre-collapsed snapshots for baseline characteristics (raw factor levels)
-    logger::log_info("Saving pre-collapsed cohort snapshots for baseline characteristics")
-    for (cohort_name in names(factored_filtered_data)) {
-        saveRDS(factored_filtered_data[[cohort_name]], file.path(PROCESSED_DATA_DIR, paste0(cohort_name, "_derived_precollapse.rds")))
-    }
-
     if (!is.null(output_dirs)) {
         logger::log_info("Documenting removed patients for each cohort (00_General)")
 

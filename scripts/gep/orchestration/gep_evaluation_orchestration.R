@@ -45,19 +45,7 @@ analyze_gep_mfs_validation <- function(data,
     if (!dir.exists(mfs_validation_output_dir)) {
         dir.create(mfs_validation_output_dir, recursive = TRUE, showWarnings = FALSE)
     }
-    display_data <- restore_gep_display_variables(data, dataset_name = dataset_name)
-    restored_gep_rows <- sum(
-        !is.na(display_data$biopsy1_gep) &
-            !is.na(data$biopsy1_gep) &
-            as.character(display_data$biopsy1_gep) != as.character(data$biopsy1_gep),
-        na.rm = TRUE
-    )
-    if (restored_gep_rows > 0) {
-        logger::log_info(formatted(sprintf(
-            "Restored canonical pre-collapse GEP display labels for %d rows in reader-facing MFS outputs",
-            restored_gep_rows
-        ), indent = 1))
-    }
+    display_data <- data
     logger::log_info(formatted("Reporting GEP eligibility distribution", indent = 1))
     gep_distribution <- display_data %>%
         count(gep_validation_set, biopsy1_gep) %>%
@@ -84,7 +72,7 @@ analyze_gep_mfs_validation <- function(data,
     analysis_data <- data %>%
         filter(mfs_analysis_eligible)
     simple_class_summary_5yr <- build_objective4_simple_mfs_plot_annotations(analysis_data)
-    display_analysis_data <- restore_gep_display_variables(analysis_data, dataset_name = dataset_name)
+    display_analysis_data <- analysis_data
     logger::log_info(formatted(sprintf("Analysis dataset: %d patients with valid GEP and MFS data", nrow(analysis_data)), indent = 1))
 
     # Create an expanded dataset for KM curves and PH diagnostics that retains "GEP Not Tested"
@@ -95,7 +83,7 @@ analyze_gep_mfs_validation <- function(data,
             !is.na(mets_event),
             tt_mets_months >= 0
         )
-    km_ph_display_data <- restore_gep_display_variables(km_ph_data, dataset_name = dataset_name) %>%
+    km_ph_display_data <- km_ph_data %>%
         mutate(biopsy1_gep_model = km_ph_data$biopsy1_gep)
     logger::log_info(formatted(sprintf(
         "KM/PH dataset: %d patients after including GEP Not Tested",
@@ -416,19 +404,7 @@ analyze_gep_mss_validation <- function(data,
         mss_reporting_grouping$var,
         mss_visual_grouping$var
     ), indent = 1))
-    display_data <- restore_gep_display_variables(data, dataset_name = dataset_name)
-    restored_gep_rows <- sum(
-        !is.na(display_data$biopsy1_gep) &
-            !is.na(data$biopsy1_gep) &
-            as.character(display_data$biopsy1_gep) != as.character(data$biopsy1_gep),
-        na.rm = TRUE
-    )
-    if (restored_gep_rows > 0) {
-        logger::log_info(formatted(sprintf(
-            "Restored canonical pre-collapse GEP display labels for %d rows in reader-facing MSS outputs",
-            restored_gep_rows
-        ), indent = 1))
-    }
+    display_data <- data
     
     logger::log_info(formatted("DEBUG: Checking required variables", indent = 1))
     logger::log_info(formatted("Filtering data for MSS validation", indent = 1))
@@ -503,7 +479,7 @@ analyze_gep_mss_validation <- function(data,
         dataset_name = dataset_name
     )
     standard_results <- list()
-    display_analysis_data <- restore_gep_display_variables(analysis_data, dataset_name = dataset_name)
+    display_analysis_data <- analysis_data
     for (tp in timepoints) {
         logger::log_info(formatted(sprintf("Analyzing %d-year standard MSS validation", tp), indent = 2))
         standard_results[[paste0(tp, "yr")]] <- perform_standard_mss_validation(
