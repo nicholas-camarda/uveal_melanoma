@@ -88,6 +88,7 @@ test_that("bootstrap and runner are lockfile- and failure-sensitive", {
 
     expect_match(bootstrap_text, "renv::restore", fixed = TRUE)
     expect_false(grepl("required_packages", bootstrap_text, fixed = TRUE))
+    expect_false(grepl("install.packages", bootstrap_text, fixed = TRUE))
     expect_match(runner_text, "filter = filter", fixed = TRUE)
     expect_match(runner_text, "stop_on_failure = TRUE", fixed = TRUE)
     expect_false(grepl("stop_on_warning = TRUE", runner_text, fixed = TRUE))

@@ -662,6 +662,19 @@ The repository uses two test lanes with separate bootstrap helpers:
 - `tests/testthat/`: portable regression tests loaded through `tests/testthat/helper-bootstrap.R`
 - `tests/integration/`: opt-in local integration tests loaded through `tests/integration/helper-bootstrap.R`
 
+`.Rprofile` keys the project library to the content hash of `renv.lock` under
+the user `renv` cache. Checkouts with the same lockfile reuse the same package
+links, and lockfile changes receive an isolated library. Initialize a lockfile
+environment from the repository root with:
+
+```sh
+Rscript scripts/bootstrap_packages.R
+```
+
+Project commands must not use `Rscript --vanilla`, manual `.libPaths()`
+injection, or direct package installation because those bypass the declared
+environment.
+
 Run tests with the shell entry points used elsewhere in the repository:
 
 ```sh
