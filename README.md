@@ -173,8 +173,9 @@ Pipeline outputs are primarily written to the runtime analysis tree:
 Runtime output root
 |- Analytic Dataset/
 |  |- cohort_summary_statistics.json
-|  |- *.rds
-|  `- *_derived_precollapse.rds
+|  |- uveal_melanoma_full_cohort.{rds,xlsx}
+|  |- uveal_melanoma_restricted_cohort.{rds,xlsx}
+|  `- uveal_melanoma_gksrs_only_cohort.{rds,xlsx}
 |- Analysis/
 |  |- uveal_full/
 |  |- uveal_restricted/

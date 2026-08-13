@@ -133,16 +133,7 @@ These three files should be interpreted as intentionally overlapping analytic co
 - The **restricted cohort** is the clinically balanced subset of the full cohort.
 - The **GKSRS-only cohort** is the clinically excluded-from-PBT subset of the full cohort.
 
-The additional files in that runtime analytic-data directory support consistent downstream reporting:
-
-| Supporting file | What it contains | Why it is saved |
-|-----------------|------------------|-----------------|
-| `*_derived_precollapse.rds` | Cohort-specific analytic data before sparse factor levels are collapsed for modeling | Preserves original factor levels so merged baseline tables and review outputs can stay aligned with cohort-specific tables |
-
-For semantically meaningful GEP fields such as `biopsy1_gep`, `gep_class_simple`, `prame_status`, and `gep12_prame_status`, the pipeline now uses a two-layer contract:
-
-- Post-collapse cohort `.rds` files remain the model-facing artifacts used for sparse-category protection.
-- Reader-facing outputs restore those GEP variables from the matching `*_derived_precollapse.rds` artifact when it exists, so plots, workbooks, and simple QC tables show the canonical GEP labels.
+Each canonical cohort is also written as a matching `.xlsx` workbook for human review. The RDS is authoritative for computation because the workbook does not preserve R-specific column classes and factor attributes. Objective-specific modeling handles sparse categories without mutating the canonical cohort files.
 
 Construction happens in a fixed order:
 
@@ -151,7 +142,7 @@ Construction happens in a fixed order:
 3. Apply global exclusions before cohort assignment.
 4. Save the full cohort.
 5. Split that parent cohort into the restricted and GKSRS-only datasets using the predefined eligibility rules above.
-6. Save supporting `*_derived_precollapse.rds` artifacts for output consistency.
+6. Save matching RDS and XLSX representations for each canonical cohort.
 
 ### Vital Status and Follow-up Classification
 
@@ -189,11 +180,10 @@ Analysis outputs follow a **cohort → objective → sub-objective** structure:
 
 ```
 Runtime output root (see the [README path model](../README.md#path-model))
-├── Analytic Dataset/               # Processed RDS files and runtime metadata
-│   ├── uveal_melanoma_full_cohort.rds
-│   ├── uveal_melanoma_restricted_cohort.rds
-│   ├── uveal_melanoma_gksrs_only_cohort.rds
-│   └── *_derived_precollapse.rds
+├── Analytic Dataset/               # Canonical computational and review datasets
+│   ├── uveal_melanoma_full_cohort.{rds,xlsx}
+│   ├── uveal_melanoma_restricted_cohort.{rds,xlsx}
+│   └── uveal_melanoma_gksrs_only_cohort.{rds,xlsx}
 ├── Analysis/                       # Runtime analysis outputs by cohort
 │   ├── uveal_full/                 # Full cohort runtime outputs
 │   │   ├── 00_General/
@@ -311,8 +301,7 @@ scripts/
    - Create `removed_patients_summary.tsv`
 
 4. **Save Datasets** 
-   - Store processed RDS files
-   - Save pre-collapsed factor levels
+   - Store the three canonical cohort RDS files and matching review workbooks
    - Write `cohort_summary.tsv` and `cohort_summary.txt` into each cohort's `00_General/` directory
    - Write `{cohort_name}_validation_summary.txt` and `{cohort_name}_validation_bundle.xlsx` into each cohort's `00_General/` directory
    - Refresh generated study docs when Objective 0 finishes without hard validation errors
@@ -557,7 +546,7 @@ Objective 2a latest-VA reviewer-predictor sensitivity uses `last_vision` as the 
 
 **No-GEP reporting contract:** the no-GEP appendix and compact unified-workbook tabs use a documented 0-to-1 probability scale for threshold fields and now include overlap diagnostics comparing `GEP Failed/Indeterminate` with `GEP Not Tested`.
 
-**Display contract:** reader-facing outputs restore canonical labels from matching `*_derived_precollapse.rds` artifacts (for `biopsy1_gep`, `gep_class_simple`, `prame_status`, and `gep12_prame_status`) when available. Objective 4 entry points refresh eligibility flags from stored raw labels before analysis, preventing stale cohort artifacts from leaking nondefinitive rows into definitive Class 1 / Class 2 denominators.
+**Display contract:** reader-facing outputs use the canonical labels stored in each analytic cohort. Objective 4 entry points refresh eligibility flags from stored raw labels before analysis, preventing stale eligibility flags from admitting nondefinitive rows into definitive Class 1 / Class 2 denominators.
 
 For readability, the reader-facing MSS CIF PNG now uses `gep_class_simple` and shows only definitive `Class 1` versus `Class 2` strata. This does not change the technical MSS competing-risk tables or model fits, which still use the more granular `biopsy1_gep` grouping in the companion outputs.
 
