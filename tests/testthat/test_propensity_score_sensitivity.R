@@ -16,7 +16,7 @@ create_propensity_test_data <- function(n_per_arm = 40L) {
         sex = factor(ifelse(arm_index %% 2L == 0L, "Female", "Male")),
         location = factor(ifelse(arm_index %% 3L == 0L, "Cilio-Choroidal", "Choroidal")),
         initial_tumor_height = 2 + ((arm_index * 11L) %% 70L) / 10 +
-            arm_offset * ((arm_index %% 5L) - 2L) / 50,
+            arm_offset * 0.35,
         initial_tumor_diameter = 5 + ((arm_index * 13L) %% 130L) / 10,
         srf = factor(ifelse(arm_index %% 5L < 2L, "No", "Yes")),
         tt_recurrence_months = 5 + arm_index * 2,
