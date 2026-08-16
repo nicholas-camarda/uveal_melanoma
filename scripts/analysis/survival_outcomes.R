@@ -1682,7 +1682,7 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
     surv_plot <- survminer::ggsurvplot(
         fit = surv_fit_plot,
         data = km_plot_data,
-        palette = color_palette,
+        palette = unname(color_palette),
         risk.table = TRUE,
         conf.int = FALSE,
         pval = FALSE,

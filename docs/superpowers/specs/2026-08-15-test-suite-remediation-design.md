@@ -12,7 +12,7 @@ This is testing-infrastructure work. It must not change cohorts, endpoints, esti
 
 ## Non-negotiable boundaries
 
-- Work occurs only in `/Users/ncamarda/Workspaces/uveal-melanoma/worktrees/test-suite-remediation` on `codex/test-suite-remediation`.
+- Work occurs only in the dedicated `test-suite-remediation` worktree on `codex/test-suite-remediation`.
 - Canonical `source/` remains clean and is used only for read-only baseline inspection and, after explicit approval, post-merge fast-forwarding.
 - Disposable test and comparison output belongs under `$TMPDIR`; `runtime/runs` and canonical runtime are not workspaces or test silos.
 - Private data remains local and read-only. No private rows, identifiers, dates, derived private hashes, fixtures, logs, or artifacts enter Git, GitHub, CI, PR text, or test output.

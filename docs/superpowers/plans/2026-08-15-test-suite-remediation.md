@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Work only in `/Users/ncamarda/Workspaces/uveal-melanoma/worktrees/test-suite-remediation` on `codex/test-suite-remediation`.
+- Work only in the dedicated `test-suite-remediation` worktree on `codex/test-suite-remediation`.
 - Never write test or validation artifacts to canonical `source/`, canonical runtime, `runtime/runs`, Project Vault outputs, or private input directories.
 - Private data remains local, read-only, and absent from Git, GitHub, CI, logs, fixtures, identifiers, dates, and derived hashes.
 - Use the smallest sufficient implementation and existing architecture; no calibration framework, plugin, service, second test framework, or compatibility fallback.
@@ -336,7 +336,7 @@ Invoke:
 
 ```bash
 OCULAR_INTEGRATION_RAW_DATA_DIR='<private raw directory>' \
-OCULAR_INTEGRATION_PROCESSED_DATA_DIR='/Users/ncamarda/Workspaces/uveal-melanoma/runtime/Analytic Dataset' \
+OCULAR_INTEGRATION_PROCESSED_DATA_DIR='<private processed directory>' \
 Rscript scripts/tools/run_testthat.R tests/integration
 ```
 
