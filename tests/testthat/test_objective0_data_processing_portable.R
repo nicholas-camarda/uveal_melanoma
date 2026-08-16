@@ -116,6 +116,45 @@ test_that("Objective 0 derives PFS from the first recurrence, metastasis, death,
     expect_equal(derived$tt_pfs_months_analysis, derived$tt_pfs_months)
 })
 
+test_that("Objective 0 classifies exact five-year endpoint boundaries and competing deaths", {
+    test_data <- create_test_dataset()[1:4, ]
+    treatment_date <- as.Date("2020-01-01")
+    five_year_date <- as.Date("2025-01-01")
+
+    test_data$initial_gk <- "Y"
+    test_data$initial_plaque <- "N"
+    test_data$initial_gk_date <- treatment_date
+    test_data$treatment_date <- treatment_date
+    test_data$last_known_alive_date <- as.Date("2026-01-01")
+    test_data$mets_progression <- c("Y", "Y", "Y", "N")
+    test_data$mets_progression_date <- as.Date(c(
+        treatment_date,
+        five_year_date,
+        five_year_date + 1,
+        NA
+    ))
+    test_data$dod <- as.Date(c(
+        treatment_date,
+        five_year_date,
+        five_year_date + 1,
+        NA
+    ))
+    test_data$cod <- c(
+        "Metastatic_Uveal_Melanoma",
+        "Other",
+        "Metastatic_Uveal_Melanoma",
+        NA
+    )
+
+    derived <- create_derived_variables(test_data)
+
+    expect_equal(derived$mfs_event_5yr, c(1L, 1L, 0L, 0L))
+    expect_equal(derived$mss_event_5yr, c(1L, 0L, 0L, 0L))
+    expect_equal(derived$event_type_mss_5yr, c(1L, 2L, 0L, 0L))
+    expect_equal(derived$tt_mfs_5yr, c(0, 60, 60, 60), tolerance = 1e-8)
+    expect_equal(derived$tt_mss_5yr, c(0, 5, 5, 5), tolerance = 1e-8)
+})
+
 test_that("Objective 0 factor preparation and cohort criteria run on synthetic data", {
     synthetic_cohort_input <- tibble::tibble(
         id = c(1, 2, 3, 4, 5, 271),
