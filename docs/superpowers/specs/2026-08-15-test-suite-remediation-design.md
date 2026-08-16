@@ -1,7 +1,7 @@
 # Test-suite remediation design
 
-Date: 2026-08-15  
-Baseline: clean `master` at `14b27b7d7ffeda3c6da2ea2ba08108f669bd6846`  
+Date: 2026-08-15
+Baseline: clean `master` at `14b27b7d7ffeda3c6da2ea2ba08108f669bd6846`
 Task branch: `codex/test-suite-remediation`
 
 ## Goal
