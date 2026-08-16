@@ -1,6 +1,3 @@
-skip_if_integration_disabled()
-skip_if_local_data_unavailable()
-
 # Tests for exploratory no-GEP reporting
 library(dplyr)
 

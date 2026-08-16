@@ -1,6 +1,3 @@
-skip_if_integration_disabled()
-skip_if_local_data_unavailable()
-
 # Test file for pre-processed variables functionality
 # This ensures that Task 2.8 changes work correctly and don't break the pipeline
 

@@ -1,6 +1,3 @@
-skip_if_integration_disabled()
-skip_if_local_data_unavailable()
-
 # Test file for Objective 4: GEP Analysis
 # Tests the actual content and statistical results of the GEP analysis pipeline
 # Run with: testthat::test_dir('tests/testthat')
@@ -17,8 +14,6 @@ library(dplyr)
 # You do not need to load libraries separately
 
 # Source the helper file for test data creation
-source(here("tests", "testthat", "test_helper_data.R"))
-
 extract_risk_table_y_limits <- function(risk_table_plot) {
     y_scales <- Filter(function(scale) "y" %in% scale$aesthetics, risk_table_plot$scales$scales)
     y_scales[[length(y_scales)]]$limits

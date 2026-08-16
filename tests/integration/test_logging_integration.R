@@ -1,6 +1,3 @@
-skip_if_integration_disabled()
-skip_if_local_data_unavailable()
-
   # Load all functions and packages using the proper R-style.md approach
 
   # Load everything - functions AND packages
