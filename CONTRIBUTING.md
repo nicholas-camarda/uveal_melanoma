@@ -26,4 +26,11 @@ Use a task branch and pull request for:
 
 Group every commit for the same logical task in one pull request. Merge only after the required CI check passes. When uncertain which lane applies, use the protected lane.
 
+Before opening or merging a protected-lane pull request, run the same complete
+portable gate used by CI:
+
+```sh
+Rscript scripts/tools/run_portable_suite.R
+```
+
 This policy is portable across projects, but direct pushes depend on each repository's GitHub protection settings. Do not create custom publishing commands unless repeated friction demonstrates that they are needed.

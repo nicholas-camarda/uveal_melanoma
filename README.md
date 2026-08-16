@@ -110,9 +110,8 @@ another checkout's library with `.libPaths()` or install packages into a
 checkout-specific library.
 
 ```sh
-# Portable regression and synthetic integration suites
-Rscript scripts/tools/run_testthat.R tests/testthat
-Rscript scripts/tools/run_testthat.R tests/portable
+# Complete portable suite required for pull requests and master pushes
+Rscript scripts/tools/run_portable_suite.R
 
 # Local read-only actual-data integration suite
 OCULAR_INTEGRATION_RAW_DATA_DIR='/absolute/path/to/raw-data' \

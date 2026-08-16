@@ -679,9 +679,7 @@ environment.
 Run tests with the shell entry points used elsewhere in the repository:
 
 ```sh
-Rscript scripts/tools/run_testthat.R tests/testthat
-Rscript scripts/tools/run_testthat.R tests/portable
-Rscript -e "testthat::test_file('tests/testthat/test_objective2_safety_toxicity.R')"
+Rscript scripts/tools/run_portable_suite.R
 OCULAR_INTEGRATION_RAW_DATA_DIR='/absolute/path/to/raw-data' \
 OCULAR_INTEGRATION_PROCESSED_DATA_DIR='/absolute/path/to/processed-data' \
 Rscript scripts/tools/run_testthat.R tests/integration

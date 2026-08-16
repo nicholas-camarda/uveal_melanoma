@@ -6,14 +6,6 @@ on:
     branches:
       - master
   workflow_dispatch:
-    inputs:
-      suite:
-        description: Suite to run manually
-        required: true
-        type: choice
-        options:
-          - fast
-          - full
 
 permissions:
   contents: read
@@ -28,37 +20,6 @@ env:
 jobs:
   required:
     name: required
-    if: ${{ github.event_name == 'pull_request' || github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'fast') }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
-      - name: Set up R
-        uses: r-lib/actions/setup-r@d3c5be51b12e724e68f33216ca3c148b66d5f0b6
-        with:
-          r-version: "4.4.3"
-          use-public-rspm: false
-          cran: "https://packagemanager.posit.co/cran/__linux__/noble/2026-07-19"
-      - name: Restore locked R environment
-        uses: r-lib/actions/setup-renv@d3c5be51b12e724e68f33216ca3c148b66d5f0b6
-        with:
-          cache-version: 1
-      - name: Verify locked R version and environment
-        run: |
-          Rscript -e 'if (as.character(getRversion()) != "4.4.3") stop("Unexpected R version"); if (!file.exists("renv.lock")) stop("renv.lock is missing"); renv::status()'
-      - name: Run fast portable regression suite
-        env:
-          FAST_TEST_FILTER: ^(ci_contract|path_runtime_publish|forest_plot_labels|objective0_data_processing_portable|objective1_subgroup_policy|objective4_gep_analysis_portable|sparse_factor_handling|propensity_score_sensitivity|synthetic_fixture_contract)$
-        run: Rscript scripts/tools/run_testthat.R tests/testthat --filter "$FAST_TEST_FILTER"
-      - name: Run synthetic integration smoke tests
-        run: Rscript scripts/tools/run_testthat.R tests/integration --filter "portable_smoke"
-      - name: Run lintr
-        run: Rscript -e 'lints <- lintr::lint_package(); if (length(lints) > 0L) { print(lints); stop(sprintf("%d lint(s) found", length(lints))) }'
-
-  full:
-    name: full
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.suite == 'full' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -77,9 +38,5 @@ jobs:
       - name: Verify locked R version and environment
         run: |
           Rscript -e 'if (as.character(getRversion()) != "4.4.3") stop("Unexpected R version"); if (!file.exists("renv.lock")) stop("renv.lock is missing"); renv::status()'
-      - name: Run full testthat suite
-        run: Rscript scripts/tools/run_testthat.R tests/testthat
-      - name: Run synthetic integration smoke tests
-        run: Rscript scripts/tools/run_testthat.R tests/integration --filter "portable_smoke"
-      - name: Run lintr
-        run: Rscript -e 'lints <- lintr::lint_package(); if (length(lints) > 0L) { print(lints); stop(sprintf("%d lint(s) found", length(lints))) }'
+      - name: Run complete portable suite
+        run: Rscript scripts/tools/run_portable_suite.R

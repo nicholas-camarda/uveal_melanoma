@@ -1,3 +1,2 @@
-library(testthat)
-source(here::here("tests", "testthat", "helper-bootstrap.R"))
-testthat::test_dir("tests/testthat", stop_on_failure = TRUE)
+source("scripts/tools/run_portable_suite.R")
+run_portable_suite()

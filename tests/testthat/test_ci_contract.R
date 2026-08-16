@@ -59,7 +59,7 @@ test_that("runner result summary detects a discovered file that did not execute"
     )
 })
 
-test_that("portable CI exposes one stable fast required check, post-merge validation, and a manual full suite", {
+test_that("portable CI exposes one complete required check", {
     workflow_path <- here::here(".github", "workflows", "portable-tests.yml")
     expect_true(file.exists(workflow_path))
 
@@ -68,9 +68,6 @@ test_that("portable CI exposes one stable fast required check, post-merge valida
     expect_match(workflow_text, "push:", fixed = TRUE)
     expect_match(workflow_text, "- master", fixed = TRUE)
     expect_match(workflow_text, "workflow_dispatch:", fixed = TRUE)
-    expect_match(workflow_text, "suite:", fixed = TRUE)
-    expect_match(workflow_text, "- fast", fixed = TRUE)
-    expect_match(workflow_text, "- full", fixed = TRUE)
     expect_match(workflow_text, "name: required", fixed = TRUE)
     expect_match(workflow_text, "cancel-in-progress:", fixed = TRUE)
     expect_match(workflow_text, "runs-on: ubuntu-24.04", fixed = TRUE)
@@ -109,20 +106,29 @@ test_that("portable CI pins current action implementations and restores renv", {
     expect_false(grepl("npm", workflow_text, ignore.case = TRUE))
 })
 
-test_that("portable CI runs fail-sensitive fast and synthetic commands", {
+test_that("portable CI runs only the canonical complete command", {
     workflow_text <- paste(
         readLines(here::here(".github", "workflows", "portable-tests.yml"), warn = FALSE),
         collapse = "\n"
     )
 
-    expect_match(workflow_text, "scripts/tools/run_testthat.R tests/testthat", fixed = TRUE)
-    expect_match(workflow_text, "--filter", fixed = TRUE)
-    expect_match(workflow_text, "scripts/tools/run_testthat.R tests/integration --filter", fixed = TRUE)
-    expect_match(workflow_text, "portable_smoke", fixed = TRUE)
-    expect_match(workflow_text, "lintr::lint_package()", fixed = TRUE)
-    expect_match(workflow_text, "github.event_name == 'push'", fixed = TRUE)
-    expect_match(workflow_text, "if: ${{ github.event_name == 'pull_request'", fixed = TRUE)
-    expect_match(workflow_text, "inputs.suite == 'full'", fixed = TRUE)
+    canonical_command <- "Rscript scripts/tools/run_portable_suite.R"
+    expect_equal(stringr::str_count(workflow_text, fixed(canonical_command)), 1L)
+    expect_false(grepl("--filter", workflow_text, fixed = TRUE))
+    expect_false(grepl("FAST_TEST_FILTER", workflow_text, fixed = TRUE))
+    expect_false(grepl("inputs.suite", workflow_text, fixed = TRUE))
+    expect_false(grepl("  full:", workflow_text, fixed = TRUE))
+})
+
+test_that("canonical portable command owns every portable stage", {
+    command_path <- here::here("scripts", "tools", "run_portable_suite.R")
+    expect_true(file.exists(command_path))
+    command_text <- paste(readLines(command_path, warn = FALSE), collapse = "\n")
+
+    expect_match(command_text, "tests/testthat", fixed = TRUE)
+    expect_match(command_text, "tests/portable", fixed = TRUE)
+    expect_match(command_text, "lintr::lint_package()", fixed = TRUE)
+    expect_match(command_text, "OCULAR_PORTABLE_SUITE=true", fixed = TRUE)
 })
 
 test_that("the lockfile records the safe Deriv build and pinned rmda source", {
@@ -172,19 +178,20 @@ test_that("OpenSpec records remain available without active CI enforcement", {
 test_that("lintr contract permits the repository's established mixed pipe syntax", {
     lintr_text <- paste(readLines(here::here(".lintr"), warn = FALSE), collapse = "\n")
 
-    expect_match(lintr_text, "pipe_consistency_linter = NULL", fixed = TRUE)
+    expect_false(grepl("pipe_consistency_linter", lintr_text, fixed = TRUE))
 })
 
 test_that("documented test commands use the fail-sensitive runner", {
     readme_text <- paste(readLines(here::here("README.md"), warn = FALSE), collapse = "\n")
 
     expect_match(readme_text, "Rscript scripts/bootstrap_packages.R", fixed = TRUE)
-    expect_match(readme_text, "Rscript scripts/tools/run_testthat.R tests/testthat", fixed = TRUE)
+    expect_match(readme_text, "Rscript scripts/tools/run_portable_suite.R", fixed = TRUE)
     expect_match(readme_text, "Rscript scripts/tools/run_testthat.R tests/integration", fixed = TRUE)
 })
 
-test_that("standard testthat entrypoint explicitly stops on failure", {
+test_that("standard testthat entrypoint delegates to the canonical portable suite", {
     entrypoint_text <- paste(readLines(here::here("tests", "testthat.R"), warn = FALSE), collapse = "\n")
 
-    expect_match(entrypoint_text, "stop_on_failure = TRUE", fixed = TRUE)
+    expect_match(entrypoint_text, "run_portable_suite", fixed = TRUE)
+    expect_false(grepl("testthat::test_dir", entrypoint_text, fixed = TRUE))
 })
