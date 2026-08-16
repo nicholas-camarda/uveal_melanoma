@@ -1,6 +1,7 @@
 create_propensity_test_data <- function(n_per_arm = 40L) {
     n <- 2L * n_per_arm
     arm_index <- rep(seq_len(n_per_arm), times = 2L)
+    arm_offset <- rep(c(0, 1), each = n_per_arm)
     treatment_year <- 2010L + ((arm_index * 3L) %% 16L)
     treatment_date <- as.Date(sprintf("%d-01-01", treatment_year)) + seq_len(n)
     tibble::tibble(
@@ -14,7 +15,8 @@ create_propensity_test_data <- function(n_per_arm = 40L) {
         age_at_diagnosis = 42 + ((arm_index * 7L) %% 43L),
         sex = factor(ifelse(arm_index %% 2L == 0L, "Female", "Male")),
         location = factor(ifelse(arm_index %% 3L == 0L, "Cilio-Choroidal", "Choroidal")),
-        initial_tumor_height = 2 + ((arm_index * 11L) %% 70L) / 10,
+        initial_tumor_height = 2 + ((arm_index * 11L) %% 70L) / 10 +
+            arm_offset * ((arm_index %% 5L) - 2L) / 50,
         initial_tumor_diameter = 5 + ((arm_index * 13L) %% 130L) / 10,
         srf = factor(ifelse(arm_index %% 5L < 2L, "No", "Yes")),
         tt_recurrence_months = 5 + arm_index * 2,
@@ -309,10 +311,12 @@ test_that("propensity artifacts share exact labels, direction, and workbook valu
     output_dir <- tempfile("propensity-artifacts-", tmpdir = TEST_OUTPUT_DIR)
     dir.create(output_dir, recursive = TRUE)
     withr::defer(unlink(output_dir, recursive = TRUE, force = TRUE), envir = parent.frame())
-    paths <- write_objective1_propensity_artifacts(
-        artifacts,
-        output_dir,
-        "restricted_cohort_"
+    paths <- expect_no_warning(
+        write_objective1_propensity_artifacts(
+            artifacts,
+            output_dir,
+            "restricted_cohort_"
+        )
     )
 
     expect_identical(
