@@ -1,0 +1,20 @@
+version: 1
+numeric_tolerance:
+  absolute: 1.0e-12
+  relative: 1.0e-10
+comparisons:
+  - id: cohort-membership
+    type: cohort
+    path: cohort/membership.json
+  - id: important-results
+    type: json
+    path: results/important_results.json
+  - id: displayed-labels
+    type: text
+    path: results/displayed_labels.txt
+  - id: plot-payload
+    type: plot_metadata
+    path: plots/plot_payload.json
+  - id: important-results-workbook
+    type: workbook
+    path: tables/important_results.xlsx
