@@ -69,7 +69,7 @@ The synthetic fixture is deterministic, privacy-safe, balanced across treatment 
 
 ## CI contract
 
-GitHub Actions has one required `required` job for pull requests and pushes to `master`. It fails if the restored `renv` environment is not synchronized, then invokes only the canonical portable command, which runs the complete unit suite, dedicated synthetic integration suite, and lint with warnings promoted to errors. Workflow and runner contract tests reject reintroduction of filters, manual-only full coverage, warning/skip tolerance, omitted files or cases, private-data routing, or fragmented entrypoints.
+GitHub Actions has one required `required` job for pull requests and pushes to `master`. It fails if any locked package is missing or differs in version, source, or recorded revision, then invokes only the canonical portable command, which runs the complete unit suite, dedicated synthetic integration suite, and lint with warnings promoted to errors. Workflow and runner contract tests reject reintroduction of filters, manual-only full coverage, warning/skip tolerance, omitted files or cases, private-data routing, or fragmented entrypoints.
 
 ## Remaining boundaries
 

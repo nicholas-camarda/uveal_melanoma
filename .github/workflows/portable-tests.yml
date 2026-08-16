@@ -35,8 +35,29 @@ jobs:
         uses: r-lib/actions/setup-renv@d3c5be51b12e724e68f33216ca3c148b66d5f0b6
         with:
           cache-version: 1
-      - name: Verify locked R version and environment
+      - name: Verify locked R version and restored library
         run: |
-          Rscript -e 'if (as.character(getRversion()) != "4.4.3") stop("Unexpected R version"); if (!file.exists("renv.lock")) stop("renv.lock is missing"); status <- renv::status(); if (!isTRUE(status$synchronized)) stop("renv environment is not synchronized")'
+          Rscript - <<'RSCRIPT'
+          if (as.character(getRversion()) != "4.4.3") stop("Unexpected R version")
+          if (!file.exists("renv.lock")) stop("renv.lock is missing")
+          invisible(capture.output(status <- renv::status()))
+          locked_packages <- status$lockfile$Packages
+          installed_packages <- status$library$Packages
+          missing_packages <- setdiff(names(locked_packages), names(installed_packages))
+          identity_fields <- c("Version", "Source", "RemoteSha")
+          mismatched_packages <- names(Filter(function(package) {
+            any(vapply(identity_fields, function(field) {
+              expected <- locked_packages[[package]][[field]]
+              !is.null(expected) && !identical(installed_packages[[package]][[field]], expected)
+            }, logical(1)))
+          }, names(locked_packages)))
+          if (length(missing_packages) > 0L || length(mismatched_packages) > 0L) {
+            stop(sprintf(
+              "Restored library does not match renv.lock; missing=%s; mismatched=%s",
+              paste(missing_packages, collapse = ","),
+              paste(mismatched_packages, collapse = ",")
+            ))
+          }
+          RSCRIPT
       - name: Run complete portable suite
         run: Rscript scripts/tools/run_portable_suite.R
