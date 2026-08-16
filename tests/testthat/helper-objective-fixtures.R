@@ -111,7 +111,15 @@ get_objective3_pipeline <- function() {
             treatment_group = factor(rep(c("PBT", "GKSRS"), each = 6)),
             pfs2_event = c(1L, 1L, 1L, 1L, 1L, 0L, 1L, 1L, 1L, 1L, 1L, 0L),
             age_at_diagnosis = rep(c(60, 68, 72), length.out = 12),
-            sex = factor(rep(c("Male", "Female"), length.out = 12))
+            sex = factor(c(
+                "Male", "Female", "Male", "Female", "Male", "Male",
+                "Female", "Male", "Female", "Male", "Female", "Female"
+            )),
+            location = factor(c(
+                "Choroidal", "Ciliary Body", "Choroidal", "Ciliary Body",
+                "Choroidal", "Ciliary Body", "Ciliary Body", "Choroidal",
+                "Ciliary Body", "Choroidal", "Ciliary Body", "Choroidal"
+            ))
         )
         paths <- build_objective_fixture_dirs("objective3_pipeline", "^obj3_")
         results <- run_objective_3(
@@ -119,7 +127,7 @@ get_objective3_pipeline <- function() {
             dataset_name = "test_cohort",
             output_dirs = paths$dirs,
             prefix = "test_",
-            confounders = character()
+            confounders = c("age_at_diagnosis", "sex", "location")
         )
         .objective_fixture_state$results$objective3 <- list(
             results = results,
