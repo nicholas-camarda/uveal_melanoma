@@ -28,7 +28,7 @@ if (!identical(Sys.getenv("OCULAR_PORTABLE_BOOTSTRAPPED"), "true")) {
     )
 
     source(here::here("scripts", "load_all.R"))
-    source(here::here("tests", "testthat", "test_helper_data.R"))
+    source(here::here("tests", "testthat", "helper-fixture-data.R"))
 
     assign("RUNTIME_ROOT", runtime_root, envir = .GlobalEnv)
     assign("EXPORT_PARENT_DIR", export_parent_dir, envir = .GlobalEnv)

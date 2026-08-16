@@ -469,11 +469,13 @@ test_that("Objective 4 returns fatal issues and failed run_state when MSS analys
         envir = .GlobalEnv
     )
 
-    results <- run_objective_4(
-        data = create_test_dataset(),
-        dataset_name = "uveal_melanoma_restricted_cohort",
-        output_dirs = output_dirs,
-        prefix = "portable_"
+    results <- run_untracked_objective_contract(
+        run_objective_4(
+            data = create_test_dataset(),
+            dataset_name = "uveal_melanoma_restricted_cohort",
+            output_dirs = output_dirs,
+            prefix = "portable_"
+        )
     )
 
     expect_equal(results$run_state, "failed")

@@ -10,56 +10,8 @@
 # Load the project environment with ALL of the variables and functions
 # You do not need to load libraries separately
 
-#' Run the Objective 3 pipeline in the test harness
-#'
-#' @param data Data frame used as pipeline input.
-#'
-#' @return List containing pipeline results plus the temporary output paths, or
-#'   an error wrapper.
-run_objective3_pipeline_test <- function(data) {
-  # Run Objective 3 (Repeat Radiation) pipeline for testing
-  tryCatch({
-    # Create proper output directory structure
-    test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective3_test")
-    output_dirs <- build_subdivided_output_dirs(test_output_dir, "^obj3_")
-    
-    # Create directories
-    for (dir_path in output_dirs) {
-      dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
-    }
-    
-    # Set up test parameters
-    dataset_name <- "test_cohort"
-    prefix <- "test_"
-    confounders <- c("age_at_diagnosis", "sex")
-
-    # Run the ACTUAL Objective 3 pipeline function
-    results <- run_objective_3(data, dataset_name, output_dirs, prefix, confounders)
-
-    return(list(
-      results = results,
-      output_dirs = output_dirs,
-      test_output_dir = test_output_dir
-    ))
-  }, error = function(e) {
-    list(error = e$message)
-  })
-}
-
 test_that("Objective 3 pipeline returns the current PFS-2 analysis contract", {
-  test_data <- tibble::tibble(
-    id = seq_len(12),
-    tt_pfs2_months = c(8, 10, 12, 14, 16, 18, 9, 11, 13, 15, 17, 19),
-    recurrence1_treatment_clean = factor(rep(c("GKSRS", "Plaque"), each = 6)),
-    recurrence1_treatment = rep(c("GKSRS", "Plaque"), each = 6),
-    treatment_group = factor(rep(c("PBT", "GKSRS"), each = 6)),
-    pfs2_event = c(1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0),
-    age_at_diagnosis = rep(c(60, 68, 72), length.out = 12),
-    sex = factor(rep(c("Male", "Female"), length.out = 12))
-  )
-
-  pipeline_run <- run_objective3_pipeline_test(test_data)
-  withr::defer(unlink(pipeline_run$test_output_dir, recursive = TRUE), envir = parent.frame())
+  pipeline_run <- get_objective3_pipeline()
   results <- pipeline_run$results
 
   expect_named(results, "pfs2_analysis")
@@ -332,9 +284,9 @@ test_that("successful PH diagnostics report input and fitted N", {
   withr::defer(unlink(test_output_dir, recursive = TRUE), envir = parent.frame())
 
   ph_test_data <- tibble::tibble(
-    time_months = seq(5, 24),
-    status = rep(c(1, 0), 10),
-    treatment_group = factor(rep(c("PBT", "GKSRS"), 10))
+    time_months = seq(5, 44),
+    status = rep(c(1, 1, 0, 1, 0), 8),
+    treatment_group = factor(rep(c("PBT", "GKSRS"), 20))
   )
   ph_model <- survival::coxph(
     survival::Surv(time_months, status) ~ treatment_group,

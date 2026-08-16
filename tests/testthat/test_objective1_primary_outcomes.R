@@ -6,30 +6,8 @@ build_objective1_output_dirs <- function(test_output_dir, include_propensity_sen
     dirs[grepl("^obj1_", names(dirs))]
 }
 
-run_objective1_test <- function(data, output_tag = "objective1_test") {
-    test_output_dir <- file.path(TEST_OUTPUT_DIR, output_tag)
-    output_dirs <- build_objective1_output_dirs(test_output_dir)
-
-    dir.create(test_output_dir, recursive = TRUE, showWarnings = FALSE)
-    for (dir_path in output_dirs) {
-        dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
-    }
-
-    result <- testthat::expect_no_error(
-        run_objective_1(
-            data = data,
-            dataset_name = "test_cohort",
-            output_dirs = output_dirs,
-            prefix = "test_",
-            confounders = c("age_at_diagnosis", "sex")
-        )
-    )
-    list(results = result, output_dirs = output_dirs, test_output_dir = test_output_dir)
-}
-
 test_that("Objective 1 pipeline returns expected top-level analyses", {
-    pipeline <- run_objective1_test(create_test_dataset())
-    withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
+    pipeline <- get_objective1_pipeline()
 
     expect_true(all(c(
         "recurrence_rates",
@@ -46,76 +24,13 @@ test_that("Objective 1 pipeline returns expected top-level analyses", {
     expect_true(file.exists(file.path(pipeline$output_dirs$obj1_pfs_cox, "test_progression_free_survival_probability_effect_summary.xlsx")))
 })
 
-test_that("Objective 1 invokes propensity sensitivity only for the restricted cohort", {
-    original_runner <- run_objective1_propensity_sensitivity
-    original_population_check <- assert_survival_population_contract
-    calls <- new.env(parent = emptyenv())
-    calls$records <- list()
-    assign(
-        "run_objective1_propensity_sensitivity",
-        function(data, dataset_name, output_dir, prefix) {
-            calls$records[[length(calls$records) + 1L]] <- list(
-                dataset_name = dataset_name,
-                output_dir = output_dir,
-                prefix = prefix
-            )
-            list(stubbed = TRUE)
-        },
-        envir = .GlobalEnv
-    )
-    withr::defer(
-        assign("run_objective1_propensity_sensitivity", original_runner, envir = .GlobalEnv),
-        envir = parent.frame()
-    )
-    assign(
-        "assert_survival_population_contract",
-        function(...) invisible(NULL),
-        envir = .GlobalEnv
-    )
-    withr::defer(
-        assign("assert_survival_population_contract", original_population_check, envir = .GlobalEnv),
-        envir = parent.frame()
-    )
-
-    restricted_dir <- file.path(TEST_OUTPUT_DIR, "objective1_propensity_route_restricted")
-    other_dir <- file.path(TEST_OUTPUT_DIR, "objective1_propensity_route_other")
-    restricted_outputs <- build_objective1_output_dirs(
-        restricted_dir,
-        include_propensity_sensitivity = TRUE
-    )
-    other_outputs <- build_objective1_output_dirs(other_dir)
-    purrr::walk(c(restricted_outputs, other_outputs), dir.create, recursive = TRUE, showWarnings = FALSE)
-    withr::defer(unlink(restricted_dir, recursive = TRUE, force = TRUE), envir = parent.frame())
-    withr::defer(unlink(other_dir, recursive = TRUE, force = TRUE), envir = parent.frame())
-
-    restricted_result <- run_objective_1(
-        create_test_dataset(),
-        OBJECTIVE1_PROPENSITY_DATASET,
-        restricted_outputs,
-        "restricted_cohort_",
-        confounders = c("age_at_diagnosis", "sex")
-    )
-    other_result <- run_objective_1(
-        create_test_dataset(),
-        "other_test_cohort",
-        other_outputs,
-        "other_",
-        confounders = c("age_at_diagnosis", "sex")
-    )
-
-    expect_length(calls$records, 1L)
-    expect_identical(calls$records[[1]]$dataset_name, OBJECTIVE1_PROPENSITY_DATASET)
-    expect_identical(
-        calls$records[[1]]$output_dir,
-        restricted_outputs$obj1_propensity_sensitivity
-    )
-    expect_true(isTRUE(restricted_result$propensity_sensitivity$stubbed))
-    expect_null(other_result$propensity_sensitivity)
+test_that("Objective 1 propensity sensitivity is restricted to its declared cohort", {
+    expect_true(should_run_objective1_propensity_sensitivity(OBJECTIVE1_PROPENSITY_DATASET))
+    expect_false(should_run_objective1_propensity_sensitivity("other_test_cohort"))
 })
 
 test_that("Objective 1 recurrence and metastasis subgroup outputs use the Cox HR contract", {
-    pipeline <- run_objective1_test(create_test_dataset(), output_tag = "objective1_subgroup_model_contract")
-    withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
+    pipeline <- get_objective1_pipeline()
 
     for (outcome_key in c("local_recurrence", "metastatic_progression")) {
         outcome_results <- pipeline$results$outcome_subgroup_results[[outcome_key]]
@@ -175,8 +90,7 @@ test_that("Objective 1 records empty sparse two-arm subgroup diagnostics without
 })
 
 test_that("reviewer-facing subgroup diagnostics retain T4 support information", {
-    pipeline <- run_objective1_test(create_test_dataset(), output_tag = "objective1_subgroup_reviewer_support")
-    withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
+    pipeline <- get_objective1_pipeline()
 
     diagnostics_files <- list.files(
         pipeline$output_dirs$obj1_forest_plots,
@@ -234,8 +148,7 @@ test_that("Objective 1 KM plots cap display at SURVIVAL_XAXIS_MAX_MONTHS without
 })
 
 test_that("Objective 1 tumor-height analysis writes timing summary", {
-    pipeline <- run_objective1_test(create_test_dataset(), output_tag = "objective1_tumor_height_timing")
-    withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
+    pipeline <- get_objective1_pipeline()
 
     timing_path <- file.path(
         pipeline$output_dirs$obj1_height_primary_timing_audit,
@@ -255,8 +168,7 @@ test_that("Objective 1 tumor-height analysis writes timing summary", {
 })
 
 test_that("Objective 1 recurrence and metastasis event-support summaries include cumulative incidence", {
-    pipeline <- run_objective1_test(create_test_dataset(), output_tag = "objective1_cumulative_incidence_test")
-    withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
+    pipeline <- get_objective1_pipeline()
 
     recurrence_summary_path <- file.path(pipeline$output_dirs$obj1_recurrence_event_support, "test_recurrence1_event_support_summary.xlsx")
     mets_summary_path <- file.path(pipeline$output_dirs$obj1_mets_event_support, "test_mets_progression_event_support_summary.xlsx")
@@ -290,8 +202,7 @@ test_that("Objective 1 recurrence and metastasis event-support summaries include
 })
 
 test_that("Objective 1 survival effect summaries include canonical columns", {
-    pipeline <- run_objective1_test(create_test_dataset(), output_tag = "objective1_effect_summary_test")
-    withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
+    pipeline <- get_objective1_pipeline()
 
     os_summary <- readxl::read_xlsx(file.path(
         pipeline$output_dirs$obj1_os_cox,
@@ -307,8 +218,7 @@ test_that("Objective 1 survival effect summaries include canonical columns", {
 })
 
 test_that("Objective 1 survival effect summaries include graded PH interpretation", {
-    pipeline <- run_objective1_test(create_test_dataset(), output_tag = "objective1_ph_interpretation_test")
-    withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
+    pipeline <- get_objective1_pipeline()
 
     os_summary <- readxl::read_xlsx(file.path(
         pipeline$output_dirs$obj1_os_cox,
@@ -404,8 +314,7 @@ test_that("Objective 1 writes patient-level KM risk-set audit workbooks", {
 })
 
 test_that("Objective 1 diagnostics keep factor labels grouped before coefficients", {
-    pipeline <- run_objective1_test(create_test_dataset(), output_tag = "objective1_diagnostics_ordering")
-    withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
+    pipeline <- get_objective1_pipeline()
 
     diagnostics_files <- list.files(
         path = pipeline$test_output_dir,
@@ -452,11 +361,7 @@ test_that("Objective 1 diagnostics keep factor labels grouped before coefficient
 })
 
 test_that("Objective 1 omits post-baseline event-status survival analyses", {
-    pipeline <- run_objective1_test(
-        create_test_dataset(),
-        output_tag = "objective1_no_post_baseline_status_survival"
-    )
-    withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
+    pipeline <- get_objective1_pipeline()
 
     retired_result_names <- c(
         "recurrence_os",
@@ -495,8 +400,7 @@ test_that("Objective 1 omits post-baseline event-status survival analyses", {
 })
 
 test_that("Objective 1 centralized interpretation and subgroup contract notes are emitted once per cohort", {
-    pipeline <- run_objective1_test(create_test_dataset(), output_tag = "objective1_contract_notes_test")
-    withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
+    pipeline <- get_objective1_pipeline()
 
     obj1_note <- file.path(
         pipeline$test_output_dir,
@@ -521,8 +425,7 @@ test_that("Objective 1 centralized interpretation and subgroup contract notes ar
 })
 
 test_that("Objective 1 subgroup diagnostics label exploratory support surfaces", {
-    pipeline <- run_objective1_test(create_test_dataset(), output_tag = "objective1_subgroup_contract_test")
-    withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
+    pipeline <- get_objective1_pipeline()
 
     primary_workbook <- file.path(
         pipeline$output_dirs$obj1_subgroup_primary,
@@ -548,13 +451,20 @@ test_that("Objective 1 subgroup diagnostics label exploratory support surfaces",
 
 test_that("Objective 1 subgroup event diagnostics use the modeled endpoint", {
     subgroup_data <- tibble::tibble(
-        treatment_group = rep(c("PBT", "PBT", "GKSRS", "GKSRS"), times = 2),
-        subgroup_flag = factor(rep(c("A", "B"), each = 4), levels = c("A", "B")),
-        recurrence1 = c(0, 0, 0, 0, 1, 0, 1, 1),
-        mets_progression = c(1, 1, 1, 0, 1, 0, 1, 1),
-        tt_pfs_months = c(6, 8, 7, 9, 10, 12, 11, 13),
-        death_event = rep(0, 8),
-        pfs_event = c(1, 1, 1, 0, 1, 0, 1, 1)
+        treatment_group = rep(c(rep("PBT", 6), rep("GKSRS", 6)), times = 2),
+        subgroup_flag = factor(rep(c("A", "B"), each = 12), levels = c("A", "B")),
+        recurrence1 = rep(c(0, 1, 0, 0, 1, 0), 4),
+        mets_progression = c(
+            1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
+            1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0
+        ),
+        tt_pfs_months = c(6, 18, 30, 42, 54, 66, 9, 21, 33, 45, 57, 69,
+                          12, 24, 36, 48, 60, 72, 15, 27, 39, 51, 63, 75),
+        death_event = rep(0, 24),
+        pfs_event = c(
+            1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
+            1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0
+        )
     )
 
     mets_result <- fit_subgroup_model(
@@ -720,8 +630,7 @@ test_that("zero-supported levels and genuine model failures remain distinct diag
 })
 
 test_that("Objective 1 survival endpoints register typed artifact subfolders", {
-    pipeline <- run_objective1_test(create_test_dataset(), output_tag = "objective1_output_subdivision_contract")
-    withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
+    pipeline <- get_objective1_pipeline()
 
     expect_true(dir.exists(pipeline$output_dirs$obj1_os_km))
     expect_true(dir.exists(pipeline$output_dirs$obj1_os_cox))

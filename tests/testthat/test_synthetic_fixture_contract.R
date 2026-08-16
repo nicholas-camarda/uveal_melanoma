@@ -39,3 +39,42 @@ test_that("synthetic fixture does not depend on private files or identifying fie
     expect_false(any(grepl("(^|_)(patient|study|record|case)?_?id$|date", names(data), ignore.case = TRUE)))
     expect_false(any(vapply(data, is.list, logical(1))))
 })
+
+test_that("full-pipeline fixture is deterministic, balanced, and distribution-shaped", {
+    first <- create_pipeline_test_dataset()
+    second <- create_pipeline_test_dataset()
+
+    expect_identical(first, second)
+    expect_equal(nrow(first), 96L)
+    expect_identical(levels(first$treatment_group), c("PBT", "GKSRS"))
+    expect_setequal(unique(as.character(first$sex)), c("Female", "Male"))
+    expect_setequal(
+        unique(as.character(first$initial_t_stage_simple)),
+        c("T1", "T2", "T3", "T4")
+    )
+    expect_true(all(first$tt_recurrence_months >= 0))
+    expect_true(all(first$tt_mets_months >= 0))
+    expect_true(all(first$tt_death_months >= 0))
+    expect_true(stats::median(first$age_at_diagnosis) >= 55)
+    expect_true(stats::median(first$age_at_diagnosis) <= 75)
+    expect_true(all(first$initial_tumor_height > 0))
+
+    support <- first %>%
+        dplyr::group_by(treatment_group) %>%
+        dplyr::summarise(
+            recurrence_events = sum(recurrence_event),
+            metastasis_events = sum(mets_event),
+            death_events = sum(death_event),
+            .groups = "drop"
+        )
+    expect_true(all(support$recurrence_events >= 10L))
+    expect_true(all(support$metastasis_events >= 10L))
+    expect_true(all(support$death_events >= 10L))
+
+    generator_text <- paste(deparse(body(create_pipeline_test_dataset)), collapse = "\n")
+    expect_false(grepl(
+        "read\\.(xlsx|csv|rds)|RAW_DATA_DIR|PROCESSED_DATA_DIR|Original Files",
+        generator_text,
+        ignore.case = TRUE
+    ))
+})

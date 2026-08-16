@@ -52,7 +52,7 @@ if (!identical(Sys.getenv("OCULAR_INTEGRATION_BOOTSTRAPPED"), "true")) {
     )
 
     source(here::here("scripts", "load_all.R"))
-    source(here::here("tests", "testthat", "test_helper_data.R"))
+    source(here::here("tests", "testthat", "helper-fixture-data.R"))
 
     required_inputs <- c(
         file.path(raw_data_dir, INPUT_FILENAME),

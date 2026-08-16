@@ -327,6 +327,10 @@ run_objective1_time_to_event_subgroups <- function(
 #' @param prefix Character string prefix for cohort identification in output files (e.g., "full_cohort_", "restricted_cohort_", "gksrs_only_cohort_")
 #' @param confounders Character vector of confounder variables to use for statistical adjustment
 #' @return List containing all analysis results, model objects, and output file paths for each analysis type
+should_run_objective1_propensity_sensitivity <- function(dataset_name) {
+    identical(dataset_name, OBJECTIVE1_PROPENSITY_DATASET)
+}
+
 run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders = confounders) {
     step1_start_time <- Sys.time()
     display_name <- tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name)))
@@ -575,7 +579,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     )
 
     propensity_sensitivity <- NULL
-    if (identical(dataset_name, OBJECTIVE1_PROPENSITY_DATASET)) {
+    if (should_run_objective1_propensity_sensitivity(dataset_name)) {
         propensity_sensitivity <- run_objective1_propensity_sensitivity(
             data,
             dataset_name,

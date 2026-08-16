@@ -41,8 +41,6 @@ if (!identical(Sys.getenv("OCULAR_TESTTHAT_BOOTSTRAPPED"), "true")) {
     library(logger)
     source(here::here("scripts", "utils", "logging_utilities.R"))
     source(here::here("scripts", "load_all.R"))
-    source(here::here("tests", "testthat", "test_helper_data.R"))
-
     assign("RUNTIME_ROOT", runtime_root, envir = .GlobalEnv)
     assign("EXPORT_PARENT_DIR", export_parent_dir, envir = .GlobalEnv)
     assign("EXPORT_ROOT", export_root, envir = .GlobalEnv)
