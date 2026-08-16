@@ -283,6 +283,12 @@ PUBLISH_ARTIFACT_REGISTRY <- list(
     )
 )
 
+PUBLISH_ANALYTIC_DATASET_IDS <- c(
+    "uveal_melanoma_full_cohort",
+    "uveal_melanoma_restricted_cohort",
+    "uveal_melanoma_gksrs_only_cohort"
+)
+
 #' Determine whether a relative publish path is approved by the artifact registry
 #'
 #' @param relative_path Character scalar path relative to a publish root.

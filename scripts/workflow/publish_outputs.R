@@ -1,9 +1,5 @@
-#' Find and validate the latest completed analysis log before publishing
-#'
-#' The publish process creates its own logger file when it loads the project.
-#' Exclude that current-process file so the check examines the latest analysis
-#' log that existed before publishing started.
-assert_latest_analysis_log_clean <- function() {
+#' Find and validate the newest full analysis-run log
+select_publish_analysis_log <- function() {
     log_dir <- file.path(LOGS_DIR, "txt")
     log_paths <- if (dir.exists(log_dir)) {
         list.files(
@@ -16,33 +12,55 @@ assert_latest_analysis_log_clean <- function() {
     }
 
     current_log <- if (exists("log_file", inherits = TRUE)) {
-        file.path(log_dir, basename(get("log_file", inherits = TRUE)))
+        normalizePath(
+            file.path(log_dir, basename(get("log_file", inherits = TRUE))),
+            winslash = "/",
+            mustWork = FALSE
+        )
     } else {
         character()
     }
     log_paths <- setdiff(normalizePath(log_paths, winslash = "/", mustWork = FALSE), current_log)
     if (length(log_paths) == 0) {
-        stop(sprintf("Cannot publish: no completed analysis log found under %s", log_dir), call. = FALSE)
+        stop(sprintf("Cannot publish: no analysis logs found under %s", log_dir), call. = FALSE)
     }
 
-    log_info <- file.info(log_paths)
-    latest_log <- log_paths[[order(log_info$mtime, decreasing = TRUE)[[1]]]]
-    log_lines <- tryCatch(
-        readLines(latest_log, warn = FALSE),
-        error = function(e) stop(sprintf("Cannot read latest analysis log %s: %s", latest_log, e$message), call. = FALSE)
+    readable_logs <- lapply(log_paths, function(log_path) {
+        tryCatch(readLines(log_path, warn = FALSE), error = function(e) NULL)
+    })
+    is_full_attempt <- vapply(
+        readable_logs,
+        function(lines) !is.null(lines) && any(grepl("=== MAIN EXECUTION PHASE ===", lines, fixed = TRUE)),
+        logical(1)
     )
+    full_logs <- log_paths[is_full_attempt]
+    full_lines <- readable_logs[is_full_attempt]
+    if (length(full_logs) == 0) {
+        stop(sprintf("Cannot publish: no full analysis attempt found under %s", log_dir), call. = FALSE)
+    }
+
+    latest_index <- order(basename(full_logs), decreasing = TRUE)[[1]]
+    latest_log <- full_logs[[latest_index]]
+    log_lines <- full_lines[[latest_index]]
     error_lines <- grepl(
         "\\[ERROR\\]|\\bERROR\\b|\\bError in\\b|\\bExecution halted\\b|ANALYSES COMPLETED WITH ERRORS",
         log_lines,
         ignore.case = TRUE,
         perl = TRUE
     )
-    if (any(error_lines)) {
+    completed <- any(grepl("COMPLETED MAIN EXECUTION PHASE", log_lines, fixed = TRUE))
+    analyzed_three <- any(grepl("Datasets analyzed: 3", log_lines, fixed = TRUE))
+    terminal_success <- any(grepl(
+        "ALL ANALYSES COMPLETED SUCCESSFULLY|ANALYSES COMPLETED WITH WARNINGS",
+        log_lines,
+        perl = TRUE
+    ))
+    if (length(log_lines) == 0 || any(error_lines) || !completed || !analyzed_three || !terminal_success) {
         stop(
             paste(
-                sprintf("Cannot publish: latest analysis log contains errors: %s", latest_log),
-                paste(head(log_lines[error_lines], 20L), collapse = "\\n"),
-                sep = "\\n"
+                sprintf("Cannot publish: newest full analysis attempt failed or is incomplete: %s", latest_log),
+                paste(head(log_lines[error_lines], 20L), collapse = "\n"),
+                sep = "\n"
             ),
             call. = FALSE
         )
@@ -117,6 +135,130 @@ map_publish_cohort_dir <- function(cohort_name) {
         return("gksrs")
     }
     cohort_name
+}
+
+#' Map a cohort selector to its canonical analytic dataset identifier
+map_publish_dataset_id <- function(cohort_name) {
+    cohort_dir <- map_publish_cohort_dir(cohort_name)
+    switch(
+        cohort_dir,
+        uveal_full = "uveal_melanoma_full_cohort",
+        uveal_restricted = "uveal_melanoma_restricted_cohort",
+        gksrs = "uveal_melanoma_gksrs_only_cohort",
+        stop(sprintf("Unknown publish cohort: %s", cohort_name), call. = FALSE)
+    )
+}
+
+#' Normalize one analytic column for RDS/XLSX value comparison
+normalize_publish_analytic_column <- function(values) {
+    if (all(is.na(values))) {
+        return(rep(NA_character_, length(values)))
+    }
+    if (is.factor(values)) {
+        return(as.character(values))
+    }
+    if (inherits(values, "Date")) {
+        return(ifelse(is.na(values), NA_character_, format(values, "%Y-%m-%d")))
+    }
+    if (inherits(values, "POSIXt")) {
+        return(ifelse(is.na(values), NA_character_, format(values, "%Y-%m-%d %H:%M:%OS6", tz = "UTC")))
+    }
+    if (is.numeric(values)) {
+        return(ifelse(is.na(values), NA_character_, sprintf("%.15g", as.numeric(values))))
+    }
+    as.character(values)
+}
+
+#' Compare an RDS column with its XLSX review representation
+publish_analytic_columns_equal <- function(rds_values, xlsx_values) {
+    if (length(rds_values) != length(xlsx_values)) {
+        return(FALSE)
+    }
+    if (all(is.na(rds_values)) && all(is.na(xlsx_values))) {
+        return(TRUE)
+    }
+    if (inherits(rds_values, c("Date", "POSIXt")) && inherits(xlsx_values, c("Date", "POSIXt"))) {
+        rds_dates <- as.Date(rds_values, tz = "UTC")
+        xlsx_dates <- as.Date(xlsx_values, tz = "UTC")
+        return(identical(as.character(rds_dates), as.character(xlsx_dates)))
+    }
+    if (is.numeric(rds_values) && is.numeric(xlsx_values)) {
+        return(isTRUE(all.equal(
+            as.numeric(rds_values),
+            as.numeric(xlsx_values),
+            tolerance = 1e-10,
+            check.attributes = FALSE
+        )))
+    }
+    identical(
+        normalize_publish_analytic_column(rds_values),
+        normalize_publish_analytic_column(xlsx_values)
+    )
+}
+
+#' Validate and collect selected canonical analytic-data pairs
+collect_publish_analytic_data <- function(cohorts = NULL) {
+    dataset_ids <- if (is.null(cohorts)) {
+        PUBLISH_ANALYTIC_DATASET_IDS
+    } else {
+        unique(vapply(cohorts, map_publish_dataset_id, character(1)))
+    }
+
+    rows <- lapply(dataset_ids, function(dataset_id) {
+        rds_path <- file.path(PROCESSED_DATA_DIR, paste0(dataset_id, ".rds"))
+        xlsx_path <- file.path(PROCESSED_DATA_DIR, paste0(dataset_id, ".xlsx"))
+        for (required_path in c(rds_path, xlsx_path)) {
+            if (!file.exists(required_path) || dir.exists(required_path) || is.na(file.info(required_path)$size)) {
+                stop(sprintf("Cannot publish: required analytic data file is missing or unreadable: %s", required_path), call. = FALSE)
+            }
+        }
+
+        rds_data <- tryCatch(
+            readRDS(rds_path),
+            error = function(e) stop(sprintf("Cannot read analytic RDS %s: %s", rds_path, e$message), call. = FALSE)
+        )
+        xlsx_data <- tryCatch(
+            openxlsx::read.xlsx(xlsx_path, check.names = FALSE, detectDates = TRUE),
+            error = function(e) stop(sprintf("Cannot read analytic XLSX %s: %s", xlsx_path, e$message), call. = FALSE)
+        )
+        structure_matches <- is.data.frame(rds_data) && is.data.frame(xlsx_data) &&
+            nrow(rds_data) == nrow(xlsx_data) && identical(names(rds_data), names(xlsx_data))
+        values_match <- structure_matches && all(vapply(names(rds_data), function(column_name) {
+            publish_analytic_columns_equal(rds_data[[column_name]], xlsx_data[[column_name]])
+        }, logical(1)))
+        if (!values_match) {
+            stop(sprintf(
+                "Cannot publish: analytic XLSX does not match its authoritative RDS for %s.",
+                dataset_id
+            ), call. = FALSE)
+        }
+
+        data.frame(
+            source_path = c(rds_path, xlsx_path),
+            destination_relative_path = file.path("analytic_data", basename(c(rds_path, xlsx_path))),
+            publish_kind = "analytic_data",
+            stringsAsFactors = FALSE
+        )
+    })
+    dplyr::bind_rows(rows)
+}
+
+#' Reject selected files produced after the validated full-run log
+assert_publish_files_not_newer_than_log <- function(paths, log_path) {
+    log_mtime <- file.info(log_path)$mtime
+    path_info <- file.info(paths)
+    newer <- !is.na(path_info$mtime) & path_info$mtime > log_mtime
+    if (any(newer)) {
+        stop(
+            paste(
+                sprintf("Cannot publish: selected files are newer than the validated analysis log %s:", log_path),
+                paste(paths[newer], collapse = "\n"),
+                sep = "\n"
+            ),
+            call. = FALSE
+        )
+    }
+    invisible(TRUE)
 }
 
 #' Collect candidate publish files from known runtime analysis roots
@@ -246,10 +388,7 @@ publish_outputs <- function(
         stop(sprintf("Runtime output directory does not exist: %s", OUTPUT_DIR), call. = FALSE)
     }
 
-    latest_analysis_log <- NULL
-    if (!isTRUE(dry_run)) {
-        latest_analysis_log <- assert_latest_analysis_log_clean()
-    }
+    latest_analysis_log <- select_publish_analysis_log()
 
     if (is.null(snapshot_id)) {
         snapshot_id <- next_available_publish_snapshot_id()
@@ -284,6 +423,20 @@ publish_outputs <- function(
     }
     publishable_files <- file_candidates[publishable_mask, , drop = FALSE]
     skipped_files <- file_candidates[!publishable_mask, , drop = FALSE]
+    publishable_files$publish_kind <- "analysis_output"
+
+    analytic_files <- collect_publish_analytic_data(cohorts = cohorts)
+    assert_publish_files_not_newer_than_log(
+        paths = c(publishable_files$source_path, analytic_files$source_path),
+        log_path = latest_analysis_log
+    )
+    log_file <- data.frame(
+        source_path = latest_analysis_log,
+        destination_relative_path = basename(latest_analysis_log),
+        publish_kind = "analysis_log",
+        stringsAsFactors = FALSE
+    )
+    publishable_files <- dplyr::bind_rows(publishable_files, analytic_files, log_file)
 
     manifest <- data.frame(
         source_path = character(),
@@ -385,6 +538,8 @@ publish_outputs <- function(
 
     summary <- list(
         publishable_files = nrow(publishable_files),
+        analytic_data_files = sum(publishable_files$publish_kind == "analytic_data"),
+        analysis_log_basename = basename(latest_analysis_log),
         copied = sum(manifest$status == "copied"),
         would_copy = sum(manifest$status == "would_copy"),
         skipped = sum(manifest$status == "skipped_not_publishable"),
@@ -396,9 +551,10 @@ publish_outputs <- function(
 
     if (isTRUE(log_summary) && exists("USE_LOGS", inherits = TRUE) && isTRUE(USE_LOGS)) {
         logger::log_info(sprintf(
-            "Publish summary (dry_run=%s): publishable=%d copied=%d would_copy=%d skipped=%d missing=%d failed=%d",
+            "Publish summary (dry_run=%s): publishable=%d analytic_data=%d copied=%d would_copy=%d skipped=%d missing=%d failed=%d",
             isTRUE(dry_run),
             summary$publishable_files,
+            summary$analytic_data_files,
             summary$copied,
             summary$would_copy,
             summary$skipped,
@@ -597,16 +753,14 @@ format_publish_outputs_cli_report <- function(result, opts) {
         "",
         "Results:",
         sprintf("  Publishable: %d", summary$publishable_files),
+        sprintf("  Analytic data files: %d", summary$analytic_data_files),
+        sprintf("  Analysis log: %s", summary$analysis_log_basename),
         sprintf("  Copied: %d", summary$copied),
         sprintf("  Would copy: %d", summary$would_copy),
         sprintf("  Excluded by registry: %d", summary$skipped),
         sprintf("  Missing: %d", summary$missing),
         sprintf("  Failed: %d", summary$failed)
     )
-
-    if (!is.null(result$latest_analysis_log)) {
-        report_lines <- c(report_lines, sprintf("  Latest analysis log checked: %s", result$latest_analysis_log))
-    }
 
     if (isTRUE(result$dry_run) && !isTRUE(summary$snapshot_exists)) {
         report_lines <- c(

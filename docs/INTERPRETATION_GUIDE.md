@@ -720,7 +720,7 @@ Plain-English bottom line:
 - **`Timepoint`** corresponds to the year label in `GEP_VALIDATION_TIMEPOINTS`; interpretation tips should explicitly quote it.
 - **Fallback + method columns** (`*_Fallback_Used`, `*_Method`) surface whenever the preferred estimator fails; cite them whenever they read `TRUE` to explain unexpected `NA`s.
 - **Missing = `NA`** means "metric skipped" rather than "zero." Cross-check the run log (`logs/json/*.jsonl`) for warnings before imputing values.
-- **Displayed GEP labels are canonical labels, not sparse-model buckets.** When a cohort has a matching `*_derived_precollapse.rds` artifact, reader-facing Objective 4 outputs restore `biopsy1_gep`, `gep_class_simple`, `prame_status`, and `gep12_prame_status` from that artifact. A literal `Other` label should therefore be interpreted as a bug or an intentionally non-GEP output, not as a valid biological class.
+- **Displayed GEP labels come directly from the canonical analytic cohort.** Objective-specific sparse-model handling does not replace `biopsy1_gep`, `gep_class_simple`, `prame_status`, or `gep12_prame_status` in reader-facing outputs. A literal `Other` label is not a valid biological GEP class.
 - **The simple QC workbook now follows the same refreshed eligibility rule as the main Objective 4 analysis.** If a row does not have a definitive raw Class 1 / Class 2 DecisionDx label, it should not appear in the simple Class 1 vs Class 2 summary counts.
 - **The MSS CIF PNG is more collapsed than the technical MSS workbook.** The figure is shown at the `gep_class_simple` level (`Class 1` vs `Class 2`) for readability, while the technical competing-risk tables may still report the more granular `biopsy1_gep` group structure.
 

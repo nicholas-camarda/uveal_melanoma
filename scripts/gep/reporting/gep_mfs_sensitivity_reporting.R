@@ -142,7 +142,6 @@ collect_objective4_endpoint_followup_summary <- function(data,
     if ("treatment_group" %in% names(prepared_data)) {
         prepared_data <- normalize_treatment_group_data(prepared_data, columns = "treatment_group")
     }
-    prepared_data <- restore_gep_display_variables(prepared_data, dataset_name = dataset_name)
     prepared_data <- add_objective4_operational_followup_status(prepared_data)
     followup_medians <- summarize_objective4_followup_medians(prepared_data)
 
@@ -777,7 +776,6 @@ prepare_objective4_mfs_sensitivity_data <- function(data, dataset_name = NULL) {
         prepared_data <- normalize_treatment_group_data(prepared_data, columns = "treatment_group")
     }
 
-    prepared_data <- restore_gep_display_variables(prepared_data, dataset_name = dataset_name)
     cohort_label <- format_objective4_gep_cohort_label(dataset_name)
 
     prepared_data <- add_objective4_operational_followup_status(prepared_data)

@@ -86,22 +86,6 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
         message(sprintf("\nCreating table for cohort: %s", cohort_name))
         data <- data_list[[cohort_name]]
 
-        # Baseline tables should reflect raw factor levels present in the derived data (pre-collapse)
-        # If the derived (pre-collapsed) dataset is available alongside the collapsed one, prefer it for baseline only.
-        # Otherwise, proceed with current data but expand factor levels using the original declared levels when available.
-        try({
-            pre_collapsed_path <- file.path(PROCESSED_DATA_DIR, paste0(cohort_name, "_derived_precollapse.rds"))
-            if (file.exists(pre_collapsed_path)) {
-                data_pre <- readRDS(pre_collapsed_path)
-                # Align columns to those in current data
-                common_cols <- intersect(names(data_pre), names(data))
-                if (length(common_cols) > 0) {
-                    data[common_cols] <- data_pre[common_cols]
-                    logger::log_info(sprintf("Using pre-collapsed factor levels for baseline table: %s", cohort_name))
-                }
-            }
-        }, silent = TRUE)
-
         prefix <- case_when(
             grepl("full", cohort_name) ~ "full_cohort_",
             grepl("restricted", cohort_name) ~ "restricted_cohort_",

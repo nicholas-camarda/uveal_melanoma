@@ -14,10 +14,12 @@ if (!file.exists(lockfile)) {
 }
 
 if (!requireNamespace("renv", quietly = TRUE)) {
-    install.packages("renv", repos = "https://cloud.r-project.org")
+    stop(
+        "Project activation did not make the locked renv version available.",
+        call. = FALSE
+    )
 }
 
-renv::activate(project = project_root)
 renv::restore(
     project = project_root,
     prompt = FALSE,
@@ -26,7 +28,10 @@ renv::restore(
 
 status <- renv::status(project = project_root)
 if (isTRUE(status$synchronized)) {
-    message("renv environment restored and synchronized.")
+    message(
+        "Shared lockfile-keyed renv library restored and synchronized: ",
+        renv::paths$library(project = project_root)
+    )
 } else {
     message("renv restore completed; inspect the status above for any local-only differences.")
 }

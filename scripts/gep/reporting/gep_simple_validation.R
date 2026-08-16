@@ -961,7 +961,6 @@ simple_gep_validation <- function(data, output_dirs, prefix, dataset_name = NULL
             !is.na(.data[[expected_mfs_col]]),
             .data[[expected_mfs_col]] >= 0 & .data[[expected_mfs_col]] <= 1
         ) %>%
-        restore_gep_display_variables(dataset_name = dataset_name) %>%
         filter(
             if ("mfs_analysis_eligible" %in% names(.)) mfs_analysis_eligible else !is.na(tt_mets_months) & !is.na(mets_event),
             !is.na(.data[[expected_mfs_col]]),
@@ -1018,7 +1017,6 @@ simple_gep_validation <- function(data, output_dirs, prefix, dataset_name = NULL
             !is.na(.data[[expected_mss_col]]),
             .data[[expected_mss_col]] >= 0 & .data[[expected_mss_col]] <= 1
         ) %>%
-        restore_gep_display_variables(dataset_name = dataset_name) %>%
         filter(
             if ("mss_analysis_eligible" %in% names(.)) mss_analysis_eligible else !is.na(melanoma_death_event) & !is.na(.data[[mss_time_col]]),
             !is.na(.data[[expected_mss_col]]),

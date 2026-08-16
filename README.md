@@ -96,6 +96,19 @@ main_execution()
 
 ### Run tests
 
+Project activation selects an `renv` library from the content hash of
+`renv.lock`. The canonical checkout and every worktree using the same lockfile
+therefore share one cached package-link library, while a changed lockfile uses
+a separate library. Restore a lockfile environment once before its first use:
+
+```sh
+Rscript scripts/bootstrap_packages.R
+```
+
+Run project commands without `--vanilla` so R loads `.Rprofile`. Do not prepend
+another checkout's library with `.libPaths()` or install packages into a
+checkout-specific library.
+
 ```sh
 # Fast, data-free suite used by the required pull-request check
 Rscript scripts/tools/run_testthat.R tests/testthat --filter '^(ci_contract|path_runtime_publish|forest_plot_labels|objective0_data_processing_portable|objective1_subgroup_policy|objective4_gep_analysis_portable|sparse_factor_handling|propensity_score_sensitivity|synthetic_fixture_contract)$'
@@ -173,8 +186,9 @@ Pipeline outputs are primarily written to the runtime analysis tree:
 Runtime output root
 |- Analytic Dataset/
 |  |- cohort_summary_statistics.json
-|  |- *.rds
-|  `- *_derived_precollapse.rds
+|  |- uveal_melanoma_full_cohort.{rds,xlsx}
+|  |- uveal_melanoma_restricted_cohort.{rds,xlsx}
+|  `- uveal_melanoma_gksrs_only_cohort.{rds,xlsx}
 |- Analysis/
 |  |- uveal_full/
 |  |- uveal_restricted/

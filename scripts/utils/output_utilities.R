@@ -742,114 +742,6 @@ format_gep_p_value <- function(p_value, log_p_value = NULL, decimal_places = 4, 
     sprintf(paste0("%.", decimal_places, "f"), p_value)
 }
 
-#' Load pre-collapse derived data for a dataset
-#'
-#' Reads the `*_derived_precollapse.rds` file from the processed-data
-#' directory so that downstream functions can restore pre-collapse factor
-#' levels and derived variables.
-#'
-#' @param dataset_name Dataset identifier (e.g., `"uveal_melanoma_full_cohort"`).
-#' @return A data frame, or `NULL` if the file is unavailable.
-load_precollapse_data <- function(dataset_name = NULL) {
-    if (is.null(dataset_name) || !exists("PROCESSED_DATA_DIR", inherits = TRUE)) {
-        return(NULL)
-    }
-
-    precollapse_path <- file.path(PROCESSED_DATA_DIR, paste0(dataset_name, "_derived_precollapse.rds"))
-    if (!file.exists(precollapse_path)) {
-        return(NULL)
-    }
-
-    tryCatch(
-        readRDS(precollapse_path),
-        error = function(e) NULL
-    )
-}
-
-#' Restore pre-collapse versions of selected variables
-#'
-#' Matches rows by patient key (id, patient_id, …) and replaces values in
-#' the current analytic dataset with their pre-collapse originals. When no
-#' key column is available, falls back to column-wise replacement if row
-#' counts match.
-#'
-#' @param data Current analytic data frame.
-#' @param dataset_name Dataset identifier passed to [load_precollapse_data()].
-#' @param variables Optional character vector of variables to restore; if
-#'   `NULL`, all shared columns are restored.
-#' @return Data frame with restored pre-collapse values.
-restore_precollapse_variables <- function(data, dataset_name = NULL, variables = NULL) {
-    precollapse_data <- load_precollapse_data(dataset_name)
-    if (is.null(precollapse_data)) {
-        return(data)
-    }
-
-    common_cols <- intersect(names(precollapse_data), names(data))
-    if (!is.null(variables)) {
-        common_cols <- intersect(common_cols, variables)
-    }
-
-    if (length(common_cols) == 0) {
-        return(data)
-    }
-
-    key_candidates <- c("id", "patient_id", "record_id", "case_id", "study_id")
-    key_col <- key_candidates[key_candidates %in% names(data) & key_candidates %in% names(precollapse_data)][1]
-
-    if (!is.na(key_col) &&
-        !anyDuplicated(data[[key_col]]) &&
-        !anyDuplicated(precollapse_data[[key_col]])) {
-        matched_rows <- match(data[[key_col]], precollapse_data[[key_col]])
-        matched <- !is.na(matched_rows)
-        restore_cols <- setdiff(common_cols, key_col)
-
-        for (col in restore_cols) {
-            restored_values <- data[[col]]
-
-            if (is.factor(precollapse_data[[col]]) || is.factor(restored_values)) {
-                restored_chars <- as.character(restored_values)
-                restored_chars[matched] <- as.character(precollapse_data[[col]][matched_rows[matched]])
-                restored_levels <- unique(c(get_stable_factor_levels(precollapse_data[[col]]), restored_chars))
-                data[[col]] <- factor(restored_chars, levels = restored_levels)
-            } else {
-                restored_values[matched] <- precollapse_data[[col]][matched_rows[matched]]
-                data[[col]] <- restored_values
-            }
-        }
-
-        return(data)
-    }
-
-    if (nrow(precollapse_data) == nrow(data)) {
-        data[common_cols] <- precollapse_data[common_cols]
-    }
-
-    data
-}
-
-#' Restore GEP display variables from pre-collapse data
-#'
-#' Convenience wrapper around [restore_precollapse_variables()] that
-#' defaults to restoring GEP-classification columns (`biopsy1_gep`,
-#' `gep_class_simple`, `prame_status`, `gep12_prame_status`).
-#'
-#' @param data Current analytic data frame.
-#' @param dataset_name Dataset identifier.
-#' @param variables Optional character vector of variables to restore; if
-#'   `NULL`, the globals `GEP_DISPLAY_VARIABLES` or a built-in default are used.
-#' @return Data frame with restored GEP display variables.
-restore_gep_display_variables <- function(data, dataset_name = NULL, variables = NULL) {
-    if (is.null(variables)) {
-        if (exists("GEP_DISPLAY_VARIABLES", inherits = TRUE)) {
-            variables <- get("GEP_DISPLAY_VARIABLES", inherits = TRUE)
-        } else {
-            variables <- c("biopsy1_gep", "gep_class_simple", "prame_status", "gep12_prame_status")
-        }
-    }
-
-    restore_precollapse_variables(data, dataset_name = dataset_name, variables = variables)
-}
-
 #' Harmonize gtsummary headers across tables before stacking
 #'
 #' Uses the first table as the reference header map so intentionally stacked
@@ -916,16 +808,15 @@ quiet_tbl_stack <- function(tbls) {
 #' Fisher's exact test (simulated) is used for categorical comparisons.
 #'
 #' @param data Data frame of cohort observations.
-#' @param dataset_name Optional dataset id used for pre-collapse level restoration
-#'   and cohort-specific exclusions (e.g., `optic_nerve` in the restricted cohort).
+#' @param dataset_name Optional dataset id used for cohort-specific exclusions
+#'   (e.g., `optic_nerve` in the restricted cohort).
 #' @return A `tbl_summary` object.
 build_merged_baseline_cohort_table <- function(data, dataset_name = NULL) {
     vars_to_summarize <- BASELINE_VARIABLES_TO_SUMMARIZE
     variable_labels <- get_variable_labels()
     cohort_label <- dataset_name %||% "cohort"
 
-    cohort_data <- apply_precollapse_levels(data, dataset_name)
-    cohort_data <- format_levels_for_display(cohort_data)
+    cohort_data <- format_levels_for_display(data)
 
     available_vars <- intersect(vars_to_summarize, names(cohort_data))
     if (!is.null(dataset_name) && grepl("restricted", dataset_name, ignore.case = TRUE)) {
@@ -1039,12 +930,6 @@ build_merged_baseline_cohort_table <- function(data, dataset_name = NULL) {
     )
 }
 
-#' Reapply pre-collapsed factor levels when available
-#'
-apply_precollapse_levels <- function(data, dataset_name = NULL) {
-    restore_precollapse_variables(data, dataset_name = dataset_name)
-}
-
 #' Merge baseline characteristics tables from full and restricted cohorts
 #'
 #' Creates a merged table comparing baseline characteristics between full and restricted cohorts
@@ -1132,7 +1017,7 @@ merge_cohort_tables <- function(full_cohort_data, restricted_cohort_data, output
 #' @param restricted_cohort_data Data frame containing restricted cohort data.
 #' @param gksrs_only_cohort_data Data frame containing GKSRS-only cohort data.
 #' @param output_path Directory where merged tables should be saved.
-#' @param dataset_names Named list of dataset ids for pre-collapse restoration.
+#' @param dataset_names Named list of dataset ids for cohort-specific reporting.
 #' @return Invisibly returns NULL.
 merge_all_cohort_baseline_tables <- function(full_cohort_data,
                                              restricted_cohort_data,
@@ -1208,7 +1093,7 @@ merge_all_cohort_baseline_tables <- function(full_cohort_data,
 #' @param full_cohort_data Data frame containing full cohort data.
 #' @param gksrs_only_cohort_data Data frame containing GKSRS-only cohort data.
 #' @param output_path Directory where merged tables should be saved.
-#' @param dataset_names Named list of dataset ids for pre-collapse restoration.
+#' @param dataset_names Named list of dataset ids for cohort-specific reporting.
 #' @return Invisibly returns NULL.
 merge_full_vs_gksrs_baseline_tables <- function(full_cohort_data,
                                                 gksrs_only_cohort_data,

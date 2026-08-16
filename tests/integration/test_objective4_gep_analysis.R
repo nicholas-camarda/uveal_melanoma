@@ -141,74 +141,7 @@ test_that("simple GEP validation uses melanoma-specific MSS endpoint", {
     unlink(test_output_dir, recursive = TRUE)
 })
 
-test_that("restore_gep_display_variables restores only protected GEP display columns", {
-    dataset_name <- "unit_test_gep_display_restore"
-    dir.create(PROCESSED_DATA_DIR, recursive = TRUE, showWarnings = FALSE)
-    precollapse_path <- file.path(PROCESSED_DATA_DIR, paste0(dataset_name, "_derived_precollapse.rds"))
-    on.exit(unlink(precollapse_path), add = TRUE)
-
-    precollapse_data <- tibble::tibble(
-        biopsy1_gep = factor(c("Class 1 PRAME Negative", "GEP Failed/Indeterminate")),
-        gep_class_simple = factor(c("Class 1", "GEP Failed/Indeterminate")),
-        prame_status = factor(c("Negative", "Not Available")),
-        gep12_prame_status = factor(c("Negative", NA_character_)),
-        unchanged_var = c("keep_a", "keep_b")
-    )
-    saveRDS(precollapse_data, precollapse_path)
-
-    collapsed_data <- precollapse_data %>%
-        mutate(
-            biopsy1_gep = factor(c("Class 1 PRAME Negative", "GEP Not Tested")),
-            gep_class_simple = factor(c("Class 1", "GEP Not Tested")),
-            prame_status = factor(c("Negative", "Unknown")),
-            gep12_prame_status = factor(c("Negative", "Unknown")),
-            unchanged_var = c("keep_a", "changed")
-        )
-
-    restored_data <- restore_gep_display_variables(collapsed_data, dataset_name = dataset_name)
-
-    expect_equal(as.character(restored_data$biopsy1_gep), as.character(precollapse_data$biopsy1_gep))
-    expect_equal(as.character(restored_data$gep_class_simple), as.character(precollapse_data$gep_class_simple))
-    expect_equal(as.character(restored_data$prame_status), as.character(precollapse_data$prame_status))
-    expect_equal(as.character(restored_data$gep12_prame_status), as.character(precollapse_data$gep12_prame_status))
-    expect_equal(restored_data$unchanged_var, collapsed_data$unchanged_var)
-})
-
-test_that("restore_gep_display_variables aligns subsetted rows by id", {
-    dataset_name <- "unit_test_gep_subset_restore"
-    dir.create(PROCESSED_DATA_DIR, recursive = TRUE, showWarnings = FALSE)
-    precollapse_path <- file.path(PROCESSED_DATA_DIR, paste0(dataset_name, "_derived_precollapse.rds"))
-    on.exit(unlink(precollapse_path), add = TRUE)
-
-    saveRDS(
-        tibble::tibble(
-            id = c(101, 102, 103),
-            biopsy1_gep = factor(c("Class 1 PRAME Negative", "Class 2 PRAME Positive", "GEP Failed/Indeterminate")),
-            gep_class_simple = factor(c("Class 1", "Class 2", "GEP Failed/Indeterminate")),
-            prame_status = factor(c("Negative", "Positive", "Not Available")),
-            gep12_prame_status = factor(c("Negative", "Positive", NA_character_))
-        ),
-        precollapse_path
-    )
-
-    subset_data <- tibble::tibble(
-        id = c(103, 101),
-        biopsy1_gep = factor(c("GEP Not Tested", "Class 1 PRAME Negative")),
-        gep_class_simple = factor(c("GEP Not Tested", "Class 1")),
-        prame_status = factor(c("Unknown", "Negative")),
-        gep12_prame_status = factor(c("Unknown", "Negative")),
-        unchanged_var = c("keep_c", "keep_a")
-    )
-
-    restored_data <- restore_gep_display_variables(subset_data, dataset_name = dataset_name)
-
-    expect_equal(as.character(restored_data$biopsy1_gep), c("GEP Failed/Indeterminate", "Class 1 PRAME Negative"))
-    expect_equal(as.character(restored_data$gep_class_simple), c("GEP Failed/Indeterminate", "Class 1"))
-    expect_equal(as.character(restored_data$prame_status), c("Not Available", "Negative"))
-    expect_equal(restored_data$unchanged_var, subset_data$unchanged_var)
-})
-
-test_that("simple GEP validation restores protected display labels when precollapse data exist", {
+test_that("simple GEP validation uses canonical analytic labels directly", {
     test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective4_simple_restore")
     output_dirs <- list(
         obj4_mfs = file.path(test_output_dir, "04_GEP_Validation", "a_mfs_validation"),
@@ -219,21 +152,8 @@ test_that("simple GEP validation restores protected display labels when precolla
         dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
     }
 
-    dataset_name <- "unit_test_simple_gep_restore"
-    dir.create(PROCESSED_DATA_DIR, recursive = TRUE, showWarnings = FALSE)
-    precollapse_path <- file.path(PROCESSED_DATA_DIR, paste0(dataset_name, "_derived_precollapse.rds"))
-    on.exit(unlink(precollapse_path), add = TRUE)
+    dataset_name <- "unit_test_simple_gep_canonical"
     on.exit(unlink(test_output_dir, recursive = TRUE), add = TRUE)
-
-    saveRDS(
-        tibble::tibble(
-            biopsy1_gep = factor(c("Class 1", "GEP Failed/Indeterminate")),
-            gep_class_simple = factor(c("Class 1", "GEP Failed/Indeterminate")),
-            prame_status = factor(c("Negative", "Not Available")),
-            gep12_prame_status = factor(c("Negative", NA_character_))
-        ),
-        precollapse_path
-    )
 
     test_data <- tibble::tibble(
         biopsy1_gep = factor(c("Class 1", "GEP Not Tested")),
@@ -260,10 +180,8 @@ test_that("simple GEP validation restores protected display labels when precolla
 
     expect_false(any(as.character(results$mfs_results$gep_class_simple) == "Other"))
     expect_false(any(as.character(results$mss_results$gep_class_simple) == "Other"))
-    expect_false("GEP Failed/Indeterminate" %in% as.character(results$mfs_results$gep_class_simple))
-    expect_false("GEP Failed/Indeterminate" %in% as.character(results$mss_results$gep_class_simple))
-    expect_equal(as.character(results$mfs_results$gep_class_simple), "Class 1")
-    expect_equal(as.character(results$mss_results$gep_class_simple), "Class 1")
+    expect_setequal(as.character(results$mfs_results$gep_class_simple), c("Class 1", "GEP Not Tested"))
+    expect_setequal(as.character(results$mss_results$gep_class_simple), c("Class 1", "GEP Not Tested"))
 })
 
 test_that("survival helper can separate KM display groups from Cox model groups", {
@@ -1855,10 +1773,8 @@ test_that("Objective 4 eligibility refresh removes failed rows from cohort analy
     for (dataset_name in cohort_names) {
         actual_data <- readRDS(file.path(PROCESSED_DATA_DIR, paste0(dataset_name, ".rds")))
         refreshed_data <- refresh_gep_analysis_flags(actual_data)
-        display_data <- restore_gep_display_variables(refreshed_data, dataset_name = dataset_name)
-
-        mfs_data <- display_data %>% filter(mfs_analysis_eligible)
-        mss_data <- display_data %>% filter(mss_analysis_eligible)
+        mfs_data <- refreshed_data %>% filter(mfs_analysis_eligible)
+        mss_data <- refreshed_data %>% filter(mss_analysis_eligible)
 
         expect_false(any(as.character(mfs_data$biopsy1_gep) %in% c("GEP Failed/Indeterminate", "GEP Not Tested")),
             info = sprintf("MFS-eligible rows should exclude failed and not-tested labels for %s", dataset_name)
@@ -1877,15 +1793,11 @@ test_that("Objective 4 eligibility refresh removes failed rows from cohort analy
 
 test_that("Canonical GEP variables retain original levels without cohort-wide collapse", {
     actual_data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
-    precollapse_data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort_derived_precollapse.rds"))
-
     expect_false(file.exists(file.path(PROCESSED_DATA_DIR, "other_map.rds")))
     expect_true(all(c("biopsy1_gep_raw", GEP_DISPLAY_VARIABLES, "location") %in% names(actual_data)))
     expect_false("Other" %in% levels(actual_data$location))
     expect_false("Other" %in% levels(actual_data$biopsy1_gep_raw))
-    expect_false("Other" %in% levels(precollapse_data$biopsy1_gep_raw))
     expect_false(any(as.character(actual_data$biopsy1_gep_raw) == "Other", na.rm = TRUE))
-    expect_false(any(as.character(precollapse_data$biopsy1_gep_raw) == "Other", na.rm = TRUE))
     expect_true(any(as.character(actual_data$location) == "Cilio-Choroidal"))
     expect_true(any(as.character(actual_data$biopsy1_gep) == "GEP Not Tested"))
 })

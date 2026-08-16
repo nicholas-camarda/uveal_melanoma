@@ -39,7 +39,13 @@ run_testthat_directory <- function(args = commandArgs(trailingOnly = TRUE)) {
         stop(sprintf("Test directory does not exist: %s", test_dir), call. = FALSE)
     }
     if (!requireNamespace("testthat", quietly = TRUE)) {
-        stop("Package 'testthat' is required to run the test suite.", call. = FALSE)
+        stop(
+            paste(
+                "The locked 'testthat' package is unavailable.",
+                "Run Rscript scripts/bootstrap_packages.R from the repository root."
+            ),
+            call. = FALSE
+        )
     }
 
     result <- testthat::test_dir(
