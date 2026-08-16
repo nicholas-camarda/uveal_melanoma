@@ -32,7 +32,7 @@ Both revisions were run in detached or task-specific worktrees with the same loc
 | Unit failures | 0 | 0 |
 | Unit warnings | 958 | 0 |
 | Unit skips | 1 | 0 |
-| Unit runtime | 261.2 s | 78.4 s normally; 76.5 s in reversed file order |
+| Unit runtime | 261.2 s | 77.6 s normally; 76.1 s in reversed file order |
 | Synthetic integration files | Portable smoke mixed into the private directory | 1/1 dedicated portable file |
 | Synthetic integration expectations | 10 | 10 |
 | Actual-data integration files executed | 1/7 effectively portable; six files skipped | 6/6 actual-data files |
