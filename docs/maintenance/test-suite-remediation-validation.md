@@ -28,7 +28,7 @@ Both revisions were run in detached or task-specific worktrees with the same loc
 |---|---:|---:|
 | Unit test files expected/executed | 40/40 locally; 9/40 required in CI | 41/41 locally and required in CI |
 | Declared unit test cases | 263 | 271 |
-| Unit expectations passed | 1,548 | 1,593 |
+| Unit expectations passed | 1,548 | 1,595 |
 | Unit failures | 0 | 0 |
 | Unit warnings | 958 | 0 |
 | Unit skips | 1 | 0 |

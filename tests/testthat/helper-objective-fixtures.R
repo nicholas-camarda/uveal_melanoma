@@ -119,7 +119,7 @@ get_objective3_pipeline <- function() {
             dataset_name = "test_cohort",
             output_dirs = paths$dirs,
             prefix = "test_",
-            confounders = c("age_at_diagnosis", "sex")
+            confounders = character()
         )
         .objective_fixture_state$results$objective3 <- list(
             results = results,

@@ -19,6 +19,10 @@ test_that("Objective 3 pipeline returns the current PFS-2 analysis contract", {
   expect_equal(nrow(results$pfs2_analysis$pfs2_data), 12)
   expect_false(is.null(results$pfs2_analysis$summary_table))
   expect_false(is.null(results$pfs2_analysis$survival_analysis$cox_model))
+  expect_length(
+    results$pfs2_analysis$survival_analysis$cox_model$perfect_separation_vars,
+    0L
+  )
 
   expect_true(file.exists(file.path(pipeline_run$output_dirs$obj3_pfs2_cohort_support, "test_pfs2_treatment_summary.xlsx")))
   expect_true(file.exists(file.path(
