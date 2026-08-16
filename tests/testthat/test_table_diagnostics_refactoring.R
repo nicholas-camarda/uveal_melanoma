@@ -247,7 +247,7 @@ test_that("model summary puts the fitted sample size alongside model metadata", 
     expect_lt(match("fitted_n", names(result$model_summary)), match("n_events", names(result$model_summary)))
 })
 
-test_that("skipped diagnostics distinguish eligible input rows from fitted rows", {
+test_that("skipped diagnostics reconcile eligible input without claiming a fitted model", {
     summary <- build_sample_size_summary_tab(
         filter_stats = list(initial_n = 40L, model_n = 37L, removed_n = 3L),
         dataset_name = "test_dataset",
@@ -264,7 +264,7 @@ test_that("skipped diagnostics distinguish eligible input rows from fitted rows"
     expect_equal(summary$n, c(40L, 37L, NA_integer_))
     expect_equal(summary$excluded_from_previous_n, c(NA, 3L, NA_integer_))
     expect_identical(summary$status, c("available", "not_fitted", "not_fitted"))
-    expect_identical(summary$reconciliation, c("not_applicable", "not_fitted", "not_fitted"))
+    expect_identical(summary$reconciliation, c("not_applicable", "matched", "not_fitted"))
     expect_match(
         build_sample_size_source_note(summary),
         "40 initial participants; 37 entered the model-eligibility dataset",
@@ -446,7 +446,7 @@ test_that("shared skip diagnostics render structured HTML and workbook tabs", {
                 "model fit"
             ),
             status = c("available", "not_fitted", "not_fitted"),
-            reconciliation = c("not_applicable", "not_fitted", "not_fitted")
+            reconciliation = c("not_applicable", "matched", "not_fitted")
         ),
         skip_summary = build_skip_summary_tab(list(
             modeled_events = 4L,
@@ -551,7 +551,7 @@ test_that("no-content diagnostic HTML uses the shared structured skip layout", {
                     "model fit"
                 ),
                 status = c("available", "not_fitted", "not_fitted"),
-                reconciliation = c("not_applicable", "not_fitted", "not_fitted")
+                reconciliation = c("not_applicable", "matched", "not_fitted")
             )
         ),
         data = test_data,
