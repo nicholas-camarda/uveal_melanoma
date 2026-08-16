@@ -97,6 +97,10 @@ test_that("portable test runner propagates testthat failures", {
     passing_status <- system2(
         file.path(R.home("bin"), "Rscript"),
         c(shQuote(runner), shQuote(passing_dir)),
+        env = c(
+            "OCULAR_EXPECTED_TEST_FILES=1",
+            "OCULAR_EXPECTED_TEST_CASES=1"
+        ),
         stdout = FALSE,
         stderr = FALSE
     )
@@ -104,6 +108,10 @@ test_that("portable test runner propagates testthat failures", {
         system2(
             file.path(R.home("bin"), "Rscript"),
             c(shQuote(runner), shQuote(failing_dir)),
+            env = c(
+                "OCULAR_EXPECTED_TEST_FILES=1",
+                "OCULAR_EXPECTED_TEST_CASES=1"
+            ),
             stdout = FALSE,
             stderr = FALSE
         )

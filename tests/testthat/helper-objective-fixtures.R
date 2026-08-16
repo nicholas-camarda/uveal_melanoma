@@ -4,26 +4,14 @@
     integer(5),
     c("objective1", "objective2", "objective3", "objective4", "merged_tables")
 )
-.objective_fixture_state$track <- TRUE
 
 objective_execution_counts <- function() {
     .objective_fixture_state$counts
 }
 
 record_objective_execution <- function(key) {
-    if (isTRUE(.objective_fixture_state$track)) {
-        .objective_fixture_state$counts[[key]] <-
-            .objective_fixture_state$counts[[key]] + 1L
-    }
-}
-
-run_untracked_objective_contract <- function(code) {
-    old_track <- .objective_fixture_state$track
-    .objective_fixture_state$track <- FALSE
-    on.exit({
-        .objective_fixture_state$track <- old_track
-    }, add = TRUE)
-    force(code)
+    .objective_fixture_state$counts[[key]] <-
+        .objective_fixture_state$counts[[key]] + 1L
 }
 
 wrap_objective_entrypoint <- function(function_name, key) {
@@ -121,7 +109,7 @@ get_objective3_pipeline <- function() {
             recurrence1_treatment_clean = factor(rep(c("GKSRS", "Plaque"), each = 6)),
             recurrence1_treatment = rep(c("GKSRS", "Plaque"), each = 6),
             treatment_group = factor(rep(c("PBT", "GKSRS"), each = 6)),
-            pfs2_event = c(1L, 1L, 1L, 1L, rep(0L, 8)),
+            pfs2_event = c(1L, 1L, 1L, 1L, 1L, 0L, 1L, 1L, 1L, 1L, 1L, 0L),
             age_at_diagnosis = rep(c(60, 68, 72), length.out = 12),
             sex = factor(rep(c("Male", "Female"), length.out = 12))
         )

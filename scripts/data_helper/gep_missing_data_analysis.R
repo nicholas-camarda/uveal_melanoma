@@ -70,20 +70,13 @@ assess_gep_missing_data <- function(data) {
                     # Chi-square test for categorical variables
                     tryCatch(
                         {
-                            contingency <- table(var_data, groups)
-                            chi_test <- suppressWarnings(chisq.test(contingency))
-                            use_fisher <- any(chi_test$expected < 5)
-                            association_test <- if (use_fisher) {
-                                fisher.test(contingency)
-                            } else {
-                                chi_test
-                            }
+                            chi_test <- chisq.test(table(var_data, groups))
                             test_result <- list(
                                 variable = var,
-                                test = if (use_fisher) "Fisher exact" else "Chi-square",
-                                statistic = if (use_fisher) NA_real_ else round(association_test$statistic, 3),
-                                p_value = round(association_test$p.value, 4),
-                                significant = association_test$p.value < 0.05
+                                test = "Chi-square",
+                                statistic = round(chi_test$statistic, 3),
+                                p_value = round(chi_test$p.value, 4),
+                                significant = chi_test$p.value < 0.05
                             )
                         },
                         error = function(e) NULL

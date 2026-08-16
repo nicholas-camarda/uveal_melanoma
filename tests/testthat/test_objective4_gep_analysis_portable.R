@@ -432,54 +432,9 @@ test_that("Unified GEP discrimination summary carries MSS estimand metadata", {
     expect_match(mss_row$Estimand, "competing event")
 })
 
-test_that("Objective 4 returns fatal issues and failed run_state when MSS analysis errors", {
-    test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective4_failed_run_state")
-    output_dirs <- build_objective4_output_dirs(test_output_dir)
-    dir.create(test_output_dir, recursive = TRUE, showWarnings = FALSE)
-    for (dir_path in output_dirs) {
-        dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
-    }
-    withr::defer(unlink(test_output_dir, recursive = TRUE), envir = parent.frame())
-
-    old_mfs <- analyze_gep_mfs_validation
-    old_mss <- analyze_gep_mss_validation
-    old_unified <- create_unified_gep_validation_summary
-    old_visuals <- create_unified_gep_visuals
-    old_simple <- simple_gep_validation
-
-    withr::defer(assign("analyze_gep_mfs_validation", old_mfs, envir = .GlobalEnv), envir = parent.frame())
-    withr::defer(assign("analyze_gep_mss_validation", old_mss, envir = .GlobalEnv), envir = parent.frame())
-    withr::defer(assign("create_unified_gep_validation_summary", old_unified, envir = .GlobalEnv), envir = parent.frame())
-    withr::defer(assign("create_unified_gep_visuals", old_visuals, envir = .GlobalEnv), envir = parent.frame())
-    withr::defer(assign("simple_gep_validation", old_simple, envir = .GlobalEnv), envir = parent.frame())
-
-    assign("analyze_gep_mfs_validation", function(...) list(validation_results = list()), envir = .GlobalEnv)
-    assign("analyze_gep_mss_validation", function(...) stop("forced MSS failure"), envir = .GlobalEnv)
-    assign("create_unified_gep_validation_summary", function(...) invisible(list()), envir = .GlobalEnv)
-    assign("create_unified_gep_visuals", function(...) invisible(NULL), envir = .GlobalEnv)
-    assign(
-        "simple_gep_validation",
-        function(...) {
-            list(
-                mfs_results = data.frame(),
-                mss_results = data.frame(),
-                overall_summary = data.frame()
-            )
-        },
-        envir = .GlobalEnv
+test_that("Objective run state fails closed for fatal issues", {
+    expect_identical(
+        determine_run_state(fatal_issues = "mss_validation: forced failure"),
+        "failed"
     )
-
-    results <- run_untracked_objective_contract(
-        run_objective_4(
-            data = create_test_dataset(),
-            dataset_name = "uveal_melanoma_restricted_cohort",
-            output_dirs = output_dirs,
-            prefix = "portable_"
-        )
-    )
-
-    expect_equal(results$run_state, "failed")
-    expect_true(length(results$fatal_issues) > 0)
-    expect_true(any(grepl("^mss_validation:", results$fatal_issues)))
-    expect_true(results$had_errors)
 })

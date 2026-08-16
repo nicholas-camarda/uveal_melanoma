@@ -27,16 +27,16 @@ Both revisions were run in detached or task-specific worktrees with the same loc
 | Measure | Clean master | Candidate |
 |---|---:|---:|
 | Unit test files expected/executed | 40/40 locally; 9/40 required in CI | 41/41 locally and required in CI |
-| Unit `test_that()` blocks present | 257 | 269 |
-| Unit expectations passed | 1,548 | 1,586 |
+| Declared unit test cases | 263 | 271 |
+| Unit expectations passed | 1,548 | 1,593 |
 | Unit failures | 0 | 0 |
 | Unit warnings | 958 | 0 |
 | Unit skips | 1 | 0 |
-| Unit runtime | 263.9 s | 63.1 s in reversed file order |
+| Unit runtime | 263.9 s | 78.0 s |
 | Synthetic integration files | Portable smoke mixed into the private directory | 1/1 dedicated portable file |
 | Synthetic integration expectations | 10 | 10 |
 | Actual-data integration files executed | 1/7 effectively portable; six files skipped | 6/6 actual-data files |
-| Actual-data integration result | 10 pass, 6 skip; private inputs were not reached | 652 pass, 0 fail, 0 warning, 0 skip |
+| Actual-data integration result | 10 pass, 6 skip; private inputs were not reached | 654 pass, 0 fail, 0 warning, 0 skip |
 | Objective 1 full executions | 19 | 1 |
 | Objective 2 full executions | 3 | 1 |
 | Objective 3 full executions | 1 | 1 |
@@ -55,12 +55,13 @@ Representative mutations were made only in a disposable detached worktree and we
 | Unexpected warning | Rejected with exit 1 and `warnings=1` |
 | Unexpected skip | Rejected with exit 1 and `skips=1` |
 | Discovered file with no executed case | Rejected with exit 1 and the omitted filename |
+| Deleted declared test case | Rejected with exit 1 because the committed 271-case inventory no longer matched |
 | Invalid actual-data input routing | Rejected with exit 1 during bootstrap |
 | Every Objective 1-4 and merged-table entrypoint executed twice | Rejected with exit 1 and `objective1=2, objective2=2, objective3=2, objective4=2, merged_tables=2` |
 
 ## Warning policy
 
-Unexpected R warnings fail the suite. Deterministic sparse-data Cox convergence warnings in the read-only actual-data lane are captured by exact message class and directly asserted; all other warnings propagate to the fail-closed runner. Missing plot-scale levels, invalid chi-square approximations, absent-column access, duplicate coordinates, test-fixture separation, and optional-output warnings were eliminated at their sources.
+Unexpected R warnings fail the suite. Deterministic sparse-data Cox convergence and chi-square approximation warnings in the read-only actual-data lane are captured by recognized message text and directly asserted; all other warnings propagate to the fail-closed runner. Missing plot-scale levels, absent-column access, duplicate coordinates, test-fixture separation, and optional-output warnings were eliminated at their sources.
 
 ## Scientific contracts
 
@@ -68,7 +69,7 @@ The synthetic fixture is deterministic, privacy-safe, balanced across treatment 
 
 ## CI contract
 
-GitHub Actions has one required `required` job for pull requests and pushes to `master`. It invokes only the canonical portable command, which runs the complete unit suite, dedicated synthetic integration suite, and lint with warnings promoted to errors. Workflow and runner contract tests reject reintroduction of filters, manual-only full coverage, warning/skip tolerance, omitted files, private-data routing, or fragmented entrypoints.
+GitHub Actions has one required `required` job for pull requests and pushes to `master`. It fails if the restored `renv` environment is not synchronized, then invokes only the canonical portable command, which runs the complete unit suite, dedicated synthetic integration suite, and lint with warnings promoted to errors. Workflow and runner contract tests reject reintroduction of filters, manual-only full coverage, warning/skip tolerance, omitted files or cases, private-data routing, or fragmented entrypoints.
 
 ## Remaining boundaries
 

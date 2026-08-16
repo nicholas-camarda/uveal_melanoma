@@ -1,4 +1,4 @@
-run_testthat_subprocess <- function(test_dir, filter = NULL) {
+run_testthat_subprocess <- function(test_dir, filter = NULL, env = character()) {
     args <- c(here::here("scripts", "tools", "run_testthat.R"), test_dir)
     if (!is.null(filter)) {
         args <- c(args, "--filter", filter)
@@ -7,6 +7,7 @@ run_testthat_subprocess <- function(test_dir, filter = NULL) {
     output <- suppressWarnings(system2(
         file.path(R.home("bin"), "Rscript"),
         args,
+        env = env,
         stdout = TRUE,
         stderr = TRUE
     ))
@@ -57,6 +58,27 @@ test_that("runner result summary detects a discovered file that did not execute"
         "Unexecuted test files: test_two.R",
         fixed = TRUE
     )
+
+    inventory_dir <- withr::local_tempdir()
+    inventory_path <- file.path(inventory_dir, "test_inventory.R")
+    writeLines(c(
+        "testthat::test_that('one', testthat::succeed())",
+        "testthat::test_that('two', testthat::succeed())"
+    ), inventory_path)
+    inventory_env <- c(
+        "OCULAR_EXPECTED_TEST_FILES=1",
+        "OCULAR_EXPECTED_TEST_CASES=2"
+    )
+    expect_identical(run_testthat_subprocess(inventory_dir, env = inventory_env)$status, 0L)
+
+    writeLines("testthat::test_that('one', testthat::succeed())", inventory_path)
+    omitted_case <- run_testthat_subprocess(inventory_dir, env = inventory_env)
+    expect_gt(omitted_case$status, 0L)
+    expect_match(
+        paste(omitted_case$output, collapse = "\n"),
+        "Expected 2 test cases but declared 1",
+        fixed = TRUE
+    )
 })
 
 test_that("portable CI exposes one complete required check", {
@@ -99,6 +121,8 @@ test_that("portable CI pins current action implementations and restores renv", {
     )
     expect_match(workflow_text, 'r-version: "4.4.3"', fixed = TRUE)
     expect_match(workflow_text, "renv.lock", fixed = TRUE)
+    expect_match(workflow_text, "status$synchronized", fixed = TRUE)
+    expect_match(workflow_text, "renv environment is not synchronized", fixed = TRUE)
     expect_match(workflow_text, "RENV_CONFIG_REPOS_OVERRIDE", fixed = TRUE)
     expect_false(grepl("actions/checkout@v4", workflow_text, fixed = TRUE))
     expect_false(grepl("setup-r-dependencies", workflow_text, fixed = TRUE))
@@ -129,6 +153,8 @@ test_that("canonical portable command owns every portable stage", {
     expect_match(command_text, "tests/portable", fixed = TRUE)
     expect_match(command_text, "lintr::lint_package()", fixed = TRUE)
     expect_match(command_text, "OCULAR_PORTABLE_SUITE=true", fixed = TRUE)
+    expect_match(command_text, "OCULAR_EXPECTED_TEST_FILES=41", fixed = TRUE)
+    expect_match(command_text, "OCULAR_EXPECTED_TEST_CASES=271", fixed = TRUE)
 })
 
 test_that("the lockfile records the safe Deriv build and pinned rmda source", {

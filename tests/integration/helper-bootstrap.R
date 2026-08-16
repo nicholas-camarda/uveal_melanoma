@@ -99,7 +99,7 @@ get_actual_objective4_pipeline <- function() {
         output_root <- file.path(TEST_OUTPUT_DIR, "actual_objective4_pipeline")
         output_dirs <- create_output_structure(output_root)
         output_dirs <- output_dirs[grepl("^obj4_", names(output_dirs))]
-        convergence_warnings <- character()
+        asserted_warnings <- character()
         results <- withCallingHandlers(
             run_objective_4(
                 data = data,
@@ -114,13 +114,19 @@ get_actual_objective4_pipeline <- function() {
             ),
             warning = function(warning_condition) {
                 warning_message <- conditionMessage(warning_condition)
-                if (grepl(
-                    "coefficient may be infinite",
-                    warning_message,
+                allowed_warning <- any(vapply(
+                    c(
+                        "coefficient may be infinite",
+                        "Chi-squared approximation may be incorrect"
+                    ),
+                    grepl,
+                    logical(1),
+                    x = warning_message,
                     fixed = TRUE
-                )) {
-                    convergence_warnings <<- c(
-                        convergence_warnings,
+                ))
+                if (allowed_warning) {
+                    asserted_warnings <<- c(
+                        asserted_warnings,
                         warning_message
                     )
                     invokeRestart("muffleWarning")
@@ -133,7 +139,7 @@ get_actual_objective4_pipeline <- function() {
             output_root = output_root,
             input_data = data,
             prefix = "test_",
-            convergence_warnings = convergence_warnings
+            asserted_warnings = asserted_warnings
         )
     }
     .actual_objective4_state$pipeline

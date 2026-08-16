@@ -15,6 +15,10 @@ test_that("full objective and merged-table fixtures execute once and are cached"
     expect_identical(objective3_first, objective3_second)
     expect_identical(objective4_first, objective4_second)
     expect_identical(merged_first, merged_second)
+    expect_false(is.null(objective3_first$results$pfs2_analysis$survival_analysis$cox_model))
+    expect_identical(objective4_first$results$run_state, "success")
+    expect_length(objective4_first$results$fatal_issues, 0L)
+    expect_length(objective4_first$results$warning_issues, 0L)
     expect_identical(
         objective_execution_counts(),
         c(

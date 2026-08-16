@@ -6,6 +6,47 @@
 #' @param test_dir Directory passed to `testthat::test_dir()`.
 #' @param filter Optional testthat filename filter.
 #' @return A named list of discovered and executed files and result counts.
+count_test_declarations <- function(paths) {
+    walk <- function(expression) {
+        if (!is.call(expression)) {
+            return(0L)
+        }
+        head <- expression[[1L]]
+        call_name <- if (is.symbol(head)) {
+            as.character(head)
+        } else if (
+            is.call(head) &&
+                identical(as.character(head[[1L]]), "::")
+        ) {
+            as.character(head[[3L]])
+        } else {
+            ""
+        }
+        as.integer(call_name %in% c("test_that", "it")) +
+            sum(vapply(as.list(expression)[-1L], walk, integer(1L)))
+    }
+
+    sum(vapply(
+        paths,
+        function(path) {
+            sum(vapply(as.list(parse(path)), walk, integer(1L)))
+        },
+        integer(1L)
+    ))
+}
+
+read_expected_count <- function(name) {
+    value <- Sys.getenv(name, unset = "")
+    if (!nzchar(value)) {
+        return(NULL)
+    }
+    parsed <- suppressWarnings(as.integer(value))
+    if (is.na(parsed) || parsed < 0L || !identical(as.character(parsed), value)) {
+        stop(sprintf("%s must be a non-negative integer.", name), call. = FALSE)
+    }
+    parsed
+}
+
 summarize_testthat_result <- function(result, test_dir, filter = NULL) {
     result_frame <- as.data.frame(result)
     discovered_files <- sort(list.files(
@@ -32,6 +73,7 @@ summarize_testthat_result <- function(result, test_dir, filter = NULL) {
     list(
         discovered_files = discovered_files,
         executed_files = executed_files,
+        declared_cases = count_test_declarations(file.path(test_dir, discovered_files)),
         cases = nrow(result_frame),
         failures = sum(result_frame$failed) + sum(result_frame$error),
         warnings = sum(result_frame$warning),
@@ -66,6 +108,29 @@ assert_testthat_result <- function(
             problems,
             sprintf("Unexecuted test files: %s", paste(unexecuted, collapse = ", "))
         )
+    }
+    expected_files <- read_expected_count("OCULAR_EXPECTED_TEST_FILES")
+    expected_cases <- read_expected_count("OCULAR_EXPECTED_TEST_CASES")
+    if (!is.null(expected_files) && length(summary$discovered_files) != expected_files) {
+        problems <- c(problems, sprintf(
+            "Expected %d test files but discovered %d",
+            expected_files,
+            length(summary$discovered_files)
+        ))
+    }
+    if (summary$cases != summary$declared_cases) {
+        problems <- c(problems, sprintf(
+            "Declared %d test cases but executed %d",
+            summary$declared_cases,
+            summary$cases
+        ))
+    }
+    if (!is.null(expected_cases) && summary$declared_cases != expected_cases) {
+        problems <- c(problems, sprintf(
+            "Expected %d test cases but declared %d",
+            expected_cases,
+            summary$declared_cases
+        ))
     }
     if (length(problems) > 0L) {
         stop(

@@ -37,6 +37,6 @@ jobs:
           cache-version: 1
       - name: Verify locked R version and environment
         run: |
-          Rscript -e 'if (as.character(getRversion()) != "4.4.3") stop("Unexpected R version"); if (!file.exists("renv.lock")) stop("renv.lock is missing"); renv::status()'
+          Rscript -e 'if (as.character(getRversion()) != "4.4.3") stop("Unexpected R version"); if (!file.exists("renv.lock")) stop("renv.lock is missing"); status <- renv::status(); if (!isTRUE(status$synchronized)) stop("renv environment is not synchronized")'
       - name: Run complete portable suite
         run: Rscript scripts/tools/run_portable_suite.R

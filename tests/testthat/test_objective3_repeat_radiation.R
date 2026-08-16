@@ -17,18 +17,20 @@ test_that("Objective 3 pipeline returns the current PFS-2 analysis contract", {
   expect_named(results, "pfs2_analysis")
   expect_false(is.null(results$pfs2_analysis$pfs2_data))
   expect_equal(nrow(results$pfs2_analysis$pfs2_data), 12)
-  expect_null(results$pfs2_analysis$summary_table)
-  expect_null(results$pfs2_analysis$survival_analysis$cox_model)
+  expect_false(is.null(results$pfs2_analysis$summary_table))
+  expect_false(is.null(results$pfs2_analysis$survival_analysis$cox_model))
 
   expect_true(file.exists(file.path(pipeline_run$output_dirs$obj3_pfs2_cohort_support, "test_pfs2_treatment_summary.xlsx")))
-  expect_true(file.exists(file.path(pipeline_run$output_dirs$obj3_pfs2_cox, "test_pfs2_analysis_SKIPPED.html")))
-  expect_true(file.exists(file.path(pipeline_run$output_dirs$obj3_pfs2_cox, "test_pfs2_analysis_diagnostics.xlsx")))
-  ph_skipped_files <- list.files(
+  expect_true(file.exists(file.path(
+    pipeline_run$output_dirs$obj3_pfs2_cox,
+    "test_pfs_2_probability_freedom_from_2nd_recurrence_cox_coxph.html"
+  )))
+  ph_files <- list.files(
     pipeline_run$output_dirs$obj3_pfs2_ph,
-    pattern = "proportional_hazards_diagnostics_SKIPPED\\.html$",
+    pattern = "proportional_hazards",
     full.names = TRUE
   )
-  expect_true(length(ph_skipped_files) > 0)
+  expect_true(length(ph_files) > 0)
 })
 
 test_that("PFS-2 insufficient-event skips retain txt notes and add structured skip artifacts", {

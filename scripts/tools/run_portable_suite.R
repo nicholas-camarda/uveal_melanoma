@@ -6,12 +6,19 @@ run_portable_suite <- function() {
         list(
             label = "Complete portable testthat suite",
             args = c("scripts/tools/run_testthat.R", "tests/testthat"),
-            env = "OCULAR_PORTABLE_SUITE=true"
+            env = c(
+                "OCULAR_PORTABLE_SUITE=true",
+                "OCULAR_EXPECTED_TEST_FILES=41",
+                "OCULAR_EXPECTED_TEST_CASES=271"
+            )
         ),
         list(
             label = "Synthetic integration suite",
             args = c("scripts/tools/run_testthat.R", "tests/portable"),
-            env = character()
+            env = c(
+                "OCULAR_EXPECTED_TEST_FILES=1",
+                "OCULAR_EXPECTED_TEST_CASES=1"
+            )
         ),
         list(
             label = "Repository lint",

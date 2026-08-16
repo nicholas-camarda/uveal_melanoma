@@ -385,8 +385,7 @@ summarize_tumor_size_by_treatment <- function(data, size_var = "initial_tumor_he
     wilcox_p <- tryCatch(
         stats::wilcox.test(
             reformulate("treatment_group", response = size_var),
-            data = tumor_df,
-            exact = FALSE
+            data = tumor_df
         )$p.value,
         error = function(e) NA_real_
     )

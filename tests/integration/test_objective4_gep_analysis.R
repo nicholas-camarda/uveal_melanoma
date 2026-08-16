@@ -1509,10 +1509,32 @@ test_that("run_objective_4 creates current canonical Objective 4 artifacts", {
     output_dirs <- pipeline$output_dirs
     results <- pipeline$results
 
-    expect_true(length(pipeline$convergence_warnings) > 0)
-    expect_true(all(grepl(
+    expect_true(length(pipeline$asserted_warnings) > 0)
+    allowed_warning_patterns <- c(
         "coefficient may be infinite",
-        pipeline$convergence_warnings,
+        "Chi-squared approximation may be incorrect"
+    )
+    expect_true(all(vapply(
+        pipeline$asserted_warnings,
+        function(message) {
+            any(vapply(
+                allowed_warning_patterns,
+                grepl,
+                logical(1),
+                x = message,
+                fixed = TRUE
+            ))
+        },
+        logical(1)
+    )))
+    expect_true(any(grepl(
+        "coefficient may be infinite",
+        pipeline$asserted_warnings,
+        fixed = TRUE
+    )))
+    expect_true(any(grepl(
+        "Chi-squared approximation may be incorrect",
+        pipeline$asserted_warnings,
         fixed = TRUE
     )))
 

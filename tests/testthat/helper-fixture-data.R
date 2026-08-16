@@ -308,7 +308,7 @@ create_pipeline_test_dataset <- function(n = 96L, seed = 20260816L) {
       ifelse(data$age_at_diagnosis >= 63, "Older", "Younger"),
       levels = c("Younger", "Older")
     )
-    data$initial_tumor_height <- round(rlnorm(n, log(4.5), 0.32), 3)
+    data$initial_tumor_height <- rlnorm(n, log(4.5), 0.32)
     data$initial_tumor_diameter <- round(runif(n, 6, 19), 3)
     data$final_tumor_height <- pmax(
       0.5,
@@ -375,7 +375,11 @@ synthetic_ci_required_columns <- function() {
     "gep12_prame_status", "gep_validation_set", "tt_mets_months",
     "mets_event", "tt_death_months", "tt_death_years",
     "melanoma_death_event", "competing_death_event",
-    "expected_mfs_5yr", "expected_mss_5yr",
+    "expected_mfs_5yr", "expected_mfs_7yr", "expected_mfs_10yr",
+    "expected_mss_5yr", "expected_mss_7yr", "expected_mss_10yr",
+    "predicted_mfs_risk_5yr", "predicted_mfs_risk_7yr", "predicted_mfs_risk_10yr",
+    "predicted_mss_risk_5yr", "predicted_mss_risk_7yr", "predicted_mss_risk_10yr",
+    "recurrence1_treatment_clean", "missing_gep_group", "has_gep",
     "mfs_analysis_eligible", "mss_analysis_eligible", "initial_tumor_height",
     "age_at_diagnosis", "sex"
   )
@@ -457,8 +461,27 @@ create_synthetic_ci_dataset <- function(n = 48L, seed = SYNTHETIC_CI_FIXTURE_SEE
       tt_death_years = as.numeric(tt_death_months / 12),
       melanoma_death_event = as.integer(death_event),
       competing_death_event = as.integer(rep(0L, n)),
+      missing_gep_group = rep("Complete GEP", n),
+      has_gep = TRUE,
+      has_gep_mfs = TRUE,
+      has_gep_mss = TRUE,
+      has_prame = !is.na(prame_status),
       expected_mfs_5yr = expected_mfs,
+      expected_mfs_7yr = expected_mfs^(7 / 5),
+      expected_mfs_10yr = expected_mfs^2,
       expected_mss_5yr = expected_mss,
+      expected_mss_7yr = expected_mss^(7 / 5),
+      expected_mss_10yr = expected_mss^2,
+      predicted_mfs_risk_5yr = 1 - expected_mfs_5yr,
+      predicted_mfs_risk_7yr = 1 - expected_mfs_7yr,
+      predicted_mfs_risk_10yr = 1 - expected_mfs_10yr,
+      predicted_mss_risk_5yr = 1 - expected_mss_5yr,
+      predicted_mss_risk_7yr = 1 - expected_mss_7yr,
+      predicted_mss_risk_10yr = 1 - expected_mss_10yr,
+      recurrence1_treatment_clean = factor(
+        rep(c("GKSRS", "Plaque", NA_character_), length.out = n),
+        levels = c("GKSRS", "Plaque")
+      ),
       mfs_analysis_eligible = TRUE,
       mss_analysis_eligible = TRUE,
       initial_tumor_height = round(rlnorm(n, meanlog = log(3.8), sdlog = 0.28), 1),
@@ -468,7 +491,24 @@ create_synthetic_ci_dataset <- function(n = 48L, seed = SYNTHETIC_CI_FIXTURE_SEE
         levels = c("Female", "Male")
       ),
       mfs_event_5yr = as.integer(tt_mets_months <= 60 & mets_event == 1L),
-      mss_event_5yr = as.integer(tt_death_months <= 60 & death_event == 1L)
+      mfs_event_7yr = as.integer(tt_mets_months <= 84 & mets_event == 1L),
+      mfs_event_10yr = as.integer(tt_mets_months <= 120 & mets_event == 1L),
+      event_type_mfs_5yr = as.integer(tt_mets_months <= 60 & mets_event == 1L),
+      event_type_mfs_7yr = as.integer(tt_mets_months <= 84 & mets_event == 1L),
+      event_type_mfs_10yr = as.integer(tt_mets_months <= 120 & mets_event == 1L),
+      mss_event_5yr = as.integer(tt_death_months <= 60 & death_event == 1L),
+      mss_event_7yr = as.integer(tt_death_months <= 84 & death_event == 1L),
+      mss_event_10yr = as.integer(tt_death_months <= 120 & death_event == 1L),
+      event_type_mss_5yr = as.integer(tt_death_months <= 60 & death_event == 1L),
+      event_type_mss_7yr = as.integer(tt_death_months <= 84 & death_event == 1L),
+      event_type_mss_10yr = as.integer(tt_death_months <= 120 & death_event == 1L),
+      tt_mfs_5yr = pmin(tt_mets_months, 60),
+      tt_mfs_7yr = pmin(tt_mets_months, 84),
+      tt_mfs_10yr = pmin(tt_mets_months, 120),
+      tt_mss_5yr = pmin(tt_death_months / 12, 5),
+      tt_mss_7yr = pmin(tt_death_months / 12, 7),
+      tt_mss_10yr = pmin(tt_death_months / 12, 10),
+      initial_tumor_diameter = runif(n, 6, 19)
     ) %>%
       dplyr::mutate(
         initial_tumor_height = dplyr::if_else(
