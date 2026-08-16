@@ -1,3 +1,64 @@
+run_testthat_subprocess <- function(test_dir, filter = NULL) {
+    args <- c(here::here("scripts", "tools", "run_testthat.R"), test_dir)
+    if (!is.null(filter)) {
+        args <- c(args, "--filter", filter)
+    }
+
+    output <- suppressWarnings(system2(
+        file.path(R.home("bin"), "Rscript"),
+        args,
+        stdout = TRUE,
+        stderr = TRUE
+    ))
+    status <- attr(output, "status")
+    list(output = output, status = if (is.null(status)) 0L else status)
+}
+
+test_that("the directory runner rejects unexpected warnings and skips", {
+    warning_dir <- withr::local_tempdir()
+    writeLines(
+        'testthat::test_that("warns", { warning("sentinel warning"); testthat::succeed() })',
+        file.path(warning_dir, "test_warn.R")
+    )
+    warning_run <- run_testthat_subprocess(warning_dir)
+
+    expect_gt(warning_run$status, 0L)
+    expect_match(paste(warning_run$output, collapse = "\n"), "sentinel warning", fixed = TRUE)
+
+    skip_dir <- withr::local_tempdir()
+    writeLines(
+        'testthat::test_that("skips", testthat::skip("sentinel skip"))',
+        file.path(skip_dir, "test_skip.R")
+    )
+    skip_run <- run_testthat_subprocess(skip_dir)
+
+    expect_gt(skip_run$status, 0L)
+    expect_match(paste(skip_run$output, collapse = "\n"), "sentinel skip", fixed = TRUE)
+})
+
+test_that("runner result summary detects a discovered file that did not execute", {
+    runner <- new.env(parent = globalenv())
+    sys.source(here::here("scripts", "tools", "run_testthat.R"), envir = runner)
+
+    test_dir <- withr::local_tempdir()
+    writeLines("testthat::test_that('one', testthat::succeed())", file.path(test_dir, "test_one.R"))
+    writeLines("testthat::test_that('two', testthat::succeed())", file.path(test_dir, "test_two.R"))
+    result <- testthat::test_dir(
+        test_dir,
+        filter = "one",
+        reporter = "silent",
+        stop_on_failure = FALSE,
+        stop_on_warning = FALSE
+    )
+
+    summary <- runner$summarize_testthat_result(result, test_dir)
+    expect_error(
+        runner$assert_testthat_result(summary),
+        "Unexecuted test files: test_two.R",
+        fixed = TRUE
+    )
+})
+
 test_that("portable CI exposes one stable fast required check, post-merge validation, and a manual full suite", {
     workflow_path <- here::here(".github", "workflows", "portable-tests.yml")
     expect_true(file.exists(workflow_path))
@@ -90,8 +151,9 @@ test_that("bootstrap and runner are lockfile- and failure-sensitive", {
     expect_false(grepl("required_packages", bootstrap_text, fixed = TRUE))
     expect_false(grepl("install.packages", bootstrap_text, fixed = TRUE))
     expect_match(runner_text, "filter = filter", fixed = TRUE)
-    expect_match(runner_text, "stop_on_failure = TRUE", fixed = TRUE)
-    expect_false(grepl("stop_on_warning = TRUE", runner_text, fixed = TRUE))
+    expect_match(runner_text, "assert_testthat_result(summary)", fixed = TRUE)
+    expect_match(runner_text, "fail_on_warning = TRUE", fixed = TRUE)
+    expect_match(runner_text, "fail_on_skip = TRUE", fixed = TRUE)
 })
 
 test_that("OpenSpec records remain available without active CI enforcement", {
