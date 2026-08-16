@@ -8,8 +8,8 @@ run_portable_suite <- function() {
             args = c("scripts/tools/run_testthat.R", "tests/testthat"),
             env = c(
                 "OCULAR_PORTABLE_SUITE=true",
-                "OCULAR_EXPECTED_TEST_FILES=41",
-                "OCULAR_EXPECTED_TEST_CASES=271"
+                "OCULAR_EXPECTED_TEST_FILES=42",
+                "OCULAR_EXPECTED_TEST_CASES=276"
             )
         ),
         list(

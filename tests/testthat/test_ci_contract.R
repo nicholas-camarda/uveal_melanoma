@@ -153,8 +153,8 @@ test_that("canonical portable command owns every portable stage", {
     expect_match(command_text, "tests/portable", fixed = TRUE)
     expect_match(command_text, "lintr::lint_package()", fixed = TRUE)
     expect_match(command_text, "OCULAR_PORTABLE_SUITE=true", fixed = TRUE)
-    expect_match(command_text, "OCULAR_EXPECTED_TEST_FILES=41", fixed = TRUE)
-    expect_match(command_text, "OCULAR_EXPECTED_TEST_CASES=271", fixed = TRUE)
+    expect_match(command_text, "OCULAR_EXPECTED_TEST_FILES=42", fixed = TRUE)
+    expect_match(command_text, "OCULAR_EXPECTED_TEST_CASES=276", fixed = TRUE)
 })
 
 test_that("the lockfile records the safe Deriv build and pinned rmda source", {

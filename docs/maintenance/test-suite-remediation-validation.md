@@ -22,17 +22,17 @@ Rscript scripts/tools/run_testthat.R tests/integration
 
 ## Controlled baseline comparison
 
-Both revisions were run in detached or task-specific worktrees with the same local R environment. Generated output was disposable. The baseline was clean `master` at `14b27b7`; the candidate was the remediation branch.
+Both revisions were run in detached or task-specific worktrees with the same local R environment. Generated output was disposable. The baseline was clean `master` at `a5ace62`; the candidate was the remediation branch.
 
 | Measure | Clean master | Candidate |
 |---|---:|---:|
-| Unit test files expected/executed | 40/40 locally; 9/40 required in CI | 41/41 locally and required in CI |
-| Declared unit test cases | 263 | 271 |
-| Unit expectations passed | 1,548 | 1,595 |
+| Unit test files expected/executed | 41/41 locally; 9/41 required in CI | 42/42 locally and required in CI |
+| Declared unit test cases | 268 | 276 |
+| Unit expectations passed | 1,581 | 1,628 |
 | Unit failures | 0 | 0 |
 | Unit warnings | 958 | 0 |
 | Unit skips | 1 | 0 |
-| Unit runtime | 263.9 s | 78.0 s |
+| Unit runtime | 261.2 s | 78.4 s normally; 76.5 s in reversed file order |
 | Synthetic integration files | Portable smoke mixed into the private directory | 1/1 dedicated portable file |
 | Synthetic integration expectations | 10 | 10 |
 | Actual-data integration files executed | 1/7 effectively portable; six files skipped | 6/6 actual-data files |
@@ -55,7 +55,7 @@ Representative mutations were made only in a disposable detached worktree and we
 | Unexpected warning | Rejected with exit 1 and `warnings=1` |
 | Unexpected skip | Rejected with exit 1 and `skips=1` |
 | Discovered file with no executed case | Rejected with exit 1 and the omitted filename |
-| Deleted declared test case | Rejected with exit 1 because the committed 271-case inventory no longer matched |
+| Deleted declared test case | Rejected with exit 1 because the committed 276-case inventory no longer matched |
 | Invalid actual-data input routing | Rejected with exit 1 during bootstrap |
 | Every Objective 1-4 and merged-table entrypoint executed twice | Rejected with exit 1 and `objective1=2, objective2=2, objective3=2, objective4=2, merged_tables=2` |
 
