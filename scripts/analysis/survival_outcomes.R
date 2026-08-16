@@ -1801,8 +1801,8 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             name = paste0(ylab, " (%)")
         ) +
         ggplot2::labs(x = "Time (months)") +
-        ggplot2::coord_cartesian(clip = "off") +
         ggplot2::geom_hline(yintercept = 0.5, linetype = "solid", color = "black", linewidth = 0.9, alpha = 0.35)  # 50% reference line
+    surv_plot$plot$coordinates <- ggplot2::coord_cartesian(clip = "off")
     # Make risk table text larger and easier to read
     surv_plot$table <- surv_plot$table + theme_minimal() +
         ggplot2::theme(
@@ -1845,11 +1845,11 @@ analyze_time_to_event_outcomes <- function(data, time_var, event_var, group_var 
             expand = ggplot2::expansion(mult = c(0.01, 0.03)),
             name = "Time (months)"
         ) +
-        ggplot2::coord_cartesian(clip = "off") +
         ggplot2::scale_y_discrete(
             limits = rev(display_strata_order),
             expand = ggplot2::expansion(mult = risk_table_y_expand)
         )
+    surv_plot$table$coordinates <- ggplot2::coord_cartesian(clip = "off")
     
     # Save KM plot if output_dirs are provided
     if (!is.null(output_dirs)) {

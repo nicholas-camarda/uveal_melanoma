@@ -353,7 +353,7 @@ plot_rmst_pvalue_progression <- function(rmst_results, outcome_label, output_dir
     )
 
     if (is.null(output_dirs)) {
-        warning("output_dirs is NULL, cannot save RMST plot")
+        logger::log_info("RMST plot returned without saving because output_dirs is NULL")
         return(combined_plot)
     }
 

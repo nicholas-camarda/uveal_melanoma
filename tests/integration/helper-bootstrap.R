@@ -86,3 +86,55 @@ if (!identical(Sys.getenv("OCULAR_INTEGRATION_BOOTSTRAPPED"), "true")) {
 
     Sys.setenv(OCULAR_INTEGRATION_BOOTSTRAPPED = "true")
 }
+
+.actual_objective4_state <- new.env(parent = emptyenv())
+.actual_objective4_state$pipeline <- NULL
+
+get_actual_objective4_pipeline <- function() {
+    if (is.null(.actual_objective4_state$pipeline)) {
+        data <- readRDS(file.path(
+            PROCESSED_DATA_DIR,
+            "uveal_melanoma_full_cohort.rds"
+        ))
+        output_root <- file.path(TEST_OUTPUT_DIR, "actual_objective4_pipeline")
+        output_dirs <- create_output_structure(output_root)
+        output_dirs <- output_dirs[grepl("^obj4_", names(output_dirs))]
+        convergence_warnings <- character()
+        results <- withCallingHandlers(
+            run_objective_4(
+                data = data,
+                dataset_name = "uveal_melanoma_full_cohort",
+                output_dirs = output_dirs,
+                prefix = "test_",
+                confounders = c(
+                    "age_at_diagnosis_general_pop_median",
+                    "sex",
+                    "location"
+                )
+            ),
+            warning = function(warning_condition) {
+                warning_message <- conditionMessage(warning_condition)
+                if (grepl(
+                    "coefficient may be infinite",
+                    warning_message,
+                    fixed = TRUE
+                )) {
+                    convergence_warnings <<- c(
+                        convergence_warnings,
+                        warning_message
+                    )
+                    invokeRestart("muffleWarning")
+                }
+            }
+        )
+        .actual_objective4_state$pipeline <- list(
+            results = results,
+            output_dirs = output_dirs,
+            output_root = output_root,
+            input_data = data,
+            prefix = "test_",
+            convergence_warnings = convergence_warnings
+        )
+    }
+    .actual_objective4_state$pipeline
+}

@@ -1462,7 +1462,7 @@ create_mfs_collapsed_survival_curves <- function(data, output_dir, prefix, datas
     surv_plot <- survminer::ggsurvplot(
         fit = surv_fit,
         data = plot_data,
-        palette = color_palette,
+        palette = unname(color_palette),
         risk.table = TRUE,
         conf.int = FALSE,
         pval = TRUE,
