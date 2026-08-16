@@ -1,0 +1,92 @@
+version: 1
+project: uveal_melanoma
+units:
+  - id: cohort-construction
+    scope:
+      - scripts/data_helper/cohort_creation.R
+      - scripts/data_helper/cohort_orchestration.R
+      - scripts/data_helper/data_derivation.R
+    downstream:
+      - objective-0
+      - objective-1
+      - objective-2
+      - objective-3
+      - objective-4
+    status: not_reviewed
+    reviewed_commit: null
+    evidence: []
+  - id: endpoint-and-censoring
+    scope:
+      - scripts/config/objective0_contracts.R
+      - scripts/config/objective1_contracts.R
+      - scripts/workflow/objective_0_data_processing.R
+    downstream:
+      - objective-0
+      - objective-1
+      - objective-3
+      - objective-4
+    status: not_reviewed
+    reviewed_commit: null
+    evidence: []
+  - id: modeling-policy
+    scope:
+      - scripts/config/modeling_policy.R
+      - scripts/utils/model_utilities.R
+      - scripts/tables/table_model_fitting.R
+    downstream:
+      - objective-1
+      - objective-2
+      - objective-3
+      - objective-4
+    status: not_reviewed
+    reviewed_commit: null
+    evidence: []
+  - id: survival-analysis
+    scope:
+      - scripts/analysis/survival_outcomes.R
+      - scripts/subgroup/subgroup_survival.R
+      - scripts/workflow/objective_1_primary_outcomes.R
+      - scripts/workflow/objective_3_repeat_radiation.R
+    downstream:
+      - objective-1
+      - objective-3
+    status: not_reviewed
+    reviewed_commit: null
+    evidence: []
+  - id: gep-analysis
+    scope:
+      - scripts/gep/cores
+      - scripts/gep/orchestration
+      - scripts/gep/reporting
+      - scripts/gep/visualization
+      - scripts/workflow/objective_4_gep_analysis.R
+    downstream:
+      - objective-4
+    status: not_reviewed
+    reviewed_commit: null
+    evidence: []
+  - id: tables-and-figures
+    scope:
+      - scripts/tables
+      - scripts/visualization
+      - scripts/utils/output_utilities.R
+      - scripts/utils/forest_plot_diagnostics.R
+    downstream:
+      - objective-1
+      - objective-2
+      - objective-3
+      - objective-4
+    status: not_reviewed
+    reviewed_commit: null
+    evidence: []
+  - id: documentation-and-paths
+    scope:
+      - scripts/config/project_paths.R
+      - scripts/load_all.R
+      - README.md
+      - docs
+    downstream:
+      - all-objectives
+    status: not_reviewed
+    reviewed_commit: null
+    evidence: []
