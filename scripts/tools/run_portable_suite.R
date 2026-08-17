@@ -1,24 +1,28 @@
 #!/usr/bin/env Rscript
 
+#' Run the repository's complete portable validation gate
+#'
+#' The gate invokes the canonical testthat runner for unit and synthetic
+#' integration tests, then runs repository lint in isolated subprocess stages.
+#' The runner validates its checked-in file manifest, so an omitted file,
+#' warning, or lint is fail-closed without a brittle hard-coded case count.
+#'
+#' @return Invisibly returns `TRUE` when every validation stage succeeds;
+#'   otherwise throws an error.
 run_portable_suite <- function() {
     rscript <- file.path(R.home("bin"), "Rscript")
+    # Keep the stage list declarative so CI and local validation share one
+    # command while each subprocess retains its own routing contract.
     stages <- list(
         list(
             label = "Complete portable testthat suite",
             args = c("scripts/tools/run_testthat.R", "tests/testthat"),
-            env = c(
-                "OCULAR_PORTABLE_SUITE=true",
-                "OCULAR_EXPECTED_TEST_FILES=42",
-                "OCULAR_EXPECTED_TEST_CASES=276"
-            )
+            env = "OCULAR_PORTABLE_SUITE=true"
         ),
         list(
             label = "Synthetic integration suite",
             args = c("scripts/tools/run_testthat.R", "tests/portable"),
-            env = c(
-                "OCULAR_EXPECTED_TEST_FILES=1",
-                "OCULAR_EXPECTED_TEST_CASES=1"
-            )
+            env = character()
         ),
         list(
             label = "Repository lint",

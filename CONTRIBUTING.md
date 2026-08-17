@@ -33,4 +33,24 @@ portable gate used by CI:
 Rscript scripts/tools/run_portable_suite.R
 ```
 
+### Function documentation
+
+Every new or materially changed function must include a language-appropriate
+docstring or roxygen block immediately above its definition. Document the
+function's purpose, every argument (including optional/defaulted arguments),
+and its return value. Add concise inline comments wherever control flow,
+resource routing, warning handling, caching, or other behavior would not be
+obvious from the code itself. Keep comments focused on the contract and the
+reason for a non-obvious decision; do not restate straightforward syntax.
+
+### Test execution model
+
+The portable testthat suite runs test files serially. Objective 1--4 and
+merged-table integration fixtures share one suite-scoped cache so each
+expensive full pipeline executes exactly once. The setup lifecycle installs
+temporary execution counters and teardown restores the original production
+entrypoints. Do not enable test-file parallelism unless the shared fixture
+architecture is first replaced with process-safe state and equivalent
+execution-count, isolation, and runtime evidence.
+
 This policy is portable across projects, but direct pushes depend on each repository's GitHub protection settings. Do not create custom publishing commands unless repeated friction demonstrates that they are needed.

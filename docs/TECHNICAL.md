@@ -659,7 +659,11 @@ Different confounder sets available:
 
 The repository uses three test lanes with separate bootstrap helpers:
 
-- `tests/testthat/`: portable regression tests loaded through `tests/testthat/helper-bootstrap.R`
+- `tests/testthat/`: portable regression tests initialized through the explicit
+  suite lifecycle in `tests/testthat/setup-bootstrap.R` and
+  `tests/testthat/setup-objective-fixtures.R`. Test-file parallelism is disabled
+  because the expensive Objective 1--4 integration fixtures share one
+  suite-scoped, serial cache; teardown restores every wrapped entrypoint.
 - `tests/portable/`: hermetic synthetic integration tests loaded through `tests/portable/helper-bootstrap.R`
 - `tests/integration/`: local actual-data integration tests loaded through `tests/integration/helper-bootstrap.R`
 

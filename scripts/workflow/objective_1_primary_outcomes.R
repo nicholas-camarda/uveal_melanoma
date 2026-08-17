@@ -178,6 +178,8 @@ write_objective1_subgroup_contract_note <- function(output_dirs, dataset_name, p
 #' @param diagnostics Data frame of subgroup diagnostics.
 #' @param dataset_name Character dataset/cohort identifier.
 #' @param subgroup_surface Character subgroup output family.
+#' @param reviewer_support Optional reviewer-support audit containing subgroup
+#'   support counts, including `t4_n` when available.
 #' @param outcome_key Optional Objective 1 outcome specification key.
 #' @return Diagnostics data frame with endpoint and interpretation metadata.
 annotate_objective1_subgroup_diagnostics <- function(
@@ -308,6 +310,16 @@ run_objective1_time_to_event_subgroups <- function(
     })
 }
 
+#' Determine whether to run the Objective 1 propensity-sensitivity analysis
+#'
+#' @param dataset_name Character dataset/cohort identifier supplied to the
+#'   Objective 1 workflow.
+#' @return `TRUE` when the cohort is the configured propensity dataset;
+#'   otherwise `FALSE`.
+should_run_objective1_propensity_sensitivity <- function(dataset_name) {
+    identical(dataset_name, OBJECTIVE1_PROPENSITY_DATASET)
+}
+
 #' Run Objective 1: Primary Outcomes Analysis
 #'
 #' Performs comprehensive analysis of primary outcomes for uveal melanoma patients:
@@ -327,10 +339,6 @@ run_objective1_time_to_event_subgroups <- function(
 #' @param prefix Character string prefix for cohort identification in output files (e.g., "full_cohort_", "restricted_cohort_", "gksrs_only_cohort_")
 #' @param confounders Character vector of confounder variables to use for statistical adjustment
 #' @return List containing all analysis results, model objects, and output file paths for each analysis type
-should_run_objective1_propensity_sensitivity <- function(dataset_name) {
-    identical(dataset_name, OBJECTIVE1_PROPENSITY_DATASET)
-}
-
 run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders = confounders) {
     step1_start_time <- Sys.time()
     display_name <- tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name)))

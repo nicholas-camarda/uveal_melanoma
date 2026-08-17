@@ -24,7 +24,7 @@
 - Create: `tests/testthat/test_codebase_review_contract.R`
 - Create: `docs/maintenance/codebase_review_coverage.yaml`
 - Create: `docs/maintenance/important_results_contract.yaml`
-- Create: `scripts/maintenance/compare_important_results.R`
+- Create: `scripts/tools/compare_important_results.R`
 
 **Interfaces:**
 - `load_codebase_review_coverage(path)` returns a validated list with `version` and ordered `units`.
@@ -50,7 +50,7 @@
 **Files:**
 - Modify: `docs/maintenance/codebase_review_coverage.yaml`
 - Modify: `docs/maintenance/important_results_contract.yaml`
-- Modify: `scripts/maintenance/compare_important_results.R`
+- Modify: `scripts/tools/compare_important_results.R`
 
 **Interfaces:**
 - Coverage units cover cohort construction, endpoint/censoring, modeling, survival, GEP, tables/figures, and documentation/paths, with initial status `not_reviewed` and no fabricated review evidence.

@@ -1,3 +1,9 @@
+#' Execute the fail-closed runner in a fresh R process
+#'
+#' @param test_dir Temporary or repository test directory to execute.
+#' @param filter Optional testthat filename filter.
+#' @param env Optional environment assignments for the child process.
+#' @return A list containing combined child output and its integer exit status.
 run_testthat_subprocess <- function(test_dir, filter = NULL, env = character()) {
     args <- c(here::here("scripts", "tools", "run_testthat.R"), test_dir)
     if (!is.null(filter)) {
@@ -37,13 +43,88 @@ test_that("the directory runner rejects unexpected warnings and skips", {
     expect_match(paste(skip_run$output, collapse = "\n"), "sentinel skip", fixed = TRUE)
 })
 
-test_that("runner result summary detects a discovered file that did not execute", {
+test_that("the runner rejects warnings from every unhandled testthat lifecycle boundary", {
+    warning_cases <- list(
+        helper = list(
+            source = "warning(\"helper sentinel\")",
+            file = "helper-warning.R",
+            sentinel = "helper sentinel",
+            test = "testthat::test_that(\"helper\", testthat::succeed())"
+        ),
+        setup = list(
+            source = "warning(\"setup sentinel\")",
+            file = "setup-warning.R",
+            sentinel = "setup sentinel",
+            test = "testthat::test_that(\"setup\", testthat::succeed())"
+        ),
+        top_level = list(
+            source = c(
+                "warning(\"top-level sentinel\")",
+                "testthat::test_that(\"top-level\", testthat::succeed())"
+            ),
+            file = "test-top-level.R",
+            sentinel = "top-level sentinel",
+            test = NULL
+        ),
+        test_body = list(
+            source = "testthat::test_that(\"body\", { warning(\"body sentinel\"); testthat::succeed() })",
+            file = "test-body.R",
+            sentinel = "body sentinel",
+            test = NULL
+        ),
+        teardown = list(
+            source = paste(
+                "withr::defer(warning(\"teardown sentinel\"),",
+                "envir = testthat::teardown_env())"
+            ),
+            file = "setup-teardown.R",
+            sentinel = "teardown sentinel",
+            test = "testthat::test_that(\"teardown\", testthat::succeed())"
+        )
+    )
+
+    for (case_name in names(warning_cases)) {
+        case <- warning_cases[[case_name]]
+        warning_dir <- withr::local_tempdir()
+        writeLines(case$source, file.path(warning_dir, case$file))
+        if (!is.null(case$test)) {
+            writeLines(case$test, file.path(warning_dir, "test-one.R"))
+        }
+
+        warning_run <- run_testthat_subprocess(warning_dir)
+        expect_true(warning_run$status > 0L, info = case_name)
+        expect_match(
+            paste(warning_run$output, collapse = "\n"),
+            case$sentinel,
+            fixed = TRUE
+        )
+    }
+})
+
+test_that("expected warnings remain valid when the lifecycle gate is active", {
+    expected_dir <- withr::local_tempdir()
+    writeLines(
+        paste(
+            "testthat::test_that(\"expected warning\",",
+            "testthat::expect_warning(warning(\"expected sentinel\"),",
+            "\"expected sentinel\"))",
+            sep = " "
+        ),
+        file.path(expected_dir, "test-expected.R")
+    )
+
+    expected_run <- run_testthat_subprocess(expected_dir)
+    expect_identical(expected_run$status, 0L)
+})
+
+test_that("runner manifests replace static case counting and detect file drift", {
     runner <- new.env(parent = globalenv())
     sys.source(here::here("scripts", "tools", "run_testthat.R"), envir = runner)
 
     test_dir <- withr::local_tempdir()
     writeLines("testthat::test_that('one', testthat::succeed())", file.path(test_dir, "test_one.R"))
     writeLines("testthat::test_that('two', testthat::succeed())", file.path(test_dir, "test_two.R"))
+    writeLines(c("test_one.R", "test_two.R"), file.path(test_dir, "required-test-files.txt"))
     result <- testthat::test_dir(
         test_dir,
         filter = "one",
@@ -52,31 +133,38 @@ test_that("runner result summary detects a discovered file that did not execute"
         stop_on_warning = FALSE
     )
 
-    summary <- runner$summarize_testthat_result(result, test_dir)
-    expect_error(
-        runner$assert_testthat_result(summary),
-        "Unexecuted test files: test_two.R",
-        fixed = TRUE
-    )
+    summary <- runner$summarize_testthat_result(result, test_dir, filter = "one")
+    expect_identical(summary$cases, 1L)
+    expect_identical(summary$missing_required_files, character())
+    expect_identical(summary$unexpected_files, character())
+    expect_invisible(runner$assert_testthat_result(summary))
 
     inventory_dir <- withr::local_tempdir()
     inventory_path <- file.path(inventory_dir, "test_inventory.R")
     writeLines(c(
-        "testthat::test_that('one', testthat::succeed())",
-        "testthat::test_that('two', testthat::succeed())"
+        "for (i in seq_len(2L)) {",
+        "    testthat::test_that(paste('generated', i), testthat::succeed())",
+        "}"
     ), inventory_path)
-    inventory_env <- c(
-        "OCULAR_EXPECTED_TEST_FILES=1",
-        "OCULAR_EXPECTED_TEST_CASES=2"
-    )
-    expect_identical(run_testthat_subprocess(inventory_dir, env = inventory_env)$status, 0L)
+    writeLines("test_inventory.R", file.path(inventory_dir, "required-test-files.txt"))
+    expect_identical(run_testthat_subprocess(inventory_dir)$status, 0L)
 
-    writeLines("testthat::test_that('one', testthat::succeed())", inventory_path)
-    omitted_case <- run_testthat_subprocess(inventory_dir, env = inventory_env)
-    expect_gt(omitted_case$status, 0L)
+    writeLines(c("test_inventory.R", "test_missing.R"), file.path(inventory_dir, "required-test-files.txt"))
+    missing_file <- run_testthat_subprocess(inventory_dir)
+    expect_gt(missing_file$status, 0L)
     expect_match(
-        paste(omitted_case$output, collapse = "\n"),
-        "Expected 2 test cases but declared 1",
+        paste(missing_file$output, collapse = "\n"),
+        "Missing required test files: test_missing.R",
+        fixed = TRUE
+    )
+
+    writeLines("test_inventory.R", file.path(inventory_dir, "required-test-files.txt"))
+    writeLines("testthat::test_that('unexpected', testthat::succeed())", file.path(inventory_dir, "test-extra.R"))
+    unexpected_file <- run_testthat_subprocess(inventory_dir)
+    expect_gt(unexpected_file$status, 0L)
+    expect_match(
+        paste(unexpected_file$output, collapse = "\n"),
+        "Unexpected test files: test-extra.R",
         fixed = TRUE
     )
 })
@@ -155,8 +243,9 @@ test_that("canonical portable command owns every portable stage", {
     expect_match(command_text, "tests/portable", fixed = TRUE)
     expect_match(command_text, "lintr::lint_package()", fixed = TRUE)
     expect_match(command_text, "OCULAR_PORTABLE_SUITE=true", fixed = TRUE)
-    expect_match(command_text, "OCULAR_EXPECTED_TEST_FILES=42", fixed = TRUE)
-    expect_match(command_text, "OCULAR_EXPECTED_TEST_CASES=276", fixed = TRUE)
+    expect_false(grepl("OCULAR_EXPECTED_TEST_CASES", command_text, fixed = TRUE))
+    expect_true(file.exists(here::here("tests", "testthat", "required-test-files.txt")))
+    expect_true(file.exists(here::here("tests", "portable", "required-test-files.txt")))
 })
 
 test_that("the lockfile records the safe Deriv build and pinned rmda source", {
@@ -188,6 +277,10 @@ test_that("bootstrap and runner are lockfile- and failure-sensitive", {
     expect_match(runner_text, "assert_testthat_result(summary)", fixed = TRUE)
     expect_match(runner_text, "fail_on_warning = TRUE", fixed = TRUE)
     expect_match(runner_text, "fail_on_skip = TRUE", fixed = TRUE)
+    expect_match(runner_text, "required-test-files.txt", fixed = TRUE)
+    expect_match(runner_text, "warn = 2L", fixed = TRUE)
+    expect_false(grepl("count_test_declarations", runner_text, fixed = TRUE))
+    expect_false(grepl("OCULAR_EXPECTED_TEST_CASES", runner_text, fixed = TRUE))
 })
 
 test_that("OpenSpec records remain available without active CI enforcement", {

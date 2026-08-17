@@ -1,3 +1,9 @@
+#' Exercise integration bootstrap routing in a fresh R subprocess
+#'
+#' @param raw_dir Explicit read-only raw-data directory to pass to bootstrap.
+#' @param processed_dir Explicit read-only processed-data directory to pass to
+#'   bootstrap.
+#' @return A list with captured subprocess output and its integer exit status.
 run_integration_bootstrap_subprocess <- function(raw_dir = "", processed_dir = "") {
     script <- withr::local_tempfile(fileext = ".R")
     writeLines(
@@ -10,6 +16,8 @@ run_integration_bootstrap_subprocess <- function(raw_dir = "", processed_dir = "
         ),
         script
     )
+    # A fresh process prevents the test runner's global state from masking
+    # missing environment variables or accidental fallback paths.
     output <- suppressWarnings(system2(
         file.path(R.home("bin"), "Rscript"),
         script,

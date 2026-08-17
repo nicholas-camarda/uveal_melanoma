@@ -3,4 +3,5 @@ Version: 1.0.0
 Title: Ocular Melanoma Analysis Project
 Description: Analysis project for ocular melanoma research
 Config/testthat/edition: 3
+Config/testthat/parallel: false
 Suggests: testthat (>= 3.0.0) 

@@ -1,8 +1,10 @@
-# Helper file for test data creation
-# This file provides the create_test_dataset function used by all objective test files
+# Helper file for test data creation. These fixtures are deterministic and do
+# not read private data or write analysis artifacts.
 
-# Load required packages for test data creation
-
+#' Create the date-complete synthetic dataset used by objective tests
+#'
+#' @return A 20-row tibble containing the dates, endpoint fields, treatment
+#'   groups, and derived-variable inputs required by objective tests.
 create_test_dataset <- function() {
   # Create deterministic test dataset for all objectives
   set.seed(12345)
@@ -277,6 +279,11 @@ create_test_dataset <- function() {
 #' This extends the date-complete unit fixture with distribution-shaped values
 #' and enough independent support for adjusted and subgroup models. Values are
 #' synthetic and generated without reading project data or runtime artifacts.
+#'
+#' @param n Number of synthetic rows; must be an integer of at least 80.
+#' @param seed Integer-like random seed used for deterministic generation.
+#' @return A synthetic analytic tibble with treatment, endpoint, and subgroup
+#'   fields suitable for full-pipeline tests.
 create_pipeline_test_dataset <- function(n = 96L, seed = 20260816L) {
   stopifnot(length(n) == 1L, n >= 80L, n == as.integer(n))
   withr::with_seed(seed, {
@@ -368,6 +375,9 @@ SYNTHETIC_CI_TREATMENT_LEVELS <- c("PBT", "GKSRS")
 SYNTHETIC_CI_COHORT_LEVELS <- c("full", "restricted", "gksrs_only")
 SYNTHETIC_CI_GEP_LEVELS <- c("Class 1", "Class 2")
 
+#' List columns required by the portable synthetic integration contract
+#'
+#' @return Character vector of required column names.
 synthetic_ci_required_columns <- function() {
   c(
     "treatment_group", "consort_group", "synthetic_cohort",
@@ -391,6 +401,11 @@ synthetic_ci_required_columns <- function() {
 #' omits patient identifiers, calendar dates, and free-text fields while still
 #' exercising both treatments, all supported cohort labels, missing values,
 #' censoring, sparse groups, GEP/PRAME values, and one-arm GKSRS-only data.
+#'
+#' @param n Number of synthetic rows; must be an integer of at least 24.
+#' @param seed Integer-like random seed used for deterministic generation.
+#' @return A privacy-safe synthetic tibble carrying fixture version and seed
+#'   attributes for reproducibility checks.
 create_synthetic_ci_dataset <- function(n = 48L, seed = SYNTHETIC_CI_FIXTURE_SEED) {
   if (length(n) != 1L || is.na(n) || n < 24L || n != as.integer(n)) {
     stop("n must be one integer of at least 24 rows.", call. = FALSE)

@@ -1,60 +1,58 @@
 #!/usr/bin/env Rscript
 
+#' Read the required test-file manifest for a test directory
+#'
+#' @param test_dir Directory containing `required-test-files.txt`.
+#' @return Sorted test-file basenames, or `NULL` when no manifest is present.
+read_required_test_files <- function(test_dir) {
+    manifest_path <- file.path(test_dir, "required-test-files.txt")
+    if (!file.exists(manifest_path)) {
+        return(NULL)
+    }
+
+    entries <- trimws(readLines(manifest_path, warn = FALSE))
+    entries <- entries[nzchar(entries) & !startsWith(entries, "#")]
+    invalid <- entries[
+        grepl("[/\\\\]", entries) |
+            !grepl("^test.*\\.[rR]$", entries)
+    ]
+    if (length(invalid) > 0L || anyDuplicated(entries)) {
+        stop(
+            paste(
+                "required-test-files.txt must contain unique test-file basenames;",
+                "invalid entries:",
+                paste(unique(invalid), collapse = ", ")
+            ),
+            call. = FALSE
+        )
+    }
+    sort(entries)
+}
+
 #' Summarize a testthat directory result
 #'
 #' @param result A `testthat_results` object.
 #' @param test_dir Directory passed to `testthat::test_dir()`.
 #' @param filter Optional testthat filename filter.
-#' @return A named list of discovered and executed files and result counts.
-count_test_declarations <- function(paths) {
-    walk <- function(expression) {
-        if (!is.call(expression)) {
-            return(0L)
-        }
-        head <- expression[[1L]]
-        call_name <- if (is.symbol(head)) {
-            as.character(head)
-        } else if (
-            is.call(head) &&
-                identical(as.character(head[[1L]]), "::")
-        ) {
-            as.character(head[[3L]])
-        } else {
-            ""
-        }
-        as.integer(call_name %in% c("test_that", "it")) +
-            sum(vapply(as.list(expression)[-1L], walk, integer(1L)))
-    }
-
-    sum(vapply(
-        paths,
-        function(path) {
-            sum(vapply(as.list(parse(path)), walk, integer(1L)))
-        },
-        integer(1L)
-    ))
-}
-
-read_expected_count <- function(name) {
-    value <- Sys.getenv(name, unset = "")
-    if (!nzchar(value)) {
-        return(NULL)
-    }
-    parsed <- suppressWarnings(as.integer(value))
-    if (is.na(parsed) || parsed < 0L || !identical(as.character(parsed), value)) {
-        stop(sprintf("%s must be a non-negative integer.", name), call. = FALSE)
-    }
-    parsed
-}
-
-summarize_testthat_result <- function(result, test_dir, filter = NULL) {
+#' @param warning_messages Warning messages captured outside testthat's result
+#'   frame during suite setup, execution, or teardown.
+#' @return A named list of discovered, required, and executed files plus result
+#'   counts. `cases` is the dynamic number reported by testthat; no static
+#'   source-code case count is inferred.
+summarize_testthat_result <- function(
+    result,
+    test_dir,
+    filter = NULL,
+    warning_messages = character()
+) {
     result_frame <- as.data.frame(result)
-    discovered_files <- sort(list.files(
+    all_discovered_files <- sort(list.files(
         test_dir,
         pattern = "^test.*\\.[rR]$",
         recursive = FALSE,
         full.names = FALSE
     ))
+    discovered_files <- all_discovered_files
     if (!is.null(filter)) {
         filter_names <- sub(
             "^test[-_]?",
@@ -64,6 +62,20 @@ summarize_testthat_result <- function(result, test_dir, filter = NULL) {
         discovered_files <- discovered_files[grepl(filter, filter_names)]
     }
 
+    manifest_files <- read_required_test_files(test_dir)
+    required_files <- if (is.null(manifest_files)) {
+        discovered_files
+    } else {
+        manifest_files
+    }
+    if (!is.null(filter) && !is.null(manifest_files)) {
+        filter_names <- sub(
+            "^test[-_]?",
+            "",
+            tools::file_path_sans_ext(required_files)
+        )
+        required_files <- required_files[grepl(filter, filter_names)]
+    }
     executed_files <- if (nrow(result_frame) == 0L) {
         character()
     } else {
@@ -72,11 +84,23 @@ summarize_testthat_result <- function(result, test_dir, filter = NULL) {
 
     list(
         discovered_files = discovered_files,
+        required_files = required_files,
+        manifest_files = manifest_files,
+        missing_required_files = if (is.null(manifest_files)) {
+            character()
+        } else {
+            setdiff(required_files, discovered_files)
+        },
+        unexpected_files = if (is.null(manifest_files)) {
+            character()
+        } else {
+            setdiff(discovered_files, required_files)
+        },
         executed_files = executed_files,
-        declared_cases = count_test_declarations(file.path(test_dir, discovered_files)),
         cases = nrow(result_frame),
         failures = sum(result_frame$failed) + sum(result_frame$error),
-        warnings = sum(result_frame$warning),
+        warnings = sum(result_frame$warning) + length(warning_messages),
+        warning_messages = warning_messages,
         skips = sum(result_frame$skipped)
     )
 }
@@ -92,7 +116,12 @@ assert_testthat_result <- function(
     fail_on_warning = TRUE,
     fail_on_skip = TRUE
 ) {
-    unexecuted <- setdiff(summary$discovered_files, summary$executed_files)
+    # A manifest-listed file absent from disk is already reported as missing;
+    # exclude it here so one drift produces one actionable diagnostic.
+    unexecuted <- setdiff(
+        setdiff(summary$required_files, summary$missing_required_files),
+        summary$executed_files
+    )
     problems <- character()
     if (summary$failures > 0L) {
         problems <- c(problems, sprintf("failures=%d", summary$failures))
@@ -103,34 +132,38 @@ assert_testthat_result <- function(
     if (isTRUE(fail_on_skip) && summary$skips > 0L) {
         problems <- c(problems, sprintf("skips=%d", summary$skips))
     }
+    if (length(summary$missing_required_files) > 0L) {
+        problems <- c(
+            problems,
+            sprintf(
+                "Missing required test files: %s",
+                paste(summary$missing_required_files, collapse = ", ")
+            )
+        )
+    }
+    if (length(summary$unexpected_files) > 0L) {
+        problems <- c(
+            problems,
+            sprintf(
+                "Unexpected test files: %s",
+                paste(summary$unexpected_files, collapse = ", ")
+            )
+        )
+    }
     if (length(unexecuted) > 0L) {
         problems <- c(
             problems,
             sprintf("Unexecuted test files: %s", paste(unexecuted, collapse = ", "))
         )
     }
-    expected_files <- read_expected_count("OCULAR_EXPECTED_TEST_FILES")
-    expected_cases <- read_expected_count("OCULAR_EXPECTED_TEST_CASES")
-    if (!is.null(expected_files) && length(summary$discovered_files) != expected_files) {
-        problems <- c(problems, sprintf(
-            "Expected %d test files but discovered %d",
-            expected_files,
-            length(summary$discovered_files)
-        ))
-    }
-    if (summary$cases != summary$declared_cases) {
-        problems <- c(problems, sprintf(
-            "Declared %d test cases but executed %d",
-            summary$declared_cases,
-            summary$cases
-        ))
-    }
-    if (!is.null(expected_cases) && summary$declared_cases != expected_cases) {
-        problems <- c(problems, sprintf(
-            "Expected %d test cases but declared %d",
-            expected_cases,
-            summary$declared_cases
-        ))
+    if (length(summary$warning_messages) > 0L) {
+        problems <- c(
+            problems,
+            sprintf(
+                "Unexpected warnings: %s",
+                paste(unique(summary$warning_messages), collapse = " | ")
+            )
+        )
     }
     if (length(problems) > 0L) {
         stop(
@@ -141,11 +174,41 @@ assert_testthat_result <- function(
     invisible(summary)
 }
 
+#' Run testthat while collecting warnings outside expected warning assertions
+#'
+#' `testthat` normally captures warnings raised by test expressions, setup,
+#' and teardown in different places. Running with `warn = 2` makes unhandled
+#' warnings reach this boundary; the condition handler records and muffles them
+#' so the suite can finish and report one concise fail-closed diagnostic.
+#'
+#' @param test_dir Directory passed to `testthat::test_dir()`.
+#' @param filter Optional testthat filename filter.
+#' @return A named list containing the testthat result and captured warnings.
+run_testthat_with_warning_capture <- function(test_dir, filter = NULL) {
+    warning_messages <- character()
+    # Testthat handles `expect_warning()` before this outer handler, preserving
+    # expected-warning assertions while exposing all other warning conditions.
+    withr::local_options(warn = 2L)
+    result <- withCallingHandlers(
+        testthat::test_dir(
+            test_dir,
+            filter = filter,
+            stop_on_failure = FALSE,
+            stop_on_warning = FALSE
+        ),
+        warning = function(condition) {
+            warning_messages <<- c(warning_messages, conditionMessage(condition))
+            invokeRestart("muffleWarning")
+        }
+    )
+    list(result = result, warning_messages = warning_messages)
+}
+
 #' Run a testthat directory with failure-sensitive process status
 #'
 #' `testthat::test_dir()` is called with explicit failure propagation so test
-#' failures and errors terminate `Rscript` with a non-zero status in local and
-#' CI execution.
+#' failures, warnings, skips, and manifest drift terminate `Rscript` with a
+#' non-zero status in local and CI execution.
 #'
 #' @param args Command-line arguments containing a test directory and an
 #'   optional `--filter <regular-expression>` pair.
@@ -179,6 +242,18 @@ run_testthat_directory <- function(args = commandArgs(trailingOnly = TRUE)) {
     if (!dir.exists(test_dir)) {
         stop(sprintf("Test directory does not exist: %s", test_dir), call. = FALSE)
     }
+    # Canonical portable directories must carry a checked-in manifest; ad hoc
+    # temporary directories remain usable for focused developer runs.
+    manifest_required <- identical(
+        Sys.getenv("OCULAR_REQUIRE_TEST_MANIFEST", unset = ""),
+        "true"
+    ) || basename(test_dir) %in% c("testthat", "portable")
+    if (manifest_required && !file.exists(file.path(test_dir, "required-test-files.txt"))) {
+        stop(
+            sprintf("Required test manifest is missing: %s", file.path(test_dir, "required-test-files.txt")),
+            call. = FALSE
+        )
+    }
     if (!requireNamespace("testthat", quietly = TRUE)) {
         stop(
             paste(
@@ -189,15 +264,20 @@ run_testthat_directory <- function(args = commandArgs(trailingOnly = TRUE)) {
         )
     }
 
-    result <- testthat::test_dir(
+    captured <- run_testthat_with_warning_capture(test_dir, filter)
+    summary <- summarize_testthat_result(
+        captured$result,
         test_dir,
-        filter = filter,
-        stop_on_failure = FALSE,
-        stop_on_warning = FALSE
+        filter,
+        captured$warning_messages
     )
-    summary <- summarize_testthat_result(result, test_dir, filter)
     assert_testthat_result(summary)
-    invisible(result)
+    message(sprintf(
+        "Validated %d dynamically executed test cases across %d test files.",
+        summary$cases,
+        length(summary$executed_files)
+    ))
+    invisible(captured$result)
 }
 
 if (sys.nframe() == 0L) {

@@ -54,6 +54,8 @@ if (!identical(Sys.getenv("OCULAR_INTEGRATION_BOOTSTRAPPED"), "true")) {
     source(here::here("scripts", "load_all.R"))
     source(here::here("tests", "testthat", "helper-fixture-data.R"))
 
+    # Resolve all private inputs before loading the pipeline so missing or
+    # misrouted data fails closed instead of silently using synthetic outputs.
     required_inputs <- c(
         file.path(raw_data_dir, INPUT_FILENAME),
         file.path(processed_data_dir, "uveal_melanoma_full_cohort.rds"),
@@ -90,6 +92,15 @@ if (!identical(Sys.getenv("OCULAR_INTEGRATION_BOOTSTRAPPED"), "true")) {
 .actual_objective4_state <- new.env(parent = emptyenv())
 .actual_objective4_state$pipeline <- NULL
 
+#' Run and cache the actual-data Objective 4 pipeline for integration tests
+#'
+#' The first call reads the explicitly routed private cohort, writes only to a
+#' temporary test output root, and records approved numerical warnings. Later
+#' calls reuse the same result so the integration lane does not execute the
+#' expensive pipeline once per test file.
+#'
+#' @return A list containing Objective 4 results, temporary output paths, the
+#'   input data, run prefix, and the approved warning messages.
 get_actual_objective4_pipeline <- function() {
     if (is.null(.actual_objective4_state$pipeline)) {
         data <- readRDS(file.path(
@@ -114,6 +125,8 @@ get_actual_objective4_pipeline <- function() {
             ),
             warning = function(warning_condition) {
                 warning_message <- conditionMessage(warning_condition)
+                # These two warnings are expected for sparse clinical cells;
+                # every other warning remains visible to the test runner.
                 allowed_warning <- any(vapply(
                     c(
                         "coefficient may be infinite",
