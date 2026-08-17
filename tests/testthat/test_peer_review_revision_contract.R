@@ -39,8 +39,7 @@ test_that("tracked methods document the restricted overlap-weighted sensitivity"
 })
 
 test_that("Objective 1 returns Cox-led local recurrence and metastasis time-to-event analyses", {
-    pipeline <- run_objective1_test(create_test_dataset(), output_tag = "peer_review_objective1_tte_contract")
-    withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
+    pipeline <- get_objective1_pipeline()
 
     expect_true("recurrence_time_to_event" %in% names(pipeline$results))
     expect_true("mets_time_to_event" %in% names(pipeline$results))
@@ -69,8 +68,7 @@ test_that("Objective 1 returns Cox-led local recurrence and metastasis time-to-e
 })
 
 test_that("Objective 1 recurrence and metastasis descriptive summaries are not labeled co-primary", {
-    pipeline <- run_objective1_test(create_test_dataset(), output_tag = "peer_review_descriptive_event_support")
-    withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
+    pipeline <- get_objective1_pipeline()
 
     recurrence_summary_path <- file.path(pipeline$output_dirs$obj1_recurrence_event_support, "test_recurrence1_event_support_summary.xlsx")
     mets_summary_path <- file.path(pipeline$output_dirs$obj1_mets_event_support, "test_mets_progression_event_support_summary.xlsx")
@@ -96,8 +94,7 @@ test_that("Objective 1 recurrence and metastasis descriptive summaries are not l
 })
 
 test_that("Objective 1 writes five-year capped OS and PFS Cox sensitivity summaries", {
-    pipeline <- run_objective1_test(create_test_dataset(), output_tag = "peer_review_five_year_capped_contract")
-    withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
+    pipeline <- get_objective1_pipeline()
 
     os_summary <- file.path(
         pipeline$output_dirs$obj1_os_sensitivity,
@@ -139,14 +136,8 @@ test_that("Objective 1 writes five-year capped OS and PFS Cox sensitivity summar
 })
 
 test_that("Objective 1 KM figures cap display at SURVIVAL_XAXIS_MAX_MONTHS while Cox models keep full follow-up", {
-    data <- create_test_dataset()
-    data$tt_recurrence_months[1] <- 220
-    data$recurrence_event[1] <- 1
-    data$tt_pfs_months[1] <- 220
-    data$pfs_event[1] <- 1
-
-    pipeline <- run_objective1_test(data, output_tag = "peer_review_km_display_cap")
-    withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
+    pipeline <- get_objective1_pipeline()
+    data <- pipeline$input_data
 
     recurrence_plot <- pipeline$results$recurrence_time_to_event$plot$plot
     pfs_plot <- pipeline$results$pfs_analysis$plot$plot

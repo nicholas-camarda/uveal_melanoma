@@ -1,6 +1,3 @@
-skip_if_integration_disabled()
-skip_if_local_data_unavailable()
-
 # Tests for exploratory no-GEP reporting
 library(dplyr)
 
@@ -53,10 +50,10 @@ test_that("exploratory no-GEP KM verification checks displayed counts and cohort
     expect_equal(as.integer(stats::na.omit(verification$simple_km_displayed_n)), c(58L, 27L, 162L))
 
     modified_data <- actual_data
-    class1_idx <- which(as.character(modified_data$gep_class_simple) == "Class 1")[1]
-    modified_data$gep_class_simple[class1_idx] <- factor(
+    class1_idx <- which(as.character(modified_data$exploratory_gep_group) == "Class 1")[1]
+    modified_data$exploratory_gep_group[class1_idx] <- factor(
         "Class 2",
-        levels = levels(modified_data$gep_class_simple)
+        levels = levels(modified_data$exploratory_gep_group)
     )
 
     expect_error(

@@ -65,22 +65,9 @@ test_that("Snellen line-change buckets keep sub-half-line deltas in the stable 0
 })
 
 test_that("Objective 2 writes adjusted outputs in each side-effect subfolder", {
-    test_data <- create_test_dataset()
-    test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective2_test")
-    output_dirs <- build_objective2_output_dirs(test_output_dir)
-    dir.create(test_output_dir, recursive = TRUE, showWarnings = FALSE)
-    for (dir_path in output_dirs) {
-        dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
-    }
-    withr::defer(unlink(test_output_dir, recursive = TRUE), envir = parent.frame())
-
-    results <- run_objective_2(
-        data = test_data,
-        dataset_name = "test_cohort",
-        output_dirs = output_dirs,
-        prefix = "test_",
-        confounders = c("age_at_diagnosis")
-    )
+    pipeline <- get_objective2_pipeline()
+    output_dirs <- pipeline$output_dirs
+    results <- pipeline$results
 
     expect_s3_class(results$vision_changes$regression_model, "lm")
     expect_s3_class(results$vision_changes$line_change_regression_model, "lm")
@@ -216,8 +203,7 @@ test_that("Objective 2 writes adjusted outputs in each side-effect subfolder", {
 })
 
 test_that("visual-acuity minimum-follow-up sensitivity reruns treatment-effect model", {
-    pipeline <- run_objective2_test(create_test_dataset(), output_tag = "objective2_vision_min_followup")
-    withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
+    pipeline <- get_objective2_pipeline()
 
     sensitivity_path <- file.path(
         pipeline$output_dirs$obj2_vision_sensitivity,
@@ -297,8 +283,7 @@ test_that("visual-acuity minimum-follow-up sensitivity reruns treatment-effect m
 })
 
 test_that("Objective 2 SRD reviewer-facing output declares radiation-induced versus all-cause scope", {
-    pipeline <- run_objective2_test(create_test_dataset(), output_tag = "objective2_srd_scope")
-    withr::defer(unlink(pipeline$test_output_dir, recursive = TRUE), envir = parent.frame())
+    pipeline <- get_objective2_pipeline()
 
     candidate_files <- list.files(
         pipeline$output_dirs$obj2_vision_sensitivity,

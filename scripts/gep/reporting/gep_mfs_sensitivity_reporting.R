@@ -1033,6 +1033,10 @@ build_objective4_mfs_calibration_caption <- function(results, dataset_name = NUL
     if (is.null(class_summary) || !is.data.frame(class_summary) || nrow(class_summary) == 0) {
         return(NULL)
     }
+    required_columns <- c("gep_class_simple", "observed_events_5yr", "n")
+    if (!all(required_columns %in% names(class_summary))) {
+        return(NULL)
+    }
 
     class_summary <- class_summary %>%
         dplyr::arrange(.data$gep_class_simple)

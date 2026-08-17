@@ -211,9 +211,9 @@ test_that("Cox fitted-model diagnostics count modeled rows rather than events", 
 
 test_that("model summary puts the fitted sample size alongside model metadata", {
     test_data <- data.frame(
-        outcome = c(0, 1, 0, 1, NA_real_, 0),
-        treatment_group = factor(c("Control", "Treatment", "Control", "Treatment", "Control", "Treatment")),
-        age = c(50, 55, 60, 65, 70, 75),
+        outcome = c(0, 0, 1, 1, NA_real_, 1, 1, 0, rep(c(0, 1, 1, 0), 4)),
+        treatment_group = factor(rep(c("Control", "Treatment"), 12)),
+        age = seq(45, 79, length.out = 24),
         stringsAsFactors = FALSE
     )
     model_fit <- stats::glm(outcome ~ treatment_group + age, data = test_data, family = binomial())
@@ -238,8 +238,8 @@ test_that("model summary puts the fitted sample size alongside model metadata", 
         table_result = table_result
     )
 
-    expect_equal(result$model_summary$fitted_n, 5L)
-    expect_equal(result$model_summary$input_n, 6L)
+    expect_equal(result$model_summary$fitted_n, 23L)
+    expect_equal(result$model_summary$input_n, 24L)
     expect_true(all(c(
         "input_n", "fitted_n", "prefit_excluded_n", "complete_case_excluded_n",
         "total_excluded_n", "reported_input_n", "sample_size_reconciliation"

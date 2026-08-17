@@ -53,9 +53,21 @@ analyze_gep_mfs_validation <- function(data,
     logger::log_info(formatted("GEP Eligibility Distribution:", indent = 1))
     for (i in seq_len(nrow(gep_distribution))) {
         set_name <- gep_distribution$gep_validation_set[i]
-        class_1 <- ifelse(is.na(gep_distribution$`Class 1`[i]), 0, gep_distribution$`Class 1`[i])
-        class_2 <- ifelse(is.na(gep_distribution$`Class 2`[i]), 0, gep_distribution$`Class 2`[i])
-        no_gep <- ifelse(is.na(gep_distribution$`No`[i]), 0, gep_distribution$`No`[i])
+        class_1 <- if ("Class 1" %in% names(gep_distribution)) {
+            ifelse(is.na(gep_distribution$`Class 1`[i]), 0, gep_distribution$`Class 1`[i])
+        } else {
+            0
+        }
+        class_2 <- if ("Class 2" %in% names(gep_distribution)) {
+            ifelse(is.na(gep_distribution$`Class 2`[i]), 0, gep_distribution$`Class 2`[i])
+        } else {
+            0
+        }
+        no_gep <- if ("No" %in% names(gep_distribution)) {
+            ifelse(is.na(gep_distribution$`No`[i]), 0, gep_distribution$`No`[i])
+        } else {
+            0
+        }
         total <- class_1 + class_2 + no_gep
         logger::log_info(formatted(sprintf("%s: %d patients (Class1:%d, Class2:%d, No:%d)", set_name, total, class_1, class_2, no_gep), indent = 2))
     }

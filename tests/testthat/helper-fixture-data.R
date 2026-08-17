@@ -1,8 +1,10 @@
-# Helper file for test data creation
-# This file provides the create_test_dataset function used by all objective test files
+# Helper file for test data creation. These fixtures are deterministic and do
+# not read private data or write analysis artifacts.
 
-# Load required packages for test data creation
-
+#' Create the date-complete synthetic dataset used by objective tests
+#'
+#' @return A 20-row tibble containing the dates, endpoint fields, treatment
+#'   groups, and derived-variable inputs required by objective tests.
 create_test_dataset <- function() {
   # Create deterministic test dataset for all objectives
   set.seed(12345)
@@ -272,6 +274,96 @@ create_test_dataset <- function() {
   )
 }
 
+#' Create a balanced deterministic dataset for successful full-pipeline tests
+#'
+#' This extends the date-complete unit fixture with distribution-shaped values
+#' and enough independent support for adjusted and subgroup models. Values are
+#' synthetic and generated without reading project data or runtime artifacts.
+#'
+#' @param n Number of synthetic rows; must be an integer of at least 80.
+#' @param seed Integer-like random seed used for deterministic generation.
+#' @return A synthetic analytic tibble with treatment, endpoint, and subgroup
+#'   fields suitable for full-pipeline tests.
+create_pipeline_test_dataset <- function(n = 96L, seed = 20260816L) {
+  stopifnot(length(n) == 1L, n >= 80L, n == as.integer(n))
+  withr::with_seed(seed, {
+    row_index <- rep(seq_len(20L), length.out = n)
+    data <- create_test_dataset()[row_index, , drop = FALSE]
+    arm <- rep(c("PBT", "GKSRS"), length.out = n)
+    event_pattern <- sample(c(rep(1L, n %/% 3L), rep(0L, n - n %/% 3L)))
+    mets_pattern <- sample(c(rep(1L, n %/% 3L), rep(0L, n - n %/% 3L)))
+    death_pattern <- sample(c(rep(1L, n %/% 4L), rep(0L, n - n %/% 4L)))
+
+    data$patient_id <- seq_len(n)
+    data$treatment_group <- factor(arm, levels = c("PBT", "GKSRS"))
+    data$consort_group <- arm
+    data$sex <- factor(rep(c("Female", "Male", "Male", "Female"), length.out = n))
+    data$location <- factor(
+      rep(c("Choroidal", "Ciliary Body", "Cilio-Choroidal"), length.out = n)
+    )
+    data$initial_t_stage <- factor(
+      rep(c("T1", "T2", "T3", "T4"), length.out = n),
+      levels = c("T1", "T2", "T3", "T4")
+    )
+    data$initial_t_stage_simple <- data$initial_t_stage
+    data$initial_overall_stage <- factor(
+      rep(c("1", "2A", "2B", "3A"), length.out = n)
+    )
+    data$optic_nerve <- factor(rep(c("No", "No", "Yes", "No"), length.out = n))
+    data$age_at_diagnosis <- round(pmin(85, pmax(35, rnorm(n, 65, 10))))
+    data$age_at_diagnosis_general_pop_median <- factor(
+      ifelse(data$age_at_diagnosis >= 63, "Older", "Younger"),
+      levels = c("Younger", "Older")
+    )
+    data$initial_tumor_height <- rlnorm(n, log(4.5), 0.32)
+    data$initial_tumor_diameter <- round(runif(n, 6, 19), 3)
+    data$final_tumor_height <- pmax(
+      0.5,
+      round(data$initial_tumor_height + rnorm(n, -1.1, 0.9), 3)
+    )
+    data$last_height <- data$final_tumor_height
+    data$height_change <- data$final_tumor_height - data$initial_tumor_height
+
+    data$recurrence_event <- event_pattern
+    data$recurrence1 <- ifelse(event_pattern == 1L, "Y", "N")
+    data$tt_recurrence_months <- ifelse(
+      event_pattern == 1L,
+      sample(seq(12, 108, by = 6), n, replace = TRUE),
+      sample(seq(72, 240, by = 6), n, replace = TRUE)
+    )
+    data$mets_event <- mets_pattern
+    data$mets_progression <- ifelse(data$mets_event == 1L, "Y", "N")
+    data$tt_mets_months <- ifelse(
+      data$mets_event == 1L,
+      sample(seq(18, 114, by = 6), n, replace = TRUE),
+      sample(seq(72, 240, by = 6), n, replace = TRUE)
+    )
+    data$death_event <- death_pattern
+    data$melanoma_death_event <- death_pattern
+    data$competing_death_event <- 0L
+    data$tt_death_months <- ifelse(
+      death_pattern == 1L,
+      sample(seq(24, 120, by = 6), n, replace = TRUE),
+      sample(seq(84, 240, by = 6), n, replace = TRUE)
+    )
+    data$tt_death_years <- data$tt_death_months / 12
+    data$tt_pfs_months <- pmin(data$tt_mets_months, data$tt_death_months)
+    data$pfs_event <- as.integer(data$mets_event == 1L | data$death_event == 1L)
+
+    data$biopsy1_gep <- factor(
+      rep(c("Class 1", "Class 2", "Class 1", "Class 2"), length.out = n)
+    )
+    data$gep_class_simple <- data$biopsy1_gep
+    data$prame_status <- factor(rep(c("Negative", "Positive"), length.out = n))
+    data$gep12_prame_status <- data$prame_status
+    data$retinopathy_burden_event <- rep(c(1L, 0L, 0L, 1L, 0L), length.out = n)
+    data$srd_burden_event <- rep(c(0L, 1L, 0L, 0L, 1L), length.out = n)
+    data$nvg_burden_event <- rep(c(0L, 0L, 1L, 0L, 0L, 0L), length.out = n)
+
+    data
+  })
+}
+
 # This fixture is deliberately separate from create_test_dataset(). The latter
 # mirrors the date-heavy input contract used by Objective 0 and several unit
 # tests; this fixture is the small, data-free contract used by portable CI.
@@ -283,6 +375,9 @@ SYNTHETIC_CI_TREATMENT_LEVELS <- c("PBT", "GKSRS")
 SYNTHETIC_CI_COHORT_LEVELS <- c("full", "restricted", "gksrs_only")
 SYNTHETIC_CI_GEP_LEVELS <- c("Class 1", "Class 2")
 
+#' List columns required by the portable synthetic integration contract
+#'
+#' @return Character vector of required column names.
 synthetic_ci_required_columns <- function() {
   c(
     "treatment_group", "consort_group", "synthetic_cohort",
@@ -290,7 +385,11 @@ synthetic_ci_required_columns <- function() {
     "gep12_prame_status", "gep_validation_set", "tt_mets_months",
     "mets_event", "tt_death_months", "tt_death_years",
     "melanoma_death_event", "competing_death_event",
-    "expected_mfs_5yr", "expected_mss_5yr",
+    "expected_mfs_5yr", "expected_mfs_7yr", "expected_mfs_10yr",
+    "expected_mss_5yr", "expected_mss_7yr", "expected_mss_10yr",
+    "predicted_mfs_risk_5yr", "predicted_mfs_risk_7yr", "predicted_mfs_risk_10yr",
+    "predicted_mss_risk_5yr", "predicted_mss_risk_7yr", "predicted_mss_risk_10yr",
+    "recurrence1_treatment_clean", "missing_gep_group", "has_gep",
     "mfs_analysis_eligible", "mss_analysis_eligible", "initial_tumor_height",
     "age_at_diagnosis", "sex"
   )
@@ -302,6 +401,11 @@ synthetic_ci_required_columns <- function() {
 #' omits patient identifiers, calendar dates, and free-text fields while still
 #' exercising both treatments, all supported cohort labels, missing values,
 #' censoring, sparse groups, GEP/PRAME values, and one-arm GKSRS-only data.
+#'
+#' @param n Number of synthetic rows; must be an integer of at least 24.
+#' @param seed Integer-like random seed used for deterministic generation.
+#' @return A privacy-safe synthetic tibble carrying fixture version and seed
+#'   attributes for reproducibility checks.
 create_synthetic_ci_dataset <- function(n = 48L, seed = SYNTHETIC_CI_FIXTURE_SEED) {
   if (length(n) != 1L || is.na(n) || n < 24L || n != as.integer(n)) {
     stop("n must be one integer of at least 24 rows.", call. = FALSE)
@@ -372,8 +476,27 @@ create_synthetic_ci_dataset <- function(n = 48L, seed = SYNTHETIC_CI_FIXTURE_SEE
       tt_death_years = as.numeric(tt_death_months / 12),
       melanoma_death_event = as.integer(death_event),
       competing_death_event = as.integer(rep(0L, n)),
+      missing_gep_group = rep("Complete GEP", n),
+      has_gep = TRUE,
+      has_gep_mfs = TRUE,
+      has_gep_mss = TRUE,
+      has_prame = !is.na(prame_status),
       expected_mfs_5yr = expected_mfs,
+      expected_mfs_7yr = expected_mfs^(7 / 5),
+      expected_mfs_10yr = expected_mfs^2,
       expected_mss_5yr = expected_mss,
+      expected_mss_7yr = expected_mss^(7 / 5),
+      expected_mss_10yr = expected_mss^2,
+      predicted_mfs_risk_5yr = 1 - expected_mfs_5yr,
+      predicted_mfs_risk_7yr = 1 - expected_mfs_7yr,
+      predicted_mfs_risk_10yr = 1 - expected_mfs_10yr,
+      predicted_mss_risk_5yr = 1 - expected_mss_5yr,
+      predicted_mss_risk_7yr = 1 - expected_mss_7yr,
+      predicted_mss_risk_10yr = 1 - expected_mss_10yr,
+      recurrence1_treatment_clean = factor(
+        rep(c("GKSRS", "Plaque", NA_character_), length.out = n),
+        levels = c("GKSRS", "Plaque")
+      ),
       mfs_analysis_eligible = TRUE,
       mss_analysis_eligible = TRUE,
       initial_tumor_height = round(rlnorm(n, meanlog = log(3.8), sdlog = 0.28), 1),
@@ -383,7 +506,24 @@ create_synthetic_ci_dataset <- function(n = 48L, seed = SYNTHETIC_CI_FIXTURE_SEE
         levels = c("Female", "Male")
       ),
       mfs_event_5yr = as.integer(tt_mets_months <= 60 & mets_event == 1L),
-      mss_event_5yr = as.integer(tt_death_months <= 60 & death_event == 1L)
+      mfs_event_7yr = as.integer(tt_mets_months <= 84 & mets_event == 1L),
+      mfs_event_10yr = as.integer(tt_mets_months <= 120 & mets_event == 1L),
+      event_type_mfs_5yr = as.integer(tt_mets_months <= 60 & mets_event == 1L),
+      event_type_mfs_7yr = as.integer(tt_mets_months <= 84 & mets_event == 1L),
+      event_type_mfs_10yr = as.integer(tt_mets_months <= 120 & mets_event == 1L),
+      mss_event_5yr = as.integer(tt_death_months <= 60 & death_event == 1L),
+      mss_event_7yr = as.integer(tt_death_months <= 84 & death_event == 1L),
+      mss_event_10yr = as.integer(tt_death_months <= 120 & death_event == 1L),
+      event_type_mss_5yr = as.integer(tt_death_months <= 60 & death_event == 1L),
+      event_type_mss_7yr = as.integer(tt_death_months <= 84 & death_event == 1L),
+      event_type_mss_10yr = as.integer(tt_death_months <= 120 & death_event == 1L),
+      tt_mfs_5yr = pmin(tt_mets_months, 60),
+      tt_mfs_7yr = pmin(tt_mets_months, 84),
+      tt_mfs_10yr = pmin(tt_mets_months, 120),
+      tt_mss_5yr = pmin(tt_death_months / 12, 5),
+      tt_mss_7yr = pmin(tt_death_months / 12, 7),
+      tt_mss_10yr = pmin(tt_death_months / 12, 10),
+      initial_tumor_diameter = runif(n, 6, 19)
     ) %>%
       dplyr::mutate(
         initial_tumor_height = dplyr::if_else(

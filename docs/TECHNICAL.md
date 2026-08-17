@@ -657,10 +657,19 @@ Different confounder sets available:
 
 ## Testing
 
-The repository uses two test lanes with separate bootstrap helpers:
+The repository uses three test lanes with separate bootstrap helpers:
 
-- `tests/testthat/`: portable regression tests loaded through `tests/testthat/helper-bootstrap.R`
-- `tests/integration/`: opt-in local integration tests loaded through `tests/integration/helper-bootstrap.R`
+- `tests/testthat/`: portable regression tests initialized through the explicit
+  suite lifecycle in `tests/testthat/setup-bootstrap.R` and
+  `tests/testthat/setup-objective-fixtures.R`. Test-file parallelism is disabled
+  because the expensive Objective 1--4 integration fixtures share one
+  suite-scoped, serial cache; teardown restores every wrapped entrypoint.
+- `tests/portable/`: hermetic synthetic integration tests loaded through `tests/portable/helper-bootstrap.R`
+- `tests/integration/`: local actual-data integration tests loaded through `tests/integration/helper-bootstrap.R`
+
+Each directory has a checked-in `required-test-files.txt` inventory. The
+canonical runner rejects missing, unexpected, or unexecuted test files in both
+portable validation and the private actual-data lane.
 
 `.Rprofile` keys the project library to the content hash of `renv.lock` under
 the user `renv` cache. Checkouts with the same lockfile reuse the same package
@@ -678,9 +687,12 @@ environment.
 Run tests with the shell entry points used elsewhere in the repository:
 
 ```sh
-Rscript scripts/tools/run_testthat.R tests/testthat
-Rscript -e "testthat::test_file('tests/testthat/test_objective2_safety_toxicity.R')"
-OCULAR_RUN_INTEGRATION_TESTS=true Rscript scripts/tools/run_testthat.R tests/integration
+Rscript scripts/tools/run_portable_suite.R
+OCULAR_INTEGRATION_RAW_DATA_DIR='/absolute/path/to/raw-data' \
+OCULAR_INTEGRATION_PROCESSED_DATA_DIR='/absolute/path/to/processed-data' \
+Rscript scripts/tools/run_testthat.R tests/integration
 ```
 
-Integration tests are intentionally gated by `OCULAR_RUN_INTEGRATION_TESTS` so routine regression runs do not assume local cohort data are available.
+The actual-data lane fails before test execution unless both explicit input
+directories and all canonical inputs exist. It treats those directories as
+read-only and creates analysis outputs beneath the process temporary directory.

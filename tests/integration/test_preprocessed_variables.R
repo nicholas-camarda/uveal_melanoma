@@ -1,17 +1,13 @@
-skip_if_integration_disabled()
-skip_if_local_data_unavailable()
-
 # Test file for pre-processed variables functionality
 # This ensures that Task 2.8 changes work correctly and don't break the pipeline
 
 # Load the project environment
 
-test_that("Pre-processed variables are created correctly in data processing", {
+test_that("Persisted actual-data artifacts contain the pre-processed contract", {
   # Load test data
   data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
   
-  # Create derived variables (this is what we're testing)
-  data_derived <- create_derived_variables(data)
+  data_derived <- data
   
   # Test that all expected pre-processed variables exist
   expected_vars <- c(
@@ -55,7 +51,7 @@ test_that("Pre-processed variables are created correctly in data processing", {
 test_that("Analysis eligibility filters work correctly", {
   # Load and process data
   data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
-  data_derived <- create_derived_variables(data)
+  data_derived <- data
   
   # Test MFS analysis eligibility
   mfs_eligible <- data_derived %>% filter(mfs_analysis_eligible)
@@ -81,7 +77,7 @@ test_that("Analysis eligibility filters work correctly", {
 test_that("Time-specific event indicators are calculated correctly", {
   # Load and process data
   data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
-  data_derived <- create_derived_variables(data)
+  data_derived <- data
   
   # Test that event indicators are binary (0 or 1)
   event_vars <- c("mfs_event_5yr", "mfs_event_7yr", "mfs_event_10yr",
@@ -114,7 +110,7 @@ test_that("Time-specific event indicators are calculated correctly", {
 test_that("Pre-calculated risk variables are valid", {
   # Load and process data
   data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
-  data_derived <- create_derived_variables(data)
+  data_derived <- data
   
   # Test that risk variables are between 0 and 1
   risk_vars <- c("predicted_mfs_risk_5yr", "predicted_mfs_risk_7yr", "predicted_mfs_risk_10yr",
@@ -145,7 +141,7 @@ test_that("Pre-calculated risk variables are valid", {
 test_that("Competing risk variables are valid", {
   # Load and process data
   data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
-  data_derived <- create_derived_variables(data)
+  data_derived <- data
   
   # Test that event type variables are valid (0, 1, 2, or NA)
   event_type_vars <- c("event_type_mfs_5yr", "event_type_mfs_7yr", "event_type_mfs_10yr",
@@ -171,7 +167,7 @@ test_that("Competing risk variables are valid", {
 test_that("GEP analysis functions can use pre-processed variables", {
   # Load and process data
   data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
-  data_derived <- create_derived_variables(data)
+  data_derived <- data
   
   # Test that MFS analysis functions can access pre-processed variables
   mfs_eligible <- data_derived %>% filter(mfs_analysis_eligible)

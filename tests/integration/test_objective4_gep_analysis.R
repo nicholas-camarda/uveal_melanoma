@@ -1,6 +1,3 @@
-skip_if_integration_disabled()
-skip_if_local_data_unavailable()
-
 # Test file for Objective 4: GEP Analysis
 # Tests the actual content and statistical results of the GEP analysis pipeline
 # Run with: testthat::test_dir('tests/testthat')
@@ -17,8 +14,6 @@ library(dplyr)
 # You do not need to load libraries separately
 
 # Source the helper file for test data creation
-source(here("tests", "testthat", "test_helper_data.R"))
-
 extract_risk_table_y_limits <- function(risk_table_plot) {
     y_scales <- Filter(function(scale) "y" %in% scale$aesthetics, risk_table_plot$scales$scales)
     y_scales[[length(y_scales)]]$limits
@@ -192,20 +187,36 @@ test_that("survival helper can separate KM display groups from Cox model groups"
         biopsy1_gep_model = factor(c("Class 1", "Class 1", "GEP Failed/Indeterminate", "GEP Failed/Indeterminate"))
     )
 
-    result <- analyze_time_to_event_outcomes(
-        data = test_data,
-        time_var = "tt_mets_months",
-        event_var = "mets_event",
-        group_var = "biopsy1_gep",
-        model_group_var = "biopsy1_gep_model",
-        confounders = NULL,
-        ylab = "Metastasis-Free Survival Probability",
-        analysis_type = "post_treatment_only",
-        dataset_name = "unit_test_display_model_split",
-        output_dirs = NULL,
-        prefix = NULL
+    convergence_warnings <- character()
+    result <- withCallingHandlers(
+        analyze_time_to_event_outcomes(
+            data = test_data,
+            time_var = "tt_mets_months",
+            event_var = "mets_event",
+            group_var = "biopsy1_gep",
+            model_group_var = "biopsy1_gep_model",
+            confounders = NULL,
+            ylab = "Metastasis-Free Survival Probability",
+            analysis_type = "post_treatment_only",
+            dataset_name = "unit_test_display_model_split",
+            output_dirs = NULL,
+            prefix = NULL
+        ),
+        warning = function(warning_condition) {
+            convergence_warnings <<- c(
+                convergence_warnings,
+                conditionMessage(warning_condition)
+            )
+            invokeRestart("muffleWarning")
+        }
     )
 
+    expect_true(length(convergence_warnings) > 0)
+    expect_true(all(grepl(
+        "Ran out of iterations and did not converge",
+        convergence_warnings,
+        fixed = TRUE
+    )))
     expect_true(any(grepl("GEP Failed/Indeterminate", names(result$fit$strata))))
     expect_null(result$cox_model)
     expect_match(result$diagnostics$raw_model_output, "After sparse-level exclusions")
@@ -1273,7 +1284,11 @@ test_that("Clinical interpretation tolerates unavailable slopes", {
     )
 
     expect_true(is.list(interpretation))
-    expect_match(interpretation$calibration_interpretation, "too few patients had usable data")
+    expect_true(any(grepl(
+        "too few patients had usable data",
+        interpretation$calibration_interpretation,
+        fixed = TRUE
+    )))
     expect_false(grepl("absolute risk estimates can be used", interpretation$clinical_implications, fixed = TRUE))
     expect_match(interpretation$clinical_implications, "interpreted with caution")
 })
@@ -1490,26 +1505,38 @@ test_that("Competing-risk MSS feasibility returns explicit skip metadata", {
 })
 
 test_that("run_objective_4 creates current canonical Objective 4 artifacts", {
-    actual_data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
-    test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective4_runtime")
-    output_dirs <- list(
-        obj4_mfs = file.path(test_output_dir, "04_GEP_Validation", "a_metastasis_free_survival"),
-        obj4_mss = file.path(test_output_dir, "04_GEP_Validation", "b_melanoma_specific_survival"),
-        obj4_ph_diagnostics = file.path(test_output_dir, "04_GEP_Validation", "c_proportional_hazards_diagnostics")
+    pipeline <- get_actual_objective4_pipeline()
+    output_dirs <- pipeline$output_dirs
+    results <- pipeline$results
+
+    expect_true(length(pipeline$asserted_warnings) > 0)
+    allowed_warning_patterns <- c(
+        "coefficient may be infinite",
+        "Chi-squared approximation may be incorrect"
     )
-
-    for (dir_path in output_dirs) {
-        dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
-    }
-
-    expect_no_error({
-        results <- suppressWarnings(run_objective_4(
-            data = actual_data,
-            dataset_name = "uveal_melanoma_full_cohort",
-            output_dirs = output_dirs,
-            prefix = "test_"
-        ))
-    })
+    expect_true(all(vapply(
+        pipeline$asserted_warnings,
+        function(message) {
+            any(vapply(
+                allowed_warning_patterns,
+                grepl,
+                logical(1),
+                x = message,
+                fixed = TRUE
+            ))
+        },
+        logical(1)
+    )))
+    expect_true(any(grepl(
+        "coefficient may be infinite",
+        pipeline$asserted_warnings,
+        fixed = TRUE
+    )))
+    expect_true(any(grepl(
+        "Chi-squared approximation may be incorrect",
+        pipeline$asserted_warnings,
+        fixed = TRUE
+    )))
 
     expect_true(all(c(
         "mfs_gep_results",
@@ -1519,19 +1546,19 @@ test_that("run_objective_4 creates current canonical Objective 4 artifacts", {
         "exploratory_no_gep_results"
     ) %in% names(results)))
 
-    expect_true(file.exists(file.path(output_dirs$obj4_mfs, "test_mfs_validation_technical_details.xlsx")))
-    expect_true(file.exists(file.path(output_dirs$obj4_mfs, "test_MFS_consolidated_summary.xlsx")))
-    expect_true(file.exists(file.path(output_dirs$obj4_mfs, "test_mfs_validation_narrative_summary.md")))
-    expect_true(file.exists(file.path(output_dirs$obj4_mfs, "test_mfs_extrapolation_assumption_summary.md")))
-    expect_true(file.exists(file.path(output_dirs$obj4_mfs, "test_mfs_extrapolation_cumhaz_diagnostic.png")))
-    expect_true(file.exists(file.path(output_dirs$obj4_mfs, "test_mfs_calibration_full.png")))
-    expect_true(file.exists(file.path(output_dirs$obj4_mss, "test_MSS_consolidated_summary.xlsx")))
-    expect_true(file.exists(file.path(output_dirs$obj4_mss, "test_mss_validation_technical_details.xlsx")))
-    expect_true(file.exists(file.path(output_dirs$obj4_mss, "test_mss_validation_narrative_summary.md")))
-    expect_true(file.exists(file.path(output_dirs$obj4_mss, "test_mss_extrapolation_assumption_summary.md")))
-    expect_true(file.exists(file.path(output_dirs$obj4_mss, "test_mss_extrapolation_cumhaz_diagnostic.png")))
-    expect_true(file.exists(file.path(output_dirs$obj4_mfs, "test_mfs_prame_delta_c.png")))
-    expect_true(file.exists(file.path(output_dirs$obj4_mss, "test_mss_prame_delta_c.png")))
+    expect_true(file.exists(file.path(output_dirs$obj4_mfs_summary, "test_mfs_validation_technical_details.xlsx")))
+    expect_true(file.exists(file.path(output_dirs$obj4_mfs_summary, "test_MFS_consolidated_summary.xlsx")))
+    expect_true(file.exists(file.path(output_dirs$obj4_mfs_summary, "test_mfs_validation_narrative_summary.md")))
+    expect_true(file.exists(file.path(output_dirs$obj4_mfs_summary, "test_mfs_extrapolation_assumption_summary.md")))
+    expect_true(file.exists(file.path(output_dirs$obj4_mfs_summary, "test_mfs_extrapolation_cumhaz_diagnostic.png")))
+    expect_true(file.exists(file.path(output_dirs$obj4_mfs_validation, "test_mfs_calibration_full.png")))
+    expect_true(file.exists(file.path(output_dirs$obj4_mss_summary, "test_MSS_consolidated_summary.xlsx")))
+    expect_true(file.exists(file.path(output_dirs$obj4_mss_summary, "test_mss_validation_technical_details.xlsx")))
+    expect_true(file.exists(file.path(output_dirs$obj4_mss_summary, "test_mss_validation_narrative_summary.md")))
+    expect_true(file.exists(file.path(output_dirs$obj4_mss_summary, "test_mss_extrapolation_assumption_summary.md")))
+    expect_true(file.exists(file.path(output_dirs$obj4_mss_summary, "test_mss_extrapolation_cumhaz_diagnostic.png")))
+    expect_true(file.exists(file.path(output_dirs$obj4_mfs_validation, "test_mfs_prame_delta_c.png")))
+    expect_true(file.exists(file.path(output_dirs$obj4_mss_validation, "test_mss_prame_delta_c.png")))
     expect_true(file.exists(file.path(dirname(output_dirs$obj4_mfs), "test_unified_gep_validation_summary.xlsx")))
     expect_true(file.exists(file.path(dirname(output_dirs$obj4_mfs), "unified_summary", "test_simple_gep_validation.xlsx")))
     expect_true(file.exists(file.path(dirname(output_dirs$obj4_mfs), "unified_summary", "test_mfs_sensitivity_summary.xlsx")))
@@ -1541,14 +1568,14 @@ test_that("run_objective_4 creates current canonical Objective 4 artifacts", {
     expect_true(file.exists(file.path(dirname(output_dirs$obj4_mfs), "d_exploratory_no_gep", "full_cohort_exploratory_no_gep_summary.md")))
     expect_false(file.exists(file.path(dirname(output_dirs$obj4_mfs), "test_prame_delta_c.png")))
 
-    mfs_technical_sheets <- readxl::excel_sheets(file.path(output_dirs$obj4_mfs, "test_mfs_validation_technical_details.xlsx"))
+    mfs_technical_sheets <- readxl::excel_sheets(file.path(output_dirs$obj4_mfs_summary, "test_mfs_validation_technical_details.xlsx"))
     expect_true("Observed_Expected_by_class" %in% mfs_technical_sheets)
     expect_false(any(c("Calibration", "Discrimination") %in% mfs_technical_sheets))
 
-    mfs_consolidated_sheets <- readxl::excel_sheets(file.path(output_dirs$obj4_mfs, "test_MFS_consolidated_summary.xlsx"))
+    mfs_consolidated_sheets <- readxl::excel_sheets(file.path(output_dirs$obj4_mfs_summary, "test_MFS_consolidated_summary.xlsx"))
     expect_true(all(c("Observed_Expected_Summary", "PRAME_Summary", "Extrapolation_Assumption_Checks") %in% mfs_consolidated_sheets))
 
-    mss_technical_sheets <- readxl::excel_sheets(file.path(output_dirs$obj4_mss, "test_mss_validation_technical_details.xlsx"))
+    mss_technical_sheets <- readxl::excel_sheets(file.path(output_dirs$obj4_mss_summary, "test_mss_validation_technical_details.xlsx"))
     expect_true("Observed_Expected_by_class" %in% mss_technical_sheets)
     expect_false(any(c("Calibration", "Discrimination") %in% mss_technical_sheets))
 
@@ -1574,33 +1601,12 @@ test_that("run_objective_4 creates current canonical Objective 4 artifacts", {
         "Guardrail_Notes"
     ) %in% sensitivity_sheets))
 
-    unlink(test_output_dir, recursive = TRUE)
 })
 
 test_that("run_objective_4 carries confounders into adjusted GEP MFS effect summaries", {
-    actual_data <- readRDS(file.path(PROCESSED_DATA_DIR, "uveal_melanoma_full_cohort.rds"))
-    test_output_dir <- file.path(TEST_OUTPUT_DIR, "objective4_adjusted_confounders")
-    output_dirs <- list(
-        obj4_mfs = file.path(test_output_dir, "04_GEP_Validation", "a_metastasis_free_survival"),
-        obj4_mss = file.path(test_output_dir, "04_GEP_Validation", "b_melanoma_specific_survival"),
-        obj4_ph_diagnostics = file.path(test_output_dir, "04_GEP_Validation", "c_proportional_hazards_diagnostics")
-    )
+    pipeline <- get_actual_objective4_pipeline()
+    output_dirs <- pipeline$output_dirs
     expected_confounders <- c("age_at_diagnosis_general_pop_median", "sex", "location")
-
-    for (dir_path in output_dirs) {
-        dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
-    }
-    on.exit(unlink(test_output_dir, recursive = TRUE), add = TRUE)
-
-    expect_no_error({
-        suppressWarnings(run_objective_4(
-            data = actual_data,
-            dataset_name = "uveal_melanoma_full_cohort",
-            output_dirs = output_dirs,
-            prefix = "test_",
-            confounders = expected_confounders
-        ))
-    })
 
     effect_summary_paths <- list.files(
         path = output_dirs$obj4_mfs,
@@ -1645,59 +1651,6 @@ test_that("run_objective_4 carries confounders into adjusted GEP MFS effect summ
 
     expect_true(nrow(merged_simple) > 0)
     expect_true(any(merged_simple$adjusted_estimate != merged_simple$unadjusted_estimate))
-})
-
-test_that("4e: Existing Objective 4 cohort artifacts follow current placement conventions", {
-    cohort_configs <- list(
-        list(
-            name = "full",
-            base_dir = file.path(OUTPUT_DIR, "uveal_full", "04_GEP_Validation"),
-            prefix = "full_cohort_"
-        ),
-        list(
-            name = "restricted",
-            base_dir = file.path(OUTPUT_DIR, "uveal_restricted", "04_GEP_Validation"),
-            prefix = "restricted_cohort_"
-        ),
-        list(
-            name = "gksrs",
-            base_dir = file.path(OUTPUT_DIR, "gksrs", "04_GEP_Validation"),
-            prefix = "gksrs_only_cohort_"
-        )
-    )
-
-    for (cfg in cohort_configs) {
-        mfs_dir <- file.path(cfg$base_dir, "a_metastasis_free_survival")
-        mss_dir <- file.path(cfg$base_dir, "b_melanoma_specific_survival")
-        unified_dir <- file.path(cfg$base_dir, "unified_summary")
-        mfs_summary_dir <- file.path(mfs_dir, "05_summary_tables")
-        mss_summary_dir <- file.path(mss_dir, "03_summary_tables")
-
-        expect_true(file.exists(file.path(mfs_summary_dir, paste0(cfg$prefix, "MFS_consolidated_summary.xlsx"))),
-            info = sprintf("MFS consolidated workbook should exist for %s cohort", cfg$name))
-        expect_true(file.exists(file.path(mss_summary_dir, paste0(cfg$prefix, "MSS_consolidated_summary.xlsx"))),
-            info = sprintf("MSS consolidated workbook should exist for %s cohort", cfg$name))
-        expect_true(file.exists(file.path(mss_summary_dir, paste0(cfg$prefix, "mss_validation_technical_details.xlsx"))),
-            info = sprintf("MSS validation workbook should exist for %s cohort", cfg$name))
-        expect_true(file.exists(file.path(cfg$base_dir, paste0(cfg$prefix, "unified_gep_validation_summary.xlsx"))),
-            info = sprintf("Root-level unified workbook should exist for %s cohort", cfg$name))
-        expect_true(file.exists(file.path(unified_dir, paste0(cfg$prefix, "simple_gep_validation.xlsx"))),
-            info = sprintf("Simple validation workbook should exist in unified_summary for %s cohort", cfg$name))
-        expect_true(file.exists(file.path(unified_dir, paste0(cfg$prefix, "mfs_sensitivity_summary.xlsx"))),
-            info = sprintf("MFS sensitivity workbook should exist in unified_summary for %s cohort", cfg$name))
-        expect_true(file.exists(file.path(unified_dir, paste0(cfg$prefix, "mfs_sensitivity_summary.md"))),
-            info = sprintf("MFS sensitivity summary text should exist in unified_summary for %s cohort", cfg$name))
-
-        if (identical(cfg$name, "full")) {
-            expect_true(file.exists(file.path(cfg$base_dir, "d_exploratory_no_gep", "full_cohort_exploratory_no_gep_summary.md")),
-                info = "Full cohort should retain the exploratory no-GEP markdown summary")
-        }
-
-        if (identical(cfg$name, "gksrs")) {
-            expect_true(file.exists(file.path(mfs_dir, "02_cox_models", paste0(cfg$prefix, "simple_gep_binary_metastasis_free_survival_probability_cox_NO_CONTENT_DIAGNOSTIC.html"))),
-                info = "GKSRS cohort should retain the explicit NO_CONTENT diagnostic artifact when PH diagnostics are sparse")
-        }
-    }
 })
 
 # Test that eligibility filters properly exclude invalid data

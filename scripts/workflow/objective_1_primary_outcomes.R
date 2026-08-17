@@ -178,6 +178,8 @@ write_objective1_subgroup_contract_note <- function(output_dirs, dataset_name, p
 #' @param diagnostics Data frame of subgroup diagnostics.
 #' @param dataset_name Character dataset/cohort identifier.
 #' @param subgroup_surface Character subgroup output family.
+#' @param reviewer_support Optional reviewer-support audit containing subgroup
+#'   support counts, including `t4_n` when available.
 #' @param outcome_key Optional Objective 1 outcome specification key.
 #' @return Diagnostics data frame with endpoint and interpretation metadata.
 annotate_objective1_subgroup_diagnostics <- function(
@@ -306,6 +308,16 @@ run_objective1_time_to_event_subgroups <- function(
             dataset_name = dataset_name
         )$subgroup_results
     })
+}
+
+#' Determine whether to run the Objective 1 propensity-sensitivity analysis
+#'
+#' @param dataset_name Character dataset/cohort identifier supplied to the
+#'   Objective 1 workflow.
+#' @return `TRUE` when the cohort is the configured propensity dataset;
+#'   otherwise `FALSE`.
+should_run_objective1_propensity_sensitivity <- function(dataset_name) {
+    identical(dataset_name, OBJECTIVE1_PROPENSITY_DATASET)
 }
 
 #' Run Objective 1: Primary Outcomes Analysis
@@ -575,7 +587,7 @@ run_objective_1 <- function(data, dataset_name, output_dirs, prefix, confounders
     )
 
     propensity_sensitivity <- NULL
-    if (identical(dataset_name, OBJECTIVE1_PROPENSITY_DATASET)) {
+    if (should_run_objective1_propensity_sensitivity(dataset_name)) {
         propensity_sensitivity <- run_objective1_propensity_sensitivity(
             data,
             dataset_name,

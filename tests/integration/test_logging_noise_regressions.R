@@ -1,6 +1,3 @@
-skip_if_integration_disabled()
-skip_if_local_data_unavailable()
-
 # Load project functions for logging and plotting regression tests
 
 #' Resolve the human-readable text log created by `setup_logging()`

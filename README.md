@@ -110,21 +110,22 @@ another checkout's library with `.libPaths()` or install packages into a
 checkout-specific library.
 
 ```sh
-# Fast, data-free suite used by the required pull-request check
-Rscript scripts/tools/run_testthat.R tests/testthat --filter '^(ci_contract|path_runtime_publish|forest_plot_labels|objective0_data_processing_portable|objective1_subgroup_policy|objective4_gep_analysis_portable|sparse_factor_handling|propensity_score_sensitivity|synthetic_fixture_contract)$'
-Rscript scripts/tools/run_testthat.R tests/integration --filter 'portable_smoke'
+# Complete portable suite required for pull requests and master pushes
+Rscript scripts/tools/run_portable_suite.R
 
-# Full data-free regression suite
-Rscript scripts/tools/run_testthat.R tests/testthat
-Rscript scripts/tools/run_testthat.R tests/integration --filter 'portable_smoke'
-
-# Broader local integration suite (requires the private cohort data)
-OCULAR_RUN_INTEGRATION_TESTS=true Rscript scripts/tools/run_testthat.R tests/integration
+# Local read-only actual-data integration suite
+OCULAR_INTEGRATION_RAW_DATA_DIR='/absolute/path/to/raw-data' \
+OCULAR_INTEGRATION_PROCESSED_DATA_DIR='/absolute/path/to/processed-data' \
+Rscript scripts/tools/run_testthat.R tests/integration
 ```
 
 The synthetic fixture exercises portable schema, missingness, censoring, GEP,
 PRAME, treatment, sparse-group, and one-arm paths. It is not a substitute for
-the local data-backed validation of scientific estimates.
+the local data-backed validation of scientific estimates. The actual-data lane
+requires explicit input directories, reads those inputs without copying them,
+and writes its outputs only beneath the process temporary directory.
+All three test directories carry checked-in file manifests, so deleting or
+adding a test file without updating the intended suite inventory fails closed.
 
 ## Path Model
 
