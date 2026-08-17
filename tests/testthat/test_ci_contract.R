@@ -248,6 +248,45 @@ test_that("canonical portable command owns every portable stage", {
     expect_true(file.exists(here::here("tests", "portable", "required-test-files.txt")))
 })
 
+test_that("actual-data integration inventory is checked in and complete", {
+    integration_dir <- here::here("tests", "integration")
+    manifest_path <- file.path(integration_dir, "required-test-files.txt")
+    expect_true(file.exists(manifest_path))
+
+    discovered_files <- sort(list.files(
+        integration_dir,
+        pattern = "^test.*\\.[rR]$",
+        full.names = FALSE
+    ))
+    required_files <- sort(readLines(manifest_path, warn = FALSE))
+    expect_identical(required_files, discovered_files)
+
+    runner_text <- paste(
+        readLines(here::here("scripts", "tools", "run_testthat.R"), warn = FALSE),
+        collapse = "\n"
+    )
+    expect_match(
+        runner_text,
+        'c("testthat", "portable", "integration")',
+        fixed = TRUE
+    )
+
+    temporary_root <- withr::local_tempdir()
+    missing_manifest_dir <- file.path(temporary_root, "integration")
+    dir.create(missing_manifest_dir)
+    writeLines(
+        "testthat::test_that('sentinel', testthat::succeed())",
+        file.path(missing_manifest_dir, "test_sentinel.R")
+    )
+    missing_manifest <- run_testthat_subprocess(missing_manifest_dir)
+    expect_gt(missing_manifest$status, 0L)
+    expect_match(
+        paste(missing_manifest$output, collapse = "\n"),
+        "Required test manifest is missing",
+        fixed = TRUE
+    )
+})
+
 test_that("the lockfile records the safe Deriv build and pinned rmda source", {
     lock <- jsonlite::fromJSON(here::here("renv.lock"), simplifyVector = FALSE)
 

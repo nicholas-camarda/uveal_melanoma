@@ -124,6 +124,8 @@ PRAME, treatment, sparse-group, and one-arm paths. It is not a substitute for
 the local data-backed validation of scientific estimates. The actual-data lane
 requires explicit input directories, reads those inputs without copying them,
 and writes its outputs only beneath the process temporary directory.
+All three test directories carry checked-in file manifests, so deleting or
+adding a test file without updating the intended suite inventory fails closed.
 
 ## Path Model
 

@@ -667,6 +667,10 @@ The repository uses three test lanes with separate bootstrap helpers:
 - `tests/portable/`: hermetic synthetic integration tests loaded through `tests/portable/helper-bootstrap.R`
 - `tests/integration/`: local actual-data integration tests loaded through `tests/integration/helper-bootstrap.R`
 
+Each directory has a checked-in `required-test-files.txt` inventory. The
+canonical runner rejects missing, unexpected, or unexecuted test files in both
+portable validation and the private actual-data lane.
+
 `.Rprofile` keys the project library to the content hash of `renv.lock` under
 the user `renv` cache. Checkouts with the same lockfile reuse the same package
 links, and lockfile changes receive an isolated library. Initialize a lockfile

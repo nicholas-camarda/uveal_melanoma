@@ -31,17 +31,17 @@ branch based on `e34d9be` plus the review fixes recorded here.
 |---|---:|---:|
 | Unit test files expected/executed | 41/41 locally; 9/41 required in CI | 44/44 locally and required in CI |
 | Test inventory contract | Brittle source declaration count | Checked-in file manifest plus dynamic testthat execution |
-| Dynamically executed unit cases | Not reported by the master runner; 268 source declarations | 284 |
-| Unit expectations passed | 1,582 | 1,677 |
+| Dynamically executed unit cases | Not reported by the master runner; 268 source declarations | 285 |
+| Unit expectations passed | 1,582 | 1,682 |
 | Unit failures | 0 | 0 |
 | Unit warnings | 958 | 0 |
 | Unit skips | 0 | 0 |
-| Unit runtime | 287.7 s | 87.2 s normal; 89.8 s reversed; 88.6 s seeded-random |
+| Unit runtime | 287.7 s | 96.0 s final normal; 89.8 s reversed; 88.6 s seeded-random |
 | Synthetic integration files | Portable smoke mixed into the private directory | 1/1 dedicated portable file |
 | Synthetic integration expectations | 10 | 10 |
 | Actual-data integration files executed | 1/7 effectively portable; six files skipped | 6/6 actual-data files |
 | Actual-data integration cases | Private inputs were not reached | 63 |
-| Actual-data integration result | 10 pass, 6 skip; private inputs were not reached | 654 pass, 0 fail, 0 warning, 0 skip in 74.6 s |
+| Actual-data integration result | 10 pass, 6 skip; private inputs were not reached | 654 pass, 0 fail, 0 warning, 0 skip in 77.4 s |
 | Objective 1 full executions | 19 | 1 |
 | Objective 2 full executions | 3 | 1 |
 | Objective 3 full executions | 1 | 1 |
@@ -56,6 +56,10 @@ function objects, cached results and temporary roots are cleared even after a
 failed count assertion, and two same-process testthat runs prove that setup is
 fresh and path/global state is restored. Normal, reversed, and seeded-random
 file orders produced identical results.
+
+The unit, synthetic, and actual-data directories each have a checked-in file
+manifest. The runner rejects missing, unexpected, or unexecuted files in every
+canonical lane, including the private Objective 0/4 integration inventory.
 
 ## Testing-surface accounting
 
@@ -85,6 +89,7 @@ Representative mutations were made only in a disposable detached worktree and we
 | Unexpected skip | Rejected with exit 1 and `skips=1` |
 | Manifest-listed file missing from disk | Rejected with the missing filename |
 | Unlisted test file on disk | Rejected with the unexpected filename |
+| Actual-data integration manifest drift | Rejected before a partial private-lane result can be accepted |
 | Generated/parameterized `test_that()` cases | Accepted and counted dynamically |
 | Invalid actual-data input routing | Rejected with exit 1 during bootstrap |
 | Every Objective 1-4 and merged-table entrypoint executed twice | Rejected with exit 1 and `objective1=2, objective2=2, objective3=2, objective4=2, merged_tables=2` |

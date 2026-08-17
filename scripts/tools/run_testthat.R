@@ -242,12 +242,12 @@ run_testthat_directory <- function(args = commandArgs(trailingOnly = TRUE)) {
     if (!dir.exists(test_dir)) {
         stop(sprintf("Test directory does not exist: %s", test_dir), call. = FALSE)
     }
-    # Canonical portable directories must carry a checked-in manifest; ad hoc
+    # Canonical repository suites must carry a checked-in manifest; ad hoc
     # temporary directories remain usable for focused developer runs.
     manifest_required <- identical(
         Sys.getenv("OCULAR_REQUIRE_TEST_MANIFEST", unset = ""),
         "true"
-    ) || basename(test_dir) %in% c("testthat", "portable")
+    ) || basename(test_dir) %in% c("testthat", "portable", "integration")
     if (manifest_required && !file.exists(file.path(test_dir, "required-test-files.txt"))) {
         stop(
             sprintf("Required test manifest is missing: %s", file.path(test_dir, "required-test-files.txt")),
