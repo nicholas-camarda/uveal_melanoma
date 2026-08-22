@@ -109,6 +109,10 @@ test_that("accepted AAO contract is immutable and complete", {
         "440803ca09c2968d7e7dfffe61666eb5de7e740cd9d24206ae3799012344bc7e"
     )
     expect_identical(
+        AAO_ACCEPTED_CONTRACT_FINGERPRINT,
+        contract$immutable_fingerprint_sha256
+    )
+    expect_identical(
         calculate_aao_contract_fingerprint(contract),
         contract$immutable_fingerprint_sha256
     )
@@ -445,8 +449,13 @@ test_that("direct model scopes must be exact and unique", {
 test_that("malformed nested contracts emit PHI-free fail reports", {
     workbook <- write_aao_candidate_workbook(tempfile(fileext = ".xlsx"))
     base_contract <- yaml::read_yaml(contract_path)
+    recomputed_changed_auc <- within(base_contract, accepted_abstract$auc$direct_mfs <- 0.700)
+    recomputed_changed_auc$immutable_fingerprint_sha256 <- calculate_aao_contract_fingerprint(
+        recomputed_changed_auc
+    )
     malformed_contracts <- list(
         changed_auc = within(base_contract, accepted_abstract$auc$direct_mfs <- 0.700),
+        recomputed_changed_auc = recomputed_changed_auc,
         missing_ordering_field = within(base_contract, candidate_workbook$required_orderings[[1L]]$higher <- NULL),
         malformed_conclusion_rule = within(base_contract, conclusion_rules$failure_to_recover_molecular_class$result$threshold <- "high"),
         changed_scope_mapping = within(base_contract, candidate_workbook$models$direct_mfs$required_scopes <- list("Overall"))

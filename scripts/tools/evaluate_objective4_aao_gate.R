@@ -1,6 +1,7 @@
 #!/usr/bin/env Rscript
 
 AAO_GATE_VERSION <- 1L
+AAO_ACCEPTED_CONTRACT_FINGERPRINT <- "440803ca09c2968d7e7dfffe61666eb5de7e740cd9d24206ae3799012344bc7e"
 
 stop_gate_usage <- function() {
     stop(
@@ -70,6 +71,7 @@ validate_aao_contract <- function(contract) {
     if (!has_exact_names(contract, expected_top_names) ||
         !identical(contract$version, AAO_GATE_VERSION) ||
         !is_scalar_character(contract$immutable_fingerprint_sha256) ||
+        !identical(contract$immutable_fingerprint_sha256, AAO_ACCEPTED_CONTRACT_FINGERPRINT) ||
         !grepl("^[0-9a-f]{64}$", contract$immutable_fingerprint_sha256)) {
         stop("AAO gate contract version is unsupported", call. = FALSE)
     }
