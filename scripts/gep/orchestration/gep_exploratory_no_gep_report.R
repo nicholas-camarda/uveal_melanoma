@@ -1994,9 +1994,9 @@ create_exploratory_start_here_tab <- function(surrogate_model,
             "interpretation"
         ),
         value = c(
-            "What do baseline clinical features tell us about 5-year risk when GEP is unavailable or unusable?",
+            "What do baseline clinical features tell us about 60-month post-treatment metastasis risk and melanoma-death cumulative-incidence risk when GEP is unavailable or unusable?",
             sprintf(
-                "Baseline clinical features provided moderate prognostic support for 5-year MFS and MSS (cross-validated AUC %.3f and %.3f).",
+                "Baseline clinical features provided prognostic support for 60-month post-treatment metastasis risk and 60-month melanoma-death cumulative-incidence risk (out-of-fold IPCW AUC %.3f and %.3f).",
                 mfs_model$metrics$cv_auc[[1]],
                 mss_model$metrics$cv_auc[[1]]
             ),
@@ -2010,7 +2010,7 @@ create_exploratory_start_here_tab <- function(surrogate_model,
             "Open Risk_Ladder_5yr next to compare Class 1, Not Tested, Failed/Indeterminate, and Class 2 on one 5-year scale.",
             "Open No_GEP_Subgroups to see the clinically relevant split within no-GEP patients.",
             "Open Model_Performance for compact discrimination and calibration results.",
-            "Use direct MFS/MSS models as baseline-only prognostic support when GEP is unavailable; treat the surrogate as descriptive resemblance only."
+            "Use the direct 60-month post-treatment metastasis-risk and melanoma-death cumulative-incidence-risk models as baseline-only prognostic support when GEP is unavailable; treat the surrogate as descriptive resemblance only."
         )
     )
 }
@@ -2031,7 +2031,7 @@ create_exploratory_key_findings_table <- function(risk_ladder) {
             observed_5yr_mfs_event_rate = .data$observed_5yr_mfs_event_rate,
             observed_5yr_mss_event_rate = .data$observed_5yr_mss_event_rate,
             median_predicted_5yr_mfs_risk = .data$median_predicted_5yr_mfs_risk,
-            median_predicted_5yr_mss_risk = .data$median_predicted_5yr_mss_risk,
+            median_predicted_60mo_melanoma_death_cumulative_incidence_risk = .data$median_predicted_5yr_mss_risk,
             interpretation = .data$interpretation
         )
 }
@@ -2053,7 +2053,7 @@ create_exploratory_no_gep_subgroups_table <- function(no_gep_summary) {
             observed_5yr_mss_event_rate = .data$observed_mss_5yr_event_rate,
             median_surrogate_class2_probability = .data$median_surrogate_class2_probability,
             median_predicted_5yr_mfs_risk = .data$median_predicted_mfs_5yr_risk,
-            median_predicted_5yr_mss_risk = .data$median_predicted_mss_5yr_risk,
+            median_predicted_60mo_melanoma_death_cumulative_incidence_risk = .data$median_predicted_mss_5yr_risk,
             interpretation = dplyr::case_when(
                 .data$no_gep_group == "GEP Failed/Indeterminate" ~ "Higher-risk no-GEP subgroup overall; avoid interpretive pooling with GEP Not Tested.",
                 .data$no_gep_group == "GEP Not Tested" ~ "Lower-risk no-GEP subgroup overall, but still above definitive Class 1 on baseline-only risk.",
@@ -2452,7 +2452,11 @@ summarize_pooled_no_gep_sensitivity <- function(prediction_data) {
     dplyr::bind_rows(
         summarize_one("surrogate_probability_bin", "surrogate_class2_probability", "Surrogate_Class2_Probability"),
         summarize_one("mfs_risk_bin", "predicted_mfs_5yr_risk", "Direct_MFS_5yr_Risk"),
-        summarize_one("mss_risk_bin", "predicted_mss_5yr_risk", "Direct_MSS_5yr_Risk")
+        summarize_one(
+            "mss_risk_bin",
+            "predicted_mss_5yr_risk",
+            "Direct_60mo_Melanoma_Death_Cumulative_Incidence_Risk"
+        )
     )
 }
 
@@ -2516,7 +2520,11 @@ summarize_no_gep_risk_strata <- function(prediction_data) {
     dplyr::bind_rows(
         summarize_one("surrogate_probability_bin", "surrogate_class2_probability", "Surrogate_Class2_Probability"),
         summarize_one("mfs_risk_bin", "predicted_mfs_5yr_risk", "Direct_MFS_5yr_Risk"),
-        summarize_one("mss_risk_bin", "predicted_mss_5yr_risk", "Direct_MSS_5yr_Risk")
+        summarize_one(
+            "mss_risk_bin",
+            "predicted_mss_5yr_risk",
+            "Direct_60mo_Melanoma_Death_Cumulative_Incidence_Risk"
+        )
     ) %>%
         dplyr::filter(!is.na(.data$Bin))
 }
@@ -2548,7 +2556,7 @@ create_no_gep_predictions_sheet <- function(prepared_data, no_gep_predictions) {
                 surrogate_probability_bin,
                 predicted_mfs_5yr_risk,
                 mfs_risk_bin,
-                predicted_mss_5yr_risk,
+                predicted_60mo_melanoma_death_cumulative_incidence_risk = predicted_mss_5yr_risk,
                 mss_risk_bin
             )
     )
@@ -2577,7 +2585,7 @@ create_no_gep_unified_overview <- function(analysis_results) {
                     Group = .data$no_gep_group,
                     Median_Surrogate_Class2_Probability = .data$median_surrogate_class2_probability,
                     Median_Predicted_MFS_5yr_Risk = .data$median_predicted_mfs_5yr_risk,
-                    Median_Predicted_MSS_5yr_Risk = .data$median_predicted_mss_5yr_risk
+                    Median_Predicted_60mo_Melanoma_Death_Cumulative_Incidence_Risk = .data$median_predicted_mss_5yr_risk
                 ),
             by = "Group"
         ) %>%
@@ -2605,7 +2613,7 @@ create_no_gep_unified_overview <- function(analysis_results) {
         Complete_Predictors_N = NA_real_,
         Median_Surrogate_Class2_Probability = NA_real_,
         Median_Predicted_MFS_5yr_Risk = NA_real_,
-        Median_Predicted_MSS_5yr_Risk = NA_real_,
+        Median_Predicted_60mo_Melanoma_Death_Cumulative_Incidence_Risk = NA_real_,
         Interpretation_Note = if (nrow(best_baseline_row) == 1) {
             sprintf(
                 "Strongest 4-group baseline separator: %s (p=%s).",
@@ -2628,7 +2636,7 @@ create_no_gep_unified_overview <- function(analysis_results) {
         Complete_Predictors_N = NA_real_,
         Median_Surrogate_Class2_Probability = NA_real_,
         Median_Predicted_MFS_5yr_Risk = NA_real_,
-        Median_Predicted_MSS_5yr_Risk = NA_real_,
+        Median_Predicted_60mo_Melanoma_Death_Cumulative_Incidence_Risk = NA_real_,
         Interpretation_Note = if (nrow(overlap_row) > 0 && is.finite(overlap_row$abs_smd[[1]])) {
             sprintf(
                 "Largest Failed vs Not Tested imbalance: %s%s (absolute SMD %.2f; flag=%s).",
@@ -2983,7 +2991,7 @@ collect_exploratory_no_gep_analysis <- function(data,
             MSS_5yr_Events = .data$mss_5yr_events,
             Observed_MSS_5yr_Event_Rate = .data$observed_5yr_mss_event_rate,
             Observed_MSS_Method = .data$mss_observed_method,
-            Median_Predicted_MSS_5yr_Risk = .data$median_predicted_5yr_mss_risk,
+            Median_Predicted_60mo_Melanoma_Death_Cumulative_Incidence_Risk = .data$median_predicted_5yr_mss_risk,
             Reported_Risk_Scale = "probability_0_to_1",
             Interpretation = .data$interpretation
         )
@@ -3369,7 +3377,11 @@ summarize_exploratory_bin_pattern <- function(sensitivity_summary, analysis_name
 
     sprintf(
         "Observed %s event rates across pooled %s bins were Low=%.1f%%, Intermediate=%.1f%%, and High=%.1f%%.",
-        if (identical(event_col, "observed_mfs_5yr_event_rate")) "5-year MFS" else "5-year MSS",
+        if (identical(event_col, "observed_mfs_5yr_event_rate")) {
+            "5-year MFS"
+        } else {
+            "observed 60-month melanoma-death cumulative incidence"
+        },
         analysis_name,
         100 * rows[[event_col]][[1]],
         100 * rows[[event_col]][[2]],
@@ -3424,7 +3436,7 @@ create_exploratory_model_overview_row <- function(model_label,
     event_label <- if (identical(event_col, "observed_mfs_5yr_event_rate")) {
         "5-year MFS"
     } else {
-        "5-year MSS"
+        "observed 60-month melanoma-death cumulative incidence"
     }
     bin_summary <- if (is.null(bin_rates)) {
         "Unavailable"
@@ -3560,11 +3572,11 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
             event_col = "observed_mfs_5yr_event_rate"
         ),
         create_exploratory_model_overview_row(
-            model_label = "Direct 5-year MSS",
-            model_context = "Main no-GEP melanoma-specific model",
+            model_label = "Direct 60-month melanoma-death cumulative-incidence risk",
+            model_context = "Main no-GEP melanoma-death cumulative-incidence-risk model",
             model_results = mss_model,
             sensitivity_summary = sensitivity_summary,
-            analysis_name = "Direct_MSS_5yr_Risk",
+            analysis_name = "Direct_60mo_Melanoma_Death_Cumulative_Incidence_Risk",
             event_col = "observed_mss_5yr_event_rate"
         ),
         "",
@@ -3584,10 +3596,10 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
         ),
         "",
         create_exploratory_top_predictor_table(
-            model_label = "Direct 5-year MSS",
+            model_label = "Direct 60-month melanoma-death cumulative-incidence risk",
             model_results = mss_model,
             prepared_data = prepared_data,
-            model_context = "Preferred baseline-only melanoma-specific risk output when GEP is unavailable or unusable."
+            model_context = "Preferred baseline-only 60-month melanoma-death cumulative-incidence-risk output when GEP is unavailable or unusable."
         )
     )
 
@@ -3597,9 +3609,9 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
         sprintf("Dataset: %s", dataset_name),
         "",
         md_heading("Bottom Line", 2L),
-        md_bullet("Baseline clinical features provided moderate prognostic discrimination for 5-year MFS/MSS when GEP was unusable, but the same baseline features only weakly approximated definitive molecular class."),
+        md_bullet("Baseline clinical features provided prognostic discrimination for 60-month post-treatment metastasis risk and 60-month melanoma-death cumulative-incidence risk when GEP was unusable, but the same baseline features only weakly approximated definitive molecular class."),
         md_bullet("The surrogate Class 2-like model is descriptive only and should not be used to relabel patients as true Class 1 or Class 2."),
-        md_bullet("The direct MFS/MSS models are the preferred outputs when a patient has no usable GEP, but they should be described as exploratory prognostic support rather than precise patient-level forecasts."),
+        md_bullet("The direct 60-month post-treatment metastasis-risk and melanoma-death cumulative-incidence-risk models are the preferred outputs when a patient has no usable GEP, but they should be described as exploratory prognostic support rather than precise patient-level forecasts."),
         md_bullet("The no-GEP population should not be presented as one homogeneous intermediate-risk group: overall it sits between definitive Class 1 and Class 2, but the failed/indeterminate subgroup is higher risk than the larger not-tested subgroup."),
         "",
         build_exploratory_no_gep_followup_block(prepared_data = prepared_data, dataset_name = dataset_name),
@@ -3617,7 +3629,7 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
             100 * class2_ladder$observed_5yr_mfs_event_rate[[1]]
         )),
         md_bullet(sprintf(
-            "Censoring-aware 5-year MSS event rates (Aalen-Johansen CIF): Class 1 %.1f%%, GEP Not Tested %.1f%%, GEP Failed/Indeterminate %.1f%%, Class 2 %.1f%%.",
+            "Observed 60-month melanoma-death cumulative incidence (Aalen-Johansen, with competing death retained): Class 1 %.1f%%, GEP Not Tested %.1f%%, GEP Failed/Indeterminate %.1f%%, Class 2 %.1f%%.",
             100 * class1_ladder$observed_5yr_mss_event_rate[[1]],
             100 * not_tested_ladder$observed_5yr_mss_event_rate[[1]],
             100 * failed_ladder$observed_5yr_mss_event_rate[[1]],
@@ -3631,7 +3643,7 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
             class2_ladder$median_predicted_5yr_mfs_risk[[1]]
         )),
         md_bullet(sprintf(
-            "Median predicted 5-year MSS risk from the direct clinical model: Class 1 %.3f, GEP Not Tested %.3f, GEP Failed/Indeterminate %.3f, Class 2 %.3f.",
+            "Median predicted 60-month melanoma-death cumulative-incidence risk from the direct clinical model: Class 1 %.3f, GEP Not Tested %.3f, GEP Failed/Indeterminate %.3f, Class 2 %.3f.",
             class1_ladder$median_predicted_5yr_mss_risk[[1]],
             not_tested_ladder$median_predicted_5yr_mss_risk[[1]],
             failed_ladder$median_predicted_5yr_mss_risk[[1]],
@@ -3640,13 +3652,13 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
         "",
         md_heading("No-GEP Subgroup Summary", 2L),
         md_bullet(sprintf(
-            "Failed/Indeterminate: median Class 2-like probability %.3f, median predicted 5-year MFS risk %.3f, median predicted 5-year MSS risk %.3f",
+            "Failed/Indeterminate: median Class 2-like probability %.3f, median predicted 5-year MFS risk %.3f, median predicted 60-month melanoma-death cumulative-incidence risk %.3f",
             failed_row$median_surrogate_class2_probability[[1]],
             failed_row$median_predicted_mfs_5yr_risk[[1]],
             failed_row$median_predicted_mss_5yr_risk[[1]]
         )),
         md_bullet(sprintf(
-            "Not Tested: median Class 2-like probability %.3f, median predicted 5-year MFS risk %.3f, median predicted 5-year MSS risk %.3f",
+            "Not Tested: median Class 2-like probability %.3f, median predicted 5-year MFS risk %.3f, median predicted 60-month melanoma-death cumulative-incidence risk %.3f",
             not_tested_row$median_surrogate_class2_probability[[1]],
             not_tested_row$median_predicted_mfs_5yr_risk[[1]],
             not_tested_row$median_predicted_mss_5yr_risk[[1]]
@@ -3671,7 +3683,7 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
         md_bullet("A ridge-penalized surrogate model was fit only on patients with definitive Class 1 or Class 2 GEP results."),
         md_bullet("That surrogate stores P(Class 2-like | baseline features); it is a clinical resemblance score, not a recovered molecular class label."),
         md_bullet(sprintf(
-            "Direct MFS and MSS models estimate baseline-only 5-year risk when GEP is unavailable or unusable. Primary fitting methods: MFS=%s, MSS=%s.",
+            "The direct MFS model estimates 60-month post-treatment metastasis risk, and the direct competing-risk model estimates 60-month melanoma-death cumulative-incidence risk. Primary fitting methods: MFS=%s, melanoma-death cumulative incidence=%s.",
             mfs_model$metrics$model_mode_used[[1]] %||% "ipcw_horizon_mfs",
             mss_model$metrics$model_mode_used[[1]] %||% "ipcw_horizon_competing_risk_mss"
         )),
@@ -3679,7 +3691,7 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
         md_bullet("Direct-model performance is reported only from keyed outer-fold predictions; censoring weights are estimated in each outer training fold and applied unchanged to that fold's assessment rows."),
         md_bullet("Overall and No GEP performance scopes use the same out-of-fold predictions and assessment weights. GEP Not Tested and Failed/Indeterminate counts are descriptive and are not separate performance claims."),
         md_bullet("95% repeated-partition stability intervals describe variation in AUC, Brier score, and calibration slope across deterministic outer-fold partitions; they are not confidence intervals."),
-        md_bullet("Observed 5-year MFS and MSS rates in the subgroup and ladder summaries use censoring-aware horizon estimates rather than raw event means."),
+        md_bullet("Observed 5-year MFS risk uses Kaplan-Meier estimation; observed 60-month melanoma-death cumulative incidence uses Aalen-Johansen estimation with competing death retained. Neither observed summary is a raw event mean."),
         "",
         md_heading("Parsimonious Sensitivity Check", 2L),
         md_bullet(sprintf(
@@ -3882,7 +3894,7 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
     create_probability_density_plot(
         no_gep_predictions,
         probability_col = "predicted_mss_5yr_risk",
-        plot_title = "Predicted 5-Year MSS Risk by No-GEP Group",
+        plot_title = "Predicted 60-Month Melanoma-Death Cumulative-Incidence Risk by No-GEP Group",
         output_path = plot_paths$mss_density
     )
     create_event_rate_bin_plot(
@@ -3902,9 +3914,9 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
     )
     create_event_rate_bin_plot(
         sensitivity_summary,
-        analysis_name = "Direct_MSS_5yr_Risk",
+        analysis_name = "Direct_60mo_Melanoma_Death_Cumulative_Incidence_Risk",
         event_col = "observed_mss_5yr_event_rate",
-        plot_title = "Observed 5-Year MSS Event Rate by Predicted MSS Risk Bin",
+        plot_title = "Observed 60-Month Melanoma-Death Cumulative Incidence by Predicted Cumulative-Incidence-Risk Bin",
         output_path = plot_paths$mss_bins
     )
 

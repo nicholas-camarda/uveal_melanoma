@@ -240,7 +240,7 @@ test_that("exploratory pooled summaries tolerate bins with no melanoma failures"
     expect_equal(
         risk_strata_summary$Observed_MSS_5yr_Event_Rate[
             risk_strata_summary$No_GEP_Group == "GEP Not Tested" &
-                risk_strata_summary$Analysis == "Direct_MSS_5yr_Risk"
+                risk_strata_summary$Analysis == "Direct_60mo_Melanoma_Death_Cumulative_Incidence_Risk"
         ],
         c(0, 0)
     )
@@ -344,6 +344,11 @@ test_that("exploratory no-GEP report writes workbook, summary, and plots", {
         key_findings_sheet$group,
         c("Class 1", "GEP Not Tested", "GEP Failed/Indeterminate", "Class 2")
     )
+    expect_true(
+        "median_predicted_60mo_melanoma_death_cumulative_incidence_risk" %in%
+            names(key_findings_sheet)
+    )
+    expect_false("median_predicted_5yr_mss_risk" %in% names(key_findings_sheet))
     expect_true(all(c("section", "label", "value") %in% names(start_here_sheet)))
     expect_true(all(c("group", "n", "observed_5yr_mfs_event_rate", "median_predicted_5yr_mfs_risk") %in% names(risk_ladder_sheet)))
     expect_true(all(c(
@@ -360,6 +365,22 @@ test_that("exploratory no-GEP report writes workbook, summary, and plots", {
     expect_match(summary_text, "## Key Findings at 5 Years", fixed = TRUE)
     expect_match(summary_text, "95% repeated-partition stability interval", fixed = TRUE)
     expect_match(summary_text, "censoring weights are estimated in each outer training fold", fixed = TRUE)
+    expect_match(summary_text, "60-month melanoma-death cumulative-incidence risk", fixed = TRUE)
+    expect_match(
+        summary_text,
+        "Median predicted 60-month melanoma-death cumulative-incidence risk",
+        fixed = TRUE
+    )
+    reader_facing_model_text <- paste(
+        summary_text,
+        paste(start_here_sheet$value, collapse = "\n"),
+        paste(model_performance_sheet$model, collapse = "\n"),
+        paste(model_performance_sheet$prediction_target, collapse = "\n"),
+        collapse = "\n"
+    )
+    expect_false(grepl("predicted 5-year MSS risk", reader_facing_model_text, fixed = TRUE))
+    expect_false(grepl("Direct 5-year MSS", reader_facing_model_text, fixed = TRUE))
+    expect_false(grepl("melanoma-specific model", reader_facing_model_text, fixed = TRUE))
     expect_match(summary_text, "## Parsimonious Sensitivity Check", fixed = TRUE)
     expect_match(summary_text, "## Retained Baseline Predictors", fixed = TRUE)
     expect_match(summary_text, "Std. coef.", fixed = TRUE)
@@ -440,6 +461,11 @@ test_that("exploratory no-GEP report writes workbook, summary, and plots", {
     expect_true("overlap_diagnostics" %in% names(results))
     expect_true("parsimonious_sensitivity" %in% names(results))
     expect_true(any(results$predictor_contribution$section == "model_contribution"))
+    expect_true(
+        "predicted_60mo_melanoma_death_cumulative_incidence_risk" %in%
+            names(results$no_gep_predictions)
+    )
+    expect_false("predicted_mss_5yr_risk" %in% names(results$no_gep_predictions))
     expect_true(all(c("Group", "Interpretation_Note") %in% names(results$unified_no_gep_overview)))
     expect_true(all(c(
         "Model", "Model_Method", "Reported_Risk_Scale", "Top_Predictor_1",
@@ -447,6 +473,11 @@ test_that("exploratory no-GEP report writes workbook, summary, and plots", {
     ) %in% names(results$unified_no_gep_model_comparison)))
     expect_true(all(c("No_GEP_Group", "Analysis", "Bin") %in% names(results$unified_no_gep_risk_strata)))
     expect_true(all(c("Group", "Observed_MFS_Method", "Observed_MFS_5yr_Event_Rate", "Median_Predicted_MFS_5yr_Risk", "Reported_Risk_Scale") %in% names(results$unified_no_gep_risk_ladder)))
+    expect_true(
+        "Median_Predicted_60mo_Melanoma_Death_Cumulative_Incidence_Risk" %in%
+            names(results$unified_no_gep_risk_ladder)
+    )
+    expect_false("Median_Predicted_MSS_5yr_Risk" %in% names(results$unified_no_gep_risk_ladder))
     expect_equal(
         as.character(results$risk_ladder$group),
         c("Class 1", "GEP Not Tested", "GEP Failed/Indeterminate", "Class 2")
