@@ -184,6 +184,9 @@ get_exploratory_no_gep_required_columns <- function() {
         "optic_nerve",
         "tt_mets_months",
         "mets_event",
+        "tt_mets_months_analysis",
+        "mets_free_at_baseline",
+        "event_type_mfs_5yr",
         "tt_death_months",
         "melanoma_death_event",
         "competing_death_event",
@@ -415,7 +418,20 @@ prepare_exploratory_no_gep_data <- function(data, dataset_name = "uveal_melanoma
             internal_reflectivity = preserve_exploratory_factor_levels(.data$internal_reflectivity),
             srf = preserve_exploratory_factor_levels(.data$srf),
             mfs_event_5yr = as.integer(.data$mfs_event_5yr),
-            mss_event_5yr = as.integer(.data$mss_event_5yr)
+            mss_event_5yr = as.integer(.data$mss_event_5yr),
+            objective4_mfs_event_type = dplyr::case_when(
+                !.data$mets_free_at_baseline ~ NA_integer_,
+                is.na(.data$event_type_mfs_5yr) | is.na(.data$tt_mets_months_analysis) ~ NA_integer_,
+                .data$event_type_mfs_5yr == 1L ~ 1L,
+                TRUE ~ 0L
+            ),
+            objective4_mss_event_type = dplyr::case_when(
+                is.na(.data$tt_death_months) ~ NA_integer_,
+                .data$melanoma_death_event == 1L ~ 1L,
+                .data$competing_death_event == 1L ~ 2L,
+                !is.na(.data$melanoma_death_event) & !is.na(.data$competing_death_event) ~ 0L,
+                TRUE ~ NA_integer_
+            )
         ) %>%
         enforce_unordered_factors()
 
@@ -465,16 +481,25 @@ prepare_exploratory_no_gep_data <- function(data, dataset_name = "uveal_melanoma
         group_levels = c("GEP Failed/Indeterminate", "GEP Not Tested")
     )
     mfs_model_data <- build_exploratory_model_dataset(
-        prepared,
+        prepared %>%
+            dplyr::filter(
+                .data$mets_free_at_baseline,
+                !is.na(.data$tt_mets_months_analysis),
+                !is.na(.data$objective4_mfs_event_type)
+            ),
         predictors = retained_predictors,
         factor_predictors = intersect(factor_predictors, retained_predictors),
-        outcome_var = "mfs_event_5yr"
+        outcome_var = "objective4_mfs_event_type"
     )
     mss_model_data <- build_exploratory_model_dataset(
-        prepared,
+        prepared %>%
+            dplyr::filter(
+                !is.na(.data$tt_death_months),
+                !is.na(.data$objective4_mss_event_type)
+            ),
         predictors = retained_predictors,
         factor_predictors = intersect(factor_predictors, retained_predictors),
-        outcome_var = "mss_event_5yr"
+        outcome_var = "objective4_mss_event_type"
     )
 
     list(
@@ -536,8 +561,17 @@ screen_exploratory_predictors <- function(data,
                                           min_level_count = 5) {
     dataset_map <- list(
         surrogate = data %>% dplyr::filter(.data$exploratory_gep_group %in% c("Class 1", "Class 2")),
-        direct_mfs = data %>% dplyr::filter(!is.na(.data$mfs_event_5yr)),
-        direct_mss = data %>% dplyr::filter(!is.na(.data$mss_event_5yr))
+        direct_mfs = data %>%
+            dplyr::filter(
+                .data$mets_free_at_baseline,
+                !is.na(.data$tt_mets_months_analysis),
+                !is.na(.data$objective4_mfs_event_type)
+            ),
+        direct_mss = data %>%
+            dplyr::filter(
+                !is.na(.data$tt_death_months),
+                !is.na(.data$objective4_mss_event_type)
+            )
     )
 
     purrr::map_dfr(candidate_predictors, function(predictor) {
@@ -990,11 +1024,17 @@ summarize_exploratory_horizon_groups <- function(data,
         dplyr::group_by(dplyr::across(all_of(group_vars))) %>%
         dplyr::group_modify(function(.x, .y) {
             horizon_summary <- if (identical(outcome, "mfs")) {
+                .x <- .x %>%
+                    dplyr::filter(
+                        .data$mets_free_at_baseline,
+                        !is.na(.data$tt_mets_months_analysis),
+                        !is.na(.data$objective4_mfs_event_type)
+                    )
                 estimate_mfs_km_at_horizon(
                     data = .x,
                     timepoint_months = horizon_months,
-                    time_var = "tt_mets_months",
-                    event_var = "mets_event"
+                    time_var = "tt_mets_months_analysis",
+                    event_var = "objective4_mfs_event_type"
                 )
             } else {
                 estimate_mss_cif_at_horizon(
@@ -1503,6 +1543,12 @@ fit_exploratory_binary_model <- function(data,
                 paste(missing_horizon_vars, collapse = ", ")
             ), call. = FALSE)
         }
+        if (!"exploratory_gep_group" %in% names(data) || anyNA(data$exploratory_gep_group)) {
+            stop(
+                "Direct horizon validation requires an observed Objective 0 exploratory GEP group for every row.",
+                call. = FALSE
+            )
+        }
         nested <- cross_validate_horizon_ridge(
             data = data,
             predictors = predictors,
@@ -1515,8 +1561,26 @@ fit_exploratory_binary_model <- function(data,
             outer_folds = GEP_EXPLORATORY_OUTER_FOLDS,
             inner_folds = GEP_EXPLORATORY_INNER_FOLDS
         )
-        repeated_cv_metrics <- tibble::as_tibble(nested$repeated_metrics)
-        first_repeat <- nested$oof_predictions[nested$oof_predictions$repeat_id == 1L, , drop = FALSE]
+        group_lookup <- data.frame(
+            stable_id = as.character(data[[stable_id_var]]),
+            exploratory_gep_group = as.character(data$exploratory_gep_group),
+            stringsAsFactors = FALSE
+        )
+        oof_predictions <- dplyr::left_join(
+            tibble::as_tibble(nested$oof_predictions),
+            group_lookup,
+            by = "stable_id"
+        )
+        if (anyNA(oof_predictions$exploratory_gep_group)) {
+            stop("Every horizon OOF prediction must map to one Objective 0 exploratory GEP group.", call. = FALSE)
+        }
+        scoped_oof_performance <- summarize_scoped_ipcw_oof_performance(
+            oof_predictions,
+            group_var = "exploratory_gep_group"
+        )
+        repeated_cv_metrics <- scoped_oof_performance %>%
+            dplyr::filter(.data$performance_scope == "Overall")
+        first_repeat <- oof_predictions[oof_predictions$repeat_id == 1L, , drop = FALSE]
         first_auc <- calculate_ipcw_auc(
             first_repeat$horizon_event,
             first_repeat$prediction,
@@ -1551,7 +1615,6 @@ fit_exploratory_binary_model <- function(data,
         apparent_auc <- NA_real_
         apparent_brier <- NA_real_
         analysis_n <- nrow(data)
-        oof_predictions <- nested$oof_predictions
         fold_metadata <- nested$fold_metadata
         final_foldid <- nested$final_foldid
     } else {
@@ -1603,6 +1666,7 @@ fit_exploratory_binary_model <- function(data,
         analysis_n <- nrow(analysis_data)
         oof_predictions <- tibble::tibble()
         fold_metadata <- tibble::tibble()
+        scoped_oof_performance <- tibble::tibble()
     }
 
     cv_auc_interval <- summarize_numeric_interval(repeated_cv_metrics$cv_auc)
@@ -1636,7 +1700,17 @@ fit_exploratory_binary_model <- function(data,
         cv_brier_ci_upper = cv_brier_interval$upper,
         cv_calibration_slope_ci_lower = cv_slope_interval$lower,
         cv_calibration_slope_ci_upper = cv_slope_interval$upper,
-        uncertainty_method = sprintf("Repeated %d-fold CV percentile interval", cv_folds),
+        uncertainty_method = sprintf("95%% repeated-partition stability interval from %d-fold outer CV", cv_folds),
+        evaluation_method = if (identical(model_mode, "surrogate_binary")) {
+            "repeated out-of-fold binary AUC/Brier/calibration"
+        } else {
+            "outer-training-fold IPCW weighted OOF AUC/Brier/calibration"
+        },
+        prediction_target = dplyr::case_when(
+            identical(model_mode, "ipcw_horizon_mfs") ~ "60-month incident post-treatment metastasis risk",
+            identical(model_mode, "ipcw_horizon_competing_risk_mss") ~ "60-month melanoma-death cumulative-incidence risk",
+            TRUE ~ "definitive Class 2-like molecular resemblance"
+        ),
         model_mode_requested = model_mode,
         model_mode_used = model_mode,
         lambda_min = fitted_model$lambda.min,
@@ -1654,6 +1728,7 @@ fit_exploratory_binary_model <- function(data,
         design_columns = design_columns,
         model_mode_used = model_mode,
         oof_predictions = oof_predictions,
+        scoped_oof_performance = scoped_oof_performance,
         fold_metadata = fold_metadata,
         final_foldid = final_foldid
     )
@@ -1813,7 +1888,10 @@ create_exploratory_risk_ladder <- function(full_data,
             predicted_mss_5yr_risk = NA_real_
         )
 
-    mfs_complete <- stats::complete.cases(ladder_data[, direct_mfs_model$predictors, drop = FALSE])
+    mfs_complete <- ladder_data$mets_free_at_baseline &
+        !is.na(ladder_data$tt_mets_months_analysis) &
+        !is.na(ladder_data$objective4_mfs_event_type) &
+        stats::complete.cases(ladder_data[, direct_mfs_model$predictors, drop = FALSE])
     mss_complete <- stats::complete.cases(ladder_data[, direct_mss_model$predictors, drop = FALSE])
 
     if (any(mfs_complete)) {
@@ -2019,10 +2097,10 @@ create_exploratory_model_performance_table <- function(surrogate_model,
             model_results = mfs_model
         ),
         list(
-            label = "Direct 5-year MSS",
-            outcome = "5_year_mss",
+            label = "Direct 60-month melanoma-death cumulative-incidence risk",
+            outcome = "60_month_melanoma_death_cumulative_incidence",
             population = "Eligible full cohort",
-            practical_read = "Primary baseline-only melanoma-specific risk estimate when GEP is unavailable.",
+            practical_read = "Primary baseline-only melanoma-death cumulative-incidence estimate when GEP is unavailable.",
             model_results = mss_model
         ),
         list(
@@ -2033,8 +2111,8 @@ create_exploratory_model_performance_table <- function(surrogate_model,
             model_results = parsimonious_mfs_model
         ),
         list(
-            label = "Parsimonious Direct 5-year MSS",
-            outcome = "5_year_mss",
+            label = "Parsimonious Direct 60-month melanoma-death cumulative-incidence risk",
+            outcome = "60_month_melanoma_death_cumulative_incidence",
             population = "Eligible full cohort",
             practical_read = "Sensitivity check using a smaller pre-specified baseline feature set.",
             model_results = parsimonious_mss_model
@@ -2043,34 +2121,90 @@ create_exploratory_model_performance_table <- function(surrogate_model,
 
     purrr::map_dfr(model_specs, function(model_spec) {
         metrics <- model_spec$model_results$metrics
-        tibble::tibble(
+        base_row <- tibble::tibble(
             model = model_spec$label,
             outcome = model_spec$outcome,
             population = model_spec$population,
+            performance_scope = NA_character_,
             n = metrics$n[[1]],
             events = metrics$events[[1]],
             model_method = metrics$model_mode_used[[1]] %||% "surrogate_binary",
+            evaluation_method = metrics$evaluation_method[[1]],
+            prediction_target = metrics$prediction_target[[1]],
+            metric_status = NA_character_,
+            positive_weight_n = NA_integer_,
+            case_n = NA_integer_,
+            control_n = NA_integer_,
+            weighted_cases = NA_real_,
+            weighted_controls = NA_real_,
+            failed_indeterminate_n = NA_integer_,
+            not_tested_n = NA_integer_,
+            uncertainty_method = metrics$uncertainty_method[[1]],
             reported_risk_scale = "probability_0_to_1",
             cv_auc = metrics$cv_auc[[1]],
-            cv_auc_ci = format_exploratory_metric_interval(
+            cv_auc_stability_interval = format_exploratory_metric_interval(
                 metrics$cv_auc[[1]],
                 metrics$cv_auc_ci_lower[[1]],
                 metrics$cv_auc_ci_upper[[1]]
             ),
             cv_brier = metrics$cv_brier[[1]],
-            cv_brier_ci = format_exploratory_metric_interval(
+            cv_brier_stability_interval = format_exploratory_metric_interval(
                 metrics$cv_brier[[1]],
                 metrics$cv_brier_ci_lower[[1]],
                 metrics$cv_brier_ci_upper[[1]]
             ),
             calibration_slope = metrics$cv_calibration_slope[[1]],
-            calibration_slope_ci = format_exploratory_metric_interval(
+            calibration_slope_stability_interval = format_exploratory_metric_interval(
                 metrics$cv_calibration_slope[[1]],
                 metrics$cv_calibration_slope_ci_lower[[1]],
                 metrics$cv_calibration_slope_ci_upper[[1]]
             ),
             practical_read = model_spec$practical_read
         )
+
+        scoped <- model_spec$model_results$scoped_oof_performance
+        if (is.null(scoped) || nrow(scoped) == 0L) {
+            return(base_row)
+        }
+
+        purrr::map_dfr(unique(scoped$performance_scope), function(scope_name) {
+            scope_data <- scoped %>% dplyr::filter(.data$performance_scope == scope_name)
+            auc_interval <- summarize_numeric_interval(scope_data$cv_auc)
+            brier_interval <- summarize_numeric_interval(scope_data$cv_brier)
+            slope_interval <- summarize_numeric_interval(scope_data$cv_calibration_slope)
+            tibble::tibble(
+                model = model_spec$label,
+                outcome = model_spec$outcome,
+                population = if (scope_name == "Overall") "Eligible complete-predictor validation cohort" else "No-GEP target population",
+                performance_scope = scope_name,
+                n = as.integer(stats::median(scope_data$scope_n)),
+                events = as.integer(stats::median(scope_data$case_n)),
+                model_method = metrics$model_mode_used[[1]],
+                evaluation_method = unique(scope_data$evaluation_method)[[1]],
+                prediction_target = metrics$prediction_target[[1]],
+                metric_status = paste(unique(scope_data$auc_status), collapse = ";"),
+                positive_weight_n = as.integer(stats::median(scope_data$positive_weight_n)),
+                case_n = as.integer(stats::median(scope_data$case_n)),
+                control_n = as.integer(stats::median(scope_data$control_n)),
+                weighted_cases = as.numeric(stats::median(scope_data$weighted_cases)),
+                weighted_controls = as.numeric(stats::median(scope_data$weighted_controls)),
+                failed_indeterminate_n = as.integer(stats::median(scope_data$failed_indeterminate_n)),
+                not_tested_n = as.integer(stats::median(scope_data$not_tested_n)),
+                uncertainty_method = metrics$uncertainty_method[[1]],
+                reported_risk_scale = "probability_0_to_1",
+                cv_auc = auc_interval$median,
+                cv_auc_stability_interval = format_exploratory_metric_interval(auc_interval$median, auc_interval$lower, auc_interval$upper),
+                cv_brier = brier_interval$median,
+                cv_brier_stability_interval = format_exploratory_metric_interval(brier_interval$median, brier_interval$lower, brier_interval$upper),
+                calibration_slope = slope_interval$median,
+                calibration_slope_stability_interval = format_exploratory_metric_interval(slope_interval$median, slope_interval$lower, slope_interval$upper),
+                practical_read = if (scope_name == "Overall") {
+                    model_spec$practical_read
+                } else {
+                    paste(model_spec$practical_read, "This is the prespecified target-population OOF estimate.")
+                }
+            )
+        })
     })
 }
 
@@ -2157,12 +2291,12 @@ create_exploratory_model_calibration_table <- function(surrogate_model,
             cv_calibration_status = metrics$cv_calibration_status[[1]],
             cv_calibration_intercept = metrics$cv_calibration_intercept[[1]],
             cv_calibration_slope = metrics$cv_calibration_slope[[1]],
-            cv_auc_ci_lower = metrics$cv_auc_ci_lower[[1]],
-            cv_auc_ci_upper = metrics$cv_auc_ci_upper[[1]],
-            cv_brier_ci_lower = metrics$cv_brier_ci_lower[[1]],
-            cv_brier_ci_upper = metrics$cv_brier_ci_upper[[1]],
-            cv_calibration_slope_ci_lower = metrics$cv_calibration_slope_ci_lower[[1]],
-            cv_calibration_slope_ci_upper = metrics$cv_calibration_slope_ci_upper[[1]],
+            cv_auc_stability_lower = metrics$cv_auc_ci_lower[[1]],
+            cv_auc_stability_upper = metrics$cv_auc_ci_upper[[1]],
+            cv_brier_stability_lower = metrics$cv_brier_ci_lower[[1]],
+            cv_brier_stability_upper = metrics$cv_brier_ci_upper[[1]],
+            cv_calibration_slope_stability_lower = metrics$cv_calibration_slope_ci_lower[[1]],
+            cv_calibration_slope_stability_upper = metrics$cv_calibration_slope_ci_upper[[1]],
             cv_folds = metrics$cv_folds[[1]],
             cv_repeats = metrics$cv_repeats[[1]],
             uncertainty_method = metrics$uncertainty_method[[1]]
@@ -2217,14 +2351,14 @@ create_exploratory_parsimonious_sensitivity <- function(full_no_gep_predictions,
             n = c(full_mfs_model$metrics$n[[1]], parsimonious_mfs_model$metrics$n[[1]]),
             events = c(full_mfs_model$metrics$events[[1]], parsimonious_mfs_model$metrics$events[[1]]),
             cv_auc = c(full_mfs_model$metrics$cv_auc[[1]], parsimonious_mfs_model$metrics$cv_auc[[1]]),
-            cv_auc_ci_lower = c(full_mfs_model$metrics$cv_auc_ci_lower[[1]], parsimonious_mfs_model$metrics$cv_auc_ci_lower[[1]]),
-            cv_auc_ci_upper = c(full_mfs_model$metrics$cv_auc_ci_upper[[1]], parsimonious_mfs_model$metrics$cv_auc_ci_upper[[1]]),
+            cv_auc_stability_lower = c(full_mfs_model$metrics$cv_auc_ci_lower[[1]], parsimonious_mfs_model$metrics$cv_auc_ci_lower[[1]]),
+            cv_auc_stability_upper = c(full_mfs_model$metrics$cv_auc_ci_upper[[1]], parsimonious_mfs_model$metrics$cv_auc_ci_upper[[1]]),
             cv_brier = c(full_mfs_model$metrics$cv_brier[[1]], parsimonious_mfs_model$metrics$cv_brier[[1]]),
-            cv_brier_ci_lower = c(full_mfs_model$metrics$cv_brier_ci_lower[[1]], parsimonious_mfs_model$metrics$cv_brier_ci_lower[[1]]),
-            cv_brier_ci_upper = c(full_mfs_model$metrics$cv_brier_ci_upper[[1]], parsimonious_mfs_model$metrics$cv_brier_ci_upper[[1]]),
+            cv_brier_stability_lower = c(full_mfs_model$metrics$cv_brier_ci_lower[[1]], parsimonious_mfs_model$metrics$cv_brier_ci_lower[[1]]),
+            cv_brier_stability_upper = c(full_mfs_model$metrics$cv_brier_ci_upper[[1]], parsimonious_mfs_model$metrics$cv_brier_ci_upper[[1]]),
             cv_calibration_slope = c(full_mfs_model$metrics$cv_calibration_slope[[1]], parsimonious_mfs_model$metrics$cv_calibration_slope[[1]]),
-            cv_calibration_slope_ci_lower = c(full_mfs_model$metrics$cv_calibration_slope_ci_lower[[1]], parsimonious_mfs_model$metrics$cv_calibration_slope_ci_lower[[1]]),
-            cv_calibration_slope_ci_upper = c(full_mfs_model$metrics$cv_calibration_slope_ci_upper[[1]], parsimonious_mfs_model$metrics$cv_calibration_slope_ci_upper[[1]]),
+            cv_calibration_slope_stability_lower = c(full_mfs_model$metrics$cv_calibration_slope_ci_lower[[1]], parsimonious_mfs_model$metrics$cv_calibration_slope_ci_lower[[1]]),
+            cv_calibration_slope_stability_upper = c(full_mfs_model$metrics$cv_calibration_slope_ci_upper[[1]], parsimonious_mfs_model$metrics$cv_calibration_slope_ci_upper[[1]]),
             median_not_tested_predicted_risk = c(
                 full_mfs_medians$median_prediction[full_mfs_medians$no_gep_group == "GEP Not Tested"],
                 parsimonious_mfs_medians$median_prediction[parsimonious_mfs_medians$no_gep_group == "GEP Not Tested"]
@@ -2244,14 +2378,14 @@ create_exploratory_parsimonious_sensitivity <- function(full_no_gep_predictions,
             n = c(full_mss_model$metrics$n[[1]], parsimonious_mss_model$metrics$n[[1]]),
             events = c(full_mss_model$metrics$events[[1]], parsimonious_mss_model$metrics$events[[1]]),
             cv_auc = c(full_mss_model$metrics$cv_auc[[1]], parsimonious_mss_model$metrics$cv_auc[[1]]),
-            cv_auc_ci_lower = c(full_mss_model$metrics$cv_auc_ci_lower[[1]], parsimonious_mss_model$metrics$cv_auc_ci_lower[[1]]),
-            cv_auc_ci_upper = c(full_mss_model$metrics$cv_auc_ci_upper[[1]], parsimonious_mss_model$metrics$cv_auc_ci_upper[[1]]),
+            cv_auc_stability_lower = c(full_mss_model$metrics$cv_auc_ci_lower[[1]], parsimonious_mss_model$metrics$cv_auc_ci_lower[[1]]),
+            cv_auc_stability_upper = c(full_mss_model$metrics$cv_auc_ci_upper[[1]], parsimonious_mss_model$metrics$cv_auc_ci_upper[[1]]),
             cv_brier = c(full_mss_model$metrics$cv_brier[[1]], parsimonious_mss_model$metrics$cv_brier[[1]]),
-            cv_brier_ci_lower = c(full_mss_model$metrics$cv_brier_ci_lower[[1]], parsimonious_mss_model$metrics$cv_brier_ci_lower[[1]]),
-            cv_brier_ci_upper = c(full_mss_model$metrics$cv_brier_ci_upper[[1]], parsimonious_mss_model$metrics$cv_brier_ci_upper[[1]]),
+            cv_brier_stability_lower = c(full_mss_model$metrics$cv_brier_ci_lower[[1]], parsimonious_mss_model$metrics$cv_brier_ci_lower[[1]]),
+            cv_brier_stability_upper = c(full_mss_model$metrics$cv_brier_ci_upper[[1]], parsimonious_mss_model$metrics$cv_brier_ci_upper[[1]]),
             cv_calibration_slope = c(full_mss_model$metrics$cv_calibration_slope[[1]], parsimonious_mss_model$metrics$cv_calibration_slope[[1]]),
-            cv_calibration_slope_ci_lower = c(full_mss_model$metrics$cv_calibration_slope_ci_lower[[1]], parsimonious_mss_model$metrics$cv_calibration_slope_ci_lower[[1]]),
-            cv_calibration_slope_ci_upper = c(full_mss_model$metrics$cv_calibration_slope_ci_upper[[1]], parsimonious_mss_model$metrics$cv_calibration_slope_ci_upper[[1]]),
+            cv_calibration_slope_stability_lower = c(full_mss_model$metrics$cv_calibration_slope_ci_lower[[1]], parsimonious_mss_model$metrics$cv_calibration_slope_ci_lower[[1]]),
+            cv_calibration_slope_stability_upper = c(full_mss_model$metrics$cv_calibration_slope_ci_upper[[1]], parsimonious_mss_model$metrics$cv_calibration_slope_ci_upper[[1]]),
             median_not_tested_predicted_risk = c(
                 full_mss_medians$median_prediction[full_mss_medians$no_gep_group == "GEP Not Tested"],
                 parsimonious_mss_medians$median_prediction[parsimonious_mss_medians$no_gep_group == "GEP Not Tested"]
@@ -2532,9 +2666,9 @@ create_no_gep_unified_model_comparison <- function(analysis_results) {
         ),
         list(
             key = "mss",
-            label = "Direct 5-Year MSS Risk",
-            cohort_definition = "Full eligible cohort with 5-year melanoma-specific death endpoint",
-            use_case = "Primary baseline-only melanoma-specific risk estimate when GEP is unusable."
+            label = "Direct 60-Month Melanoma-Death Cumulative-Incidence Risk",
+            cohort_definition = "Full eligible cohort with 60-month melanoma-death cumulative-incidence endpoint",
+            use_case = "Primary baseline-only melanoma-death cumulative-incidence estimate when GEP is unusable."
         ),
         list(
             key = "parsimonious_mfs",
@@ -2544,7 +2678,7 @@ create_no_gep_unified_model_comparison <- function(analysis_results) {
         ),
         list(
             key = "parsimonious_mss",
-            label = "Parsimonious Direct 5-Year MSS Risk",
+            label = "Parsimonious Direct 60-Month Melanoma-Death Cumulative-Incidence Risk",
             cohort_definition = "Full eligible cohort with 4 pre-specified baseline predictors",
             use_case = "Sensitivity check showing whether the no-GEP MSS ordering persists under a lower-complexity clinical model."
         )
@@ -2583,21 +2717,24 @@ create_no_gep_unified_model_comparison <- function(analysis_results) {
             N = model_results$metrics$n[[1]],
             Events = model_results$metrics$events[[1]],
             Model_Method = model_results$metrics$model_mode_used[[1]] %||% "surrogate_binary",
+            Evaluation_Method = model_results$metrics$evaluation_method[[1]],
+            Prediction_Target = model_results$metrics$prediction_target[[1]],
+            Uncertainty_Method = model_results$metrics$uncertainty_method[[1]],
             Reported_Risk_Scale = "probability_0_to_1",
             Apparent_AUC = model_results$metrics$apparent_auc[[1]],
             CV_AUC = model_results$metrics$cv_auc[[1]],
             Apparent_Brier = model_results$metrics$apparent_brier[[1]],
             CV_Brier = model_results$metrics$cv_brier[[1]],
-            CV_AUC_CI_Lower = model_results$metrics$cv_auc_ci_lower[[1]],
-            CV_AUC_CI_Upper = model_results$metrics$cv_auc_ci_upper[[1]],
-            CV_Brier_CI_Lower = model_results$metrics$cv_brier_ci_lower[[1]],
-            CV_Brier_CI_Upper = model_results$metrics$cv_brier_ci_upper[[1]],
+            CV_AUC_Stability_Lower = model_results$metrics$cv_auc_ci_lower[[1]],
+            CV_AUC_Stability_Upper = model_results$metrics$cv_auc_ci_upper[[1]],
+            CV_Brier_Stability_Lower = model_results$metrics$cv_brier_ci_lower[[1]],
+            CV_Brier_Stability_Upper = model_results$metrics$cv_brier_ci_upper[[1]],
             Calibration_Status = model_results$metrics$calibration_status[[1]],
             Calibration_Intercept = model_results$metrics$calibration_intercept[[1]],
             Calibration_Slope = model_results$metrics$calibration_slope[[1]],
             CV_Calibration_Slope = model_results$metrics$cv_calibration_slope[[1]],
-            CV_Calibration_Slope_CI_Lower = model_results$metrics$cv_calibration_slope_ci_lower[[1]],
-            CV_Calibration_Slope_CI_Upper = model_results$metrics$cv_calibration_slope_ci_upper[[1]],
+            CV_Calibration_Slope_Stability_Lower = model_results$metrics$cv_calibration_slope_ci_lower[[1]],
+            CV_Calibration_Slope_Stability_Upper = model_results$metrics$cv_calibration_slope_ci_upper[[1]],
             CV_Repeats = model_results$metrics$cv_repeats[[1]],
             Top_Predictor_1 = top_predictors[[1]] %||% NA_character_,
             Top_Predictor_2 = top_predictors[[2]] %||% NA_character_,
@@ -2651,10 +2788,16 @@ collect_exploratory_no_gep_analysis <- function(data,
 
     km_times <- c(60, 84, 120)
     km_corrected_mfs <- summarize_km_timepoints(
-        full_data %>% dplyr::filter(!is.na(.data$exploratory_gep_group)),
+        full_data %>%
+            dplyr::filter(
+                !is.na(.data$exploratory_gep_group),
+                .data$mets_free_at_baseline,
+                !is.na(.data$tt_mets_months_analysis),
+                !is.na(.data$objective4_mfs_event_type)
+            ),
         group_var = "exploratory_gep_group",
-        time_var = "tt_mets_months",
-        event_var = "mets_event",
+        time_var = "tt_mets_months_analysis",
+        event_var = "objective4_mfs_event_type",
         times = km_times
     )
     km_corrected_mss <- summarize_mss_cif_timepoints(
@@ -2675,18 +2818,18 @@ collect_exploratory_no_gep_analysis <- function(data,
         predictors = prepared_data$predictors,
         model_name = "Direct 5-Year MFS Risk",
         model_mode = "ipcw_horizon_mfs",
-        time_var = "tt_mets_months",
-        event_var = "mets_event",
+        time_var = "tt_mets_months_analysis",
+        event_var = "objective4_mfs_event_type",
         eval_time_months = 60
     )
     direct_mss_model <- fit_exploratory_binary_model(
         prepared_data$mss_model_data,
         outcome_var = "mss_event_5yr",
         predictors = prepared_data$predictors,
-        model_name = "Direct 5-Year MSS Risk",
+        model_name = "Direct 60-Month Melanoma-Death Cumulative-Incidence Risk",
         model_mode = "ipcw_horizon_competing_risk_mss",
         time_var = "tt_death_months",
-        event_var = "melanoma_death_event",
+        event_var = "objective4_mss_event_type",
         eval_time_months = 60
     )
     parsimonious_predictors <- choose_exploratory_parsimonious_predictors(prepared_data)
@@ -2696,27 +2839,35 @@ collect_exploratory_no_gep_analysis <- function(data,
         predictors = parsimonious_predictors,
         model_name = "Parsimonious Direct 5-Year MFS Risk",
         model_mode = "ipcw_horizon_mfs",
-        time_var = "tt_mets_months",
-        event_var = "mets_event",
+        time_var = "tt_mets_months_analysis",
+        event_var = "objective4_mfs_event_type",
         eval_time_months = 60
     )
     parsimonious_mss_model <- fit_exploratory_binary_model(
         prepared_data$mss_model_data,
         outcome_var = "mss_event_5yr",
         predictors = parsimonious_predictors,
-        model_name = "Parsimonious Direct 5-Year MSS Risk",
+        model_name = "Parsimonious Direct 60-Month Melanoma-Death Cumulative-Incidence Risk",
         model_mode = "ipcw_horizon_competing_risk_mss",
         time_var = "tt_death_months",
-        event_var = "melanoma_death_event",
+        event_var = "objective4_mss_event_type",
         eval_time_months = 60
     )
 
     no_gep_predictions <- prepared_data$no_gep_scoring %>%
         dplyr::mutate(
             surrogate_class2_probability = predict_exploratory_binary_model(surrogate_model, .),
-            predicted_mfs_5yr_risk = predict_exploratory_binary_model(direct_mfs_model, .),
+            predicted_mfs_5yr_risk = NA_real_,
             predicted_mss_5yr_risk = predict_exploratory_binary_model(direct_mss_model, .)
-        ) %>%
+        )
+    no_gep_mfs_eligible <- no_gep_predictions$mets_free_at_baseline &
+        !is.na(no_gep_predictions$tt_mets_months_analysis) &
+        !is.na(no_gep_predictions$objective4_mfs_event_type)
+    no_gep_predictions$predicted_mfs_5yr_risk[no_gep_mfs_eligible] <- predict_exploratory_binary_model(
+        direct_mfs_model,
+        no_gep_predictions[no_gep_mfs_eligible, , drop = FALSE]
+    )
+    no_gep_predictions <- no_gep_predictions %>%
         dplyr::mutate(
             surrogate_probability_bin = create_quantile_bins(.data$surrogate_class2_probability),
             mfs_risk_bin = create_quantile_bins(.data$predicted_mfs_5yr_risk),
@@ -2724,9 +2875,13 @@ collect_exploratory_no_gep_analysis <- function(data,
         )
     parsimonious_no_gep_predictions <- prepared_data$no_gep_scoring %>%
         dplyr::mutate(
-            predicted_mfs_5yr_risk = predict_exploratory_binary_model(parsimonious_mfs_model, .),
+            predicted_mfs_5yr_risk = NA_real_,
             predicted_mss_5yr_risk = predict_exploratory_binary_model(parsimonious_mss_model, .)
         )
+    parsimonious_no_gep_predictions$predicted_mfs_5yr_risk[no_gep_mfs_eligible] <- predict_exploratory_binary_model(
+        parsimonious_mfs_model,
+        parsimonious_no_gep_predictions[no_gep_mfs_eligible, , drop = FALSE]
+    )
 
     no_gep_predictions_sheet <- create_no_gep_predictions_sheet(prepared_data, no_gep_predictions)
     no_gep_summary <- summarize_no_gep_predictions(no_gep_predictions)
@@ -2846,9 +3001,15 @@ collect_exploratory_no_gep_analysis <- function(data,
 #'
 #' @return Invisibly returns the saved plot path.
 create_exploratory_mfs_km_plot <- function(data, output_path) {
+    analysis_data <- data %>%
+        dplyr::filter(
+            .data$mets_free_at_baseline,
+            !is.na(.data$tt_mets_months_analysis),
+            !is.na(.data$objective4_mfs_event_type)
+        )
     fit <- survival::survfit(
-        survival::Surv(tt_mets_months, mets_event) ~ exploratory_gep_group,
-        data = data
+        survival::Surv(tt_mets_months_analysis, objective4_mfs_event_type) ~ exploratory_gep_group,
+        data = analysis_data
     )
     fit_summary <- summary(fit)
 
@@ -3515,23 +3676,24 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
             mss_model$metrics$model_mode_used[[1]] %||% "ipcw_horizon_competing_risk_mss"
         )),
         md_bullet("All reported no-GEP probabilities and thresholds use the 0-1 probability scale; multiply by 100 for percentages (for example, 0.20 = 20%)."),
-        md_bullet("Apparent AUC is the in-sample fit; reported cross-validated AUC is the repeated-CV median and is the better estimate of expected performance on new patients."),
-        md_bullet("95% repeated-CV intervals show how much AUC, Brier score, and calibration slope change across different fold assignments; reader-facing point estimates and intervals use the same repeated-CV distribution."),
+        md_bullet("Direct-model performance is reported only from keyed outer-fold predictions; censoring weights are estimated in each outer training fold and applied unchanged to that fold's assessment rows."),
+        md_bullet("Overall and No GEP performance scopes use the same out-of-fold predictions and assessment weights. GEP Not Tested and Failed/Indeterminate counts are descriptive and are not separate performance claims."),
+        md_bullet("95% repeated-partition stability intervals describe variation in AUC, Brier score, and calibration slope across deterministic outer-fold partitions; they are not confidence intervals."),
         md_bullet("Observed 5-year MFS and MSS rates in the subgroup and ladder summaries use censoring-aware horizon estimates rather than raw event means."),
         "",
         md_heading("Parsimonious Sensitivity Check", 2L),
         md_bullet(sprintf(
-            "Parsimonious direct MFS model using %s retained a CV AUC of %.3f (95%% repeated-CV interval %.3f to %.3f).",
+            "Parsimonious direct MFS model using %s retained an OOF IPCW AUC of %.3f (95%% repeated-partition stability interval %.3f to %.3f).",
             paste(unique(strsplit(parsimonious_mfs$predictors[[1]], ", ")[[1]]), collapse = ", "),
             parsimonious_mfs$cv_auc[[1]],
-            parsimonious_mfs$cv_auc_ci_lower[[1]],
-            parsimonious_mfs$cv_auc_ci_upper[[1]]
+            parsimonious_mfs$cv_auc_stability_lower[[1]],
+            parsimonious_mfs$cv_auc_stability_upper[[1]]
         )),
         md_bullet(sprintf(
-            "Parsimonious direct MSS model retained a CV AUC of %.3f (95%% repeated-CV interval %.3f to %.3f).",
+            "Parsimonious direct 60-month melanoma-death cumulative-incidence model retained an OOF IPCW AUC of %.3f (95%% repeated-partition stability interval %.3f to %.3f).",
             parsimonious_mss$cv_auc[[1]],
-            parsimonious_mss$cv_auc_ci_lower[[1]],
-            parsimonious_mss$cv_auc_ci_upper[[1]]
+            parsimonious_mss$cv_auc_stability_lower[[1]],
+            parsimonious_mss$cv_auc_stability_upper[[1]]
         )),
         md_bullet("Similar performance under the parsimonious specification supports the subgroup ordering without requiring a larger baseline feature set."),
         "",
