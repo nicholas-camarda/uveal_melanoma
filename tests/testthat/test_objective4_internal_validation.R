@@ -378,3 +378,93 @@ test_that("nested horizon ridge fails closed with repeat and fold context", {
         "repeat 1, outer fold"
     )
 })
+
+test_that("horizon ridge design failures retain outer-fold and final-fit context", {
+    fixture <- make_nested_cv_fixture()
+    fixture$age[[1]] <- Inf
+
+    expect_error(
+        cross_validate_horizon_ridge(
+            data = fixture,
+            predictors = c("age", "diameter"),
+            time_var = "followup",
+            event_type_var = "event_type",
+            horizon_months = 60,
+            stable_id_var = "patient_id",
+            seed = GEP_EXPLORATORY_CV_SEED,
+            repeats = 1L,
+            outer_folds = 3L,
+            inner_folds = 3L
+        ),
+        "repeat 1, outer fold"
+    )
+
+    payload <- derive_fold_ipcw_payload(
+        training = fixture,
+        assessment = fixture,
+        time_var = "followup",
+        event_type_var = "event_type",
+        horizon_months = 60
+    )
+    expect_error(
+        fit_weighted_horizon_ridge(
+            training_payload = payload$training,
+            predictors = c("age", "diameter"),
+            stable_id_var = "patient_id",
+            inner_folds = 3L,
+            seed = GEP_EXPLORATORY_CV_SEED
+        ),
+        "final full-data fit"
+    )
+})
+
+test_that("surrogate nested fit failures retain repeat and outer-fold context", {
+    fixture <- make_nested_cv_fixture() %>%
+        dplyr::mutate(class2 = rep(c(0L, 1L), length.out = dplyr::n()))
+    testthat::local_mocked_bindings(
+        cv.glmnet = function(...) stop("forced inner-fit failure"),
+        .package = "glmnet"
+    )
+
+    expect_error(
+        cross_validate_binary_predictions(
+            data = fixture,
+            outcome_var = "class2",
+            predictors = c("age", "diameter"),
+            folds = 3L,
+            seed = GEP_EXPLORATORY_CV_SEED,
+            repeat_id = 2L
+        ),
+        "repeat 2, outer fold 1: forced inner-fit failure"
+    )
+})
+
+test_that("surrogate nested prediction failures retain repeat and outer-fold context", {
+    fixture <- make_nested_cv_fixture() %>%
+        dplyr::mutate(class2 = rep(c(0L, 1L), length.out = dplyr::n()))
+    previous_method <- get0("predict.cv.glmnet", envir = .GlobalEnv, inherits = FALSE)
+    assign(
+        "predict.cv.glmnet",
+        function(object, ...) stop("forced prediction failure"),
+        envir = .GlobalEnv
+    )
+    on.exit({
+        if (is.null(previous_method)) {
+            rm("predict.cv.glmnet", envir = .GlobalEnv)
+        } else {
+            assign("predict.cv.glmnet", previous_method, envir = .GlobalEnv)
+        }
+    }, add = TRUE)
+
+    expect_error(
+        cross_validate_binary_predictions(
+            data = fixture,
+            outcome_var = "class2",
+            predictors = c("age", "diameter"),
+            folds = 3L,
+            seed = GEP_EXPLORATORY_CV_SEED,
+            repeat_id = 7L
+        ),
+        "repeat 7, outer fold 1: forced prediction failure"
+    )
+})

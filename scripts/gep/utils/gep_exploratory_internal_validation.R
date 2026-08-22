@@ -672,7 +672,12 @@ fit_weighted_horizon_ridge <- function(
             )
         }
     )
-    design <- build_horizon_ridge_design_matrix(fit_data, predictors)
+    design <- tryCatch(
+        build_horizon_ridge_design_matrix(fit_data, predictors),
+        error = function(error) {
+            stop_nested_cv_context(conditionMessage(error), repeat_id, outer_fold)
+        }
+    )
     fitted <- tryCatch(
         suppressWarnings(glmnet::cv.glmnet(
             x = design,
@@ -805,10 +810,15 @@ cross_validate_horizon_ridge <- function(
                 repeat_id = repeat_id,
                 outer_fold = outer_fold
             )
-            assessment_design <- build_horizon_ridge_design_matrix(
-                payload$assessment,
-                predictors,
-                reference_columns = ridge$design_columns
+            assessment_design <- tryCatch(
+                build_horizon_ridge_design_matrix(
+                    payload$assessment,
+                    predictors,
+                    reference_columns = ridge$design_columns
+                ),
+                error = function(error) {
+                    stop_nested_cv_context(conditionMessage(error), repeat_id, outer_fold)
+                }
             )
             assessment_prediction <- tryCatch(
                 as.numeric(stats::predict(

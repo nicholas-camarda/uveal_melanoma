@@ -1186,13 +1186,23 @@ summarize_numeric_interval <- function(values, conf_level = 0.95) {
 #'
 #' @return A numeric vector of out-of-fold predicted probabilities aligned to
 #'   the input rows.
+stop_surrogate_nested_context <- function(message, repeat_id, outer_fold) {
+    stop(sprintf(
+        "Surrogate nested validation failed at repeat %d, outer fold %d: %s",
+        repeat_id,
+        outer_fold,
+        message
+    ), call. = FALSE)
+}
+
 cross_validate_binary_predictions <- function(
     data,
     outcome_var,
     predictors,
     folds = GEP_EXPLORATORY_OUTER_FOLDS,
     seed = GEP_EXPLORATORY_CV_SEED,
-    weights = NULL
+    weights = NULL,
+    repeat_id = 1L
 ) {
     n_rows <- nrow(data)
     outcome <- data[[outcome_var]]
@@ -1212,11 +1222,21 @@ cross_validate_binary_predictions <- function(
         fit_data <- data[fold_id != fold, , drop = FALSE]
         assessment_data <- data[fold_id == fold, , drop = FALSE]
 
-        x_fit <- build_exploratory_design_matrix(fit_data, predictors = predictors)
-        x_assessment <- build_exploratory_design_matrix(
-            assessment_data,
-            predictors = predictors,
-            reference_columns = colnames(x_fit)
+        x_fit <- tryCatch(
+            build_exploratory_design_matrix(fit_data, predictors = predictors),
+            error = function(error) {
+                stop_surrogate_nested_context(conditionMessage(error), repeat_id, fold)
+            }
+        )
+        x_assessment <- tryCatch(
+            build_exploratory_design_matrix(
+                assessment_data,
+                predictors = predictors,
+                reference_columns = colnames(x_fit)
+            ),
+            error = function(error) {
+                stop_surrogate_nested_context(conditionMessage(error), repeat_id, fold)
+            }
         )
 
         inner_foldid <- tryCatch(
@@ -1227,11 +1247,7 @@ cross_validate_binary_predictions <- function(
                 stable_id = fit_data[[stable_id_var]]
             ),
             error = function(error) {
-                stop(sprintf(
-                    "Surrogate nested validation failed at outer fold %d: %s",
-                    fold,
-                    conditionMessage(error)
-                ), call. = FALSE)
+                stop_surrogate_nested_context(conditionMessage(error), repeat_id, fold)
             }
         )
         fold_fit <- tryCatch(
@@ -1246,16 +1262,20 @@ cross_validate_binary_predictions <- function(
                 type.measure = "deviance"
             )),
             error = function(error) {
-                stop(sprintf(
-                    "Surrogate nested validation failed at outer fold %d: %s",
-                    fold,
-                    conditionMessage(error)
-                ), call. = FALSE)
+                stop_surrogate_nested_context(conditionMessage(error), repeat_id, fold)
             }
         )
 
-        predictions[fold_id == fold] <- as.numeric(
-            stats::predict(fold_fit, newx = x_assessment, s = "lambda.min", type = "response")
+        predictions[fold_id == fold] <- tryCatch(
+            as.numeric(stats::predict(
+                fold_fit,
+                newx = x_assessment,
+                s = "lambda.min",
+                type = "response"
+            )),
+            error = function(error) {
+                stop_surrogate_nested_context(conditionMessage(error), repeat_id, fold)
+            }
         )
     }
 
@@ -1297,7 +1317,8 @@ repeat_cross_validated_binary_metrics <- function(data,
             outcome_var = outcome_var,
             predictors = predictors,
             weights = weights,
-            seed = seed + repeat_id - 1
+            seed = seed + repeat_id - 1,
+            repeat_id = repeat_id
         )
         cv_calibration <- summarize_binary_calibration(outcome, cv_predictions)
 
