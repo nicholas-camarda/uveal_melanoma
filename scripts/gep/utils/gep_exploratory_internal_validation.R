@@ -319,3 +319,203 @@ create_deterministic_fold_ids <- function(strata, folds, seed, stable_id) {
 
     fold_id
 }
+
+#' Validate and retain rows with positive assessment IPCW weight
+#'
+#' Rows with zero weight have unknown horizon status and must have no influence
+#' on weighted out-of-fold performance summaries.
+#'
+#' @param outcome Binary fixed-horizon outcome vector.
+#' @param score Numeric score or predicted risk vector.
+#' @param weight Non-negative assessment IPCW weight vector.
+#' @return A data frame containing only rows with positive weight.
+prepare_positive_ipcw_rows <- function(outcome, score, weight) {
+    if (length(outcome) != length(score) || length(outcome) != length(weight)) {
+        stop("outcome, score, and weight must have the same length.", call. = FALSE)
+    }
+    if (!is.numeric(weight) || any(!is.finite(weight)) || any(weight < 0)) {
+        stop("weight must contain finite non-negative values.", call. = FALSE)
+    }
+
+    positive_weight <- weight > 0
+    outcome <- outcome[positive_weight]
+    score <- score[positive_weight]
+    weight <- weight[positive_weight]
+
+    if (length(outcome) > 0L &&
+        (!is.numeric(outcome) || anyNA(outcome) ||
+            any(outcome != as.integer(outcome)) ||
+            any(!as.integer(outcome) %in% c(0L, 1L)))) {
+        stop("Positive-weight outcomes must contain only 0L or 1L.", call. = FALSE)
+    }
+    if (length(score) > 0L && (!is.numeric(score) || any(!is.finite(score)))) {
+        stop("Positive-weight scores must contain finite numeric values.", call. = FALSE)
+    }
+
+    data.frame(
+        outcome = as.integer(outcome),
+        score = as.numeric(score),
+        weight = as.numeric(weight)
+    )
+}
+
+#' Describe weighted case-control support
+#'
+#' @param data Positive-weight binary horizon data.
+#' @return A named list with support status and weighted case-control mass.
+summarize_ipcw_case_control_support <- function(data) {
+    positive_weight_mass <- sum(data$weight)
+    weighted_cases <- sum(data$weight[data$outcome == 1L])
+    weighted_controls <- sum(data$weight[data$outcome == 0L])
+    status <- if (positive_weight_mass == 0) {
+        "unsupported_no_positive_weight"
+    } else if (weighted_cases == 0) {
+        "unsupported_no_weighted_cases"
+    } else if (weighted_controls == 0) {
+        "unsupported_no_weighted_controls"
+    } else {
+        "ok"
+    }
+
+    list(
+        status = status,
+        positive_weight_mass = positive_weight_mass,
+        weighted_cases = weighted_cases,
+        weighted_controls = weighted_controls,
+        n_positive_weight = nrow(data)
+    )
+}
+
+#' Calculate a censoring-aware weighted case-control AUC
+#'
+#' Every positive-weight case-control pair contributes its product weight to the
+#' denominator. Concordant pairs receive full credit and tied scores receive
+#' half credit. Rows with zero IPCW weight are excluded before input validation.
+#'
+#' @param outcome Binary fixed-horizon outcome vector.
+#' @param score Numeric prediction scores, where larger values rank higher risk.
+#' @param weight Non-negative assessment IPCW weight vector.
+#' @return Named list with `status`, `auc`, and weighted support fields.
+calculate_ipcw_auc <- function(outcome, score, weight) {
+    data <- prepare_positive_ipcw_rows(outcome, score, weight)
+    support <- summarize_ipcw_case_control_support(data)
+    if (support$status != "ok") {
+        return(c(support, list(auc = NA_real_)))
+    }
+
+    cases <- data[data$outcome == 1L, , drop = FALSE]
+    controls <- data[data$outcome == 0L, , drop = FALSE]
+    comparison <- outer(cases$score, controls$score, FUN = "-")
+    pair_weight <- outer(cases$weight, controls$weight, FUN = "*")
+    concordance_credit <- (comparison > 0) + 0.5 * (comparison == 0)
+
+    c(
+        support,
+        list(auc = sum(pair_weight * concordance_credit) / (support$weighted_cases * support$weighted_controls))
+    )
+}
+
+#' Calculate a censoring-aware weighted Brier score
+#'
+#' The score is the weighted squared error divided by positive assessment IPCW
+#' mass. Case-control support is required so an unsupported validation scope is
+#' never represented by a substitute scalar estimate.
+#'
+#' @param outcome Binary fixed-horizon outcome vector.
+#' @param score Predicted probabilities in the closed unit interval.
+#' @param weight Non-negative assessment IPCW weight vector.
+#' @return Named list with `status`, `brier`, and weighted support fields.
+calculate_ipcw_brier <- function(outcome, score, weight) {
+    data <- prepare_positive_ipcw_rows(outcome, score, weight)
+    if (any(data$score < 0 | data$score > 1)) {
+        stop("Positive-weight Brier scores must be probabilities from 0 to 1.", call. = FALSE)
+    }
+    support <- summarize_ipcw_case_control_support(data)
+    if (support$status != "ok") {
+        return(c(support, list(brier = NA_real_)))
+    }
+
+    c(
+        support,
+        list(brier = sum(data$weight * (data$outcome - data$score)^2) / support$positive_weight_mass)
+    )
+}
+
+#' Summarize IPCW-weighted fixed-horizon calibration
+#'
+#' The intercept is estimated from a binomial logistic model with the prediction
+#' logit as offset; the slope is estimated from a binomial logistic model using
+#' that logit as predictor. Both models use outer-assessment IPCW weights.
+#'
+#' @param outcome Binary fixed-horizon outcome vector.
+#' @param predicted Predicted probabilities strictly between zero and one.
+#' @param weight Non-negative assessment IPCW weight vector.
+#' @return Named list with status, intercept, slope, and weighted support.
+summarize_ipcw_calibration <- function(outcome, predicted, weight) {
+    data <- prepare_positive_ipcw_rows(outcome, predicted, weight)
+    if (any(data$score <= 0 | data$score >= 1)) {
+        stop("Positive-weight calibration predictions must be strictly between 0 and 1.", call. = FALSE)
+    }
+    support <- summarize_ipcw_case_control_support(data)
+    event_rows <- sum(data$outcome == 1L)
+    control_rows <- sum(data$outcome == 0L)
+    unique_prediction_count <- length(unique(data$score))
+
+    sparse_support <- support$status != "ok" ||
+        nrow(data) < GEP_MIN_SAMPLE_SIZE ||
+        event_rows < GEP_MIN_CALIBRATION_EVENTS ||
+        control_rows < GEP_MIN_CALIBRATION_EVENTS ||
+        unique_prediction_count < 2L
+    if (sparse_support) {
+        support$status <- "unsupported_sparse_support"
+        return(c(
+            support,
+            list(
+                intercept = NA_real_,
+                slope = NA_real_,
+                event_rows = event_rows,
+                control_rows = control_rows,
+                unique_prediction_count = unique_prediction_count
+            )
+        ))
+    }
+
+    calibration_data <- data.frame(
+        outcome = data$outcome,
+        logit_predicted = stats::qlogis(data$score),
+        weight = data$weight
+    )
+    intercept_fit <- tryCatch(
+        suppressWarnings(stats::glm(
+            outcome ~ offset(logit_predicted),
+            data = calibration_data,
+            weights = weight,
+            family = stats::binomial()
+        )),
+        error = function(e) NULL
+    )
+    slope_fit <- tryCatch(
+        suppressWarnings(stats::glm(
+            outcome ~ logit_predicted,
+            data = calibration_data,
+            weights = weight,
+            family = stats::binomial()
+        )),
+        error = function(e) NULL
+    )
+    intercept <- if (is.null(intercept_fit)) NA_real_ else unname(stats::coef(intercept_fit)[[1]])
+    slope <- if (is.null(slope_fit)) NA_real_ else unname(stats::coef(slope_fit)[[2]])
+    status <- if (is.finite(intercept) && is.finite(slope)) "ok" else "unsupported_calibration_fit"
+    support$status <- status
+
+    c(
+        support,
+        list(
+            intercept = if (status == "ok") intercept else NA_real_,
+            slope = if (status == "ok") slope else NA_real_,
+            event_rows = event_rows,
+            control_rows = control_rows,
+            unique_prediction_count = unique_prediction_count
+        )
+    )
+}

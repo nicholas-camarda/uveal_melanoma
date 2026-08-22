@@ -171,3 +171,81 @@ test_that("fold IPCW payload fails closed for unsupported event types and zero c
         "require positive training-derived censoring survival"
     )
 })
+
+test_that("IPCW AUC and Brier use literal weighted horizon outcomes", {
+    # Weighted case-control concordance is 23.5 / 25 = 0.94:
+    # 2 * (1 + 4) + 3 * (0.5 * 1 + 4) = 23.5, with 5 * 5 pair mass.
+    # Weighted squared error is 1.48 / 10 = 0.148:
+    # (2 * 0.2^2 + 1 * 0.4^2 + 3 * 0.6^2 + 4 * 0.2^2) / (2 + 1 + 3 + 4).
+    outcome <- c(1L, 0L, 1L, 0L)
+    score <- c(0.8, 0.4, 0.4, 0.2)
+    weight <- c(2, 1, 3, 4)
+
+    auc <- calculate_ipcw_auc(outcome, score, weight)
+    brier <- calculate_ipcw_brier(outcome, score, weight)
+
+    expect_identical(auc$status, "ok")
+    expect_equal(auc$auc, 0.94)
+    expect_equal(auc$weighted_cases, 5)
+    expect_equal(auc$weighted_controls, 5)
+    expect_identical(brier$status, "ok")
+    expect_equal(brier$brier, 0.148)
+    expect_equal(brier$positive_weight_mass, 10)
+})
+
+test_that("zero-weight unknown rows cannot alter IPCW metrics", {
+    outcome <- c(1L, 0L, 1L, 0L, NA_integer_)
+    score <- c(0.8, 0.4, 0.4, 0.2, NA_real_)
+    weight <- c(2, 1, 3, 4, 0)
+
+    auc <- calculate_ipcw_auc(outcome, score, weight)
+    brier <- calculate_ipcw_brier(outcome, score, weight)
+
+    expect_identical(auc$status, "ok")
+    expect_equal(auc$auc, 0.94)
+    expect_identical(brier$status, "ok")
+    expect_equal(brier$brier, 0.148)
+})
+
+test_that("IPCW metrics explicitly report missing weighted case or control support", {
+    no_controls <- calculate_ipcw_auc(
+        outcome = c(1L, NA_integer_),
+        score = c(0.8, NA_real_),
+        weight = c(2, 0)
+    )
+    no_cases <- calculate_ipcw_brier(
+        outcome = c(0L, NA_integer_),
+        score = c(0.2, NA_real_),
+        weight = c(3, 0)
+    )
+
+    expect_identical(no_controls$status, "unsupported_no_weighted_controls")
+    expect_true(is.na(no_controls$auc))
+    expect_identical(no_cases$status, "unsupported_no_weighted_cases")
+    expect_true(is.na(no_cases$brier))
+})
+
+test_that("IPCW calibration uses assessment weights and rejects sparse support", {
+    # At each prediction value, the weighted event rate equals the prediction:
+    # 1 / (4 + 1) = 0.2 and 4 / (1 + 4) = 0.8.  The weighted offset
+    # intercept and logit slope are therefore both 0 and 1, respectively.
+    outcome <- rep(c(0L, 1L, 0L, 1L), 5)
+    predicted <- rep(c(0.2, 0.2, 0.8, 0.8), 5)
+    weight <- rep(c(4, 1, 1, 4), 5)
+
+    calibration <- summarize_ipcw_calibration(outcome, predicted, weight)
+    sparse <- summarize_ipcw_calibration(
+        outcome = c(0L, 1L, NA_integer_),
+        predicted = c(0.2, 0.8, NA_real_),
+        weight = c(1, 1, 0)
+    )
+
+    expect_identical(calibration$status, "ok")
+    expect_equal(calibration$intercept, 0, tolerance = 1e-7)
+    expect_equal(calibration$slope, 1, tolerance = 1e-7)
+    expect_equal(calibration$weighted_cases, 25)
+    expect_equal(calibration$weighted_controls, 25)
+    expect_identical(sparse$status, "unsupported_sparse_support")
+    expect_true(is.na(sparse$intercept))
+    expect_true(is.na(sparse$slope))
+})
