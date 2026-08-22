@@ -1,0 +1,129 @@
+version: 1
+accepted_abstract:
+  id: "30085896"
+  submitted_cohort_n: 260
+  subgroup_counts_reported: false
+  auc:
+    direct_mfs: 0.686
+    direct_mss: 0.663
+    molecular_surrogate: 0.515
+  observed_rates:
+    class_1:
+      mfs: 0.029
+      mss: 0.000
+    not_tested:
+      mfs: 0.150
+      mss: 0.091
+    failed_indeterminate:
+      mfs: 0.600
+      mss: 0.333
+    class_2:
+      mfs: 0.537
+      mss: 0.383
+  conclusions:
+    - id: moderate_direct_prognostic_stratification
+      category: supportable
+      workbook_labels:
+        - takeaway_1
+    - id: failure_to_recover_molecular_class
+      category: supportable
+      workbook_labels:
+        - takeaway_2
+        - takeaway_3
+    - id: no_gep_groups_non_homogeneous
+      category: supportable
+      workbook_labels:
+        - takeaway_4
+
+review_thresholds:
+  absolute_auc_change: 0.02
+  absolute_rate_change_percentage_points: 5.0
+
+candidate_workbook:
+  required_sheets:
+    - Model_Performance
+    - Risk_Ladder_5yr
+    - Start_Here
+  models:
+    molecular_surrogate:
+      label: Surrogate Class 2-like
+      comparison_scope: null
+      required_scopes: []
+      model_method: surrogate_binary
+      evaluation_method: repeated out-of-fold binary AUC/Brier/calibration
+      metric_status_required: false
+    direct_mfs:
+      label: Direct 5-year MFS
+      comparison_scope: Overall
+      required_scopes:
+        - Overall
+        - No GEP
+      model_method: ipcw_horizon_mfs
+      evaluation_method: outer-training-fold IPCW weighted OOF AUC/Brier/calibration
+      metric_status_required: true
+    direct_mss:
+      label: Direct 60-month melanoma-death cumulative-incidence risk
+      comparison_scope: Overall
+      required_scopes:
+        - Overall
+        - No GEP
+      model_method: ipcw_horizon_competing_risk_mss
+      evaluation_method: outer-training-fold IPCW weighted OOF AUC/Brier/calibration
+      metric_status_required: true
+  observed_rate_methods:
+    mfs: kaplan_meier_at_horizon
+    mss: aalen_johansen_cif_at_horizon
+  group_labels:
+    class_1: Class 1
+    not_tested: GEP Not Tested
+    failed_indeterminate: GEP Failed/Indeterminate
+    class_2: Class 2
+  required_orderings:
+    - id: mfs_failed_vs_not_tested
+      endpoint: mfs
+      higher: failed_indeterminate
+      lower: not_tested
+    - id: mss_failed_vs_not_tested
+      endpoint: mss
+      higher: failed_indeterminate
+      lower: not_tested
+    - id: mfs_not_tested_vs_class_1
+      endpoint: mfs
+      higher: not_tested
+      lower: class_1
+    - id: mss_not_tested_vs_class_1
+      endpoint: mss
+      higher: not_tested
+      lower: class_1
+    - id: mfs_class_2_vs_not_tested
+      endpoint: mfs
+      higher: class_2
+      lower: not_tested
+    - id: mfs_failed_vs_class_2
+      endpoint: mfs
+      higher: failed_indeterminate
+      lower: class_2
+    - id: mss_class_2_vs_failed
+      endpoint: mss
+      higher: class_2
+      lower: failed_indeterminate
+
+conclusion_checks:
+  moderate_direct_prognostic_stratification:
+    labels:
+      - takeaway_1
+    required_phrases:
+      - prognostic support
+  failure_to_recover_molecular_class:
+    labels:
+      - takeaway_2
+      - takeaway_3
+    required_phrases:
+      - weakly approximated
+      - do not relabel
+  no_gep_groups_non_homogeneous:
+    labels:
+      - takeaway_4
+    required_phrases:
+      - not present no-gep patients as one homogeneous
+      - failed/indeterminate subgroup is higher risk

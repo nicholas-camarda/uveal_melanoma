@@ -27,6 +27,7 @@ test_objective3_objective4_scope_protection.R
 test_objective3_repeat_radiation.R
 test_objective4_gep_analysis_portable.R
 test_objective4_internal_validation.R
+test_objective4_aao_gate.R
 test_objective4_mfs_sensitivity.R
 test_objective_execution_contract.R
 test_objective_fixture_lifecycle.R
