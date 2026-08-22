@@ -182,6 +182,31 @@ collect_reconciliation_validation_findings <- function(reconciliation_audit = NU
 
     findings <- dplyr::bind_rows(findings, summary_findings)
 
+    original_event_date_contradictions <- audit_rows %>%
+        dplyr::filter(
+            (is_yes_value(.data$original_event) & is.na(.data$original_date)) |
+                (!is_yes_value(.data$original_event) & !is.na(.data$original_date))
+        )
+    findings <- dplyr::bind_rows(
+        findings,
+        new_validation_finding(
+            check_id = "reconciliation_original_event_date_contradiction",
+            finding_group = "data_quality",
+            scope = "global",
+            severity = if (nrow(original_event_date_contradictions) > 0) "hard_error" else "info",
+            status = if (nrow(original_event_date_contradictions) > 0) "fail" else "pass",
+            metric = "original_event_date_contradiction_rows",
+            value = nrow(original_event_date_contradictions),
+            message = if (nrow(original_event_date_contradictions) > 0) {
+                "The reconciliation audit contains source event/date contradictions; validation is blocked despite the reconciled values."
+            } else {
+                "The reconciliation audit contains no source event/date contradictions."
+            },
+            affected_n = nrow(original_event_date_contradictions),
+            affected_ids = collapse_affected_ids(original_event_date_contradictions$study_id %||% character())
+        )
+    )
+
     if (nrow(audit_rows) > 0) {
         details <- dplyr::bind_rows(
             details,
@@ -376,6 +401,109 @@ validate_objective2_toxicity_endpoint_contract <- function(data, cohort_name) {
 validate_endpoint_chronology_contract <- function(data, cohort_name) {
     findings <- empty_validation_findings()
     details <- empty_validation_detail_table()
+    baseline_fields <- c(
+        "mets_progression", "mets_progression_date", "treatment_date",
+        "mets_event", "mets_at_or_before_treatment", "mets_free_at_baseline",
+        "mets_event_analysis", "tt_mets_months_analysis"
+    )
+    missing_baseline_fields <- setdiff(baseline_fields, names(data))
+    source_mets_event <- if ("mets_progression" %in% names(data)) {
+        is_yes_value(data$mets_progression)
+    } else {
+        rep(FALSE, nrow(data))
+    }
+    source_dates_complete <- if (all(c("mets_progression_date", "treatment_date") %in% names(data))) {
+        !is.na(data$mets_progression_date) & !is.na(data$treatment_date)
+    } else {
+        rep(FALSE, nrow(data))
+    }
+    expected_baseline_mets <- if (all(c("mets_progression_date", "treatment_date") %in% names(data))) {
+        source_mets_event & source_dates_complete &
+            data$mets_progression_date <= data$treatment_date
+    } else {
+        rep(FALSE, nrow(data))
+    }
+    valid_baseline_mets <- rep(FALSE, nrow(data))
+
+    if (length(missing_baseline_fields) == 0) {
+        expected_mets_event_analysis <- ifelse(expected_baseline_mets, NA_integer_, as.integer(data$mets_event))
+        baseline_mismatch <-
+            data$mets_at_or_before_treatment != expected_baseline_mets |
+            data$mets_free_at_baseline != !expected_baseline_mets |
+            !contract_numeric_equal(data$mets_event_analysis, expected_mets_event_analysis) |
+            (expected_baseline_mets & !is.na(data$tt_mets_months_analysis)) |
+            (source_mets_event & !source_dates_complete)
+        baseline_mismatch[is.na(baseline_mismatch)] <- TRUE
+        valid_baseline_mets <- expected_baseline_mets & !baseline_mismatch
+        baseline_issue_rows <- tibble::tibble(
+            id = data$id[baseline_mismatch] %||% NA_character_,
+            row_index = which(baseline_mismatch),
+            mets_progression = as.character(data$mets_progression[baseline_mismatch]),
+            mets_progression_date = as.character(data$mets_progression_date[baseline_mismatch]),
+            treatment_date = as.character(data$treatment_date[baseline_mismatch]),
+            mets_at_or_before_treatment = as.character(data$mets_at_or_before_treatment[baseline_mismatch]),
+            mets_free_at_baseline = as.character(data$mets_free_at_baseline[baseline_mismatch]),
+            mets_event_analysis = as.character(data$mets_event_analysis[baseline_mismatch]),
+            tt_mets_months_analysis = as.character(data$tt_mets_months_analysis[baseline_mismatch])
+        )
+    } else {
+        baseline_issue_rows <- tibble::tibble(
+            id = data$id %||% NA_character_,
+            row_index = seq_len(nrow(data)),
+            missing_field = paste(missing_baseline_fields, collapse = ", ")
+        )
+    }
+
+    findings <- dplyr::bind_rows(
+        findings,
+        new_validation_finding(
+            check_id = "baseline_metastasis_source_complete",
+            finding_group = "endpoint_chronology",
+            scope = "cohort",
+            cohort = cohort_name,
+            severity = if (nrow(baseline_issue_rows) > 0) "hard_error" else "info",
+            status = if (nrow(baseline_issue_rows) > 0) "fail" else "pass",
+            metric = "baseline_metastasis_contract_violations",
+            value = nrow(baseline_issue_rows),
+            message = if (nrow(baseline_issue_rows) > 0) {
+                "Metastasis baseline status is missing source dates or conflicts with the derived incident-MFS fields."
+            } else {
+                "Metastasis baseline source dates and derived incident-MFS fields are consistent."
+            },
+            affected_n = nrow(baseline_issue_rows),
+            affected_ids = collapse_affected_ids(baseline_issue_rows$id %||% character())
+        ),
+        new_validation_finding(
+            check_id = "baseline_metastasis_at_or_before_treatment",
+            finding_group = "endpoint_chronology",
+            scope = "cohort",
+            cohort = cohort_name,
+            severity = "info",
+            status = "info",
+            metric = "baseline_metastatic_disease_rows",
+            value = sum(valid_baseline_mets),
+            message = if (sum(valid_baseline_mets) > 0) {
+                "Metastatic disease on or before treatment is retained as an informational baseline-disease finding and excluded from incident MFS."
+            } else {
+                "No adjudicated metastasis on or before treatment was identified."
+            },
+            affected_n = sum(valid_baseline_mets),
+            affected_ids = collapse_affected_ids(data$id[valid_baseline_mets] %||% character())
+        )
+    )
+
+    if (nrow(baseline_issue_rows) > 0) {
+        details <- dplyr::bind_rows(
+            details,
+            new_validation_detail_table(
+                detail_sheet = "Baseline_Metastasis_Contract_Failures",
+                data = baseline_issue_rows,
+                scope = "cohort",
+                cohort = cohort_name,
+                check_id = "baseline_metastasis_source_complete"
+            )
+        )
+    }
     endpoint_time_fields <- c(
         "tt_recurrence_months", "tt_recurrence_months_analysis",
         "tt_mets_months", "tt_mets_months_analysis",
@@ -389,7 +517,8 @@ validate_endpoint_chronology_contract <- function(data, cohort_name) {
 
     negative_rows <- purrr::map_dfr(present_fields, function(field_name) {
         numeric_values <- suppressWarnings(as.numeric(data[[field_name]]))
-        bad_index <- which(!is.na(numeric_values) & numeric_values < 0)
+        allow_baseline_mets <- identical(field_name, "tt_mets_months") & valid_baseline_mets
+        bad_index <- which(!is.na(numeric_values) & numeric_values < 0 & !allow_baseline_mets)
         if (length(bad_index) == 0) {
             return(tibble::tibble(
                 id = data$id[integer()] %||% character(),
@@ -521,7 +650,7 @@ validate_objective1_endpoint_invariants <- function(data, cohort_name) {
         tt_pfs_months = pmin(data$tt_recurrence_months, data$tt_mets_months, data$tt_death_months, na.rm = FALSE),
         tt_pfs_months_analysis = pmin(
             data$tt_recurrence_months_analysis,
-            data$tt_mets_months_analysis,
+            data$tt_mets_months,
             data$tt_death_months_analysis,
             na.rm = FALSE
         )
@@ -734,7 +863,8 @@ validate_objective4_gep_derivation_contract <- function(data, cohort_name) {
     details <- empty_validation_detail_table()
     required_fields <- unique(c(
         "biopsy1_gep", "gep_class_simple", "biopsy1_gep_mfs", "biopsy1_gep_mss",
-        "mets_event", "tt_mets_months", "death_event", "tt_death_years",
+        "mets_event_analysis", "tt_mets_months_analysis", "mets_free_at_baseline",
+        "death_event", "tt_death_years",
         "melanoma_death_event", "competing_death_event", "gep_validation_set",
         OBJECTIVE4_GEP_DERIVATION_CONTRACT$source_probability_field,
         OBJECTIVE4_GEP_DERIVATION_CONTRACT$expected_survival_field,
@@ -782,14 +912,22 @@ validate_objective4_gep_derivation_contract <- function(data, cohort_name) {
         expected_survival <- ifelse(!is.na(source_probability), source_probability^(horizon_years / 5), NA_real_)
         expected_risk <- 1 - expected_survival
         if (identical(outcome, "mfs")) {
-            expected_event <- ifelse(data$mets_event == 1 & data$tt_mets_months <= horizon_months, 1, 0)
+            expected_event <- ifelse(
+                !data$mets_free_at_baseline,
+                NA_integer_,
+                ifelse(data$mets_event_analysis == 1 & data$tt_mets_months_analysis <= horizon_months, 1L, 0L)
+            )
             expected_type <- dplyr::case_when(
-                !is.na(data$mets_event) & data$mets_event == 1 & !is.na(data$tt_mets_months) & data$tt_mets_months <= horizon_months ~ 1,
+                !data$mets_free_at_baseline ~ NA_integer_,
+                is.na(data$mets_event_analysis) | is.na(data$tt_mets_months_analysis) ~ NA_integer_,
+                data$mets_event_analysis == 1 & data$tt_mets_months_analysis <= horizon_months ~ 1L,
                 !is.na(data$death_event) & data$death_event == 1 & !is.na(data$tt_death_years) & data$tt_death_years <= horizon_years & !is.na(data$melanoma_death_event) & data$melanoma_death_event == 0 ~ 2,
                 TRUE ~ 0
             )
-            expected_time <- pmin(data$tt_mets_months, horizon_months)
-            expected_eligible <- definitive_gep & valid_mfs & !is.na(data$tt_mets_months) & !is.na(data$mets_event) & data$tt_mets_months >= 0
+            expected_time <- pmin(data$tt_mets_months_analysis, horizon_months)
+            expected_eligible <- definitive_gep & valid_mfs & data$mets_free_at_baseline &
+                !is.na(data$tt_mets_months_analysis) & !is.na(data$mets_event_analysis) &
+                data$tt_mets_months_analysis >= 0
         } else {
             expected_event <- ifelse(data$melanoma_death_event == 1 & data$tt_death_years <= horizon_years, 1, 0)
             expected_type <- dplyr::case_when(
@@ -1650,8 +1788,18 @@ collect_single_cohort_validation <- function(data, cohort_name) {
     }
 
     if (all(c("mets_progression", "tt_mets_months") %in% names(data))) {
+        baseline_mets <- if ("mets_at_or_before_treatment" %in% names(data)) {
+            dplyr::coalesce(data$mets_at_or_before_treatment, FALSE)
+        } else {
+            rep(FALSE, nrow(data))
+        }
         inconsistent_mets <- data %>%
-            dplyr::filter(is_yes_value(.data$mets_progression), !is.na(.data$tt_mets_months), .data$tt_mets_months <= 0)
+            dplyr::filter(
+                is_yes_value(.data$mets_progression),
+                !baseline_mets,
+                !is.na(.data$tt_mets_months),
+                .data$tt_mets_months <= 0
+            )
         add_finding(
             check_id = "metastasis_timing_consistency",
             finding_group = "data_quality",

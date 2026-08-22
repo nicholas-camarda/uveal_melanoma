@@ -17,6 +17,7 @@ make_objective0_validation_dataset <- function() {
         recurrence2 = factor(c("No", "No", "No"), levels = c("No", "Yes")),
         recurrence2_date = as.Date(c(NA, NA, NA)),
         mets_progression = factor(c("No", "No", "Yes"), levels = c("No", "Yes")),
+        mets_progression_date = as.Date(c(NA, NA, "2020-12-01")),
         dod = as.Date(c(NA, NA, "2022-08-01")),
         last_known_alive_date = as.Date(c("2025-02-01", "2025-02-15", "2025-03-01")),
         last_known_alive_source = c("last_height_date", "date_diagnosis", "dod"),
@@ -65,6 +66,9 @@ make_objective0_validation_dataset <- function() {
         ),
         recurrence_event = c(0L, 1L, 0L),
         mets_event = c(0L, 0L, 1L),
+        mets_at_or_before_treatment = c(FALSE, FALSE, FALSE),
+        mets_free_at_baseline = c(TRUE, TRUE, TRUE),
+        mets_event_analysis = c(0L, 0L, 1L),
         death_event = c(0, 0, 1),
         pfs_event = c(0L, 1L, 1L),
         melanoma_death_event = c(0L, 0L, 1L),
@@ -227,6 +231,118 @@ test_that("endpoint chronology violations are hard errors, not silent clamps", {
     expect_equal(chronology_findings$status[[1]], "fail")
     expect_true(any(chronology_details$field_name == "tt_recurrence_months"))
     expect_true(any(chronology_details$field_name == "tt_pfs_months_analysis"))
+})
+
+test_that("adjudicated baseline metastasis is informational and incomplete source data fail closed", {
+    baseline_mets_data <- make_objective0_validation_dataset()
+    baseline_mets_data$mets_progression[1] <- "Yes"
+    baseline_mets_data$mets_progression_date[1] <- baseline_mets_data$treatment_date[1]
+    baseline_mets_data$tt_mets_months[1] <- 0
+    baseline_mets_data$mets_event[1] <- 1L
+    baseline_mets_data$mets_at_or_before_treatment[1] <- TRUE
+    baseline_mets_data$mets_free_at_baseline[1] <- FALSE
+    baseline_mets_data$mets_event_analysis[1] <- NA_integer_
+    baseline_mets_data$tt_mets_months_analysis[1] <- NA_real_
+    baseline_mets_data$pfs_event[1] <- 1L
+    baseline_mets_data$tt_pfs_months[1] <- 0
+    baseline_mets_data$tt_pfs_months_analysis[1] <- 0
+    baseline_mets_data$mfs_event_5yr[1] <- NA_integer_
+    baseline_mets_data$mfs_event_7yr[1] <- NA_integer_
+    baseline_mets_data$mfs_event_10yr[1] <- NA_integer_
+    baseline_mets_data$event_type_mfs_5yr[1] <- NA_integer_
+    baseline_mets_data$event_type_mfs_7yr[1] <- NA_integer_
+    baseline_mets_data$event_type_mfs_10yr[1] <- NA_integer_
+    baseline_mets_data$tt_mfs_5yr[1] <- NA_real_
+    baseline_mets_data$tt_mfs_7yr[1] <- NA_real_
+    baseline_mets_data$tt_mfs_10yr[1] <- NA_real_
+    baseline_mets_data$mfs_analysis_eligible[1] <- FALSE
+
+    baseline_result <- validate_processing_pipeline(
+        baseline_mets_data,
+        stop_on_failure = FALSE
+    )
+    baseline_finding <- baseline_result$validation_findings %>%
+        dplyr::filter(.data$check_id == "baseline_metastasis_at_or_before_treatment")
+    metastasis_timing <- baseline_result$validation_findings %>%
+        dplyr::filter(.data$check_id == "metastasis_timing_consistency")
+
+    expect_true(baseline_result$success)
+    expect_equal(baseline_finding$severity[[1]], "info")
+    expect_equal(baseline_finding$status[[1]], "info")
+    expect_equal(metastasis_timing$status[[1]], "pass")
+
+    incomplete_source_data <- baseline_mets_data
+    incomplete_source_data$mets_progression_date[1] <- as.Date(NA)
+    incomplete_result <- validate_processing_pipeline(
+        incomplete_source_data,
+        stop_on_failure = FALSE
+    )
+    incomplete_finding <- incomplete_result$validation_findings %>%
+        dplyr::filter(.data$check_id == "baseline_metastasis_source_complete")
+
+    expect_false(incomplete_result$success)
+    expect_equal(incomplete_finding$severity[[1]], "hard_error")
+    expect_equal(incomplete_finding$status[[1]], "fail")
+})
+
+test_that("reconciled missing-date events remain fail-closed from their audit trail", {
+    raw_event_data <- tibble::tibble(
+        id = 901L,
+        mets_progression = "Y",
+        mets_progression_date = as.Date(NA)
+    )
+    reconciliation_audit <- fix_event_date_consistency(
+        raw_event_data,
+        event_var = "mets_progression",
+        date_var = "mets_progression_date",
+        id_col = "id",
+        source_workbook = "unit.xlsx"
+    )
+
+    expect_identical(reconciliation_audit$data$mets_progression, "N")
+
+    validation_result <- validate_processing_pipeline(
+        make_objective0_validation_dataset(),
+        stop_on_failure = FALSE,
+        reconciliation_audit = reconciliation_audit
+    )
+    finding <- validation_result$validation_findings %>%
+        dplyr::filter(.data$check_id == "reconciliation_original_event_date_contradiction")
+
+    expect_false(validation_result$success)
+    expect_equal(finding$severity[[1]], "hard_error")
+    expect_equal(finding$status[[1]], "fail")
+    expect_equal(finding$affected_n[[1]], 1L)
+})
+
+test_that("reconciled present-date non-events remain fail-closed from their audit trail", {
+    raw_event_data <- tibble::tibble(
+        id = 902L,
+        mets_progression = "N",
+        mets_progression_date = as.Date("2020-01-15")
+    )
+    reconciliation_audit <- fix_event_date_consistency(
+        raw_event_data,
+        event_var = "mets_progression",
+        date_var = "mets_progression_date",
+        id_col = "id",
+        source_workbook = "unit.xlsx"
+    )
+
+    expect_identical(reconciliation_audit$data$mets_progression, "Y")
+
+    validation_result <- validate_processing_pipeline(
+        make_objective0_validation_dataset(),
+        stop_on_failure = FALSE,
+        reconciliation_audit = reconciliation_audit
+    )
+    finding <- validation_result$validation_findings %>%
+        dplyr::filter(.data$check_id == "reconciliation_original_event_date_contradiction")
+
+    expect_false(validation_result$success)
+    expect_equal(finding$severity[[1]], "hard_error")
+    expect_equal(finding$status[[1]], "fail")
+    expect_equal(finding$affected_n[[1]], 1L)
 })
 
 test_that("downstream objective input contract catches missing and invalid inputs", {
@@ -474,7 +590,11 @@ test_that("Objective 0 validates Objective 2 toxicity endpoint burden fields", {
 test_that("Objective 1 endpoint invariants include metastatic progression in PFS", {
     invariant_data <- make_objective0_validation_dataset()
     invariant_data$mets_progression[1] <- "Yes"
+    invariant_data$mets_progression_date[1] <- invariant_data$treatment_date[1] + 304
     invariant_data$mets_event[1] <- 1L
+    invariant_data$mets_at_or_before_treatment[1] <- FALSE
+    invariant_data$mets_free_at_baseline[1] <- TRUE
+    invariant_data$mets_event_analysis[1] <- 1L
     invariant_data$pfs_event[1] <- 1L
     invariant_data$tt_mets_months[1] <- 10
     invariant_data$tt_mets_months_analysis[1] <- 10

@@ -82,9 +82,37 @@ test_that("Objective 0 derivation preserves impossible endpoint times for valida
     derived <- create_derived_variables(test_data)
 
     expect_lt(derived$tt_recurrence_months_analysis[[1]], 0)
-    expect_lt(derived$tt_mets_months_analysis[[2]], 0)
+    expect_lt(derived$tt_mets_months[[2]], 0)
+    expect_true(is.na(derived$tt_mets_months_analysis[[2]]))
+    expect_lt(derived$tt_pfs_months_analysis[[2]], 0)
     expect_lt(derived$tt_death_months_analysis[[3]], 0)
     expect_lt(derived$tt_pfs_months_analysis[[1]], 0)
+})
+
+test_that("Objective 0 excludes metastasis on or before treatment from incident MFS", {
+    test_data <- create_test_dataset()[1:3, ]
+    treatment_date <- as.Date("2020-01-01")
+    test_data$initial_gk <- "Y"
+    test_data$initial_plaque <- "N"
+    test_data$initial_gk_date <- treatment_date
+    test_data$treatment_date <- treatment_date
+    test_data$last_known_alive_date <- as.Date("2021-01-01")
+    test_data$mets_progression <- "Y"
+    test_data$mets_progression_date <- as.Date(c(
+        "2019-12-31", "2020-01-01", "2020-01-02"
+    ))
+
+    derived <- create_derived_variables(test_data)
+
+    expect_identical(derived$mets_at_or_before_treatment, c(TRUE, TRUE, FALSE))
+    expect_identical(derived$mets_free_at_baseline, c(FALSE, FALSE, TRUE))
+    expect_identical(derived$mets_event_analysis, c(NA_integer_, NA_integer_, 1L))
+    expect_true(all(is.na(derived$tt_mets_months_analysis[1:2])))
+    expect_gt(derived$tt_mets_months_analysis[[3]], 0)
+    expect_identical(derived$tt_pfs_months_analysis[1:2], derived$tt_pfs_months[1:2])
+    expect_equal(derived$mets_event, c(1, 1, 1))
+    expect_lt(derived$tt_mets_months[[1]], 0)
+    expect_identical(derived$tt_mets_months[[2]], 0)
 })
 
 test_that("Objective 0 derives PFS from the first recurrence, metastasis, death, or censoring time", {
@@ -128,7 +156,7 @@ test_that("Objective 0 classifies exact five-year endpoint boundaries and compet
     test_data$last_known_alive_date <- as.Date("2026-01-01")
     test_data$mets_progression <- c("Y", "Y", "Y", "N")
     test_data$mets_progression_date <- as.Date(c(
-        treatment_date,
+        treatment_date + 1,
         five_year_date,
         five_year_date + 1,
         NA
@@ -151,7 +179,16 @@ test_that("Objective 0 classifies exact five-year endpoint boundaries and compet
     expect_equal(derived$mfs_event_5yr, c(1L, 1L, 0L, 0L))
     expect_equal(derived$mss_event_5yr, c(1L, 0L, 0L, 0L))
     expect_equal(derived$event_type_mss_5yr, c(1L, 2L, 0L, 0L))
-    expect_equal(derived$tt_mfs_5yr, c(0, 60, 60, 60), tolerance = 1e-8)
+    expect_equal(
+        derived$tt_mfs_5yr,
+        c(
+            lubridate::time_length(lubridate::interval(treatment_date, treatment_date + 1), "months"),
+            60,
+            60,
+            60
+        ),
+        tolerance = 1e-8
+    )
     expect_equal(derived$tt_mss_5yr, c(0, 5, 5, 5), tolerance = 1e-8)
 })
 

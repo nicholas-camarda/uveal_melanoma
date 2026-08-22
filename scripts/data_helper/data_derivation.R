@@ -237,16 +237,27 @@ create_derived_variables <- function(data) {
                 TRUE ~ NA_real_
             ),
             mets_before_treatment = tt_mets_months < 0,
+            mets_at_or_before_treatment = if_else(
+                mets_progression == "Y" & !is.na(mets_progression_date),
+                mets_progression_date <= treatment_date,
+                FALSE,
+                missing = FALSE
+            ),
+            mets_free_at_baseline = !mets_at_or_before_treatment,
             recurrence_before_treatment = tt_recurrence_months < 0,
             death_before_treatment = tt_death_months < 0,
-            # Keep impossible event times visible for Objective 0 validation;
-            # downstream analysis is blocked by hard-error chronology findings.
-            tt_mets_months_analysis = tt_mets_months,
+            # Raw metastasis fields remain audit-visible. Incident MFS is
+            # undefined for metastatic disease present on or before treatment.
+            tt_mets_months_analysis = if_else(
+                mets_at_or_before_treatment,
+                NA_real_,
+                tt_mets_months
+            ),
             tt_recurrence_months_analysis = tt_recurrence_months,
             tt_death_months_analysis = tt_death_months,
             tt_pfs_months_analysis = pmin(
                 tt_recurrence_months_analysis,
-                tt_mets_months_analysis,
+                tt_mets_months,
                 tt_death_months_analysis,
                 na.rm = FALSE
             ),
@@ -273,7 +284,12 @@ create_derived_variables <- function(data) {
         ) %>%
         mutate(
             recurrence_event = if_else(recurrence1 == "Y", 1, 0, missing = 0),
-            mets_event = if_else(mets_progression == "Y", 1, 0, missing = 0),
+            mets_event = if_else(mets_progression == "Y", 1L, 0L, missing = 0L),
+            mets_event_analysis = if_else(
+                mets_at_or_before_treatment,
+                NA_integer_,
+                mets_event
+            ),
             death_event = if_else(!is.na(dod), 1, 0, missing = 0),
             # Melanoma-specific death event using cause of death when available
             # Event = metastasis only (mets_event with tt_mets_months)
@@ -311,7 +327,6 @@ create_derived_variables <- function(data) {
             "pfs2_censor_date",
             "pfs2_end_date"
         ))) %>%
-        mutate(mets_free_at_baseline = !(mets_progression == "Y" & mets_progression_date < treatment_date)) %>%
         mutate(
             gep_class_simple = case_when(
                 biopsy1_gep %in% GEP_CLASS_1_DEFINITIVE_RAW_LEVELS ~ "Class 1",
@@ -380,9 +395,9 @@ create_derived_variables <- function(data) {
         mutate(
              # Pre-process GEP analysis variables to ensure consistency and prevent output ordering issues
             # Time-specific event indicators for consistent analysis (prevents timepoint ordering issues)
-            mfs_event_5yr = if_else(mets_event == 1 & tt_mets_months <= 60, 1, 0),
-            mfs_event_7yr = if_else(mets_event == 1 & tt_mets_months <= 84, 1, 0),
-            mfs_event_10yr = if_else(mets_event == 1 & tt_mets_months <= 120, 1, 0),
+            mfs_event_5yr = if_else(mets_event_analysis == 1 & tt_mets_months_analysis <= 60, 1L, 0L, missing = NA_integer_),
+            mfs_event_7yr = if_else(mets_event_analysis == 1 & tt_mets_months_analysis <= 84, 1L, 0L, missing = NA_integer_),
+            mfs_event_10yr = if_else(mets_event_analysis == 1 & tt_mets_months_analysis <= 120, 1L, 0L, missing = NA_integer_),
             
             mss_event_5yr = if_else(melanoma_death_event == 1 & tt_death_years <= 5, 1, 0),
             mss_event_7yr = if_else(melanoma_death_event == 1 & tt_death_years <= 7, 1, 0),
@@ -402,19 +417,25 @@ create_derived_variables <- function(data) {
             # Without explicit NA checks, variables like mets_event == 1 return NA if mets_event is NA
             # This causes event_type_mfs_*yr variables to be NA instead of 0 (censored)
             event_type_mfs_5yr = case_when(
-                !is.na(mets_event) & mets_event == 1 & !is.na(tt_mets_months) & tt_mets_months <= 60 ~ 1,  # Metastasis event
+                !mets_free_at_baseline ~ NA_integer_,
+                is.na(mets_event_analysis) | is.na(tt_mets_months_analysis) ~ NA_integer_,
+                !is.na(mets_event_analysis) & mets_event_analysis == 1 & !is.na(tt_mets_months_analysis) & tt_mets_months_analysis <= 60 ~ 1L,
                 !is.na(death_event) & death_event == 1 & !is.na(tt_death_years) & tt_death_years <= 5 & !is.na(melanoma_death_event) & melanoma_death_event == 0 ~ 2,  # Competing death
-                TRUE ~ 0  # Censored
+                TRUE ~ 0L  # Censored
             ),
             event_type_mfs_7yr = case_when(
-                !is.na(mets_event) & mets_event == 1 & !is.na(tt_mets_months) & tt_mets_months <= 84 ~ 1,  # Metastasis event
+                !mets_free_at_baseline ~ NA_integer_,
+                is.na(mets_event_analysis) | is.na(tt_mets_months_analysis) ~ NA_integer_,
+                !is.na(mets_event_analysis) & mets_event_analysis == 1 & !is.na(tt_mets_months_analysis) & tt_mets_months_analysis <= 84 ~ 1L,
                 !is.na(death_event) & death_event == 1 & !is.na(tt_death_years) & tt_death_years <= 7 & !is.na(melanoma_death_event) & melanoma_death_event == 0 ~ 2,  # Competing death
-                TRUE ~ 0  # Censored
+                TRUE ~ 0L  # Censored
             ),
             event_type_mfs_10yr = case_when(
-                !is.na(mets_event) & mets_event == 1 & !is.na(tt_mets_months) & tt_mets_months <= 120 ~ 1,  # Metastasis event
+                !mets_free_at_baseline ~ NA_integer_,
+                is.na(mets_event_analysis) | is.na(tt_mets_months_analysis) ~ NA_integer_,
+                !is.na(mets_event_analysis) & mets_event_analysis == 1 & !is.na(tt_mets_months_analysis) & tt_mets_months_analysis <= 120 ~ 1L,
                 !is.na(death_event) & death_event == 1 & !is.na(tt_death_years) & tt_death_years <= 10 & !is.na(melanoma_death_event) & melanoma_death_event == 0 ~ 2,  # Competing death
-                TRUE ~ 0  # Censored
+                TRUE ~ 0L  # Censored
             ),
             
             # Competing risk event type variables with validation
@@ -439,9 +460,9 @@ create_derived_variables <- function(data) {
             
             # Time-to-event variables for specific timepoints (prevents analysis-time creation)
             # MFS: already in months (correct)
-            tt_mfs_5yr = pmin(tt_mets_months, 60),
-            tt_mfs_7yr = pmin(tt_mets_months, 84),
-            tt_mfs_10yr = pmin(tt_mets_months, 120),
+            tt_mfs_5yr = pmin(tt_mets_months_analysis, 60),
+            tt_mfs_7yr = pmin(tt_mets_months_analysis, 84),
+            tt_mfs_10yr = pmin(tt_mets_months_analysis, 120),
             
             # MSS: keep years for compatibility
             tt_mss_5yr = pmin(tt_death_years, 5),
@@ -451,9 +472,10 @@ create_derived_variables <- function(data) {
             # Statistical summary variables (prevents analysis-time calculations)
             mfs_analysis_eligible = !is.na(biopsy1_gep) & 
                                    !biopsy1_gep %in% c("GEP Failed/Indeterminate", "GEP Not Tested") &
-                                   !is.na(tt_mets_months) & 
-                                   !is.na(mets_event) &
-                                   tt_mets_months >= 0 &
+                                   mets_free_at_baseline &
+                                   !is.na(tt_mets_months_analysis) &
+                                   !is.na(mets_event_analysis) &
+                                   tt_mets_months_analysis >= 0 &
                                    biopsy1_gep_mfs >= 0 & biopsy1_gep_mfs <= 1,
 
             mss_analysis_eligible = !is.na(biopsy1_gep) & 
@@ -560,9 +582,10 @@ refresh_gep_analysis_flags <- function(data) {
                 "No GEP Data"
             ),
             mfs_analysis_eligible = definitive_gep_flag &
-                !is.na(tt_mets_months) &
-                !is.na(mets_event) &
-                tt_mets_months >= 0 &
+                mets_free_at_baseline &
+                !is.na(tt_mets_months_analysis) &
+                !is.na(mets_event_analysis) &
+                tt_mets_months_analysis >= 0 &
                 valid_mfs_prediction_flag,
             mss_analysis_eligible = definitive_gep_flag &
                 !is.na(tt_death_years) &
