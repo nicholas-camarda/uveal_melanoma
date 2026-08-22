@@ -45,8 +45,8 @@ identified all of the following warning or skip classes:
   manual review by the non-blocking Objective 0 date check;
 - perfect separation in a secondary GEP Cox model, with unreliable secondary
   coefficient estimates explicitly warned;
-- infeasible RMST summaries where the multi-group comparison was non-binary or
-  the requested horizon exceeded follow-up support; and
+- infeasible RMST summaries because the requested multi-group comparison was
+  non-binary at every requested horizon; and
 - sparse GEP/PRAME secondary cause-specific Cox, Fine-Gray, and related
   feasibility/status skips where groups had zero melanoma deaths.
 
@@ -217,6 +217,12 @@ results are identical. A production extraction contract must be implemented
 and reviewed before that claim can be made. The AAO-specific gate remains
 valid because it reads the generated candidate workbook directly under its
 separate immutable contract.
+
+The protected pull request cannot be considered complete until either the
+production comparator requirement is implemented or the repository owner
+documents an approved waiver or plan amendment. This infrastructure condition
+need not block the AAO presentation after the separate scientific and
+investigator clearance requirements above are satisfied.
 
 ## Exact workflow commands
 
