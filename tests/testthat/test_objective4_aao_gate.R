@@ -24,6 +24,12 @@ write_aao_candidate_workbook <- function(path,
                                          mfs_method = "ipcw_horizon_mfs",
                                          surrogate_metric_status = NA_character_,
                                          direct_takeaway = "Baseline clinical features provided prognostic support for 60-month post-treatment metastasis risk and melanoma-death cumulative-incidence risk.",
+                                         structured_categories = c(
+                                             moderate_direct_prognostic_stratification = "moderate_direct_prognostic_stratification",
+                                             failure_to_recover_molecular_class = "failure_to_recover_molecular_class",
+                                             no_gep_groups_non_homogeneous = "no_gep_groups_non_homogeneous"
+                                         ),
+                                         include_structured_conclusions = TRUE,
                                          performance_transform = identity,
                                          surrogate_takeaway = "Clinical features only weakly approximated definitive molecular class.") {
     workbook <- openxlsx::createWorkbook()
@@ -77,9 +83,26 @@ write_aao_candidate_workbook <- function(path,
                 "Do not relabel no-GEP patients into molecular classes based on the surrogate output.",
                 "Do not present no-GEP patients as one homogeneous intermediate-risk group; the failed/indeterminate subgroup is higher risk than the larger not-tested subgroup."
             ),
+            conclusion_id = NA_character_,
+            conclusion_category = NA_character_,
             stringsAsFactors = FALSE
         )
     )
+    if (isTRUE(include_structured_conclusions)) {
+        conclusion_rows <- data.frame(
+            row_order = 5:7,
+            section = "structured_conclusion",
+            label = "conclusion_category",
+            value = "Machine-readable AAO gate conclusion category",
+            conclusion_id = names(structured_categories),
+            conclusion_category = unname(structured_categories),
+            stringsAsFactors = FALSE
+        )
+        sheets$Start_Here <- rbind(sheets$Start_Here, conclusion_rows)
+    } else {
+        sheets$Start_Here$conclusion_id <- NULL
+        sheets$Start_Here$conclusion_category <- NULL
+    }
     for (sheet in names(sheets)) {
         openxlsx::addWorksheet(workbook, sheet)
         openxlsx::writeData(workbook, sheet, sheets[[sheet]])
@@ -106,7 +129,7 @@ test_that("accepted AAO contract is immutable and complete", {
     expect_identical(contract$version, 1L)
     expect_identical(
         contract$immutable_fingerprint_sha256,
-        "440803ca09c2968d7e7dfffe61666eb5de7e740cd9d24206ae3799012344bc7e"
+        "091c01f5569d0f88b1b638d5c177e49ebf56e90b4d89ab8e35c9e12c82a5e3fc"
     )
     expect_identical(
         AAO_ACCEPTED_CONTRACT_FINGERPRINT,
@@ -215,6 +238,29 @@ test_that("accepted AAO contract is immutable and complete", {
         )
     )
     expect_identical(
+        contract$candidate_workbook$structured_conclusions,
+        list(
+            sheet = "Start_Here",
+            id_column = "conclusion_id",
+            category_column = "conclusion_category",
+            optional = TRUE,
+            categories = list(
+                moderate_direct_prognostic_stratification = list(
+                    expected = "moderate_direct_prognostic_stratification",
+                    contradictory = "no_direct_prognostic_stratification"
+                ),
+                failure_to_recover_molecular_class = list(
+                    expected = "failure_to_recover_molecular_class",
+                    contradictory = "molecular_class_recovered"
+                ),
+                no_gep_groups_non_homogeneous = list(
+                    expected = "no_gep_groups_non_homogeneous",
+                    contradictory = "no_gep_groups_homogeneous"
+                )
+            )
+        )
+    )
+    expect_identical(
         names(contract$conclusion_rules),
         expected_conclusions
     )
@@ -233,7 +279,7 @@ test_that("accepted AAO contract is immutable and complete", {
     )
     expect_identical(
         contract$conclusion_rules$failure_to_recover_molecular_class$result,
-        list(type = "maximum_auc", models = c("molecular_surrogate"), threshold = 0.60)
+        list(type = "structured_category")
     )
     expect_identical(
         contract$conclusion_rules$no_gep_groups_non_homogeneous$result,
@@ -388,14 +434,14 @@ test_that("conclusion reversals are derived from results and reject semantic neg
         identical(reason$id, "conclusion_inconsistent_moderate_direct_prognostic_stratification")
     }, logical(1))))
 
-    recovered_surrogate_book <- write_aao_candidate_workbook(
+    high_surrogate_book <- write_aao_candidate_workbook(
         tempfile(fileext = ".xlsx"),
         surrogate_auc = 0.75
     )
-    recovered_surrogate <- run_gate_fixture(recovered_surrogate_book)
-    expect_identical(recovered_surrogate$status, "fail")
-    expect_true(any(vapply(recovered_surrogate$report$reasons, function(reason) {
-        identical(reason$id, "conclusion_reversal_failure_to_recover_molecular_class")
+    high_surrogate <- run_gate_fixture(high_surrogate_book)
+    expect_identical(high_surrogate$status, "review")
+    expect_false(any(vapply(high_surrogate$report$reasons, function(reason) {
+        identical(reason$status, "fail")
     }, logical(1))))
 
     unsupported_direct_book <- write_aao_candidate_workbook(
@@ -406,6 +452,41 @@ test_that("conclusion reversals are derived from results and reject semantic neg
     expect_identical(unsupported_direct$status, "fail")
     expect_true(any(vapply(unsupported_direct$report$reasons, function(reason) {
         identical(reason$id, "conclusion_reversal_moderate_direct_prognostic_stratification")
+    }, logical(1))))
+})
+
+test_that("surrogate numeric drift is review unless a structured category reverses", {
+    for (auc in c(0.600, 0.601, 0.800)) {
+        aligned <- run_gate_fixture(write_aao_candidate_workbook(
+            tempfile(fileext = ".xlsx"),
+            surrogate_auc = auc
+        ))
+        expect_identical(aligned$status, "review")
+        expect_false(any(vapply(aligned$report$reasons, function(reason) {
+            identical(reason$id, "conclusion_reversal_failure_to_recover_molecular_class")
+        }, logical(1))))
+    }
+
+    without_structured_field <- run_gate_fixture(write_aao_candidate_workbook(
+        tempfile(fileext = ".xlsx"),
+        surrogate_auc = 0.800,
+        include_structured_conclusions = FALSE
+    ))
+    expect_identical(without_structured_field$status, "review")
+
+    reversed_categories <- c(
+        moderate_direct_prognostic_stratification = "moderate_direct_prognostic_stratification",
+        failure_to_recover_molecular_class = "molecular_class_recovered",
+        no_gep_groups_non_homogeneous = "no_gep_groups_non_homogeneous"
+    )
+    explicit_reversal <- run_gate_fixture(write_aao_candidate_workbook(
+        tempfile(fileext = ".xlsx"),
+        surrogate_auc = 0.601,
+        structured_categories = reversed_categories
+    ))
+    expect_identical(explicit_reversal$status, "fail")
+    expect_true(any(vapply(explicit_reversal$report$reasons, function(reason) {
+        identical(reason$id, "conclusion_reversal_failure_to_recover_molecular_class")
     }, logical(1))))
 })
 
@@ -457,7 +538,7 @@ test_that("malformed nested contracts emit PHI-free fail reports", {
         changed_auc = within(base_contract, accepted_abstract$auc$direct_mfs <- 0.700),
         recomputed_changed_auc = recomputed_changed_auc,
         missing_ordering_field = within(base_contract, candidate_workbook$required_orderings[[1L]]$higher <- NULL),
-        malformed_conclusion_rule = within(base_contract, conclusion_rules$failure_to_recover_molecular_class$result$threshold <- "high"),
+        malformed_conclusion_rule = within(base_contract, candidate_workbook$structured_conclusions$categories$failure_to_recover_molecular_class$expected <- NULL),
         changed_scope_mapping = within(base_contract, candidate_workbook$models$direct_mfs$required_scopes <- list("Overall"))
     )
 

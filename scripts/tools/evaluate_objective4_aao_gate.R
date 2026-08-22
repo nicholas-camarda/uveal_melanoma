@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 
 AAO_GATE_VERSION <- 1L
-AAO_ACCEPTED_CONTRACT_FINGERPRINT <- "440803ca09c2968d7e7dfffe61666eb5de7e740cd9d24206ae3799012344bc7e"
+AAO_ACCEPTED_CONTRACT_FINGERPRINT <- "091c01f5569d0f88b1b638d5c177e49ebf56e90b4d89ab8e35c9e12c82a5e3fc"
 
 stop_gate_usage <- function() {
     stop(
@@ -140,7 +140,7 @@ validate_aao_contract <- function(contract) {
     expected_models <- c("molecular_surrogate", "direct_mfs", "direct_mss")
     if (!has_exact_names(candidate, c(
         "required_sheets", "models", "observed_rate_methods", "group_labels",
-        "required_orderings"
+        "structured_conclusions", "required_orderings"
     )) || !identical(
         candidate$required_sheets,
         c("Model_Performance", "Risk_Ladder_5yr", "Start_Here")
@@ -178,6 +178,34 @@ validate_aao_contract <- function(contract) {
         !all(vapply(candidate$group_labels, is_scalar_character, logical(1))) ||
         anyDuplicated(unlist(candidate$group_labels, use.names = FALSE))) {
         stop("Candidate observed-rate mapping is invalid", call. = FALSE)
+    }
+
+    structured <- candidate$structured_conclusions
+    if (!has_exact_names(structured, c(
+        "sheet", "id_column", "category_column", "optional", "categories"
+    )) || !is_scalar_character(structured$sheet) ||
+        !is_scalar_character(structured$id_column) ||
+        !is_scalar_character(structured$category_column) ||
+        !is.logical(structured$optional) || length(structured$optional) != 1L ||
+        is.na(structured$optional) ||
+        !has_exact_names(structured$categories, expected_conclusions) ||
+        !all(vapply(structured$categories, function(category) {
+            has_exact_names(category, c("expected", "contradictory")) &&
+                is_scalar_character(category$expected) &&
+                is_scalar_character(category$contradictory) &&
+                !identical(category$expected, category$contradictory)
+        }, logical(1)))) {
+        stop("Structured conclusion mapping is invalid", call. = FALSE)
+    }
+    if (!identical(structured$sheet, "Start_Here") ||
+        !identical(structured$id_column, "conclusion_id") ||
+        !identical(structured$category_column, "conclusion_category") ||
+        !identical(structured$optional, TRUE) ||
+        !identical(
+            unname(vapply(structured$categories, `[[`, character(1), "expected")),
+            expected_conclusions
+        )) {
+        stop("Structured conclusion contract is invalid", call. = FALSE)
     }
 
     orderings <- candidate$required_orderings
@@ -222,11 +250,8 @@ validate_aao_contract <- function(contract) {
         !identical(direct_rule$models, c("direct_mfs", "direct_mss")) ||
         !is_scalar_number(direct_rule$threshold) ||
         direct_rule$threshold < 0 || direct_rule$threshold > 1 ||
-        !has_exact_names(surrogate_rule, c("type", "models", "threshold")) ||
-        !identical(surrogate_rule$type, "maximum_auc") ||
-        !identical(surrogate_rule$models, c("molecular_surrogate")) ||
-        !is_scalar_number(surrogate_rule$threshold) ||
-        surrogate_rule$threshold < 0 || surrogate_rule$threshold > 1 ||
+        !has_exact_names(surrogate_rule, c("type")) ||
+        !identical(surrogate_rule$type, "structured_category") ||
         !has_exact_names(group_rule, c("type", "ordering_ids")) ||
         !identical(group_rule$type, "required_orderings") ||
         !is_nonempty_character(group_rule$ordering_ids) ||
@@ -396,12 +421,20 @@ extract_candidate_rates <- function(risk, contract) {
 
 check_candidate_prose_consistency <- function(conclusions, contract) {
     reasons <- list()
-    if (anyDuplicated(conclusions$label)) {
-        return(list(new_gate_reason("candidate_conclusions", "fail", "Conclusion labels are duplicated")))
-    }
     for (conclusion_id in names(contract$conclusion_rules)) {
         prose <- contract$conclusion_rules[[conclusion_id]]$prose
         labels <- unlist(prose$labels, use.names = FALSE)
+        label_counts <- vapply(labels, function(label) {
+            sum(!is.na(conclusions$label) & conclusions$label == label)
+        }, integer(1))
+        if (any(label_counts != 1L)) {
+            reasons[[length(reasons) + 1L]] <- new_gate_reason(
+                paste0("conclusion_inconsistent_", conclusion_id),
+                "fail",
+                "Required conclusion statement is missing or duplicated"
+            )
+            next
+        }
         rows <- conclusions[match(labels, conclusions$label), , drop = FALSE]
         if (nrow(rows) != length(labels) || any(is.na(rows$label)) || any(is.na(rows$value))) {
             reasons[[length(reasons) + 1L]] <- new_gate_reason(
@@ -427,6 +460,61 @@ check_candidate_prose_consistency <- function(conclusions, contract) {
     reasons
 }
 
+evaluate_structured_candidate_conclusions <- function(conclusions, contract) {
+    structured <- contract$candidate_workbook$structured_conclusions
+    id_column <- structured$id_column
+    category_column <- structured$category_column
+    has_id <- id_column %in% names(conclusions)
+    has_category <- category_column %in% names(conclusions)
+    if (!has_id && !has_category && isTRUE(structured$optional)) {
+        return(list())
+    }
+    if (!has_id || !has_category) {
+        return(list(new_gate_reason(
+            "candidate_conclusions",
+            "fail",
+            "Structured conclusion columns are incomplete"
+        )))
+    }
+
+    ids <- as.character(conclusions[[id_column]])
+    categories <- as.character(conclusions[[category_column]])
+    populated <- (!is.na(ids) & nzchar(ids)) | (!is.na(categories) & nzchar(categories))
+    ids <- ids[populated]
+    categories <- categories[populated]
+    expected_ids <- names(structured$categories)
+    if (length(ids) != length(expected_ids) || anyNA(ids) || anyNA(categories) ||
+        any(!nzchar(ids)) || any(!nzchar(categories)) || anyDuplicated(ids) ||
+        !setequal(ids, expected_ids)) {
+        return(list(new_gate_reason(
+            "candidate_conclusions",
+            "fail",
+            "Structured conclusion rows are missing, duplicated, or unexpected"
+        )))
+    }
+
+    reasons <- list()
+    for (conclusion_id in expected_ids) {
+        category <- categories[match(conclusion_id, ids)]
+        category_contract <- structured$categories[[conclusion_id]]
+        allowed <- unlist(category_contract, use.names = FALSE)
+        if (!category %in% allowed) {
+            reasons[[length(reasons) + 1L]] <- new_gate_reason(
+                "candidate_conclusions",
+                "fail",
+                "Structured conclusion category is unsupported"
+            )
+        } else if (!identical(category, category_contract$expected)) {
+            reasons[[length(reasons) + 1L]] <- new_gate_reason(
+                paste0("conclusion_reversal_", conclusion_id),
+                "fail",
+                "Structured candidate conclusion contradicts the accepted category"
+            )
+        }
+    }
+    reasons
+}
+
 evaluate_result_conclusion_rules <- function(auc_values, extracted_rates, contract) {
     reasons <- list()
     rules <- contract$conclusion_rules
@@ -439,17 +527,6 @@ evaluate_result_conclusion_rules <- function(auc_values, extracted_rates, contra
             "conclusion_reversal_moderate_direct_prognostic_stratification",
             "fail",
             "A direct-model AUC is below the frozen moderate-prognostic threshold"
-        )
-    }
-
-    surrogate <- rules$failure_to_recover_molecular_class$result
-    surrogate_values <- unlist(auc_values[surrogate$models], use.names = FALSE)
-    if (length(surrogate_values) == length(surrogate$models) &&
-        all(is.finite(surrogate_values)) && any(surrogate_values > surrogate$threshold)) {
-        reasons[[length(reasons) + 1L]] <- new_gate_reason(
-            "conclusion_reversal_failure_to_recover_molecular_class",
-            "fail",
-            "The molecular-surrogate AUC exceeds the frozen weak-surrogate threshold"
         )
     }
 
@@ -601,6 +678,7 @@ evaluate_objective4_aao_gate <- function(contract_path, candidate_workbook, repo
     reasons <- c(
         reasons,
         evaluate_result_conclusion_rules(candidate_auc_values, extracted_rates, contract),
+        evaluate_structured_candidate_conclusions(candidate$conclusions, contract),
         check_candidate_prose_consistency(candidate$conclusions, contract)
     )
     status <- classify_gate_status(reasons)

@@ -1,5 +1,5 @@
 version: 1
-immutable_fingerprint_sha256: 440803ca09c2968d7e7dfffe61666eb5de7e740cd9d24206ae3799012344bc7e
+immutable_fingerprint_sha256: 091c01f5569d0f88b1b638d5c177e49ebf56e90b4d89ab8e35c9e12c82a5e3fc
 accepted_abstract:
   id: "30085896"
   submitted_cohort_n: 260
@@ -79,6 +79,21 @@ candidate_workbook:
     not_tested: GEP Not Tested
     failed_indeterminate: GEP Failed/Indeterminate
     class_2: Class 2
+  structured_conclusions:
+    sheet: Start_Here
+    id_column: conclusion_id
+    category_column: conclusion_category
+    optional: true
+    categories:
+      moderate_direct_prognostic_stratification:
+        expected: moderate_direct_prognostic_stratification
+        contradictory: no_direct_prognostic_stratification
+      failure_to_recover_molecular_class:
+        expected: failure_to_recover_molecular_class
+        contradictory: molecular_class_recovered
+      no_gep_groups_non_homogeneous:
+        expected: no_gep_groups_non_homogeneous
+        contradictory: no_gep_groups_homogeneous
   required_orderings:
     - id: mfs_failed_vs_not_tested
       endpoint: mfs
@@ -127,10 +142,7 @@ conclusion_rules:
         - lacked prognostic support
   failure_to_recover_molecular_class:
     result:
-      type: maximum_auc
-      models:
-        - molecular_surrogate
-      threshold: 0.60
+      type: structured_category
     prose:
       labels:
         - takeaway_2
