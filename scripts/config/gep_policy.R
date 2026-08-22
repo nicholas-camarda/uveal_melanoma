@@ -47,6 +47,12 @@ GEP_IPCW_WEIGHT_CAP_PROB <- 0.99 # Cap extreme inverse-censoring weights at the 
 GEP_MAX_CALIBRATION_COEF_ABS <- 10 # Treat larger recalibration coefficients as unstable/quasi-separated fits
 GEP_MAX_CALIBRATION_COEF_SE <- 5 # Treat larger recalibration coefficient standard errors as unstable fits
 
+# Deterministic nested cross-validation for the Objective 4 no-GEP analysis
+GEP_EXPLORATORY_CV_SEED <- 20260820L
+GEP_EXPLORATORY_CV_REPEATS <- 20L
+GEP_EXPLORATORY_OUTER_FOLDS <- 5L
+GEP_EXPLORATORY_INNER_FOLDS <- 5L
+
 # Sample size requirements for analysis
 GEP_MIN_SAMPLE_SIZE <- 20 # Minimum sample size for any analysis
 GEP_MIN_EVENTS_COMPETING_RISK <- 3 # Minimum events for competing risk analysis (lowered for exploratory cohorts)
