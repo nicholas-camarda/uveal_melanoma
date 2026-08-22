@@ -23,33 +23,37 @@ write_aao_candidate_workbook <- function(path,
                                          ),
                                          mfs_method = "ipcw_horizon_mfs",
                                          surrogate_metric_status = NA_character_,
+                                         direct_takeaway = "Baseline clinical features provided prognostic support for 60-month post-treatment metastasis risk and melanoma-death cumulative-incidence risk.",
+                                         performance_transform = identity,
                                          surrogate_takeaway = "Clinical features only weakly approximated definitive molecular class.") {
     workbook <- openxlsx::createWorkbook()
-    sheets <- list(
-        Model_Performance = data.frame(
-            model = c(
-                "Surrogate Class 2-like",
-                "Direct 5-year MFS",
-                "Direct 5-year MFS",
-                "Direct 60-month melanoma-death cumulative-incidence risk",
-                "Direct 60-month melanoma-death cumulative-incidence risk"
-            ),
-            performance_scope = c(NA, "Overall", "No GEP", "Overall", "No GEP"),
-            model_method = c(
-                "surrogate_binary",
-                mfs_method,
-                mfs_method,
-                "ipcw_horizon_competing_risk_mss",
-                "ipcw_horizon_competing_risk_mss"
-            ),
-            evaluation_method = c(
-                "repeated out-of-fold binary AUC/Brier/calibration",
-                rep("outer-training-fold IPCW weighted OOF AUC/Brier/calibration", 4)
-            ),
-            metric_status = c(surrogate_metric_status, rep("ok", 4)),
-            cv_auc = c(surrogate_auc, mfs_auc, mfs_auc, mss_auc, mss_auc),
-            stringsAsFactors = FALSE
+    performance <- data.frame(
+        model = c(
+            "Surrogate Class 2-like",
+            "Direct 5-year MFS",
+            "Direct 5-year MFS",
+            "Direct 60-month melanoma-death cumulative-incidence risk",
+            "Direct 60-month melanoma-death cumulative-incidence risk"
         ),
+        performance_scope = c(NA, "Overall", "No GEP", "Overall", "No GEP"),
+        model_method = c(
+            "surrogate_binary",
+            mfs_method,
+            mfs_method,
+            "ipcw_horizon_competing_risk_mss",
+            "ipcw_horizon_competing_risk_mss"
+        ),
+        evaluation_method = c(
+            "repeated out-of-fold binary AUC/Brier/calibration",
+            rep("outer-training-fold IPCW weighted OOF AUC/Brier/calibration", 4)
+        ),
+        metric_status = c(surrogate_metric_status, rep("ok", 4)),
+        cv_auc = c(surrogate_auc, mfs_auc, mfs_auc, mss_auc, mss_auc),
+        stringsAsFactors = FALSE
+    )
+    performance <- performance_transform(performance)
+    sheets <- list(
+        Model_Performance = performance,
         Risk_Ladder_5yr = data.frame(
             group = c("Class 1", "GEP Not Tested", "GEP Failed/Indeterminate", "Class 2"),
             n = c(100L, 80L, 20L, 60L),
@@ -68,7 +72,7 @@ write_aao_candidate_workbook <- function(path,
             section = "bottom_line",
             label = paste0("takeaway_", 1:4),
             value = c(
-                "Baseline clinical features provided prognostic support for 60-month post-treatment metastasis risk and melanoma-death cumulative-incidence risk.",
+                direct_takeaway,
                 surrogate_takeaway,
                 "Do not relabel no-GEP patients into molecular classes based on the surrogate output.",
                 "Do not present no-GEP patients as one homogeneous intermediate-risk group; the failed/indeterminate subgroup is higher risk than the larger not-tested subgroup."
@@ -100,6 +104,14 @@ test_that("accepted AAO contract is immutable and complete", {
     contract <- yaml::read_yaml(contract_path)
 
     expect_identical(contract$version, 1L)
+    expect_identical(
+        contract$immutable_fingerprint_sha256,
+        "440803ca09c2968d7e7dfffe61666eb5de7e740cd9d24206ae3799012344bc7e"
+    )
+    expect_identical(
+        calculate_aao_contract_fingerprint(contract),
+        contract$immutable_fingerprint_sha256
+    )
     expect_identical(contract$accepted_abstract$id, "30085896")
     expect_identical(contract$accepted_abstract$submitted_cohort_n, 260L)
     expect_false(contract$accepted_abstract$subgroup_counts_reported)
@@ -107,14 +119,152 @@ test_that("accepted AAO contract is immutable and complete", {
         unlist(contract$accepted_abstract$auc, use.names = TRUE),
         c(direct_mfs = 0.686, direct_mss = 0.663, molecular_surrogate = 0.515)
     )
+    expect_identical(
+        unlist(contract$accepted_abstract$observed_rates$class_1, use.names = TRUE),
+        c(mfs = 0.029, mss = 0)
+    )
+    expect_identical(
+        unlist(contract$accepted_abstract$observed_rates$not_tested, use.names = TRUE),
+        c(mfs = 0.150, mss = 0.091)
+    )
+    expect_identical(
+        unlist(contract$accepted_abstract$observed_rates$failed_indeterminate, use.names = TRUE),
+        c(mfs = 0.600, mss = 0.333)
+    )
+    expect_identical(
+        unlist(contract$accepted_abstract$observed_rates$class_2, use.names = TRUE),
+        c(mfs = 0.537, mss = 0.383)
+    )
     expect_identical(contract$review_thresholds$absolute_auc_change, 0.02)
     expect_identical(contract$review_thresholds$absolute_rate_change_percentage_points, 5)
-    expect_setequal(
+    expected_conclusions <- c(
+        "moderate_direct_prognostic_stratification",
+        "failure_to_recover_molecular_class",
+        "no_gep_groups_non_homogeneous"
+    )
+    expect_identical(
         vapply(contract$accepted_abstract$conclusions, `[[`, character(1), "id"),
+        expected_conclusions
+    )
+    expect_identical(
+        vapply(contract$accepted_abstract$conclusions, `[[`, character(1), "category"),
+        expected_conclusions
+    )
+    expect_identical(
+        lapply(contract$accepted_abstract$conclusions, `[[`, "workbook_labels"),
+        list(c("takeaway_1"), c("takeaway_2", "takeaway_3"), c("takeaway_4"))
+    )
+    expect_identical(
+        names(contract$candidate_workbook$models),
         c(
-            "moderate_direct_prognostic_stratification",
-            "failure_to_recover_molecular_class",
-            "no_gep_groups_non_homogeneous"
+            "molecular_surrogate", "direct_mfs", "direct_mss"
+        )
+    )
+    expect_identical(
+        contract$candidate_workbook$required_sheets,
+        c("Model_Performance", "Risk_Ladder_5yr", "Start_Here")
+    )
+    expect_identical(
+        contract$candidate_workbook$models$direct_mfs,
+        list(
+            label = "Direct 5-year MFS",
+            comparison_scope = "Overall",
+            required_scopes = c("Overall", "No GEP"),
+            model_method = "ipcw_horizon_mfs",
+            evaluation_method = "outer-training-fold IPCW weighted OOF AUC/Brier/calibration",
+            metric_status_required = TRUE
+        )
+    )
+    expect_identical(
+        contract$candidate_workbook$models$direct_mss,
+        list(
+            label = "Direct 60-month melanoma-death cumulative-incidence risk",
+            comparison_scope = "Overall",
+            required_scopes = c("Overall", "No GEP"),
+            model_method = "ipcw_horizon_competing_risk_mss",
+            evaluation_method = "outer-training-fold IPCW weighted OOF AUC/Brier/calibration",
+            metric_status_required = TRUE
+        )
+    )
+    expect_identical(
+        contract$candidate_workbook$models$molecular_surrogate,
+        list(
+            label = "Surrogate Class 2-like",
+            comparison_scope = NULL,
+            required_scopes = list(),
+            model_method = "surrogate_binary",
+            evaluation_method = "repeated out-of-fold binary AUC/Brier/calibration",
+            metric_status_required = FALSE
+        )
+    )
+    expect_identical(
+        unlist(contract$candidate_workbook$observed_rate_methods, use.names = TRUE),
+        c(mfs = "kaplan_meier_at_horizon", mss = "aalen_johansen_cif_at_horizon")
+    )
+    expect_identical(
+        unlist(contract$candidate_workbook$group_labels, use.names = TRUE),
+        c(
+            class_1 = "Class 1",
+            not_tested = "GEP Not Tested",
+            failed_indeterminate = "GEP Failed/Indeterminate",
+            class_2 = "Class 2"
+        )
+    )
+    expect_identical(
+        names(contract$conclusion_rules),
+        expected_conclusions
+    )
+    expect_identical(
+        vapply(contract$candidate_workbook$required_orderings, `[[`, character(1), "id"),
+        c(
+            "mfs_failed_vs_not_tested", "mss_failed_vs_not_tested",
+            "mfs_not_tested_vs_class_1", "mss_not_tested_vs_class_1",
+            "mfs_class_2_vs_not_tested", "mfs_failed_vs_class_2",
+            "mss_class_2_vs_failed"
+        )
+    )
+    expect_identical(
+        contract$conclusion_rules$moderate_direct_prognostic_stratification$result,
+        list(type = "minimum_auc", models = c("direct_mfs", "direct_mss"), threshold = 0.60)
+    )
+    expect_identical(
+        contract$conclusion_rules$failure_to_recover_molecular_class$result,
+        list(type = "maximum_auc", models = c("molecular_surrogate"), threshold = 0.60)
+    )
+    expect_identical(
+        contract$conclusion_rules$no_gep_groups_non_homogeneous$result,
+        list(
+            type = "required_orderings",
+            ordering_ids = c("mfs_failed_vs_not_tested", "mss_failed_vs_not_tested")
+        )
+    )
+    expect_identical(
+        contract$conclusion_rules$moderate_direct_prognostic_stratification$prose,
+        list(
+            labels = c("takeaway_1"),
+            required_phrases = c("provided prognostic support"),
+            forbidden_phrases = c("provided no prognostic support", "lacked prognostic support")
+        )
+    )
+    expect_identical(
+        contract$conclusion_rules$failure_to_recover_molecular_class$prose,
+        list(
+            labels = c("takeaway_2", "takeaway_3"),
+            required_phrases = c("weakly approximated", "do not relabel"),
+            forbidden_phrases = c(
+                "recovered definitive molecular class", "suitable for molecular reassignment"
+            )
+        )
+    )
+    expect_identical(
+        contract$conclusion_rules$no_gep_groups_non_homogeneous$prose,
+        list(
+            labels = c("takeaway_4"),
+            required_phrases = c(
+                "not present no-gep patients as one homogeneous",
+                "failed/indeterminate subgroup is higher risk"
+            ),
+            forbidden_phrases = c("no-gep patients are homogeneous")
         )
     )
     expect_false("candidate" %in% names(contract))
@@ -219,8 +369,105 @@ test_that("ordering and surrogate conclusion reversals fail", {
     surrogate_result <- run_gate_fixture(surrogate_book)
     expect_identical(surrogate_result$status, "fail")
     expect_true(any(vapply(surrogate_result$report$reasons, function(reason) {
+        identical(reason$id, "conclusion_inconsistent_failure_to_recover_molecular_class")
+    }, logical(1))))
+})
+
+test_that("conclusion reversals are derived from results and reject semantic negation", {
+    negated_book <- write_aao_candidate_workbook(
+        tempfile(fileext = ".xlsx"),
+        direct_takeaway = "Baseline clinical features provided no prognostic support for either direct endpoint."
+    )
+    negated <- run_gate_fixture(negated_book)
+    expect_identical(negated$status, "fail")
+    expect_true(any(vapply(negated$report$reasons, function(reason) {
+        identical(reason$id, "conclusion_inconsistent_moderate_direct_prognostic_stratification")
+    }, logical(1))))
+
+    recovered_surrogate_book <- write_aao_candidate_workbook(
+        tempfile(fileext = ".xlsx"),
+        surrogate_auc = 0.75
+    )
+    recovered_surrogate <- run_gate_fixture(recovered_surrogate_book)
+    expect_identical(recovered_surrogate$status, "fail")
+    expect_true(any(vapply(recovered_surrogate$report$reasons, function(reason) {
         identical(reason$id, "conclusion_reversal_failure_to_recover_molecular_class")
     }, logical(1))))
+
+    unsupported_direct_book <- write_aao_candidate_workbook(
+        tempfile(fileext = ".xlsx"),
+        mfs_auc = 0.55
+    )
+    unsupported_direct <- run_gate_fixture(unsupported_direct_book)
+    expect_identical(unsupported_direct$status, "fail")
+    expect_true(any(vapply(unsupported_direct$report$reasons, function(reason) {
+        identical(reason$id, "conclusion_reversal_moderate_direct_prognostic_stratification")
+    }, logical(1))))
+})
+
+test_that("direct model scopes must be exact and unique", {
+    mutate_mfs_scopes <- function(transform) {
+        write_aao_candidate_workbook(
+            tempfile(fileext = ".xlsx"),
+            performance_transform = function(performance) {
+                transform(performance, which(performance$model == "Direct 5-year MFS"))
+            }
+        )
+    }
+
+    missing <- run_gate_fixture(mutate_mfs_scopes(function(performance, rows) {
+        performance[-rows[[2L]], , drop = FALSE]
+    }))
+    expect_identical(missing$status, "fail")
+    expect_true(any(vapply(missing$report$reasons, function(reason) {
+        identical(reason$id, "required_scope_direct_mfs")
+    }, logical(1))))
+
+    duplicate <- run_gate_fixture(mutate_mfs_scopes(function(performance, rows) {
+        rbind(performance, performance[rows[[1L]], , drop = FALSE])
+    }))
+    expect_identical(duplicate$status, "fail")
+    expect_true(any(vapply(duplicate$report$reasons, function(reason) {
+        identical(reason$id, "required_scope_direct_mfs")
+    }, logical(1))))
+
+    unexpected <- run_gate_fixture(mutate_mfs_scopes(function(performance, rows) {
+        extra <- performance[rows[[1L]], , drop = FALSE]
+        extra$performance_scope <- "Apparent"
+        rbind(performance, extra)
+    }))
+    expect_identical(unexpected$status, "fail")
+    expect_true(any(vapply(unexpected$report$reasons, function(reason) {
+        identical(reason$id, "required_scope_direct_mfs")
+    }, logical(1))))
+})
+
+test_that("malformed nested contracts emit PHI-free fail reports", {
+    workbook <- write_aao_candidate_workbook(tempfile(fileext = ".xlsx"))
+    base_contract <- yaml::read_yaml(contract_path)
+    malformed_contracts <- list(
+        changed_auc = within(base_contract, accepted_abstract$auc$direct_mfs <- 0.700),
+        missing_ordering_field = within(base_contract, candidate_workbook$required_orderings[[1L]]$higher <- NULL),
+        malformed_conclusion_rule = within(base_contract, conclusion_rules$failure_to_recover_molecular_class$result$threshold <- "high"),
+        changed_scope_mapping = within(base_contract, candidate_workbook$models$direct_mfs$required_scopes <- list("Overall"))
+    )
+
+    for (malformed in malformed_contracts) {
+        malformed_path <- tempfile(fileext = ".yaml")
+        report_path <- tempfile(fileext = ".json")
+        yaml::write_yaml(malformed, malformed_path)
+
+        expect_silent(status <- evaluate_objective4_aao_gate(malformed_path, workbook, report_path))
+        report <- jsonlite::read_json(report_path, simplifyVector = FALSE)
+        expect_identical(status, "fail")
+        expect_identical(report$status, "fail")
+        expect_identical(report$reasons[[1L]]$id, "contract")
+        expect_false(any(grepl(
+            "patient_id|medical_record|mrn|patient_name|date_of_birth",
+            paste(readLines(report_path, warn = FALSE), collapse = " "),
+            ignore.case = TRUE
+        )))
+    }
 })
 
 test_that("missing or undeclared required methods fail closed", {

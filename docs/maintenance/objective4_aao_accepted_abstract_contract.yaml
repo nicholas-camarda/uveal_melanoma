@@ -1,4 +1,5 @@
 version: 1
+immutable_fingerprint_sha256: 440803ca09c2968d7e7dfffe61666eb5de7e740cd9d24206ae3799012344bc7e
 accepted_abstract:
   id: "30085896"
   submitted_cohort_n: 260
@@ -22,16 +23,16 @@ accepted_abstract:
       mss: 0.383
   conclusions:
     - id: moderate_direct_prognostic_stratification
-      category: supportable
+      category: moderate_direct_prognostic_stratification
       workbook_labels:
         - takeaway_1
     - id: failure_to_recover_molecular_class
-      category: supportable
+      category: failure_to_recover_molecular_class
       workbook_labels:
         - takeaway_2
         - takeaway_3
     - id: no_gep_groups_non_homogeneous
-      category: supportable
+      category: no_gep_groups_non_homogeneous
       workbook_labels:
         - takeaway_4
 
@@ -108,22 +109,49 @@ candidate_workbook:
       higher: class_2
       lower: failed_indeterminate
 
-conclusion_checks:
+conclusion_rules:
   moderate_direct_prognostic_stratification:
-    labels:
-      - takeaway_1
-    required_phrases:
-      - prognostic support
+    result:
+      type: minimum_auc
+      models:
+        - direct_mfs
+        - direct_mss
+      threshold: 0.60
+    prose:
+      labels:
+        - takeaway_1
+      required_phrases:
+        - provided prognostic support
+      forbidden_phrases:
+        - provided no prognostic support
+        - lacked prognostic support
   failure_to_recover_molecular_class:
-    labels:
-      - takeaway_2
-      - takeaway_3
-    required_phrases:
-      - weakly approximated
-      - do not relabel
+    result:
+      type: maximum_auc
+      models:
+        - molecular_surrogate
+      threshold: 0.60
+    prose:
+      labels:
+        - takeaway_2
+        - takeaway_3
+      required_phrases:
+        - weakly approximated
+        - do not relabel
+      forbidden_phrases:
+        - recovered definitive molecular class
+        - suitable for molecular reassignment
   no_gep_groups_non_homogeneous:
-    labels:
-      - takeaway_4
-    required_phrases:
-      - not present no-gep patients as one homogeneous
-      - failed/indeterminate subgroup is higher risk
+    result:
+      type: required_orderings
+      ordering_ids:
+        - mfs_failed_vs_not_tested
+        - mss_failed_vs_not_tested
+    prose:
+      labels:
+        - takeaway_4
+      required_phrases:
+        - not present no-gep patients as one homogeneous
+        - failed/indeterminate subgroup is higher risk
+      forbidden_phrases:
+        - no-gep patients are homogeneous

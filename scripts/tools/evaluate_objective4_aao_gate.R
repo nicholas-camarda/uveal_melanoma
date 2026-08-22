@@ -38,52 +38,205 @@ is_scalar_number <- function(value) {
     is.numeric(value) && length(value) == 1L && is.finite(value)
 }
 
+is_scalar_character <- function(value) {
+    is.character(value) && length(value) == 1L && !is.na(value) && nzchar(value)
+}
+
+is_nonempty_character <- function(value) {
+    is.character(value) && length(value) > 0L && !anyNA(value) && all(nzchar(value))
+}
+
+has_exact_names <- function(value, expected) {
+    is.list(value) && identical(names(value), expected)
+}
+
+calculate_aao_contract_fingerprint <- function(contract) {
+    payload <- contract[setdiff(names(contract), "immutable_fingerprint_sha256")]
+    canonical_json <- jsonlite::toJSON(
+        payload,
+        auto_unbox = TRUE,
+        null = "null",
+        digits = NA,
+        pretty = FALSE
+    )
+    digest::digest(canonical_json, algo = "sha256", serialize = FALSE)
+}
+
 validate_aao_contract <- function(contract) {
-    if (!is.list(contract) || !identical(as.integer(contract$version), AAO_GATE_VERSION)) {
+    expected_top_names <- c(
+        "version", "immutable_fingerprint_sha256", "accepted_abstract",
+        "review_thresholds", "candidate_workbook", "conclusion_rules"
+    )
+    if (!has_exact_names(contract, expected_top_names) ||
+        !identical(contract$version, AAO_GATE_VERSION) ||
+        !is_scalar_character(contract$immutable_fingerprint_sha256) ||
+        !grepl("^[0-9a-f]{64}$", contract$immutable_fingerprint_sha256)) {
         stop("AAO gate contract version is unsupported", call. = FALSE)
     }
     accepted <- contract$accepted_abstract
-    if (!is.list(accepted) || !identical(as.character(accepted$id), "30085896") ||
-        !identical(as.integer(accepted$submitted_cohort_n), 260L) ||
+    if (!has_exact_names(accepted, c(
+        "id", "submitted_cohort_n", "subgroup_counts_reported", "auc",
+        "observed_rates", "conclusions"
+    )) || !identical(accepted$id, "30085896") ||
+        !identical(accepted$submitted_cohort_n, 260L) ||
         !identical(accepted$subgroup_counts_reported, FALSE)) {
         stop("Accepted-abstract identity contract is invalid", call. = FALSE)
     }
 
-    auc <- unlist(accepted$auc, use.names = TRUE)
     required_auc <- c("direct_mfs", "direct_mss", "molecular_surrogate")
-    if (!setequal(names(auc), required_auc) || any(!is.finite(as.numeric(auc)))) {
+    if (!has_exact_names(accepted$auc, required_auc) ||
+        !all(vapply(accepted$auc, is_scalar_number, logical(1))) ||
+        any(unlist(accepted$auc, use.names = FALSE) < 0 | unlist(accepted$auc, use.names = FALSE) > 1)) {
         stop("Accepted AUC contract is invalid", call. = FALSE)
     }
     rates <- accepted$observed_rates
     required_groups <- c("class_1", "not_tested", "failed_indeterminate", "class_2")
-    if (!is.list(rates) || !setequal(names(rates), required_groups) ||
+    if (!has_exact_names(rates, required_groups) ||
         any(!vapply(rates, function(group) {
-            is.list(group) && setequal(names(group), c("mfs", "mss")) &&
+            has_exact_names(group, c("mfs", "mss")) &&
                 all(vapply(group, is_scalar_number, logical(1))) &&
                 all(unlist(group, use.names = FALSE) >= 0 & unlist(group, use.names = FALSE) <= 1)
         }, logical(1)))) {
         stop("Accepted observed-rate contract is invalid", call. = FALSE)
     }
 
-    conclusion_ids <- vapply(accepted$conclusions, `[[`, character(1), "id")
-    if (!setequal(conclusion_ids, c(
+    expected_conclusions <- c(
         "moderate_direct_prognostic_stratification",
         "failure_to_recover_molecular_class",
         "no_gep_groups_non_homogeneous"
-    ))) {
+    )
+    if (!is.list(accepted$conclusions) || length(accepted$conclusions) != 3L ||
+        !all(vapply(accepted$conclusions, function(conclusion) {
+            has_exact_names(conclusion, c("id", "category", "workbook_labels")) &&
+                is_scalar_character(conclusion$id) &&
+                is_scalar_character(conclusion$category) &&
+                is_nonempty_character(conclusion$workbook_labels)
+        }, logical(1)))) {
         stop("Accepted conclusion contract is invalid", call. = FALSE)
     }
+    conclusion_ids <- vapply(accepted$conclusions, `[[`, character(1), "id")
+    conclusion_categories <- vapply(accepted$conclusions, `[[`, character(1), "category")
+    if (!identical(conclusion_ids, expected_conclusions) ||
+        !identical(conclusion_categories, expected_conclusions) ||
+        !identical(
+            lapply(accepted$conclusions, `[[`, "workbook_labels"),
+            list(c("takeaway_1"), c("takeaway_2", "takeaway_3"), c("takeaway_4"))
+        )) {
+        stop("Accepted conclusion mapping is invalid", call. = FALSE)
+    }
+
     thresholds <- contract$review_thresholds
-    if (!is_scalar_number(thresholds$absolute_auc_change) || thresholds$absolute_auc_change < 0 ||
+    if (!has_exact_names(thresholds, c(
+        "absolute_auc_change", "absolute_rate_change_percentage_points"
+    )) || !is_scalar_number(thresholds$absolute_auc_change) || thresholds$absolute_auc_change < 0 ||
         !is_scalar_number(thresholds$absolute_rate_change_percentage_points) ||
         thresholds$absolute_rate_change_percentage_points < 0) {
         stop("AAO review thresholds are invalid", call. = FALSE)
     }
+
     candidate <- contract$candidate_workbook
-    if (!is.list(candidate) || !length(candidate$required_sheets) ||
-        !is.list(candidate$models) || !is.list(candidate$group_labels) ||
-        !is.list(candidate$required_orderings) || !is.list(contract$conclusion_checks)) {
+    expected_models <- c("molecular_surrogate", "direct_mfs", "direct_mss")
+    if (!has_exact_names(candidate, c(
+        "required_sheets", "models", "observed_rate_methods", "group_labels",
+        "required_orderings"
+    )) || !identical(
+        candidate$required_sheets,
+        c("Model_Performance", "Risk_Ladder_5yr", "Start_Here")
+    ) || !has_exact_names(candidate$models, expected_models)) {
         stop("Candidate workbook contract is invalid", call. = FALSE)
+    }
+
+    for (model_id in names(candidate$models)) {
+        model <- candidate$models[[model_id]]
+        if (!has_exact_names(model, c(
+            "label", "comparison_scope", "required_scopes", "model_method",
+            "evaluation_method", "metric_status_required"
+        )) || !is_scalar_character(model$label) ||
+            !(is.null(model$comparison_scope) || is_scalar_character(model$comparison_scope)) ||
+            !(is.character(model$required_scopes) || length(model$required_scopes) == 0L) ||
+            anyNA(model$required_scopes) ||
+            !is_scalar_character(model$model_method) ||
+            !is_scalar_character(model$evaluation_method) ||
+            !is.logical(model$metric_status_required) || length(model$metric_status_required) != 1L ||
+            is.na(model$metric_status_required)) {
+            stop("Candidate model mapping is invalid", call. = FALSE)
+        }
+    }
+    if (length(candidate$models$molecular_surrogate$required_scopes) != 0L ||
+        !is.null(candidate$models$molecular_surrogate$comparison_scope) ||
+        !identical(candidate$models$direct_mfs$required_scopes, c("Overall", "No GEP")) ||
+        !identical(candidate$models$direct_mss$required_scopes, c("Overall", "No GEP")) ||
+        !identical(candidate$models$direct_mfs$comparison_scope, "Overall") ||
+        !identical(candidate$models$direct_mss$comparison_scope, "Overall")) {
+        stop("Candidate performance-scope mapping is invalid", call. = FALSE)
+    }
+    if (!has_exact_names(candidate$observed_rate_methods, c("mfs", "mss")) ||
+        !all(vapply(candidate$observed_rate_methods, is_scalar_character, logical(1))) ||
+        !has_exact_names(candidate$group_labels, required_groups) ||
+        !all(vapply(candidate$group_labels, is_scalar_character, logical(1))) ||
+        anyDuplicated(unlist(candidate$group_labels, use.names = FALSE))) {
+        stop("Candidate observed-rate mapping is invalid", call. = FALSE)
+    }
+
+    orderings <- candidate$required_orderings
+    if (!is.list(orderings) || !length(orderings) ||
+        !all(vapply(orderings, function(ordering) {
+            has_exact_names(ordering, c("id", "endpoint", "higher", "lower")) &&
+                all(vapply(ordering, is_scalar_character, logical(1))) &&
+                ordering$endpoint %in% c("mfs", "mss") &&
+                ordering$higher %in% required_groups && ordering$lower %in% required_groups &&
+                !identical(ordering$higher, ordering$lower)
+        }, logical(1)))) {
+        stop("Candidate ordering contract is invalid", call. = FALSE)
+    }
+    ordering_ids <- vapply(orderings, `[[`, character(1), "id")
+    if (anyDuplicated(ordering_ids)) {
+        stop("Candidate ordering IDs are duplicated", call. = FALSE)
+    }
+
+    rules <- contract$conclusion_rules
+    if (!has_exact_names(rules, expected_conclusions)) {
+        stop("Conclusion-rule contract is invalid", call. = FALSE)
+    }
+    for (conclusion_id in names(rules)) {
+        rule <- rules[[conclusion_id]]
+        if (!has_exact_names(rule, c("result", "prose")) || !is.list(rule$result) ||
+            !has_exact_names(rule$prose, c("labels", "required_phrases", "forbidden_phrases")) ||
+            !is_nonempty_character(rule$prose$labels) ||
+            !is_nonempty_character(rule$prose$required_phrases) ||
+            !is_nonempty_character(rule$prose$forbidden_phrases)) {
+            stop("Conclusion-rule structure is invalid", call. = FALSE)
+        }
+        accepted_labels <- accepted$conclusions[[match(conclusion_id, conclusion_ids)]]$workbook_labels
+        if (!identical(rule$prose$labels, accepted_labels)) {
+            stop("Conclusion-rule workbook labels are invalid", call. = FALSE)
+        }
+    }
+    direct_rule <- rules$moderate_direct_prognostic_stratification$result
+    surrogate_rule <- rules$failure_to_recover_molecular_class$result
+    group_rule <- rules$no_gep_groups_non_homogeneous$result
+    if (!has_exact_names(direct_rule, c("type", "models", "threshold")) ||
+        !identical(direct_rule$type, "minimum_auc") ||
+        !identical(direct_rule$models, c("direct_mfs", "direct_mss")) ||
+        !is_scalar_number(direct_rule$threshold) ||
+        direct_rule$threshold < 0 || direct_rule$threshold > 1 ||
+        !has_exact_names(surrogate_rule, c("type", "models", "threshold")) ||
+        !identical(surrogate_rule$type, "maximum_auc") ||
+        !identical(surrogate_rule$models, c("molecular_surrogate")) ||
+        !is_scalar_number(surrogate_rule$threshold) ||
+        surrogate_rule$threshold < 0 || surrogate_rule$threshold > 1 ||
+        !has_exact_names(group_rule, c("type", "ordering_ids")) ||
+        !identical(group_rule$type, "required_orderings") ||
+        !is_nonempty_character(group_rule$ordering_ids) ||
+        !all(group_rule$ordering_ids %in% ordering_ids)) {
+        stop("Conclusion result rule is invalid", call. = FALSE)
+    }
+
+    if (!identical(
+        calculate_aao_contract_fingerprint(contract),
+        contract$immutable_fingerprint_sha256
+    )) {
+        stop("AAO gate contract fingerprint is invalid", call. = FALSE)
     }
     contract
 }
@@ -143,7 +296,11 @@ exceeds_aao_threshold <- function(value, threshold) {
 }
 
 extract_model_metric <- function(performance, model_id, model_spec) {
-    model_rows <- performance[performance$model == model_spec$label, , drop = FALSE]
+    model_rows <- performance[
+        !is.na(performance$model) & performance$model == model_spec$label,
+        ,
+        drop = FALSE
+    ]
     if (!nrow(model_rows)) {
         return(list(
             reason = new_gate_reason(
@@ -153,11 +310,21 @@ extract_model_metric <- function(performance, model_id, model_spec) {
     }
 
     required_scopes <- unlist(model_spec$required_scopes, use.names = FALSE)
-    observed_scopes <- unique(stats::na.omit(as.character(model_rows$performance_scope)))
-    if (length(required_scopes) && !all(required_scopes %in% observed_scopes)) {
+    observed_scopes <- as.character(model_rows$performance_scope)
+    scope_contract_satisfied <- if (!length(required_scopes)) {
+        nrow(model_rows) == 1L && all(is.na(observed_scopes) | !nzchar(observed_scopes))
+    } else {
+        !anyNA(observed_scopes) && all(nzchar(observed_scopes)) &&
+            nrow(model_rows) == length(required_scopes) &&
+            setequal(observed_scopes, required_scopes) &&
+            all(table(factor(observed_scopes, levels = required_scopes)) == 1L)
+    }
+    if (!scope_contract_satisfied) {
         return(list(
             reason = new_gate_reason(
-                paste0("required_scope_", model_id), "fail", "Required performance scope is missing"
+                paste0("required_scope_", model_id),
+                "fail",
+                "Required performance scopes must be exact and unique"
             )
         ))
     }
@@ -225,26 +392,80 @@ extract_candidate_rates <- function(risk, contract) {
     list(rates = result, cohort_n = as.integer(cohort_n))
 }
 
-check_candidate_conclusions <- function(conclusions, contract) {
+check_candidate_prose_consistency <- function(conclusions, contract) {
     reasons <- list()
     if (anyDuplicated(conclusions$label)) {
         return(list(new_gate_reason("candidate_conclusions", "fail", "Conclusion labels are duplicated")))
     }
-    for (conclusion_id in names(contract$conclusion_checks)) {
-        check <- contract$conclusion_checks[[conclusion_id]]
-        labels <- unlist(check$labels, use.names = FALSE)
+    for (conclusion_id in names(contract$conclusion_rules)) {
+        prose <- contract$conclusion_rules[[conclusion_id]]$prose
+        labels <- unlist(prose$labels, use.names = FALSE)
         rows <- conclusions[match(labels, conclusions$label), , drop = FALSE]
         if (nrow(rows) != length(labels) || any(is.na(rows$label)) || any(is.na(rows$value))) {
             reasons[[length(reasons) + 1L]] <- new_gate_reason(
-                paste0("conclusion_reversal_", conclusion_id), "fail", "Required conclusion statement is missing"
+                paste0("conclusion_inconsistent_", conclusion_id),
+                "fail",
+                "Required conclusion statement is missing"
             )
             next
         }
         combined <- tolower(paste(rows$value, collapse = " "))
-        phrases <- tolower(unlist(check$required_phrases, use.names = FALSE))
-        if (!all(vapply(phrases, grepl, logical(1), x = combined, fixed = TRUE))) {
+        required <- tolower(unlist(prose$required_phrases, use.names = FALSE))
+        forbidden <- tolower(unlist(prose$forbidden_phrases, use.names = FALSE))
+        has_required <- all(vapply(required, grepl, logical(1), x = combined, fixed = TRUE))
+        has_forbidden <- any(vapply(forbidden, grepl, logical(1), x = combined, fixed = TRUE))
+        if (!has_required || has_forbidden) {
             reasons[[length(reasons) + 1L]] <- new_gate_reason(
-                paste0("conclusion_reversal_", conclusion_id), "fail", "Accepted conclusion category is not supported by candidate wording"
+                paste0("conclusion_inconsistent_", conclusion_id),
+                "fail",
+                "Candidate wording is inconsistent with the result-derived conclusion category"
+            )
+        }
+    }
+    reasons
+}
+
+evaluate_result_conclusion_rules <- function(auc_values, extracted_rates, contract) {
+    reasons <- list()
+    rules <- contract$conclusion_rules
+
+    direct <- rules$moderate_direct_prognostic_stratification$result
+    direct_values <- unlist(auc_values[direct$models], use.names = FALSE)
+    if (length(direct_values) == length(direct$models) &&
+        all(is.finite(direct_values)) && any(direct_values < direct$threshold)) {
+        reasons[[length(reasons) + 1L]] <- new_gate_reason(
+            "conclusion_reversal_moderate_direct_prognostic_stratification",
+            "fail",
+            "A direct-model AUC is below the frozen moderate-prognostic threshold"
+        )
+    }
+
+    surrogate <- rules$failure_to_recover_molecular_class$result
+    surrogate_values <- unlist(auc_values[surrogate$models], use.names = FALSE)
+    if (length(surrogate_values) == length(surrogate$models) &&
+        all(is.finite(surrogate_values)) && any(surrogate_values > surrogate$threshold)) {
+        reasons[[length(reasons) + 1L]] <- new_gate_reason(
+            "conclusion_reversal_failure_to_recover_molecular_class",
+            "fail",
+            "The molecular-surrogate AUC exceeds the frozen weak-surrogate threshold"
+        )
+    }
+
+    ordering_rule <- rules$no_gep_groups_non_homogeneous$result
+    if (!inherits(extracted_rates, "error")) {
+        orderings <- contract$candidate_workbook$required_orderings
+        ordering_by_id <- stats::setNames(orderings, vapply(orderings, `[[`, character(1), "id"))
+        ordering_supported <- vapply(ordering_rule$ordering_ids, function(ordering_id) {
+            ordering <- ordering_by_id[[ordering_id]]
+            higher <- extracted_rates$rates[[ordering$higher]][[ordering$endpoint]]
+            lower <- extracted_rates$rates[[ordering$lower]][[ordering$endpoint]]
+            isTRUE(higher > lower)
+        }, logical(1))
+        if (!all(ordering_supported)) {
+            reasons[[length(reasons) + 1L]] <- new_gate_reason(
+                "conclusion_reversal_no_gep_groups_non_homogeneous",
+                "fail",
+                "The required no-GEP subgroup risk separation is not supported"
             )
         }
     }
@@ -298,6 +519,7 @@ evaluate_objective4_aao_gate <- function(contract_path, candidate_workbook, repo
 
     reasons <- list()
     auc_comparisons <- list()
+    candidate_auc_values <- list()
     for (model_id in names(contract$candidate_workbook$models)) {
         extracted <- extract_model_metric(
             candidate$performance,
@@ -310,6 +532,7 @@ evaluate_objective4_aao_gate <- function(contract_path, candidate_workbook, repo
         }
         accepted_value <- as.numeric(contract$accepted_abstract$auc[[model_id]])
         delta <- extracted$value - accepted_value
+        candidate_auc_values[[model_id]] <- extracted$value
         auc_comparisons[[model_id]] <- list(
             accepted = accepted_value,
             candidate = extracted$value,
@@ -373,7 +596,11 @@ evaluate_objective4_aao_gate <- function(contract_path, candidate_workbook, repo
         }
     }
 
-    reasons <- c(reasons, check_candidate_conclusions(candidate$conclusions, contract))
+    reasons <- c(
+        reasons,
+        evaluate_result_conclusion_rules(candidate_auc_values, extracted_rates, contract),
+        check_candidate_prose_consistency(candidate$conclusions, contract)
+    )
     status <- classify_gate_status(reasons)
     report <- list(
         gate_version = AAO_GATE_VERSION,
@@ -403,7 +630,7 @@ main <- function(args = commandArgs(trailingOnly = TRUE)) {
 }
 
 if (sys.nframe() == 0L) {
-    required_packages <- c("jsonlite", "openxlsx", "yaml")
+    required_packages <- c("digest", "jsonlite", "openxlsx", "yaml")
     missing_packages <- required_packages[!vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)]
     if (length(missing_packages)) {
         stop("Required AAO gate packages are unavailable", call. = FALSE)
