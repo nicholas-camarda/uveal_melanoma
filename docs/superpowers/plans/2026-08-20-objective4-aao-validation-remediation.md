@@ -417,10 +417,33 @@ Run Objective 0 and Objective 4 from the reviewed candidate revision, verify the
 
 Update only values and wording supported by the corrected claim ledger. Preserve the accepted abstract's scientific question and explicitly identify estimator-driven changes that require softened interpretation.
 
-- [ ] **Step 4: Verify presentation artifacts**
+- [ ] **Step 4: Add the nested-validation presenter explanation**
 
-Render every slide, run overflow/placeholder checks, verify disclosure and schedule details, and reconcile every numerical claim back to the corrected workbook.
+Verify the final explanation against the implemented estimator before editing
+the presentation materials. Keep the visible methods slide concise with
+`Nested repeated 5-fold cross-validation` or equally brief verified wording.
+Add the following explanation to the methods-slide speaker notes and presenter
+guide:
 
-- [ ] **Step 5: Record final hashes and handoff**
+> We used nested cross-validation. Within each outer training set, inner folds
+> selected the ridge penalty. The resulting model then predicted the held-out
+> outer fold, which had no role in tuning, fitting, or estimating censoring
+> weights. Repeating this process provided genuinely out-of-fold predictions
+> for every patient.
+
+Add the three-minute spoken version, `Model tuning occurred only within the
+training data, and performance was evaluated on held-out patients.` Add a
+likely-question response explaining that separating model tuning from outer-fold
+evaluation limits optimistic performance estimates. Do not describe the
+partition-stability intervals as population confidence intervals.
+
+- [ ] **Step 5: Verify presentation artifacts**
+
+Render every slide, run overflow/placeholder checks, verify disclosure and
+schedule details, reconcile every numerical claim back to the corrected
+workbook, and confirm that the visible methods wording, speaker notes, and
+presenter guide all describe the same implemented validation procedure.
+
+- [ ] **Step 6: Record final hashes and handoff**
 
 Record the final PowerPoint, presenter guide, Objective 4 workbook, source revision, input workbook, and package-lock hashes in the presentation-preparation record.
