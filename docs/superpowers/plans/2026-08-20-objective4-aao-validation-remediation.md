@@ -324,12 +324,15 @@ Run the same commands and manifest procedure under `runtime/runs/objective4-aao-
 
 - [ ] **Step 3: Run the protected comparator**
 
+Set `UVEAL_WORKSPACE_ROOT` to the canonical workspace root before running the
+commands below.
+
 ```bash
 Rscript scripts/tools/compare_important_results.R \
-  --base-runtime /Users/ncamarda/Workspaces/uveal-melanoma/runtime/runs/objective4-aao-validation-remediation-base \
-  --candidate-runtime /Users/ncamarda/Workspaces/uveal-melanoma/runtime/runs/objective4-aao-validation-remediation-candidate \
+  --base-runtime "$UVEAL_WORKSPACE_ROOT/runtime/runs/objective4-aao-validation-remediation-base" \
+  --candidate-runtime "$UVEAL_WORKSPACE_ROOT/runtime/runs/objective4-aao-validation-remediation-candidate" \
   --contract docs/maintenance/important_results_contract.yaml \
-  --report /Users/ncamarda/Workspaces/uveal-melanoma/runtime/runs/objective4-aao-validation-remediation-candidate/protected-comparison.json
+  --report "$UVEAL_WORKSPACE_ROOT/runtime/runs/objective4-aao-validation-remediation-candidate/protected-comparison.json"
 ```
 
 Expected: changed Objective 4 artifacts are reported as differences; unrelated protected results remain identical.
@@ -339,8 +342,8 @@ Expected: changed Objective 4 artifacts are reported as differences; unrelated p
 ```bash
 Rscript scripts/tools/evaluate_objective4_aao_gate.R \
   --contract docs/maintenance/objective4_aao_accepted_abstract_contract.yaml \
-  --candidate-workbook /Users/ncamarda/Workspaces/uveal-melanoma/runtime/runs/objective4-aao-validation-remediation-candidate/Analysis/uveal_full/04_GEP_Validation/d_exploratory_no_gep/full_cohort_exploratory_no_gep_report.xlsx \
-  --report /Users/ncamarda/Workspaces/uveal-melanoma/runtime/runs/objective4-aao-validation-remediation-candidate/objective4-aao-gate.json
+  --candidate-workbook "$UVEAL_WORKSPACE_ROOT/runtime/runs/objective4-aao-validation-remediation-candidate/Analysis/uveal_full/04_GEP_Validation/d_exploratory_no_gep/full_cohort_exploratory_no_gep_report.xlsx" \
+  --report "$UVEAL_WORKSPACE_ROOT/runtime/runs/objective4-aao-validation-remediation-candidate/objective4-aao-gate.json"
 ```
 
 - [ ] **Step 5: Record validation evidence**

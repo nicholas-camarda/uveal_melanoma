@@ -22,6 +22,7 @@ scripts/old/*
 # Keep repository CI visible while ignoring editor-specific GitHub helpers.
 .github/*
 !.github/workflows/
+!.github/pull_request_template.md
 .github/workflows/*
 !.github/workflows/portable-tests.yml
 .cursor/

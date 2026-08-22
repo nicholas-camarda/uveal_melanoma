@@ -349,6 +349,31 @@ test_that("documented test commands use the fail-sensitive runner", {
     expect_match(readme_text, "Rscript scripts/tools/run_testthat.R tests/integration", fixed = TRUE)
 })
 
+test_that("pull request protocol requires complete local and remote validation", {
+    contributing_text <- paste(
+        readLines(here::here("CONTRIBUTING.md"), warn = FALSE),
+        collapse = "\n"
+    )
+    template_path <- here::here(".github", "pull_request_template.md")
+
+    expect_match(
+        contributing_text,
+        "Targeted tests do not replace this complete gate.",
+        fixed = TRUE
+    )
+    expect_match(contributing_text, "gh pr checks <number> --watch", fixed = TRUE)
+    expect_match(contributing_text, "Do not report a pull request as ready", fixed = TRUE)
+    expect_true(file.exists(template_path))
+
+    template_text <- paste(readLines(template_path, warn = FALSE), collapse = "\n")
+    expect_match(
+        template_text,
+        "Rscript scripts/tools/run_portable_suite.R",
+        fixed = TRUE
+    )
+    expect_match(template_text, "required GitHub check is green", fixed = TRUE)
+})
+
 test_that("standard testthat entrypoint delegates to the canonical portable suite", {
     entrypoint_text <- paste(readLines(here::here("tests", "testthat.R"), warn = FALSE), collapse = "\n")
 

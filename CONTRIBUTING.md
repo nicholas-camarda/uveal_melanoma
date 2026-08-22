@@ -33,6 +33,19 @@ portable gate used by CI:
 Rscript scripts/tools/run_portable_suite.R
 ```
 
+Targeted tests do not replace this complete gate. Record the command, exit
+status, and tested Git SHA in the pull-request description or a comment. After
+every PR-ready push, watch the required remote check to completion:
+
+```sh
+gh pr checks <number> --watch
+```
+
+Do not report a pull request as ready, fixed, or passing until the required
+GitHub check is green for the current head SHA. If CI fails, retrieve the
+failed-job log, reproduce that exact stage locally, fix the root cause, rerun
+the complete portable gate, push, and watch the replacement check to green.
+
 ### Function documentation
 
 Every new or materially changed function must include a language-appropriate
