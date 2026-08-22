@@ -1137,94 +1137,6 @@ build_exploratory_design_matrix <- function(data, predictors, reference_columns 
 #' @param seed Random seed.
 #'
 #' @return Integer vector of fold IDs.
-create_stratified_fold_ids <- function(outcome, folds = 5, seed = 123) {
-    set.seed(seed)
-    fold_id <- integer(length(outcome))
-
-    for (class_value in unique(outcome)) {
-        class_indices <- which(outcome == class_value)
-        fold_id[class_indices] <- sample(rep(seq_len(folds), length.out = length(class_indices)))
-    }
-
-    fold_id
-}
-
-#' Choose a Safe Number of CV Folds for Binary Ridge Models
-#'
-#' Caps the fold count so each outcome class can contribute at least one
-#' observation per fold, avoiding `cv.glmnet()` failures in sparse datasets.
-#'
-#' @param outcome Binary outcome vector coded as 0/1.
-#' @param preferred_folds Requested fold count.
-#'
-#' @return Integer fold count.
-choose_binary_cv_folds <- function(outcome, preferred_folds = 5) {
-    class_counts <- table(outcome)
-
-    if (length(class_counts) < 2) {
-        return(2L)
-    }
-
-    max_supported <- min(as.integer(class_counts), length(outcome), preferred_folds)
-    as.integer(max(2, max_supported))
-}
-
-prepare_exploratory_binary_model_fit_inputs <- function(data,
-                                                        outcome_var,
-                                                        model_mode = c("raw_binary", "ipcw_horizon_binary"),
-                                                        time_var = NULL,
-                                                        event_var = NULL,
-                                                        eval_time_months = 60,
-                                                        fallback_to_raw = TRUE) {
-    model_mode <- match.arg(model_mode)
-
-    if (identical(model_mode, "ipcw_horizon_binary")) {
-        missing_vars <- setdiff(c(time_var, event_var), names(data))
-        if (length(missing_vars) == 0) {
-            ipcw_info <- calculate_ipcw_weights(
-                time = data[[time_var]],
-                event = data[[event_var]],
-                eval_time_months = eval_time_months
-            )
-
-            weighted_data <- data %>%
-                dplyr::mutate(
-                    .model_outcome = as.integer(ipcw_info$event_by_horizon),
-                    .model_weight = ipcw_info$ipcw_weight,
-                    .known_status = ipcw_info$known_status
-                ) %>%
-                dplyr::filter(.data$.known_status, .data$.model_weight > 0, !is.na(.data$.model_outcome))
-
-            if (nrow(weighted_data) >= GEP_MIN_SAMPLE_SIZE &&
-                length(unique(weighted_data$.model_outcome)) == 2) {
-                return(list(
-                    fit_data = weighted_data,
-                    outcome_var = ".model_outcome",
-                    weights = weighted_data$.model_weight,
-                    model_mode_used = "ipcw_horizon_binary",
-                    fallback_reason = NA_character_
-                ))
-            }
-        }
-
-        if (!isTRUE(fallback_to_raw)) {
-            stop("IPCW exploratory binary model could not be fit and raw fallback was disabled.")
-        }
-    }
-
-    list(
-        fit_data = data,
-        outcome_var = outcome_var,
-        weights = NULL,
-        model_mode_used = if (identical(model_mode, "ipcw_horizon_binary")) "raw_binary_fallback" else "raw_binary",
-        fallback_reason = if (identical(model_mode, "ipcw_horizon_binary")) {
-            "IPCW fit unavailable or insufficient; reverted to raw binary horizon endpoint"
-        } else {
-            NA_character_
-        }
-    )
-}
-
 #' Summarize an Empirical Uncertainty Interval
 #'
 #' Calculates a median and central percentile interval for a numeric metric
@@ -1274,25 +1186,31 @@ summarize_numeric_interval <- function(values, conf_level = 0.95) {
 #'
 #' @return A numeric vector of out-of-fold predicted probabilities aligned to
 #'   the input rows.
-cross_validate_binary_predictions <- function(data, outcome_var, predictors, folds = 5, seed = 123, weights = NULL) {
+cross_validate_binary_predictions <- function(
+    data,
+    outcome_var,
+    predictors,
+    folds = GEP_EXPLORATORY_OUTER_FOLDS,
+    seed = GEP_EXPLORATORY_CV_SEED,
+    weights = NULL
+) {
     n_rows <- nrow(data)
     outcome <- data[[outcome_var]]
-    folds <- choose_binary_cv_folds(outcome, preferred_folds = folds)
-
-    if (n_rows < folds || length(unique(outcome)) < 2) {
-        return(rep(NA_real_, n_rows))
+    stable_id_var <- pick_exploratory_patient_id_col(data)
+    if (is.null(stable_id_var)) {
+        stop("Surrogate nested validation requires a stable patient identifier.", call. = FALSE)
     }
-
-    fold_id <- create_stratified_fold_ids(outcome, folds = folds, seed = seed)
+    fold_id <- create_deterministic_fold_ids(
+        strata = outcome,
+        folds = folds,
+        seed = seed,
+        stable_id = data[[stable_id_var]]
+    )
     predictions <- rep(NA_real_, n_rows)
 
     for (fold in seq_len(folds)) {
         fit_data <- data[fold_id != fold, , drop = FALSE]
         assessment_data <- data[fold_id == fold, , drop = FALSE]
-
-        if (nrow(fit_data) == 0 || length(unique(fit_data[[outcome_var]])) < 2) {
-            next
-        }
 
         x_fit <- build_exploratory_design_matrix(fit_data, predictors = predictors)
         x_assessment <- build_exploratory_design_matrix(
@@ -1301,27 +1219,48 @@ cross_validate_binary_predictions <- function(data, outcome_var, predictors, fol
             reference_columns = colnames(x_fit)
         )
 
+        inner_foldid <- tryCatch(
+            create_deterministic_fold_ids(
+                strata = fit_data[[outcome_var]],
+                folds = GEP_EXPLORATORY_INNER_FOLDS,
+                seed = as.integer(seed + 1000L + fold),
+                stable_id = fit_data[[stable_id_var]]
+            ),
+            error = function(error) {
+                stop(sprintf(
+                    "Surrogate nested validation failed at outer fold %d: %s",
+                    fold,
+                    conditionMessage(error)
+                ), call. = FALSE)
+            }
+        )
         fold_fit <- tryCatch(
             suppressWarnings(glmnet::cv.glmnet(
                 x = x_fit,
                 y = fit_data[[outcome_var]],
                 family = "binomial",
                 alpha = 0,
-                nfolds = choose_binary_cv_folds(fit_data[[outcome_var]], preferred_folds = 5),
+                foldid = inner_foldid,
                 weights = if (is.null(weights)) NULL else weights[fold_id != fold],
                 standardize = TRUE,
                 type.measure = "deviance"
             )),
-            error = function(e) NULL
+            error = function(error) {
+                stop(sprintf(
+                    "Surrogate nested validation failed at outer fold %d: %s",
+                    fold,
+                    conditionMessage(error)
+                ), call. = FALSE)
+            }
         )
-
-        if (is.null(fold_fit)) {
-            next
-        }
 
         predictions[fold_id == fold] <- as.numeric(
             stats::predict(fold_fit, newx = x_assessment, s = "lambda.min", type = "response")
         )
+    }
+
+    if (any(!is.finite(predictions))) {
+        stop("Surrogate nested validation produced incomplete OOF predictions.", call. = FALSE)
     }
 
     predictions
@@ -1344,8 +1283,8 @@ repeat_cross_validated_binary_metrics <- function(data,
                                                   outcome_var,
                                                   predictors,
                                                   weights = NULL,
-                                                  repeats = 20,
-                                                  seed = 123) {
+                                                  repeats = GEP_EXPLORATORY_CV_REPEATS,
+                                                  seed = GEP_EXPLORATORY_CV_SEED) {
     if (repeats < 1) {
         return(tibble::tibble())
     }
@@ -1502,9 +1441,9 @@ summarize_predictor_contributions <- function(coefficient_data, model_name) {
 
 #' Fit an Exploratory Binary Model
 #'
-#' Fits a ridge-penalized logistic regression, derives apparent and
-#' cross-validated performance, and packages model outputs for workbook
-#' reporting.
+#' Fits either the molecular-surrogate ridge classifier or a declared
+#' censoring-aware horizon model. Direct horizon performance is derived only
+#' from repeated nested out-of-fold predictions.
 #'
 #' @param data Modeling data frame.
 #' @param outcome_var Name of the binary outcome column.
@@ -1518,87 +1457,154 @@ fit_exploratory_binary_model <- function(data,
                                          outcome_var,
                                          predictors,
                                          model_name,
-                                         seed = 123,
-                                         model_mode = c("raw_binary", "ipcw_horizon_binary"),
+                                         seed = GEP_EXPLORATORY_CV_SEED,
+                                         model_mode = c(
+                                             "surrogate_binary",
+                                             "ipcw_horizon_mfs",
+                                             "ipcw_horizon_competing_risk_mss"
+                                         ),
                                          time_var = NULL,
                                          event_var = NULL,
-                                         eval_time_months = 60,
-                                         include_raw_backtest = FALSE) {
+                                         eval_time_months = 60) {
     model_mode <- match.arg(model_mode)
 
-    fit_inputs <- prepare_exploratory_binary_model_fit_inputs(
-        data = data,
-        outcome_var = outcome_var,
-        model_mode = model_mode,
-        time_var = time_var,
-        event_var = event_var,
-        eval_time_months = eval_time_months,
-        fallback_to_raw = TRUE
-    )
+    stable_id_var <- pick_exploratory_patient_id_col(data)
+    if (is.null(stable_id_var)) {
+        stop("Exploratory ridge validation requires a stable patient identifier.", call. = FALSE)
+    }
 
-    analysis_data <- fit_inputs$fit_data
-    analysis_outcome_var <- fit_inputs$outcome_var
-    analysis_weights <- fit_inputs$weights
+    if (!identical(model_mode, "surrogate_binary")) {
+        missing_horizon_vars <- setdiff(c(time_var, event_var), names(data))
+        if (length(missing_horizon_vars) > 0L) {
+            stop(sprintf(
+                "%s requires declared time and event-type columns; missing: %s",
+                model_mode,
+                paste(missing_horizon_vars, collapse = ", ")
+            ), call. = FALSE)
+        }
+        nested <- cross_validate_horizon_ridge(
+            data = data,
+            predictors = predictors,
+            time_var = time_var,
+            event_type_var = event_var,
+            horizon_months = eval_time_months,
+            stable_id_var = stable_id_var,
+            seed = seed,
+            repeats = GEP_EXPLORATORY_CV_REPEATS,
+            outer_folds = GEP_EXPLORATORY_OUTER_FOLDS,
+            inner_folds = GEP_EXPLORATORY_INNER_FOLDS
+        )
+        repeated_cv_metrics <- tibble::as_tibble(nested$repeated_metrics)
+        first_repeat <- nested$oof_predictions[nested$oof_predictions$repeat_id == 1L, , drop = FALSE]
+        first_auc <- calculate_ipcw_auc(
+            first_repeat$horizon_event,
+            first_repeat$prediction,
+            first_repeat$ipcw_weight
+        )
+        first_brier <- calculate_ipcw_brier(
+            first_repeat$horizon_event,
+            first_repeat$prediction,
+            first_repeat$ipcw_weight
+        )
+        first_calibration <- summarize_ipcw_calibration(
+            first_repeat$horizon_event,
+            clip_binary_probabilities(first_repeat$prediction),
+            first_repeat$ipcw_weight
+        )
+        fitted_model <- nested$final_model
+        design_columns <- nested$final_design_columns
+        outcome_status <- derive_horizon_status(data[[time_var]], data[[event_var]], eval_time_months)
+        outcome <- outcome_status$horizon_event
+        cv_folds <- GEP_EXPLORATORY_OUTER_FOLDS
+        calibration <- list(
+            status = "oof_only",
+            intercept = NA_real_,
+            slope = NA_real_,
+            curve = tibble::tibble()
+        )
+        single_cv_auc <- first_auc$auc
+        single_cv_brier <- first_brier$brier
+        single_cv_calibration_slope <- first_calibration$slope
+        single_cv_calibration_intercept <- first_calibration$intercept
+        single_cv_calibration_status <- first_calibration$status
+        apparent_auc <- NA_real_
+        apparent_brier <- NA_real_
+        analysis_n <- nrow(data)
+        oof_predictions <- nested$oof_predictions
+        fold_metadata <- nested$fold_metadata
+        final_foldid <- nested$final_foldid
+    } else {
+        analysis_data <- data
+        design_matrix <- build_exploratory_design_matrix(analysis_data, predictors = predictors)
+        design_columns <- colnames(design_matrix)
+        outcome <- analysis_data[[outcome_var]]
+        cv_folds <- GEP_EXPLORATORY_INNER_FOLDS
+        final_foldid <- create_deterministic_fold_ids(
+            strata = outcome,
+            folds = cv_folds,
+            seed = seed,
+            stable_id = analysis_data[[stable_id_var]]
+        )
+        fitted_model <- suppressWarnings(glmnet::cv.glmnet(
+            x = design_matrix,
+            y = outcome,
+            family = "binomial",
+            alpha = 0,
+            foldid = final_foldid,
+            standardize = TRUE,
+            type.measure = "deviance"
+        ))
+        apparent_predictions <- as.numeric(
+            stats::predict(fitted_model, newx = design_matrix, s = "lambda.min", type = "response")
+        )
+        cv_predictions <- cross_validate_binary_predictions(
+            analysis_data,
+            outcome_var = outcome_var,
+            predictors = predictors,
+            seed = seed
+        )
+        calibration <- summarize_binary_calibration(outcome, apparent_predictions)
+        cv_calibration <- summarize_binary_calibration(outcome, cv_predictions)
+        repeated_cv_metrics <- repeat_cross_validated_binary_metrics(
+            data = analysis_data,
+            outcome_var = outcome_var,
+            predictors = predictors,
+            repeats = GEP_EXPLORATORY_CV_REPEATS,
+            seed = seed + 1000L
+        )
+        single_cv_auc <- calculate_binary_auc(outcome, cv_predictions)
+        single_cv_brier <- calculate_binary_brier(outcome, cv_predictions)
+        single_cv_calibration_slope <- cv_calibration$slope
+        single_cv_calibration_intercept <- cv_calibration$intercept
+        single_cv_calibration_status <- cv_calibration$status
+        apparent_auc <- calculate_binary_auc(outcome, apparent_predictions)
+        apparent_brier <- calculate_binary_brier(outcome, apparent_predictions)
+        analysis_n <- nrow(analysis_data)
+        oof_predictions <- tibble::tibble()
+        fold_metadata <- tibble::tibble()
+    }
 
-    design_matrix <- build_exploratory_design_matrix(analysis_data, predictors = predictors)
-    outcome <- analysis_data[[analysis_outcome_var]]
-    cv_folds <- choose_binary_cv_folds(outcome, preferred_folds = 5)
-
-    fitted_model <- suppressWarnings(glmnet::cv.glmnet(
-        x = design_matrix,
-        y = outcome,
-        family = "binomial",
-        alpha = 0,
-        nfolds = cv_folds,
-        weights = analysis_weights,
-        standardize = TRUE,
-        type.measure = "deviance"
-    ))
-
-    apparent_predictions <- as.numeric(
-        stats::predict(fitted_model, newx = design_matrix, s = "lambda.min", type = "response")
-    )
-    cv_predictions <- cross_validate_binary_predictions(
-        analysis_data,
-        outcome_var = analysis_outcome_var,
-        predictors = predictors,
-        weights = analysis_weights,
-        seed = seed
-    )
-    calibration <- summarize_binary_calibration(outcome, apparent_predictions)
-    cv_calibration <- summarize_binary_calibration(outcome, cv_predictions)
-    repeated_cv_metrics <- repeat_cross_validated_binary_metrics(
-        data = analysis_data,
-        outcome_var = analysis_outcome_var,
-        predictors = predictors,
-        weights = analysis_weights,
-        repeats = 20,
-        seed = seed + 1000
-    )
     cv_auc_interval <- summarize_numeric_interval(repeated_cv_metrics$cv_auc)
     cv_brier_interval <- summarize_numeric_interval(repeated_cv_metrics$cv_brier)
     cv_slope_interval <- summarize_numeric_interval(repeated_cv_metrics$cv_calibration_slope)
     coefficient_data <- extract_binary_model_coefficients(fitted_model, predictors = predictors)
     predictor_contributions <- summarize_predictor_contributions(coefficient_data, model_name = model_name)
-    single_cv_auc <- calculate_binary_auc(outcome, cv_predictions)
-    single_cv_brier <- calculate_binary_brier(outcome, cv_predictions)
-    single_cv_calibration_slope <- cv_calibration$slope
 
     metrics <- tibble::tibble(
         model = model_name,
-        n = nrow(analysis_data),
+        n = analysis_n,
         events = sum(outcome == 1, na.rm = TRUE),
-        apparent_auc = calculate_binary_auc(outcome, apparent_predictions),
+        apparent_auc = apparent_auc,
         cv_auc = cv_auc_interval$median,
         single_cv_auc = single_cv_auc,
-        apparent_brier = calculate_binary_brier(outcome, apparent_predictions),
+        apparent_brier = apparent_brier,
         cv_brier = cv_brier_interval$median,
         single_cv_brier = single_cv_brier,
         calibration_status = calibration$status,
         calibration_intercept = calibration$intercept,
         calibration_slope = calibration$slope,
-        cv_calibration_status = cv_calibration$status,
-        cv_calibration_intercept = cv_calibration$intercept,
+        cv_calibration_status = single_cv_calibration_status,
+        cv_calibration_intercept = single_cv_calibration_intercept,
         cv_calibration_slope = cv_slope_interval$median,
         single_cv_calibration_slope = single_cv_calibration_slope,
         cv_folds = cv_folds,
@@ -1611,27 +1617,10 @@ fit_exploratory_binary_model <- function(data,
         cv_calibration_slope_ci_upper = cv_slope_interval$upper,
         uncertainty_method = sprintf("Repeated %d-fold CV percentile interval", cv_folds),
         model_mode_requested = model_mode,
-        model_mode_used = fit_inputs$model_mode_used,
-        model_fallback_reason = fit_inputs$fallback_reason,
+        model_mode_used = model_mode,
         lambda_min = fitted_model$lambda.min,
         lambda_1se = fitted_model$lambda.1se
     )
-
-    raw_backtest <- NULL
-    if (isTRUE(include_raw_backtest) && !identical(fit_inputs$model_mode_used, "raw_binary")) {
-        raw_backtest <- tryCatch(
-            fit_exploratory_binary_model(
-                data = data,
-                outcome_var = outcome_var,
-                predictors = predictors,
-                model_name = paste(model_name, "(Raw Binary Backtest)"),
-                seed = seed,
-                model_mode = "raw_binary",
-                include_raw_backtest = FALSE
-            ),
-            error = function(e) list(status = "backtest_failed", error = e$message)
-        )
-    }
 
     list(
         model = fitted_model,
@@ -1641,9 +1630,11 @@ fit_exploratory_binary_model <- function(data,
         calibration_curve = calibration$curve,
         repeated_cv_metrics = repeated_cv_metrics,
         predictors = predictors,
-        design_columns = colnames(design_matrix),
-        model_mode_used = fit_inputs$model_mode_used,
-        raw_backtest = raw_backtest
+        design_columns = design_columns,
+        model_mode_used = model_mode,
+        oof_predictions = oof_predictions,
+        fold_metadata = fold_metadata,
+        final_foldid = final_foldid
     )
 }
 
@@ -2037,7 +2028,7 @@ create_exploratory_model_performance_table <- function(surrogate_model,
             population = model_spec$population,
             n = metrics$n[[1]],
             events = metrics$events[[1]],
-            model_method = metrics$model_mode_used[[1]] %||% "raw_binary",
+            model_method = metrics$model_mode_used[[1]] %||% "surrogate_binary",
             reported_risk_scale = "probability_0_to_1",
             cv_auc = metrics$cv_auc[[1]],
             cv_auc_ci = format_exploratory_metric_interval(
@@ -2570,7 +2561,7 @@ create_no_gep_unified_model_comparison <- function(analysis_results) {
             Cohort_Definition = spec$cohort_definition,
             N = model_results$metrics$n[[1]],
             Events = model_results$metrics$events[[1]],
-            Model_Method = model_results$metrics$model_mode_used[[1]] %||% "raw_binary",
+            Model_Method = model_results$metrics$model_mode_used[[1]] %||% "surrogate_binary",
             Reported_Risk_Scale = "probability_0_to_1",
             Apparent_AUC = model_results$metrics$apparent_auc[[1]],
             CV_AUC = model_results$metrics$cv_auc[[1]],
@@ -2662,22 +2653,20 @@ collect_exploratory_no_gep_analysis <- function(data,
         outcome_var = "mfs_event_5yr",
         predictors = prepared_data$predictors,
         model_name = "Direct 5-Year MFS Risk",
-        model_mode = "ipcw_horizon_binary",
+        model_mode = "ipcw_horizon_mfs",
         time_var = "tt_mets_months",
         event_var = "mets_event",
-        eval_time_months = 60,
-        include_raw_backtest = TRUE
+        eval_time_months = 60
     )
     direct_mss_model <- fit_exploratory_binary_model(
         prepared_data$mss_model_data,
         outcome_var = "mss_event_5yr",
         predictors = prepared_data$predictors,
         model_name = "Direct 5-Year MSS Risk",
-        model_mode = "ipcw_horizon_binary",
+        model_mode = "ipcw_horizon_competing_risk_mss",
         time_var = "tt_death_months",
         event_var = "melanoma_death_event",
-        eval_time_months = 60,
-        include_raw_backtest = TRUE
+        eval_time_months = 60
     )
     parsimonious_predictors <- choose_exploratory_parsimonious_predictors(prepared_data)
     parsimonious_mfs_model <- fit_exploratory_binary_model(
@@ -2685,22 +2674,20 @@ collect_exploratory_no_gep_analysis <- function(data,
         outcome_var = "mfs_event_5yr",
         predictors = parsimonious_predictors,
         model_name = "Parsimonious Direct 5-Year MFS Risk",
-        model_mode = "ipcw_horizon_binary",
+        model_mode = "ipcw_horizon_mfs",
         time_var = "tt_mets_months",
         event_var = "mets_event",
-        eval_time_months = 60,
-        include_raw_backtest = TRUE
+        eval_time_months = 60
     )
     parsimonious_mss_model <- fit_exploratory_binary_model(
         prepared_data$mss_model_data,
         outcome_var = "mss_event_5yr",
         predictors = parsimonious_predictors,
         model_name = "Parsimonious Direct 5-Year MSS Risk",
-        model_mode = "ipcw_horizon_binary",
+        model_mode = "ipcw_horizon_competing_risk_mss",
         time_var = "tt_death_months",
         event_var = "melanoma_death_event",
-        eval_time_months = 60,
-        include_raw_backtest = TRUE
+        eval_time_months = 60
     )
 
     no_gep_predictions <- prepared_data$no_gep_scoring %>%
@@ -3503,8 +3490,8 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
         md_bullet("That surrogate stores P(Class 2-like | baseline features); it is a clinical resemblance score, not a recovered molecular class label."),
         md_bullet(sprintf(
             "Direct MFS and MSS models estimate baseline-only 5-year risk when GEP is unavailable or unusable. Primary fitting methods: MFS=%s, MSS=%s.",
-            mfs_model$metrics$model_mode_used[[1]] %||% "raw_binary",
-            mss_model$metrics$model_mode_used[[1]] %||% "raw_binary"
+            mfs_model$metrics$model_mode_used[[1]] %||% "ipcw_horizon_mfs",
+            mss_model$metrics$model_mode_used[[1]] %||% "ipcw_horizon_competing_risk_mss"
         )),
         md_bullet("All reported no-GEP probabilities and thresholds use the 0-1 probability scale; multiply by 100 for percentages (for example, 0.20 = 20%)."),
         md_bullet("Apparent AUC is the in-sample fit; reported cross-validated AUC is the repeated-CV median and is the better estimate of expected performance on new patients."),

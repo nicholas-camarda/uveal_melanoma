@@ -572,3 +572,372 @@ summarize_ipcw_calibration <- function(outcome, predicted, weight) {
         )
     )
 }
+
+#' Build and align a design matrix for nested ridge validation
+#'
+#' @param data Predictor data.
+#' @param predictors Character predictor names.
+#' @param reference_columns Optional design columns from the training split.
+#' @return A numeric, intercept-free design matrix.
+build_horizon_ridge_design_matrix <- function(data, predictors, reference_columns = NULL) {
+    formula <- stats::reformulate(predictors)
+    design <- stats::model.matrix(formula, data = data)
+    design <- design[, colnames(design) != "(Intercept)", drop = FALSE]
+
+    if (!is.null(reference_columns)) {
+        missing_columns <- setdiff(reference_columns, colnames(design))
+        if (length(missing_columns) > 0L) {
+            missing_block <- matrix(
+                0,
+                nrow = nrow(design),
+                ncol = length(missing_columns),
+                dimnames = list(NULL, missing_columns)
+            )
+            design <- cbind(design, missing_block)
+        }
+        design <- design[, reference_columns, drop = FALSE]
+    }
+
+    if (ncol(design) == 0L || any(!is.finite(design))) {
+        stop("The retained predictors must produce a finite non-empty design matrix.", call. = FALSE)
+    }
+    design
+}
+
+#' Stop with deterministic nested-CV split context
+#'
+#' @param message Failure message.
+#' @param repeat_id Repeat number, or `NULL` for the final fit.
+#' @param outer_fold Outer-fold number, or `NULL` for the final fit.
+#' @return Does not return.
+stop_nested_cv_context <- function(message, repeat_id = NULL, outer_fold = NULL) {
+    context <- if (is.null(repeat_id)) {
+        "final full-data fit"
+    } else {
+        sprintf("repeat %d, outer fold %d", repeat_id, outer_fold)
+    }
+    stop(sprintf("Nested horizon ridge failed at %s: %s", context, message), call. = FALSE)
+}
+
+#' Fit one deterministic weighted ridge model
+#'
+#' @param training_payload Outer-training data with horizon status and IPCW.
+#' @param predictors Character predictor names.
+#' @param stable_id_var Stable key column.
+#' @param inner_folds Requested deterministic tuning folds.
+#' @param seed Split-specific integer seed.
+#' @param repeat_id Optional repeat context.
+#' @param outer_fold Optional outer-fold context.
+#' @return A list containing the fitted model, design columns, fold IDs, and
+#'   positive-weight training rows.
+fit_weighted_horizon_ridge <- function(
+    training_payload,
+    predictors,
+    stable_id_var,
+    inner_folds,
+    seed,
+    repeat_id = NULL,
+    outer_fold = NULL
+) {
+    fit_rows <- training_payload$known_status &
+        training_payload$ipcw_weight > 0 &
+        !is.na(training_payload$horizon_event) &
+        stats::complete.cases(training_payload[, predictors, drop = FALSE])
+    fit_data <- training_payload[fit_rows, , drop = FALSE]
+    outcome <- fit_data$horizon_event
+
+    if (nrow(fit_data) < GEP_MIN_SAMPLE_SIZE) {
+        stop_nested_cv_context(
+            sprintf("only %d positive-weight complete training rows were available", nrow(fit_data)),
+            repeat_id,
+            outer_fold
+        )
+    }
+    if (length(unique(outcome)) != 2L) {
+        stop_nested_cv_context("outer training did not contain both horizon outcome classes", repeat_id, outer_fold)
+    }
+
+    inner_foldid <- tryCatch(
+        create_deterministic_fold_ids(
+            strata = outcome,
+            folds = inner_folds,
+            seed = seed,
+            stable_id = fit_data[[stable_id_var]]
+        ),
+        error = function(error) {
+            stop_nested_cv_context(
+                paste("inner-fold assignment was infeasible:", conditionMessage(error)),
+                repeat_id,
+                outer_fold
+            )
+        }
+    )
+    design <- build_horizon_ridge_design_matrix(fit_data, predictors)
+    fitted <- tryCatch(
+        suppressWarnings(glmnet::cv.glmnet(
+            x = design,
+            y = outcome,
+            family = "binomial",
+            alpha = 0,
+            foldid = inner_foldid,
+            weights = fit_data$ipcw_weight,
+            standardize = TRUE,
+            type.measure = "deviance"
+        )),
+        error = function(error) {
+            stop_nested_cv_context(conditionMessage(error), repeat_id, outer_fold)
+        }
+    )
+
+    list(
+        model = fitted,
+        design_columns = colnames(design),
+        foldid = inner_foldid,
+        fit_data = fit_data
+    )
+}
+
+#' Repeated deterministic nested cross-validation for a horizon ridge model
+#'
+#' Censoring and IPCW estimation are confined to each outer-training split.
+#' Ridge tuning uses explicitly supplied deterministic inner fold IDs. Every
+#' complete-predictor assessment row receives an out-of-fold prediction; its
+#' evaluation outcome and weight are derived from the corresponding
+#' outer-training censoring model.
+#'
+#' @param data Analysis data.
+#' @param predictors Character predictor names.
+#' @param time_var Observed-time column.
+#' @param event_type_var Event-type column using 0/1/2 coding.
+#' @param horizon_months Fixed prediction horizon.
+#' @param stable_id_var Unique stable key column.
+#' @param seed Configured base seed.
+#' @param repeats Number of outer partition repeats.
+#' @param outer_folds Number of outer folds.
+#' @param inner_folds Number of inner tuning folds.
+#' @return A list with keyed OOF predictions, split metadata, row-level training
+#'   IPCW records, repeated OOF metrics, and a deterministic full-data fit for
+#'   coefficients and future scoring only.
+cross_validate_horizon_ridge <- function(
+    data,
+    predictors,
+    time_var,
+    event_type_var,
+    horizon_months,
+    stable_id_var,
+    seed = GEP_EXPLORATORY_CV_SEED,
+    repeats = GEP_EXPLORATORY_CV_REPEATS,
+    outer_folds = GEP_EXPLORATORY_OUTER_FOLDS,
+    inner_folds = GEP_EXPLORATORY_INNER_FOLDS
+) {
+    required <- unique(c(predictors, time_var, event_type_var, stable_id_var))
+    if (!is.data.frame(data) || length(predictors) == 0L || any(!required %in% names(data))) {
+        stop("data must contain the declared predictors, time, event type, and stable ID.", call. = FALSE)
+    }
+    if (anyNA(data[[stable_id_var]]) || anyDuplicated(data[[stable_id_var]])) {
+        stop("stable_id_var must be unique and observed.", call. = FALSE)
+    }
+    validate_horizon_inputs(data[[time_var]], data[[event_type_var]], horizon_months)
+    for (value in list(seed = seed, repeats = repeats, outer_folds = outer_folds, inner_folds = inner_folds)) {
+        if (length(value) != 1L || !is.finite(value) || value != as.integer(value)) {
+            stop("seed, repeats, outer_folds, and inner_folds must be finite integers.", call. = FALSE)
+        }
+    }
+    if (repeats < 1L || outer_folds < 2L || inner_folds < 2L) {
+        stop("repeats must be positive and both fold counts must be at least 2.", call. = FALSE)
+    }
+
+    complete_predictors <- stats::complete.cases(data[, predictors, drop = FALSE])
+    model_data <- data[complete_predictors, , drop = FALSE]
+    if (nrow(model_data) < GEP_MIN_SAMPLE_SIZE) {
+        stop("Too few complete-predictor rows for nested horizon validation.", call. = FALSE)
+    }
+    stable_id <- as.character(model_data[[stable_id_var]])
+    outer_strata <- ifelse(model_data[[event_type_var]] == 1L, "target", "other")
+
+    predictions <- list()
+    metadata <- list()
+    training_records <- list()
+    prediction_index <- 0L
+    metadata_index <- 0L
+    training_index <- 0L
+
+    for (repeat_id in seq_len(repeats)) {
+        outer_seed <- as.integer(seed + repeat_id - 1L)
+        outer_foldid <- tryCatch(
+            create_deterministic_fold_ids(
+                strata = outer_strata,
+                folds = outer_folds,
+                seed = outer_seed,
+                stable_id = stable_id
+            ),
+            error = function(error) {
+                stop(sprintf(
+                    "Nested horizon ridge failed at repeat %d, outer fold assignment: %s",
+                    repeat_id,
+                    conditionMessage(error)
+                ), call. = FALSE)
+            }
+        )
+
+        for (outer_fold in seq_len(outer_folds)) {
+            training <- model_data[outer_foldid != outer_fold, , drop = FALSE]
+            assessment <- model_data[outer_foldid == outer_fold, , drop = FALSE]
+            payload <- tryCatch(
+                derive_fold_ipcw_payload(
+                    training = training,
+                    assessment = assessment,
+                    time_var = time_var,
+                    event_type_var = event_type_var,
+                    horizon_months = horizon_months
+                ),
+                error = function(error) {
+                    stop_nested_cv_context(conditionMessage(error), repeat_id, outer_fold)
+                }
+            )
+            inner_seed <- as.integer(seed + repeat_id * 1000L + outer_fold)
+            ridge <- fit_weighted_horizon_ridge(
+                training_payload = payload$training,
+                predictors = predictors,
+                stable_id_var = stable_id_var,
+                inner_folds = inner_folds,
+                seed = inner_seed,
+                repeat_id = repeat_id,
+                outer_fold = outer_fold
+            )
+            assessment_design <- build_horizon_ridge_design_matrix(
+                payload$assessment,
+                predictors,
+                reference_columns = ridge$design_columns
+            )
+            assessment_prediction <- tryCatch(
+                as.numeric(stats::predict(
+                    ridge$model,
+                    newx = assessment_design,
+                    s = "lambda.min",
+                    type = "response"
+                )),
+                error = function(error) {
+                    stop_nested_cv_context(conditionMessage(error), repeat_id, outer_fold)
+                }
+            )
+            if (length(assessment_prediction) != nrow(assessment) || any(!is.finite(assessment_prediction))) {
+                stop_nested_cv_context("assessment predictions were incomplete", repeat_id, outer_fold)
+            }
+
+            prediction_index <- prediction_index + 1L
+            predictions[[prediction_index]] <- data.frame(
+                stable_id = as.character(assessment[[stable_id_var]]),
+                repeat_id = as.integer(repeat_id),
+                outer_fold = as.integer(outer_fold),
+                prediction = assessment_prediction,
+                horizon_event = payload$assessment$horizon_event,
+                known_status = payload$assessment$known_status,
+                ipcw_weight = payload$assessment$ipcw_weight,
+                stringsAsFactors = FALSE
+            )
+            metadata_index <- metadata_index + 1L
+            metadata[[metadata_index]] <- data.frame(
+                repeat_id = as.integer(repeat_id),
+                outer_fold = as.integer(outer_fold),
+                outer_seed = outer_seed,
+                inner_seed = inner_seed,
+                training_n = nrow(training),
+                training_known_n = sum(payload$training$known_status),
+                assessment_n = nrow(assessment),
+                lambda_min = ridge$model$lambda.min,
+                lambda_1se = ridge$model$lambda.1se,
+                training_weight_sum = sum(payload$training$ipcw_weight),
+                training_weight_cap = payload$weight_cap,
+                training_normalization_factor = payload$normalization_factor
+            )
+            training_index <- training_index + 1L
+            training_records[[training_index]] <- data.frame(
+                stable_id = as.character(payload$training[[stable_id_var]]),
+                repeat_id = as.integer(repeat_id),
+                outer_fold = as.integer(outer_fold),
+                horizon_event = payload$training$horizon_event,
+                known_status = payload$training$known_status,
+                ipcw_weight = payload$training$ipcw_weight,
+                stringsAsFactors = FALSE
+            )
+        }
+    }
+
+    oof_predictions <- do.call(rbind, predictions)
+    fold_metadata <- do.call(rbind, metadata)
+    training_ipcw <- do.call(rbind, training_records)
+    oof_predictions <- oof_predictions[
+        order(oof_predictions$repeat_id, oof_predictions$outer_fold, oof_predictions$stable_id, method = "radix"),
+        ,
+        drop = FALSE
+    ]
+    fold_metadata <- fold_metadata[
+        order(fold_metadata$repeat_id, fold_metadata$outer_fold, method = "radix"),
+        ,
+        drop = FALSE
+    ]
+    training_ipcw <- training_ipcw[
+        order(training_ipcw$repeat_id, training_ipcw$outer_fold, training_ipcw$stable_id, method = "radix"),
+        ,
+        drop = FALSE
+    ]
+    rownames(oof_predictions) <- NULL
+    rownames(fold_metadata) <- NULL
+    rownames(training_ipcw) <- NULL
+    repeated_metrics <- do.call(rbind, lapply(seq_len(repeats), function(repeat_id) {
+        repeat_data <- oof_predictions[oof_predictions$repeat_id == repeat_id, , drop = FALSE]
+        auc <- calculate_ipcw_auc(repeat_data$horizon_event, repeat_data$prediction, repeat_data$ipcw_weight)
+        brier <- calculate_ipcw_brier(repeat_data$horizon_event, repeat_data$prediction, repeat_data$ipcw_weight)
+        calibration <- summarize_ipcw_calibration(
+            repeat_data$horizon_event,
+            pmin(pmax(repeat_data$prediction, 1e-6), 1 - 1e-6),
+            repeat_data$ipcw_weight
+        )
+        data.frame(
+            repeat_id = as.integer(repeat_id),
+            performance_scope = "Overall",
+            auc_status = auc$status,
+            cv_auc = auc$auc,
+            brier_status = brier$status,
+            cv_brier = brier$brier,
+            calibration_status = calibration$status,
+            cv_calibration_intercept = calibration$intercept,
+            cv_calibration_slope = calibration$slope,
+            n_positive_weight = auc$n_positive_weight,
+            weighted_cases = auc$weighted_cases,
+            weighted_controls = auc$weighted_controls,
+            stringsAsFactors = FALSE
+        )
+    }))
+
+    full_payload <- derive_fold_ipcw_payload(
+        training = model_data,
+        assessment = model_data,
+        time_var = time_var,
+        event_type_var = event_type_var,
+        horizon_months = horizon_months
+    )
+    final_ridge <- fit_weighted_horizon_ridge(
+        training_payload = full_payload$training,
+        predictors = predictors,
+        stable_id_var = stable_id_var,
+        inner_folds = inner_folds,
+        seed = as.integer(seed + repeats * 1000L + outer_folds + 1L)
+    )
+
+    list(
+        oof_predictions = oof_predictions,
+        fold_metadata = fold_metadata,
+        training_ipcw = training_ipcw,
+        repeated_metrics = repeated_metrics,
+        final_model = final_ridge$model,
+        final_design_columns = final_ridge$design_columns,
+        final_foldid = final_ridge$foldid,
+        final_stable_id = as.character(final_ridge$fit_data[[stable_id_var]]),
+        seed = as.integer(seed),
+        repeats = as.integer(repeats),
+        outer_folds = as.integer(outer_folds),
+        inner_folds = as.integer(inner_folds)
+    )
+}

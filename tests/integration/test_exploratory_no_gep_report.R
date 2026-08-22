@@ -254,8 +254,28 @@ test_that("exploratory no-GEP report writes workbook, summary, and plots", {
     expect_true("calibration_status" %in% names(results$surrogate_model$metrics))
     expect_true("calibration_status" %in% names(results$direct_models$mfs$metrics))
     expect_true("calibration_status" %in% names(results$direct_models$mss$metrics))
-    expect_equal(results$direct_models$mfs$metrics$model_mode_used[[1]], "ipcw_horizon_binary")
-    expect_equal(results$direct_models$mss$metrics$model_mode_used[[1]], "ipcw_horizon_binary")
+    expect_equal(results$direct_models$mfs$metrics$model_mode_used[[1]], "ipcw_horizon_mfs")
+    expect_equal(results$direct_models$mss$metrics$model_mode_used[[1]], "ipcw_horizon_competing_risk_mss")
+    expect_false("model_fallback_reason" %in% names(results$direct_models$mfs$metrics))
+    expect_false("model_fallback_reason" %in% names(results$direct_models$mss$metrics))
+    expect_false("raw_backtest" %in% names(results$direct_models$mfs))
+    expect_false("raw_backtest" %in% names(results$direct_models$mss))
+    expect_equal(
+        nrow(results$direct_models$mfs$oof_predictions),
+        nrow(prepare_exploratory_no_gep_data(actual_data)$mfs_model_data) * GEP_EXPLORATORY_CV_REPEATS
+    )
+    expect_equal(
+        nrow(results$direct_models$mss$oof_predictions),
+        nrow(prepare_exploratory_no_gep_data(actual_data)$mss_model_data) * GEP_EXPLORATORY_CV_REPEATS
+    )
+    expect_identical(
+        anyDuplicated(results$direct_models$mfs$oof_predictions[c("repeat_id", "stable_id")]),
+        0L
+    )
+    expect_identical(
+        anyDuplicated(results$direct_models$mss$oof_predictions[c("repeat_id", "stable_id")]),
+        0L
+    )
     expect_true(all(c("cv_auc_ci_lower", "cv_auc_ci_upper", "cv_repeats") %in% names(results$direct_models$mfs$metrics)))
     expect_true(all(c("cv_auc_ci_lower", "cv_auc_ci_upper", "cv_repeats") %in% names(results$direct_models$mss$metrics)))
     expect_true(all(unique(results$no_gep_predictions$no_gep_group) %in% c("GEP Failed/Indeterminate", "GEP Not Tested")))

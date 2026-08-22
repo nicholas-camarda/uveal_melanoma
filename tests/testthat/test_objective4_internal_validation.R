@@ -280,3 +280,101 @@ test_that("zero-weight unknown rows cannot alter IPCW calibration", {
     expect_equal(with_unknown$weighted_cases, baseline$weighted_cases)
     expect_equal(with_unknown$weighted_controls, baseline$weighted_controls)
 })
+
+make_nested_cv_fixture <- function() {
+    n <- 60L
+    tibble::tibble(
+        patient_id = sprintf("p%03d", seq_len(n)),
+        age = seq(40, 79, length.out = n),
+        diameter = rep(c(8, 10, 12, 14, 16), length.out = n),
+        followup = rep(c(18, 24, 36, 48, 72, 84), length.out = n),
+        event_type = rep(c(1L, 0L, 2L, 1L, 0L, 2L), length.out = n)
+    )
+}
+
+test_that("nested horizon ridge is deterministic and keyed independently of row order", {
+    fixture <- make_nested_cv_fixture()
+    args <- list(
+        predictors = c("age", "diameter"),
+        time_var = "followup",
+        event_type_var = "event_type",
+        horizon_months = 60,
+        stable_id_var = "patient_id",
+        seed = GEP_EXPLORATORY_CV_SEED,
+        repeats = 2L,
+        outer_folds = 3L,
+        inner_folds = 3L
+    )
+
+    first <- do.call(cross_validate_horizon_ridge, c(list(data = fixture), args))
+    second <- do.call(cross_validate_horizon_ridge, c(list(data = fixture), args))
+    reordered <- do.call(
+        cross_validate_horizon_ridge,
+        c(list(data = fixture[rev(seq_len(nrow(fixture))), , drop = FALSE]), args)
+    )
+
+    prediction_key <- c("repeat_id", "outer_fold", "stable_id")
+    order_predictions <- function(x) x[do.call(order, x[prediction_key]), , drop = FALSE]
+    expect_equal(order_predictions(first$oof_predictions), order_predictions(second$oof_predictions))
+    expect_equal(order_predictions(first$oof_predictions), order_predictions(reordered$oof_predictions))
+    expect_identical(first$final_foldid[order(first$final_stable_id)], reordered$final_foldid[order(reordered$final_stable_id)])
+    expect_true(all(stats::complete.cases(first$oof_predictions$prediction)))
+})
+
+test_that("assessment censoring cannot alter outer-training weights or lambda", {
+    fixture <- make_nested_cv_fixture()
+    outer_ids <- create_deterministic_fold_ids(
+        strata = ifelse(fixture$event_type == 1L, "target", "other"),
+        folds = 3L,
+        seed = GEP_EXPLORATORY_CV_SEED,
+        stable_id = fixture$patient_id
+    )
+    assessment_ids <- fixture$patient_id[outer_ids == 1L]
+    perturbed <- fixture
+    perturbed$followup[perturbed$patient_id %in% assessment_ids & perturbed$event_type == 0L] <- 55
+
+    args <- list(
+        predictors = c("age", "diameter"),
+        time_var = "followup",
+        event_type_var = "event_type",
+        horizon_months = 60,
+        stable_id_var = "patient_id",
+        seed = GEP_EXPLORATORY_CV_SEED,
+        repeats = 1L,
+        outer_folds = 3L,
+        inner_folds = 3L
+    )
+    original <- do.call(cross_validate_horizon_ridge, c(list(data = fixture), args))
+    changed <- do.call(cross_validate_horizon_ridge, c(list(data = perturbed), args))
+
+    original_fold <- dplyr::filter(original$fold_metadata, .data$outer_fold == 1L)
+    changed_fold <- dplyr::filter(changed$fold_metadata, .data$outer_fold == 1L)
+    expect_equal(original_fold$lambda_min, changed_fold$lambda_min)
+    expect_equal(original_fold$training_weight_sum, changed_fold$training_weight_sum)
+    expect_equal(original_fold$training_weight_cap, changed_fold$training_weight_cap)
+    expect_equal(
+        dplyr::arrange(dplyr::filter(original$training_ipcw, .data$outer_fold == 1L), .data$stable_id),
+        dplyr::arrange(dplyr::filter(changed$training_ipcw, .data$outer_fold == 1L), .data$stable_id)
+    )
+})
+
+test_that("nested horizon ridge fails closed with repeat and fold context", {
+    fixture <- make_nested_cv_fixture()
+    fixture$event_type <- c(rep(1L, 3L), rep(0L, nrow(fixture) - 3L))
+
+    expect_error(
+        cross_validate_horizon_ridge(
+            data = fixture,
+            predictors = c("age", "diameter"),
+            time_var = "followup",
+            event_type_var = "event_type",
+            horizon_months = 60,
+            stable_id_var = "patient_id",
+            seed = GEP_EXPLORATORY_CV_SEED,
+            repeats = 1L,
+            outer_folds = 3L,
+            inner_folds = 3L
+        ),
+        "repeat 1, outer fold"
+    )
+})
