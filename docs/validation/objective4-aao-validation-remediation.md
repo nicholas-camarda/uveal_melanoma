@@ -4,11 +4,20 @@
 
 The corrected candidate is **not presentation-cleared yet**. Both protected
 actual-data runs completed Objective 0 through Objective 4 without fatal
-workflow errors, and the AAO gate returned `review`, not `fail`. The accepted
-abstract's three conclusion categories remain supportable, but all three AUCs
-changed by more than the prespecified 0.02 review threshold. The presentation
-therefore requires investigator review and revised numbers before publication
-or slide refresh.
+workflow errors, and the AAO gate returned `review`, not `fail`. Manual
+scientific adjudication narrows the accepted implication: the corrected model
+shows modest MFS discrimination (Overall AUC 0.656; No-GEP AUC 0.636), but weak
+and uncertain MSS discrimination (Overall AUC 0.603; No-GEP AUC 0.589),
+especially in the target No-GEP population. The wide MSS partition-stability
+intervals and low calibration slopes reinforce that uncertainty. This
+exploratory internal validation does not replace GEP and does not support
+individual-patient prediction.
+
+All three AUCs also changed by more than the prespecified 0.02 review
+threshold. The machine-readable `review` result therefore cannot be treated as
+unchanged-implications clearance. The presentation requires investigator
+approval of the narrowed wording and corrected numbers before publication or
+slide refresh.
 
 The general protected-results comparator could not evaluate base-versus-
 candidate equality because its checked-in contract describes synthetic
@@ -29,10 +38,23 @@ equal or different. No synthetic substitute or fallback comparison was used.
 | Run state | `completed_with_warnings` | `completed_with_warnings` |
 
 Both runs used the corrected source workbook above from clean isolated runtime
-roots. Objective 0 reported no hard validation errors. The recorded warnings
-were feasibility/status skips in sparse secondary GEP/PRAME components; the
-primary no-GEP report was generated in both runs. These warnings do not replace
-the full Task 8 verification gate.
+roots. Objective 0 reported no hard validation errors. Artifact review
+identified all of the following warning or skip classes:
+
+- one minor treatment-before-diagnosis chronology gap of 1-7 days, retained for
+  manual review by the non-blocking Objective 0 date check;
+- perfect separation in a secondary GEP Cox model, with unreliable secondary
+  coefficient estimates explicitly warned;
+- infeasible RMST summaries where the multi-group comparison was non-binary or
+  the requested horizon exceeded follow-up support; and
+- sparse GEP/PRAME secondary cause-specific Cox, Fine-Gray, and related
+  feasibility/status skips where groups had zero melanoma deaths.
+
+These warnings limit the named secondary components. They did not make the
+primary nested-CV no-GEP workbook unsupported: all four primary Overall/No-GEP
+weighted performance rows had `metric_status = ok`, and the report was
+generated in both runs. They also do not replace the full Task 8 verification
+gate.
 
 The protected base used its historical exploratory defaults: base seed 123,
 20 repeated five-fold partitions, and no explicitly locked inner `glmnet`
@@ -122,21 +144,54 @@ well below the five-percentage-point review threshold:
 | GEP Failed/Indeterminate | 60.0% / 60.0% | 33.3% / 33.33% |
 | Class 2 | 53.7% / 53.70% | 38.3% / 38.32% |
 
-No ordering or structured conclusion reversal was detected. In particular:
+The gate found no contradiction in its required prose checks or prespecified
+descriptive orderings. Structured conclusion fields were absent, so this must
+not be described as a structured conclusion adjudication. In particular:
 
 - definitive Class 1 remained the lowest observed-risk group;
-- GEP Failed/Indeterminate remained higher risk than GEP Not Tested for both
-  observed MFS and MSS;
+- GEP Failed/Indeterminate had higher observed MFS and MSS risks than GEP Not
+  Tested in this single-center cohort;
 - the candidate's median direct predicted risks were also higher for
   Failed/Indeterminate than Not Tested;
-- the surrogate result continued to reject molecular-class recovery from
-  baseline clinical features; and
-- the two no-GEP groups remained non-homogeneous.
+- the surrogate analysis did not demonstrate reliable molecular-class recovery
+  (OOF AUC 0.563) and must not be used for molecular relabeling.
 
-The gate status is `review` solely because the three absolute AUC changes
-exceed 0.02. The scientific direction did not reverse, but the accepted AUCs
-must not be presented as corrected results. Publication and presentation
-refresh remain blocked pending explicit review clearance.
+The no-GEP ordering requires a manual limitation that the machine gate does not
+encode. The Failed/Indeterminate group contained only 13 patients, with two raw
+MFS events and one raw melanoma death by five years, sparse follow-up support,
+and baseline differences across GEP groups. Its higher observed risks therefore
+do not prove distinct underlying populations and cannot be assumed to
+generalize. The defensible implication is **do not automatically pool GEP
+Failed/Indeterminate with GEP Not Tested**; it is not evidence that the two
+groups are inherently different populations.
+
+The gate status is `review` because the three absolute AUC changes exceed 0.02.
+Manual No-GEP adjudication adds a second reason that unchanged-implications
+clearance is inappropriate: the machine checks preserve a descriptive ordering
+but do not evaluate the small subgroup, sparse event/follow-up support,
+baseline differences, or the strength and generalizability of the claim. The
+accepted AUCs and broad implication must not be presented as corrected results.
+
+Investigator clearance must explicitly approve the corrected numeric values and
+the following presentation wording:
+
+> Baseline clinical features showed modest discrimination for 60-month
+> post-treatment metastasis risk, but weak and uncertain discrimination for
+> 60-month melanoma-death cumulative-incidence risk, especially among patients
+> without usable GEP. These exploratory internally validated models do not
+> replace GEP and should not be used for individual-patient prediction.
+
+It must also explicitly approve this no-GEP subgroup wording:
+
+> In this single-center cohort, observed risks were higher in the small GEP
+> Failed/Indeterminate group than in the GEP Not Tested group. Sparse events and
+> follow-up and baseline differences preclude claiming distinct underlying
+> populations or generalizability; the result supports not automatically
+> pooling the groups.
+
+Clearance requires Desai and Tim, or the designated scientific investigators,
+to approve those exact implications and the reported Overall/No-GEP values in
+writing before Objective 4 publication or presentation refresh.
 
 ## Protected comparator infrastructure blocker
 
