@@ -441,6 +441,49 @@ calculate_ipcw_brier <- function(outcome, score, weight) {
     )
 }
 
+#' Extract one stable coefficient from a weighted binomial calibration fit
+#'
+#' @param fit A fitted `stats::glm` object or `NULL` after a failed fit.
+#' @param coefficient_index One-based coefficient index.
+#' @return Estimate, standard error, convergence, and stability fields.
+extract_stable_calibration_coefficient <- function(fit, coefficient_index) {
+    if (is.null(fit) || !isTRUE(fit$converged)) {
+        return(list(
+            estimate = NA_real_,
+            standard_error = NA_real_,
+            converged = FALSE,
+            stable = FALSE
+        ))
+    }
+
+    coefficients <- tryCatch(stats::coef(fit), error = function(e) NULL)
+    coefficient_summary <- tryCatch(summary(fit)$coefficients, error = function(e) NULL)
+    has_standard_error <- !is.null(coefficient_summary) &&
+        nrow(coefficient_summary) >= coefficient_index &&
+        "Std. Error" %in% colnames(coefficient_summary)
+    estimate <- if (!is.null(coefficients) && length(coefficients) >= coefficient_index) {
+        unname(coefficients[[coefficient_index]])
+    } else {
+        NA_real_
+    }
+    standard_error <- if (has_standard_error) {
+        unname(coefficient_summary[coefficient_index, "Std. Error"])
+    } else {
+        NA_real_
+    }
+    stable <- is.finite(estimate) &&
+        is.finite(standard_error) &&
+        abs(estimate) <= GEP_MAX_CALIBRATION_COEF_ABS &&
+        standard_error <= GEP_MAX_CALIBRATION_COEF_SE
+
+    list(
+        estimate = estimate,
+        standard_error = standard_error,
+        converged = TRUE,
+        stable = stable
+    )
+}
+
 #' Summarize IPCW-weighted fixed-horizon calibration
 #'
 #' The intercept is estimated from a binomial logistic model with the prediction
@@ -503,16 +546,26 @@ summarize_ipcw_calibration <- function(outcome, predicted, weight) {
         )),
         error = function(e) NULL
     )
-    intercept <- if (is.null(intercept_fit)) NA_real_ else unname(stats::coef(intercept_fit)[[1]])
-    slope <- if (is.null(slope_fit)) NA_real_ else unname(stats::coef(slope_fit)[[2]])
-    status <- if (is.finite(intercept) && is.finite(slope)) "ok" else "unsupported_calibration_fit"
+    intercept_details <- extract_stable_calibration_coefficient(intercept_fit, 1L)
+    slope_details <- extract_stable_calibration_coefficient(slope_fit, 2L)
+    all_converged <- intercept_details$converged && slope_details$converged
+    all_stable <- intercept_details$stable && slope_details$stable
+    status <- if (!all_converged) {
+        "unsupported_calibration_nonconverged"
+    } else if (!all_stable) {
+        "recalibration_fit_unstable"
+    } else {
+        "ok"
+    }
     support$status <- status
 
     c(
         support,
         list(
-            intercept = if (status == "ok") intercept else NA_real_,
-            slope = if (status == "ok") slope else NA_real_,
+            intercept = if (status == "ok") intercept_details$estimate else NA_real_,
+            slope = if (status == "ok") slope_details$estimate else NA_real_,
+            intercept_se = intercept_details$standard_error,
+            slope_se = slope_details$standard_error,
             event_rows = event_rows,
             control_rows = control_rows,
             unique_prediction_count = unique_prediction_count

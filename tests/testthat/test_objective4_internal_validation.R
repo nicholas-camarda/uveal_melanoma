@@ -249,3 +249,34 @@ test_that("IPCW calibration uses assessment weights and rejects sparse support",
     expect_true(is.na(sparse$intercept))
     expect_true(is.na(sparse$slope))
 })
+
+test_that("IPCW calibration rejects complete separation despite adequate support", {
+    separated <- summarize_ipcw_calibration(
+        outcome = c(rep(0L, 10), rep(1L, 10)),
+        predicted = c(rep(0.1, 10), rep(0.9, 10)),
+        weight = rep(1, 20)
+    )
+
+    expect_identical(separated$status, "recalibration_fit_unstable")
+    expect_true(is.na(separated$intercept))
+    expect_true(is.na(separated$slope))
+})
+
+test_that("zero-weight unknown rows cannot alter IPCW calibration", {
+    outcome <- rep(c(0L, 1L, 0L, 1L), 5)
+    predicted <- rep(c(0.2, 0.2, 0.8, 0.8), 5)
+    weight <- rep(c(4, 1, 1, 4), 5)
+
+    baseline <- summarize_ipcw_calibration(outcome, predicted, weight)
+    with_unknown <- summarize_ipcw_calibration(
+        outcome = c(outcome, NA_integer_),
+        predicted = c(predicted, NA_real_),
+        weight = c(weight, 0)
+    )
+
+    expect_identical(with_unknown$status, baseline$status)
+    expect_equal(with_unknown$intercept, baseline$intercept)
+    expect_equal(with_unknown$slope, baseline$slope)
+    expect_equal(with_unknown$weighted_cases, baseline$weighted_cases)
+    expect_equal(with_unknown$weighted_controls, baseline$weighted_controls)
+})
