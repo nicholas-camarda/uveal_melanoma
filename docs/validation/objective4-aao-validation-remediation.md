@@ -63,8 +63,8 @@ repeats, five outer folds, and five inner folds.
 
 Complete file-level SHA-256 manifests are outside Git at:
 
-- `/Users/ncamarda/Workspaces/uveal-melanoma/runtime/runs/objective4-aao-validation-remediation-base/output-sha256.csv`
-- `/Users/ncamarda/Workspaces/uveal-melanoma/runtime/runs/objective4-aao-validation-remediation-candidate/output-sha256.csv`
+- `<runtime-root>/runs/objective4-aao-validation-remediation-base/output-sha256.csv`
+- `<runtime-root>/runs/objective4-aao-validation-remediation-candidate/output-sha256.csv`
 
 Their run manifests are `run-manifest.json` in the same roots. The manifest
 SHA-256 values are:
@@ -193,72 +193,78 @@ Clearance requires Desai and Tim, or the designated scientific investigators,
 to approve those exact implications and the reported Overall/No-GEP values in
 writing before Objective 4 publication or presentation refresh.
 
-## Protected comparator infrastructure blocker
+## Production protected-results comparator
 
-`docs/maintenance/important_results_contract.yaml` has SHA-256
-`952c5dd12193a992b4da42d49b8e8f2fe90e5b37245495e519ec5c28ec486f48`.
-Repository-wide search and the original bootstrap plan show that this is a
-synthetic comparator contract exercised by synthetic tests. It requires:
+The earlier partial 0/4 check against the synthetic
+`important_results_contract.yaml` was an infrastructure blocker, not a result
+comparison. It has been superseded on the separate comparator branch by
+`production_results_comparison_contract.yaml`, which reuses the existing
+publish allowlist and comparator directly against the generated full-cohort
+artifacts. No private patient rows enter the report.
 
-- `cohort/membership.json`
-- `results/important_results.json`
-- `results/displayed_labels.txt`
-- `plots/plot_payload.json`
-- `tables/important_results.xlsx`
+The fresh paired runs used the same corrected raw workbook and lockfile:
 
-No production extractor or registry mapping creates those paths from an
-Objective 0 through Objective 4 run. The exact comparator invocation therefore
-returned nonzero and wrote a sanitized report in which all five comparisons
-failed as `required artifact missing`. The report SHA-256 is
-`34f77f80b4626f796e0493a1ab785c4ba47118b5d0658fd95e77145423cf5e9b`.
+| Item | Base | Candidate |
+|---|---|---|
+| Git SHA | `1a79c6895e25aeabb4b36cc9f1b0c2353e1e0133` | `c7b49e999ba771b4eaa88216c206f2983f602213` |
+| Raw workbook SHA-256 | `f047fd021cf96c74e03ca884a13b739bfe33a2ca260e82f8af0c486de3c5e1ad` | same |
+| `renv.lock` SHA-256 | `189e6e0a5d89abaef5144e8bc8ca609cb4472401f544523ba44e72b3b23f99ed` | same |
+| Full-cohort RDS SHA-256 | `9db09c6315db99b69df59b347d13b0bd2798985bbd19e95edec99e0c5234b260` | `fcdbcdcf35a81bdc8b5b029f8ab2907207fd6c59b7d95e6e2983f301e6920b50` |
+| Run state | `completed_with_warnings` (18 warnings) | `completed_with_warnings` (19 warnings) |
 
-Consequently, this validation does **not** claim that unrelated protected
-results are identical. A production extraction contract must be implemented
-and reviewed before that claim can be made. The AAO-specific gate remains
-valid because it reads the generated candidate workbook directly under its
-separate immutable contract.
+The production comparator returned **pass**. Objective 1–3 declared artifacts
+matched exactly. Objective 0 validation and the no-GEP Objective 4 workbook
+changed as expected. The Objective 4 MFS sensitivity, consolidated MFS/MSS
+summaries, and imported-GEP distribution either matched or were explicitly
+permitted to change by the contract. The sanitized report is at
+`<runtime-root>/runs/production-protected-results-candidate/production-comparison.json`
+with SHA-256
+`68f63a2d613230c0aab2e9dec61f030f44141d2e7cd4f4fa21b10601436bfeb3`.
 
-The protected pull request cannot be considered complete until either the
-production comparator requirement is implemented or the repository owner
-documents an approved waiver or plan amendment. This infrastructure condition
-need not block the AAO presentation after the separate scientific and
-investigator clearance requirements above are satisfied.
+The separate AAO gate remains `review` (not `fail`) because the corrected AUCs
+changed from the accepted abstract. Its report is at
+`<runtime-root>/runs/production-protected-results-candidate/objective4-aao-gate.json`
+with SHA-256
+`c5f4d4b522777d5aabd59927c2c2d860f5511bc378c747466bea92a797ba5918`.
+Therefore, the comparator clears unrelated-result regression risk, but it does
+not clear the AAO presentation. Investigator approval of the narrowed wording
+and corrected values is still required.
 
 ## Exact workflow commands
 
-Base and candidate used the same R expression and input path; only the detached
-code checkout and isolated runtime root differed:
+Base and candidate used the same full Objective 0–4 entrypoint and input path;
+only the detached code checkout and isolated runtime root differed:
 
 ```bash
-env UVEAL_WORKSPACE_ROOT=/Users/ncamarda/Workspaces/uveal-melanoma \
+env UVEAL_WORKSPACE_ROOT=<workspace-root> \
   OCULAR_RUNTIME_ROOT=<isolated-runtime-root> \
-  RAW_DATA_DIR='/Users/ncamarda/Library/CloudStorage/OneDrive-Personal/Project Vault/Research/uveal-melanoma/Original Files' \
-  Rscript -e "source('scripts/load_all.R'); RECREATE_ANALYTIC_DATASETS <- TRUE; result <- run_my_analysis('uveal_melanoma_full_cohort', c(0, 4)); if (identical(result\$run_state, 'failed')) stop(sprintf('run failed: %s', paste(result\$fatal_issues, collapse=' | '))); message(sprintf('RUN_STATE=%s', result\$run_state)); if (length(result\$warning_issues)) message(sprintf('WARNING_ISSUES=%s', paste(result\$warning_issues, collapse=' | ')))"
+  RAW_DATA_DIR='<raw-data-dir>' \
+  Rscript -e "source('scripts/load_all.R'); RECREATE_ANALYTIC_DATASETS <- TRUE; result <- run_my_analysis('uveal_melanoma_full_cohort'); if (identical(result\$run_state, 'failed')) stop(sprintf('run failed: %s', paste(result\$fatal_issues, collapse=' | '))); message(sprintf('RUN_STATE=%s', result\$run_state)); if (length(result\$warning_issues)) message(sprintf('WARNING_ISSUES=%s', paste(result\$warning_issues, collapse=' | ')))"
 ```
 
 The protected base command ran from the detached base worktree with
 `<isolated-runtime-root>` set to
-`/Users/ncamarda/Workspaces/uveal-melanoma/runtime/runs/objective4-aao-validation-remediation-base`.
-The candidate command ran from this branch with the root ending in
-`objective4-aao-validation-remediation-candidate`.
+`<runtime-root>/runs/production-protected-results-base`.
+The candidate command ran from this branch with the root set to
+`<runtime-root>/runs/production-protected-results-candidate`.
 
 ```bash
-env UVEAL_WORKSPACE_ROOT=/Users/ncamarda/Workspaces/uveal-melanoma \
+env UVEAL_WORKSPACE_ROOT=<workspace-root> \
   Rscript scripts/tools/compare_important_results.R \
-  --base-runtime /Users/ncamarda/Workspaces/uveal-melanoma/runtime/runs/objective4-aao-validation-remediation-base \
-  --candidate-runtime /Users/ncamarda/Workspaces/uveal-melanoma/runtime/runs/objective4-aao-validation-remediation-candidate \
-  --contract docs/maintenance/important_results_contract.yaml \
-  --report /Users/ncamarda/Workspaces/uveal-melanoma/runtime/runs/objective4-aao-validation-remediation-candidate/protected-comparison.json
+  --base-runtime <runtime-root>/runs/production-protected-results-base/Analysis \
+  --candidate-runtime <runtime-root>/runs/production-protected-results-candidate/Analysis \
+  --contract docs/maintenance/production_results_comparison_contract.yaml \
+  --report <runtime-root>/runs/production-protected-results-candidate/production-comparison.json
 ```
 
 ```bash
-env UVEAL_WORKSPACE_ROOT=/Users/ncamarda/Workspaces/uveal-melanoma \
+  env UVEAL_WORKSPACE_ROOT=<workspace-root> \
   Rscript scripts/tools/evaluate_objective4_aao_gate.R \
   --contract docs/maintenance/objective4_aao_accepted_abstract_contract.yaml \
-  --candidate-workbook /Users/ncamarda/Workspaces/uveal-melanoma/runtime/runs/objective4-aao-validation-remediation-candidate/Analysis/uveal_full/04_GEP_Validation/d_exploratory_no_gep/full_cohort_exploratory_no_gep_report.xlsx \
-  --report /Users/ncamarda/Workspaces/uveal-melanoma/runtime/runs/objective4-aao-validation-remediation-candidate/objective4-aao-gate.json
+  --candidate-workbook <runtime-root>/runs/production-protected-results-candidate/Analysis/uveal_full/04_GEP_Validation/d_exploratory_no_gep/full_cohort_exploratory_no_gep_report.xlsx \
+  --report <runtime-root>/runs/production-protected-results-candidate/objective4-aao-gate.json
 ```
 
-The final two commands returned 1 by contract: the comparator failed for
-missing synthetic-contract artifacts, and the AAO gate classified the
-candidate as `review`.
+The comparator command returned 0. The AAO gate returned 1 because its
+presentation status was `review`, as required by the accepted-abstract
+contract.
