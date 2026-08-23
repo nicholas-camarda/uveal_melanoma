@@ -139,9 +139,10 @@ Base and candidate comparisons use clean isolated runtimes and run every
 objective required by the production contract. This AAO remediation contract
 requires Objectives 0–4; a future contract may name a narrower or broader
 scope. A partial run cannot satisfy a contract that requires its missing
-objective. Each runtime must contain a completed log for the required scope,
-run manifest, Git SHA, paired raw-workbook and `renv.lock` fingerprints,
-analytic-RDS fingerprints, seed contract, and output inventory.
+objective. The validation ledger records the completed log for the required
+scope, Git SHA, paired raw-workbook and `renv.lock` fingerprints, analytic-RDS
+fingerprints, seed contract, and output inventory. The comparator itself owns
+artifact semantics; it does not duplicate the run-provenance system.
 
 The current protected base SHA and current raw-workbook fingerprint are recorded
 in the validation ledger for this run, not frozen as permanent contract values.
@@ -170,16 +171,13 @@ changed Objective 4 claim is scientifically acceptable.
 
 The existing comparator fails closed for:
 
-- incomplete or warning-only runs without a validated completed full-run log;
-- raw-workbook or lockfile mismatch between paired runs;
 - a source path outside the declared runtime root;
 - missing declared artifacts;
 - malformed JSON, text, or workbook files;
 - workbook sheet, dimension, formula, value, or displayed-format changes;
 - unsupported comparison types;
 - `must_equal` differences;
-- `must_change` equality; or
-- any report path that could expose private contents.
+- `must_change` equality.
 
 Warnings and skipped secondary analyses remain explicit protected artifacts
 when the contract declares them. The comparator does not convert a skip into a
@@ -197,7 +195,7 @@ Synthetic tests must cover:
 - missing declared artifacts and malformed files;
 - typed missingness and displayed-string preservation;
 - workbook sheet order, dimensions, formulas, values, and formats;
-- incomplete run logs and mismatched raw/lock fingerprints;
+- paired-run provenance records with mismatched raw/lock fingerprints;
 - PHI-free comparison reports;
 - preservation of current `publish_outputs.R` artifact allowlisting; and
 - manifest inclusion so CI cannot omit the new tests.
