@@ -314,15 +314,23 @@ build_binary_rate_note <- function(data, outcome_var, suffix = NULL) {
 #' Safely summarize numeric timing values
 #'
 #' @param values Numeric vector.
-#' @return Named numeric vector with mean/median/min/max, using NA when no values exist.
+#' @return Named numeric vector with mean/median/quartiles/range, using NA when no values exist.
 safe_numeric_range_summary <- function(values) {
     values <- values[!is.na(values)]
     if (length(values) == 0) {
-        return(c(mean = NA_real_, median = NA_real_, min = NA_real_, max = NA_real_))
+        return(c(
+            mean = NA_real_, median = NA_real_, q1 = NA_real_, q3 = NA_real_,
+            iqr = NA_real_, min = NA_real_, max = NA_real_
+        ))
     }
+    q1 <- stats::quantile(values, probs = 0.25, names = FALSE, type = 2)
+    q3 <- stats::quantile(values, probs = 0.75, names = FALSE, type = 2)
     c(
         mean = mean(values),
         median = stats::median(values),
+        q1 = q1,
+        q3 = q3,
+        iqr = q3 - q1,
         min = min(values),
         max = max(values)
     )
@@ -413,6 +421,9 @@ summarize_vision_followup_by_group <- function(data, value_var = "last_vision_fo
             n_nonmissing = sum(!is.na(.data[[value_var]])),
             mean_months = safe_numeric_range_summary(.data[[value_var]])[["mean"]],
             median_months = safe_numeric_range_summary(.data[[value_var]])[["median"]],
+            q1_months = safe_numeric_range_summary(.data[[value_var]])[["q1"]],
+            q3_months = safe_numeric_range_summary(.data[[value_var]])[["q3"]],
+            iqr_months = safe_numeric_range_summary(.data[[value_var]])[["iqr"]],
             min_months = safe_numeric_range_summary(.data[[value_var]])[["min"]],
             max_months = safe_numeric_range_summary(.data[[value_var]])[["max"]],
             .groups = "drop"

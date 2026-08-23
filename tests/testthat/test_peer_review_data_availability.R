@@ -45,6 +45,26 @@ test_that("treatment-arm follow-up summary uses treatment-anchored survival time
     expect_false("follow_up_months" %in% summary$variable)
 })
 
+test_that("treatment-arm follow-up summary exports quartile endpoints and IQR", {
+    data <- tibble::tibble(
+        treatment_group = factor(
+            rep(c("PBT", "GKSRS"), each = 4),
+            levels = c("PBT", "GKSRS")
+        ),
+        tt_death_months = c(1, 2, 3, 4, 10, 20, 30, 40),
+        treatment_date = as.Date("2020-01-01"),
+        last_followup = as.Date("2021-01-01")
+    )
+
+    summary <- summarize_followup_by_treatment_arm(data) %>%
+        dplyr::filter(.data$variable == "tt_death_months")
+
+    expect_true(all(c("q1", "q3", "iqr") %in% names(summary)))
+    expect_equal(summary$q1, c(1.5, 15))
+    expect_equal(summary$q3, c(3.5, 35))
+    expect_equal(summary$iqr, c(2, 20))
+})
+
 test_that("peer-review follow-up audit separates explicit and proxy latest-VA timing", {
     data <- create_test_dataset() %>%
         dplyr::mutate(

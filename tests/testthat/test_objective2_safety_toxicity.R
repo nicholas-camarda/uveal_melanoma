@@ -2,6 +2,26 @@ build_objective2_output_dirs <- function(test_output_dir) {
     build_subdivided_output_dirs(test_output_dir, "^obj2_")
 }
 
+test_that("visual-acuity timing summary exports quartile endpoints and IQR", {
+    data <- tibble::tibble(
+        treatment_group = factor(
+            rep(c("PBT", "GKSRS"), each = 4),
+            levels = c("PBT", "GKSRS")
+        ),
+        last_vision_followup_months_explicit = c(1, 2, 3, 4, 10, 20, 30, 40)
+    )
+
+    summary <- summarize_vision_followup_by_group(
+        data,
+        "last_vision_followup_months_explicit"
+    )
+
+    expect_true(all(c("q1_months", "q3_months", "iqr_months") %in% names(summary)))
+    expect_equal(summary$q1_months, c(1.5, 15))
+    expect_equal(summary$q3_months, c(3.5, 35))
+    expect_equal(summary$iqr_months, c(2, 20))
+})
+
 test_that("Snellen conversion rounds to the nearest line away from zero", {
     expect_equal(
         compute_line_change_lines(c(-0.2, -0.3, 0.2, -0.25, 0.25)),
@@ -239,8 +259,12 @@ test_that("visual-acuity minimum-follow-up sensitivity reruns treatment-effect m
     timing_sources <- readxl::read_xlsx(sensitivity_path, sheet = "timing_source_counts")
     latest_va_model <- readxl::read_xlsx(sensitivity_path, sheet = "latest_va_reviewer_model")
     predictor_availability <- readxl::read_xlsx(sensitivity_path, sheet = "reviewer_predictor_availability")
-    expect_true(all(c("mean_months", "median_months") %in% names(explicit_followup)))
-    expect_true(all(c("mean_months", "median_months") %in% names(proxy_followup)))
+    expect_true(all(c(
+        "mean_months", "median_months", "q1_months", "q3_months", "iqr_months"
+    ) %in% names(explicit_followup)))
+    expect_true(all(c(
+        "mean_months", "median_months", "q1_months", "q3_months", "iqr_months"
+    ) %in% names(proxy_followup)))
     expect_true("last_height_date_comparison" %in% timing_sources$timing_definition)
     expect_equal(latest_va_model$model_status, "completed")
     expect_match(latest_va_model$model, "^last_vision ~ treatment_group")

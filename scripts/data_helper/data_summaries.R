@@ -57,6 +57,15 @@ calculate_treatment_duration_metrics <- function(data) {
             n_valid_followup = sum(!is.na(total_followup_days) & total_followup_days >= 0),
             mean_followup_years = mean(total_years[!is.na(total_years) & total_years >= 0], na.rm = TRUE),
             median_followup_years = median(total_years[!is.na(total_years) & total_years >= 0], na.rm = TRUE),
+            q1_followup_years = stats::quantile(
+                total_years[!is.na(total_years) & total_years >= 0],
+                probs = 0.25, names = FALSE, type = 2
+            ),
+            q3_followup_years = stats::quantile(
+                total_years[!is.na(total_years) & total_years >= 0],
+                probs = 0.75, names = FALSE, type = 2
+            ),
+            iqr_followup_years = .data$q3_followup_years - .data$q1_followup_years,
             max_followup_years = max(total_years[!is.na(total_years) & total_years >= 0], na.rm = TRUE),
             .groups = "drop"
         )
@@ -307,9 +316,19 @@ create_summary_tables <- function(data_list, output_dirs = NULL) {
                     n_valid_followup = "Valid follow-up N",
                     mean_followup_years = "Mean follow-up (years)",
                     median_followup_years = "Median follow-up (years)",
+                    q1_followup_years = "Q1 follow-up (years)",
+                    q3_followup_years = "Q3 follow-up (years)",
+                    iqr_followup_years = "IQR follow-up (years)",
                     max_followup_years = "Max follow-up (years)"
                 ) %>%
-                fmt_number(columns = c(mean_followup_years, median_followup_years, max_followup_years), decimals = 1)
+                fmt_number(
+                    columns = c(
+                        mean_followup_years, median_followup_years,
+                        q1_followup_years, q3_followup_years,
+                        iqr_followup_years, max_followup_years
+                    ),
+                    decimals = 1
+                )
 
             save_gt_html(duration_tbl, filename = file.path(treatment_duration_dir, paste0(prefix, "treatment_duration.html")))
             save_gt_html(summary_duration_tbl, filename = file.path(treatment_duration_dir, paste0(prefix, "treatment_duration_summary.html")))

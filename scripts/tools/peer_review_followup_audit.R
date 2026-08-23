@@ -179,8 +179,7 @@ summarize_numeric_by_treatment_group <- function(data, value_var, group_var = "t
             iqr = .data$q3 - .data$q1,
             min = dplyr::if_else(is.infinite(.data$min), NA_real_, .data$min),
             max = dplyr::if_else(is.infinite(.data$max), NA_real_, .data$max)
-        ) %>%
-        dplyr::select(-"q1", -"q3")
+        )
 }
 
 #' Summarize treatment-anchored and latest-VA follow-up by treatment arm

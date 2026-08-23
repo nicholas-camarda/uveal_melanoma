@@ -8,6 +8,7 @@ test_event_date_reconciliation_audit.R
 test_excel_output_formatting.R
 test_exploratory_no_gep_followup_context.R
 test_factor_level_audit.R
+test_followup_iqr_outputs.R
 test_forest_plot_labels.R
 test_function_documentation_contract.R
 test_generated_study_docs.R
