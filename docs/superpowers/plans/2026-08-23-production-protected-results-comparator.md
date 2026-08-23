@@ -26,12 +26,11 @@
 - Create: `tests/testthat/test_production_results_comparison.R`
 - Modify: `tests/testthat/required-test-files.txt`
 
-- [ ] Write RED tests for production contract schema, safe paths, allowed existing artifact paths, expectation values, and no hard-coded counts.
-- [ ] Add synthetic base/candidate runtime fixtures using the existing comparator artifact types.
-- [ ] Add tests for `must_equal`, `must_change`, `may_change`, missing artifacts, malformed artifacts, and unlisted auxiliary files.
-- [ ] Verify RED with `Rscript scripts/tools/run_testthat.R tests/testthat --filter production_results_comparison`.
-- [ ] Add a minimal contract selecting existing full-cohort Objective 0, Objective 1, Objective 2, Objective 3, and Objective 4 reader artifacts; do not add a new source registry.
-- [ ] Run the focused suite and commit `Add production protected-results contract tests`.
+- [x] Add contract tests for schema, safe paths, allowed existing artifact paths, expectation values, and no hard-coded counts.
+- [x] Add synthetic base/candidate fixtures using the existing comparator artifact types.
+- [x] Add tests for `must_equal`, `must_change`, `may_change`, missing artifacts, malformed artifacts, and unlisted auxiliary files.
+- [x] Add a minimal contract selecting existing full-cohort Objective 0, Objective 1, Objective 2, Objective 3, and Objective 4 reader artifacts; do not add a new source registry.
+- [x] Run the focused suite and commit the production contract tests.
 
 ### Task 2: Minimal comparator expectation extension
 
@@ -39,11 +38,11 @@
 - Modify: `scripts/tools/compare_important_results.R`
 - Modify: `tests/testthat/test_production_results_comparison.R`
 
-- [ ] Add RED assertions that existing synthetic contracts without `expectation` retain `must_equal` behavior.
-- [ ] Implement one shared expectation evaluator around the current `compare_one()` result; do not duplicate JSON/text/cohort/workbook comparison code.
-- [ ] Add `expectation`, objective, and domain to production report entries while preserving the existing sanitized report shape for synthetic contracts.
-- [ ] Return nonzero for required missing artifacts, `must_equal` differences, and `must_change` matches; `may_change` alone does not fail.
-- [ ] Run synthetic and production-focused suites, lint touched R files, and commit `Add expected-change protected comparison semantics`.
+- [x] Preserve the existing default behavior for synthetic contracts without `expectation`.
+- [x] Implement one shared expectation evaluator around the current `compare_one()` result; do not duplicate JSON/text/cohort/workbook comparison code.
+- [x] Add `expectation`, objective, and domain to production report entries while preserving the existing sanitized report shape for synthetic contracts.
+- [x] Return nonzero for required missing artifacts, `must_equal` differences, and `must_change` matches; `may_change` alone does not fail.
+- [x] Run synthetic and production-focused suites and lint touched R files.
 
 ### Task 3: Real paired runtime comparison
 
@@ -52,12 +51,12 @@
 - Generated only: `runtime/runs/production-protected-results-base/`
 - Generated only: `runtime/runs/production-protected-results-candidate/`
 
-- [ ] Run complete Objectives 0–4 in clean isolated base and candidate roots with identical raw and lock fingerprints.
-- [ ] Confirm every contract path is produced by the existing publish allowlist; do not copy or reshape files.
-- [ ] Run `compare_important_results.R` with the production contract and record which declared artifacts match, change as expected, or fail.
-- [ ] Run the AAO gate separately against the candidate workbook; comparator status does not determine scientific presentation clearance.
-- [ ] Record only aggregate statuses and hashes of non-sensitive reports in the validation document; keep private runtime files out of Git.
-- [ ] Run `Rscript scripts/tools/run_portable_suite.R` at the exact comparator head and commit the PHI-free validation record.
+- [x] Run complete Objectives 0–4 in clean isolated base and candidate roots with identical raw and lock fingerprints.
+- [x] Confirm every contract path is produced by the existing publish allowlist; do not copy or reshape files.
+- [x] Run `compare_important_results.R` with the production contract and record which declared artifacts match, change as expected, or fail.
+- [x] Run the AAO gate separately against the candidate workbook; comparator status does not determine scientific presentation clearance.
+- [x] Record only aggregate statuses and hashes of non-sensitive reports in the validation document; keep private runtime files out of Git.
+- [x] Run `Rscript scripts/tools/run_portable_suite.R` at the exact comparator head and commit the PHI-free validation record.
 
 ### Task 4: AAO handoff
 
