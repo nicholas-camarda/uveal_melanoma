@@ -1149,7 +1149,7 @@ Three exploratory models are fit:
 
 The surrogate remains a ridge-penalized logistic model fit with `glmnet::cv.glmnet(..., family = "binomial", alpha = 0)`.
 
-For the direct 5-year MFS and MSS models, the preferred path is now IPCW-weighted horizon modeling so the binary horizon target remains aligned with censoring-aware estimation. A raw binary `cv.glmnet` path is still retained only as a fallback/backtest when the preferred IPCW path is not supportable.
+For the direct 5-year MFS and MSS models, the pipeline uses IPCW-weighted horizon modeling so the binary horizon target remains aligned with censoring-aware estimation. If that declared method is not supportable, the workflow records an explicit unsupported status and does not substitute a raw-binary `cv.glmnet` estimate.
 
 #### Ridge regression: form and motivation
 

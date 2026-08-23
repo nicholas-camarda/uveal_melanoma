@@ -22,6 +22,6 @@ None.
 
 ## Impact
 
-- Affected derivation and workflow files: [data_derivation.R](/Users/ncamarda/Projects/uveal_melanoma/scripts/data_helper/data_derivation.R), [objective_3_repeat_radiation.R](/Users/ncamarda/Projects/uveal_melanoma/scripts/workflow/objective_3_repeat_radiation.R)
-- Affected analysis and reporting logic: [survival_outcomes.R](/Users/ncamarda/Projects/uveal_melanoma/scripts/analysis/survival_outcomes.R)
+- Affected derivation and workflow files: `scripts/data_helper/data_derivation.R`, `scripts/workflow/objective_3_repeat_radiation.R`
+- Affected analysis and reporting logic: `scripts/analysis/survival_outcomes.R`
 - Affected docs, runtime outputs, and Objective 3 tests

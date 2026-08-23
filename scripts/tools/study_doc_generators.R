@@ -228,18 +228,6 @@ render_figure_counts_table <- function(cohort_summary, cohort_label) {
     )
 }
 
-read_removed_patients_summary_for_doc <- function() {
-    summary_path <- file.path(OUTPUT_DIR, "uveal_full", "00_General", "removed_patients_summary.tsv")
-    if (!file.exists(summary_path)) {
-        return(tibble::tibble())
-    }
-
-    tryCatch(
-        readr::read_tsv(summary_path, show_col_types = FALSE),
-        error = function(e) tibble::tibble()
-    )
-}
-
 abbreviate_user_home_path <- function(path) {
     home <- path.expand("~")
     home_prefix <- paste0(home, .Platform$file.sep)
@@ -257,22 +245,6 @@ render_figure_counts_audit_markdown <- function(summary_data = NULL) {
     if (is.null(summary_data)) {
         summary_path <- file.path(PROCESSED_DATA_DIR, "cohort_summary_statistics.json")
         summary_data <- jsonlite::read_json(summary_path, simplifyVector = TRUE)
-    }
-
-    removed_patients <- read_removed_patients_summary_for_doc()
-    removed_lines <- if (nrow(removed_patients) > 0) {
-        apply(removed_patients, 1, function(row) {
-            sprintf(
-                "| %s | %s | %s | %s | %s |",
-                row[["id"]] %||% "",
-                row[["removal_reason"]] %||% "",
-                row[["removal_step"]] %||% "",
-                row[["consort_group"]] %||% "",
-                row[["treatment_group"]] %||% ""
-            )
-        })
-    } else {
-        "| No recorded removals available |  |  |  |  |"
     }
 
     c(
@@ -293,11 +265,7 @@ render_figure_counts_audit_markdown <- function(summary_data = NULL) {
         sprintf("- Stage IV exclusions: **%d**", summary_data$exclusions$by_step$stage_iv_exclusion %||% 0),
         sprintf("- Manual exclusions: **%d**", summary_data$exclusions$by_step$manual_exclusion %||% 0),
         "",
-        "### Removed patients",
-        "",
-        "| ID | Reason | Step | Consort group | Treatment |",
-        "|---:|---|---|---|---|",
-        removed_lines,
+        "Row-level exclusion details remain in the private runtime audit workbook and are not included in this public document.",
         "",
         "## Current cohort counts used for figure-facing summaries",
         "",

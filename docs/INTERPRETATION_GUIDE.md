@@ -647,7 +647,7 @@ If you only need the highest-yield no-GEP summary inside the root Objective 4 wo
 2. `No_GEP_Model_Comparison`
   - Use this next to compare the surrogate, full direct 5-year MFS/MSS models, and parsimonious direct sensitivity models side by side.
   - The `Use_Case` column distinguishes the descriptive surrogate from the clinically preferred direct-risk outputs.
-  - The direct MFS/MSS rows should now usually show IPCW horizon modeling as the primary method; raw binary fitting is a fallback rather than the headline result.
+  - The direct MFS/MSS rows should show IPCW horizon modeling as the declared method; if it is not supportable, the report should show an explicit unsupported status rather than a raw-binary substitute.
 3. `No_GEP_Risk_Ladder`
   - Use this before the pooled-bin sheet when you need to place `GEP Not Tested` and `GEP Failed/Indeterminate` relative to definitive `Class 1` and `Class 2`.
   - This is the safest place to support an “overall between Class 1 and Class 2, but internally heterogeneous” interpretation.

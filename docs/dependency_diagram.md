@@ -139,6 +139,7 @@ flowchart LR
 - `gep_evaluation_core_mss.R`
 - `gep_evaluation_orchestration.R`
 - `gep_excel_output.R`
+- `gep_exploratory_internal_validation.R`
 - `gep_exploratory_no_gep_report.R`
 - `gep_extrapolation_assumptions.R`
 - `gep_mfs_sensitivity_reporting.R`
