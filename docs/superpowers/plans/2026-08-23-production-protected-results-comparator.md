@@ -2,96 +2,65 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax.
 
-**Goal:** Add a production-only, growth-aware bundle builder and comparator contract so real base/candidate Objective 0–4 runs verify intended changes without freezing cohort size or exposing private data.
+**Goal:** Use the existing publish artifact registry and comparator to compare a small, declared set of real base/candidate Objective 0–4 outputs without exposing private data or freezing future cohort size.
 
-**Architecture:** Keep the current synthetic comparator contract intact. Add a separate production contract and one bundle-builder CLI that extracts only declared semantic artifacts beneath an isolated runtime. Extend the existing comparator with one comparison engine and explicit `must_equal`, `must_change`, and `may_change` expectations; reports remain aggregate and PHI-free.
+**Architecture:** Keep `publish_outputs.R` as the source of allowed reader-facing artifacts and keep `compare_important_results.R` as the only comparison engine. Add one production contract listing selected existing artifacts and extend the comparator with `must_equal`, `must_change`, and `may_change` expectations. Do not add a bundle builder, RDS projection layer, or second artifact registry.
 
-**Tech Stack:** R 4.4.3, yaml, jsonlite, readxl/openxlsx, testthat, existing comparator CLI, isolated runtime roots.
+**Tech Stack:** Existing R comparator, `yaml`, `jsonlite`, `readxl/openxlsx`, `publish_outputs.R`, testthat.
 
 **Spec:** `docs/superpowers/specs/2026-08-23-production-protected-results-comparator-design.md`
 
 ## Global constraints
 
-- Never place raw workbook contents, patient identifiers, or identifier-derived hashes in Git or sanitized reports.
-- Do not compare every runtime file; protect only contract-declared artifacts.
-- Do not hard-code current cohort size or event counts.
-- Allow candidate cohort growth through `candidate_superset`; fail on shared-row changes or removals.
-- Missing or ambiguous declared artifacts fail closed; no nearby-file or stale-runtime fallback.
-- Keep synthetic comparator behavior and tests passing.
-- Run complete Objectives 0–4 for the current production contract; do not treat a partial 0/4 run as complete.
+- Use only artifacts already admitted by `publish_outputs.R`’s allowlist.
+- Do not hard-code cohort size, event count, or row count.
+- Paired base/candidate runs must use the same current raw workbook and `renv.lock`.
+- Keep private runtime files local; reports contain only artifact IDs, statuses, and sanitized reasons.
+- Preserve all current synthetic comparator behavior and tests.
+- No new bundle builder, projection framework, fallback path, or duplicate registry.
 
-### Task 1: Production contract and synthetic fixtures
+### Task 1: Production contract and tests
 
 **Files:**
 - Create: `docs/maintenance/production_results_comparison_contract.yaml`
 - Create: `tests/testthat/test_production_results_comparison.R`
 - Modify: `tests/testthat/required-test-files.txt`
 
-**Interfaces:**
-- Contract entries declare `id`, `objective`, `domain`, `source`, `extraction`, `output`, `type`, `expectation`, and `required`.
-- Supported expectations are `must_equal`, `must_change`, and `may_change`.
-- `candidate_superset` is the only growth policy for row-bearing projections.
-
-- [ ] Write RED tests for contract schema, safe paths, candidate growth, removals, changed shared rows, missing source, and unsupported extraction.
-- [ ] Add synthetic runtime fixtures containing one JSON projection, one cohort projection, one text artifact, and one workbook projection.
-- [ ] Add exact tests that permit added candidate IDs but reject removed IDs and changed shared values.
+- [ ] Write RED tests for production contract schema, safe paths, allowed existing artifact paths, expectation values, and no hard-coded counts.
+- [ ] Add synthetic base/candidate runtime fixtures using the existing comparator artifact types.
+- [ ] Add tests for `must_equal`, `must_change`, `may_change`, missing artifacts, malformed artifacts, and unlisted auxiliary files.
 - [ ] Verify RED with `Rscript scripts/tools/run_testthat.R tests/testthat --filter production_results_comparison`.
-- [ ] Implement contract parsing and fixture helpers without embedding private values.
-- [ ] Run the focused suite and commit `Add production comparison contract tests`.
+- [ ] Add a minimal contract selecting existing full-cohort Objective 0, Objective 1, Objective 2, Objective 3, and Objective 4 reader artifacts; do not add a new source registry.
+- [ ] Run the focused suite and commit `Add production protected-results contract tests`.
 
-### Task 2: Production bundle builder
-
-**Files:**
-- Create: `scripts/tools/build_production_comparison_bundle.R`
-- Modify: `tests/testthat/test_production_results_comparison.R`
-
-**Interfaces:**
-- CLI: `Rscript scripts/tools/build_production_comparison_bundle.R --runtime-root ROOT --contract CONTRACT --output-root OUTPUT --report REPORT`.
-- Projection modes: `copy_json`, `copy_text`, `copy_workbook`, and `project_rds` with explicit column lists and stable ID.
-- Builder report contains only artifact IDs, extraction status, and sanitized reason codes.
-
-- [ ] Add RED tests for all projection modes, typed missingness, stable-ID sorting, duplicate IDs, missing declared columns, and output path traversal.
-- [ ] Implement strict contract validation and source resolution beneath the runtime root.
-- [ ] Implement `project_rds` with explicit columns, stable-ID sorting, required unique IDs, and candidate-growth-compatible output.
-- [ ] Implement deterministic copies for JSON, text, and workbooks; reject ambiguous or missing sources.
-- [ ] Add PHI-pattern tests to reports and verify unlisted auxiliary files are not copied.
-- [ ] Run focused tests, lint the new CLI, and commit `Add production comparison bundle builder`.
-
-### Task 3: Growth-aware comparator expectations
+### Task 2: Minimal comparator expectation extension
 
 **Files:**
 - Modify: `scripts/tools/compare_important_results.R`
-- Modify: `tests/testthat/test_codebase_review_contract.R`
 - Modify: `tests/testthat/test_production_results_comparison.R`
 
-**Interfaces:**
-- Existing contracts without `expectation` default to `must_equal`.
-- Production reports add objective, domain, expectation, and status fields while retaining sanitized output.
-- Exit status is nonzero for missing required artifacts, `must_equal` differences, or `must_change` matches; `may_change` never fails by itself.
+- [ ] Add RED assertions that existing synthetic contracts without `expectation` retain `must_equal` behavior.
+- [ ] Implement one shared expectation evaluator around the current `compare_one()` result; do not duplicate JSON/text/cohort/workbook comparison code.
+- [ ] Add `expectation`, objective, and domain to production report entries while preserving the existing sanitized report shape for synthetic contracts.
+- [ ] Return nonzero for required missing artifacts, `must_equal` differences, and `must_change` matches; `may_change` alone does not fail.
+- [ ] Run synthetic and production-focused suites, lint touched R files, and commit `Add expected-change protected comparison semantics`.
 
-- [ ] Add RED tests for `must_equal`, `must_change`, and `may_change`, including exact-threshold behavior and missing production artifacts.
-- [ ] Add RED tests for candidate-superset cohort comparison and unlisted auxiliary files.
-- [ ] Extend the single comparison engine with expectation validation; do not duplicate type-specific comparison implementations.
-- [ ] Preserve all synthetic comparator tests and sanitized-report rules.
-- [ ] Run both comparator suites, lint, and `git diff --check`; commit `Add growth-aware protected comparison expectations`.
-
-### Task 4: Separate comparator branch and actual-data verification
+### Task 3: Real paired runtime comparison
 
 **Files:**
 - Create/update: `docs/validation/production-protected-results-comparator.md`
 - Generated only: `runtime/runs/production-protected-results-base/`
 - Generated only: `runtime/runs/production-protected-results-candidate/`
 
-- [ ] Create a separate branch/worktree from the reviewed base and keep the comparator changes isolated from the AAO presentation PR.
-- [ ] Run complete Objective 0–4 base and candidate workflows with identical current raw and lock fingerprints.
-- [ ] Build both production bundles with the same contract and record only aggregate manifests locally.
-- [ ] Run the protected comparator and record which required artifacts match, change as expected, or fail.
-- [ ] Run the AAO gate separately against the candidate workbook; do not treat comparator status as scientific clearance.
-- [ ] Commit the PHI-free validation record and run the full portable suite at the exact head.
+- [ ] Run complete Objectives 0–4 in clean isolated base and candidate roots with identical raw and lock fingerprints.
+- [ ] Confirm every contract path is produced by the existing publish allowlist; do not copy or reshape files.
+- [ ] Run `compare_important_results.R` with the production contract and record which declared artifacts match, change as expected, or fail.
+- [ ] Run the AAO gate separately against the candidate workbook; comparator status does not determine scientific presentation clearance.
+- [ ] Record only aggregate statuses and hashes of non-sensitive reports in the validation document; keep private runtime files out of Git.
+- [ ] Run `Rscript scripts/tools/run_portable_suite.R` at the exact comparator head and commit the PHI-free validation record.
 
-### Task 5: Handoff to AAO materials
+### Task 4: AAO handoff
 
-- [ ] Keep the AAO branch’s scientific conclusion explicit: modest MFS discrimination, weak/uncertain MSS discrimination, no molecular relabeling, and descriptive sparse subgroup ordering only.
-- [ ] Refresh the PowerPoint and presenter guide only after written investigator clearance of the revised interpretation.
+- [ ] Keep the AAO interpretation endpoint-specific: modest MFS discrimination, weak/uncertain MSS discrimination, no molecular relabeling, and descriptive sparse subgroup ordering only.
+- [ ] Refresh PowerPoint and presenter guide only after written investigator clearance of the revised interpretation.
 - [ ] Keep the accepted abstract unchanged as the historical submission; label corrected presentation values as updated analysis where appropriate.
-

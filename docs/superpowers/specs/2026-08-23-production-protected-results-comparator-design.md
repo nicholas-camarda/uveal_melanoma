@@ -2,12 +2,13 @@
 
 ## Purpose
 
-The checked-in protected-results comparator currently exercises only synthetic
-fixtures. It has no production extraction path, so an Objective 0–4 runtime
-cannot satisfy its artifact contract. This design adds one production bundle
-builder and extends the existing comparator contract so a protected base and a
-candidate can be compared by scientific domain without placing private data in
-Git or treating expected Objective 4 changes as unrelated regressions.
+The checked-in protected-results comparator already provides the comparison
+engine and `publish_outputs.R` already defines the allowed reader-facing runtime
+artifact surface. The missing piece is a production contract that names a small
+set of those existing artifacts and distinguishes expected Objective 4 changes
+from unrelated regressions. This design adds that contract and a small
+expectation extension to the existing comparator; it does not add a second
+bundle or extraction framework.
 
 The immediate use case is the Objective 4 AAO remediation branch. The design is
 general enough for later protected analysis changes and cohort growth, but it
@@ -16,24 +17,19 @@ analysis output.
 
 ## Decisions
 
-### One production extraction path
+### Reuse the existing artifact surface
 
-Create `scripts/tools/build_production_comparison_bundle.R`. The CLI consumes:
+Do not add a production bundle builder. Add
+`docs/maintenance/production_results_comparison_contract.yaml` whose paths are
+relative to an isolated runtime and are selected from the existing
+`publish_outputs.R` allowlist. The contract names only a small set of stable,
+reader-facing workbooks/text/JSON artifacts for Objectives 0–4. The existing
+comparator reads those files directly from each paired runtime.
 
-- `--runtime-root`: a completed isolated Objective 0–4 runtime;
-- `--contract`: the production extraction/comparison contract;
-- `--output-root`: a private runtime bundle root; and
-- `--report`: a PHI-free extraction report.
-
-The builder validates the entire contract and all source artifacts before it
-writes the bundle. It then creates only the relative artifacts declared by the
-contract. Missing, duplicate, ambiguous, malformed, or unsupported source
-artifacts stop the build. It never substitutes a nearby file, an older runtime,
-or a broader result.
-
-The bundle remains beneath `runtime/runs/<task>/`. Patient identifiers may be
-present in private cohort-comparison artifacts, but neither bundle contents nor
-identifier-derived hashes enter Git or the sanitized reports.
+This reuses the current artifact registry, workbook semantic comparison, safe
+relative-path handling, sanitized reports, and runtime isolation. Patient data
+remain only in the private runtime files. No patient rows, identifiers, or
+identifier-derived hashes are copied to Git or reports.
 
 ### Separate synthetic and production contracts
 
@@ -44,7 +40,7 @@ analysis runs. The production contract is the single source of truth for:
 
 - objective and scientific-domain ownership;
 - exact source path beneath a completed runtime;
-- extraction mode and declared output path/type;
+- declared relative artifact path and comparison type;
 - comparison expectation; and
 - whether an entry is required for PR clearance.
 
@@ -59,36 +55,25 @@ Production entries use one of three expectations:
 The expectation is declared before the actual-data comparison. Candidate
 values never modify the contract.
 
-### Growth and scope policy
+### Data growth policy
 
-The contract protects declared semantics rather than freezing the current data
-shape:
+The contract does not hard-code cohort size, event counts, or row counts. Base
+and candidate are always run against the same current raw workbook, so future
+patients are included in both sides automatically. The paired input fingerprint
+must match; the comparator then protects the resulting declared artifacts
+without a separate row-level projection or a second growth framework.
 
-- no entry hard-codes today’s cohort size, event count, or number of rows;
-- cohort projections use `candidate_superset`: every base stable ID must remain
-  present with the same protected values, while newly added candidate IDs are
-  permitted and reported as `growth_added`; removals or changed shared rows
-  fail;
-- row order is canonicalized by the stable ID before comparison;
-- declared protected columns must be present and comparable, while additional
-  non-protected columns are ignored by that projection and reported as
-  `untracked_columns` for intentional contract review;
-- new protected columns, artifact classes, or objective domains require a
-  small contract amendment and a regression test, not a code-path rewrite; and
-- only artifacts explicitly listed as protected are compared. Incidental logs,
-  timestamps, image bytes, caches, and unrelated new outputs are not pulled
-  into the comparator.
+New reader-facing artifact types are added only when they become important
+enough to protect, by a small contract entry and test. Incidental logs,
+timestamps, image bytes, caches, and unlisted auxiliary outputs remain outside
+the comparison by design.
 
-This gives future data growth a stable path without making the protection
-vacuous: shared-row semantics, removals, declared endpoint fields, and all
-required protected artifacts remain fail-closed.
-
-### Comparator schema evolution
+### Minimal comparator extension
 
 Extend `scripts/tools/compare_important_results.R` to support the production
 contract while preserving the current synthetic behavior through the same
 comparison engine. A comparison without an explicit expectation has the
-single default `must_equal`; there is no alternate fallback path.
+single default `must_equal`; there is no alternate comparison path.
 
 The sanitized report records only:
 
@@ -104,49 +89,34 @@ without exposing their contents.
 
 ## Production artifact boundary
 
-The builder creates a small semantic bundle rather than copying every runtime
+The contract selects a small semantic set rather than comparing every runtime
 file. Every protected claim is represented once at its closest deterministic
 source.
 
 ### Objective 0
 
-- `must_equal`: full/restricted/GKSRS cohort membership under the
-  `candidate_superset` growth policy;
-- `must_equal`: imported source fields and non-MFS derived fields needed by
-  Objectives 1–3;
-- `must_change`: incident post-treatment MFS eligibility/time/event projection;
-- `may_change`: Objective 0 validation summaries that describe the intended
-  endpoint-contract change.
-
-All row-bearing Objective 0 projections use the same growth policy. RDS
-projections sort by the stable study ID, require unique IDs, preserve
-column names and typed missingness, and write private ordered cohort JSON. The
-contract enumerates every protected column; regex or "all except" selection is
-not allowed, but unprotected source columns may be added without changing this
-projection.
+`must_change` covers the existing full-cohort validation workbook because the
+baseline-MFS eligibility and source reconciliation are intentionally corrected.
+The contract does not compare raw RDS rows or create a second cohort projection.
 
 ### Objective 1
 
-`must_equal` entries cover the key efficacy event-support, survival-rate,
-effect-summary, and tumor-height result workbooks for the cohorts in which they
-are produced. The contract does not require every generated Objective 1 file;
-it protects a deliberately small set of stable, reader-relevant outputs.
+`must_equal` entries cover a deliberately small set of existing efficacy
+event-support, survival-rate, effect-summary, and tumor-height workbooks.
 Objective 1 continues to use the preserved raw metastasis and PFS facts, so a
 declared Objective 1 difference is an unrelated regression.
 
 ### Objective 2
 
-`must_equal` entries cover one stable primary summary/effect artifact for each
-declared safety endpoint: visual acuity, retinopathy, neovascular glaucoma, and
-serous retinal detachment. These outputs are outside the Objective 4
-remediation scope; auxiliary diagnostics are not copied merely to increase
-coverage.
+`must_equal` entries cover one existing primary summary/effect artifact for the
+declared safety endpoints. These outputs are outside the Objective 4 remediation
+scope; auxiliary diagnostics are not added merely to increase coverage.
 
 ### Objective 3
 
-`must_equal` entries cover the PFS-2 cohort-support, treatment-summary, model,
-and explicit skip artifacts when those artifacts are declared for the run. PFS
-behavior was deliberately preserved by the baseline-metastasis correction.
+`must_equal` entries cover the existing PFS-2 cohort-support, treatment-summary,
+model, and explicit skip artifacts selected by the current publish allowlist.
+PFS behavior was deliberately preserved by the baseline-metastasis correction.
 
 ### Objective 4
 
@@ -184,13 +154,12 @@ input fingerprint and the declared growth policy passes.
    runtime.
 2. Run the complete candidate pipeline in the remediation worktree and a
    separate isolated runtime.
-3. Build a production comparison bundle from each completed runtime using the
-   same immutable production contract.
-4. Compare the two bundles with the existing protected comparator.
-5. Require every `must_equal` entry to match and every `must_change` entry to
+3. Compare the declared artifacts in the two completed runtimes with the
+   existing protected comparator and the same immutable production contract.
+4. Require every `must_equal` entry to match and every `must_change` entry to
    differ; list `may_change` outcomes for review.
-6. Run the separate AAO accepted-abstract gate against the candidate workbook.
-7. Record only aggregate results and sanitized reason codes in the tracked
+5. Run the separate AAO accepted-abstract gate against the candidate workbook.
+6. Record only aggregate results and sanitized reason codes in the tracked
    validation ledger.
 
 The AAO gate remains the authority for presentation review. The production
@@ -199,22 +168,21 @@ changed Objective 4 claim is scientifically acceptable.
 
 ## Failure behavior
 
-The builder and comparator fail closed for:
+The existing comparator fails closed for:
 
 - incomplete or warning-only runs without a validated completed full-run log;
 - raw-workbook or lockfile mismatch between paired runs;
 - a source path outside the declared runtime root;
-- missing artifacts or duplicate/ambiguous matches for a declared source;
-- missing or duplicated stable IDs;
-- missing declared columns, sheets, formulas, or displayed labels in a
-  protected projection;
-- unsupported extraction/comparison types;
+- missing declared artifacts;
+- malformed JSON, text, or workbook files;
+- workbook sheet, dimension, formula, value, or displayed-format changes;
+- unsupported comparison types;
 - `must_equal` differences;
 - `must_change` equality; or
 - any report path that could expose private contents.
 
 Warnings and skipped secondary analyses remain explicit protected artifacts
-when the contract declares them. The builder does not convert a skip into a
+when the contract declares them. The comparator does not convert a skip into a
 success or silently omit an infeasible result. Unlisted auxiliary outputs are
 outside the comparison by design and are not treated as protected evidence.
 
@@ -223,35 +191,30 @@ outside the comparison by design and are not treated as protected evidence.
 Synthetic tests must cover:
 
 - deep contract validation and safe relative paths;
-- identical full bundles;
+- identical declared runtime artifacts;
 - one difference in each supported semantic artifact type;
 - `must_equal`, `must_change`, and `may_change` result/exit semantics;
-- missing, duplicate, unexpected, and ambiguous source artifacts;
-- stable-ID sorting and row-order invariance;
-- candidate growth additions and removal/change failures;
-- duplicate/missing study IDs and missing declared columns;
+- missing declared artifacts and malformed files;
 - typed missingness and displayed-string preservation;
 - workbook sheet order, dimensions, formulas, values, and formats;
 - incomplete run logs and mismatched raw/lock fingerprints;
-- PHI-free extraction and comparison reports;
-- manifest inclusion so CI cannot omit the new tests; and
-- a bounded-contract test proving that an unlisted auxiliary file does not
-  silently become protected.
+- PHI-free comparison reports;
+- preservation of current `publish_outputs.R` artifact allowlisting; and
+- manifest inclusion so CI cannot omit the new tests.
 
 Actual-data verification then runs the complete base and candidate pipelines,
-builds both bundles, runs the protected comparator, reruns the AAO gate, and
-updates `docs/validation/objective4-aao-validation-remediation.md` with exact
-commands, aggregate statuses, and artifact hashes.
+compares the declared runtime artifacts, reruns the AAO gate, and updates
+`docs/validation/objective4-aao-validation-remediation.md` with exact commands,
+aggregate statuses, and artifact hashes.
 
 ## Acceptance criteria
 
 The protected PR is comparator-cleared only when:
 
 - both complete actual-data runs use identical raw and lock fingerprints;
-- every required production artifact is extracted without fallback;
+- every required production artifact is present at its declared path;
 - all Objective 1–3 `must_equal` entries match;
-- all Objective 0 `must_equal` source/cohort/non-MFS entries match;
-- declared incident-MFS and corrected Objective 4 `must_change` entries differ;
+- the declared Objective 0 and Objective 4 `must_change` entries differ;
 - every other `may_change` result is listed for scientific review;
 - the sanitized report contains no patient data or identifier-derived hashes;
 - the AAO gate and manual scientific adjudication remain separately recorded;

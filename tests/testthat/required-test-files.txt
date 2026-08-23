@@ -36,6 +36,7 @@ test_peer_review_artifact_verification.R
 test_peer_review_data_availability.R
 test_peer_review_revision_contract.R
 test_precollapse_removed.R
+test_production_results_comparison.R
 test_propensity_score_sensitivity.R
 test_publish_provenance_contract.R
 test_renv_worktree_library.R

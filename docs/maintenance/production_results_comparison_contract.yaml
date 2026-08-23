@@ -1,0 +1,114 @@
+version: 1
+contract_kind: production
+runtime_root_subdir: uveal_full
+publish_root_kind: cohort
+numeric_tolerance:
+  absolute: 1.0e-12
+  relative: 1.0e-10
+comparisons:
+  - id: objective0-validation-workbook
+    objective: objective0
+    domain: source-reconciliation
+    expectation: must_change
+    type: workbook
+    path: uveal_full/00_General/full_cohort_validation_bundle.xlsx
+  - id: objective0-validation-summary
+    objective: objective0
+    domain: source-reconciliation
+    expectation: may_change
+    type: text
+    path: uveal_full/00_General/full_cohort_validation_summary.txt
+
+  - id: objective1-mfs-event-support
+    objective: objective1
+    domain: metastasis-free-survival
+    expectation: must_equal
+    type: workbook
+    path: uveal_full/01_Efficacy/b_metastatic_progression/01_event_support/full_cohort_mets_progression_event_support_summary.xlsx
+  - id: objective1-mfs-survival-rates
+    objective: objective1
+    domain: metastasis-free-survival
+    expectation: must_equal
+    type: workbook
+    path: uveal_full/01_Efficacy/b_metastatic_progression/05_summary_tables/full_cohort_metastasis_free_survival_probability_survival_rates.xlsx
+  - id: objective1-mfs-effect-summary
+    objective: objective1
+    domain: metastasis-free-survival
+    expectation: must_equal
+    type: workbook
+    path: uveal_full/01_Efficacy/b_metastatic_progression/03_cox_models/full_cohort_metastasis_free_survival_probability_effect_summary.xlsx
+
+  - id: objective2-vision-effect-summary
+    objective: objective2
+    domain: visual-acuity-change
+    expectation: must_equal
+    type: workbook
+    path: uveal_full/02_Safety/a_vision_changes/03_effect_summary/full_cohort_vision_effect_summary.xlsx
+  - id: objective2-retinopathy-effect-summary
+    objective: objective2
+    domain: retinopathy
+    expectation: must_equal
+    type: workbook
+    path: uveal_full/02_Safety/b_retinopathy/03_effect_summary/full_cohort_retinopathy_effect_summary.xlsx
+  - id: objective2-nvg-effect-summary
+    objective: objective2
+    domain: neovascular-glaucoma
+    expectation: must_equal
+    type: workbook
+    path: uveal_full/02_Safety/c_neovascular_glaucoma/03_effect_summary/full_cohort_neovascular_glaucoma_effect_summary.xlsx
+  - id: objective2-srd-effect-summary
+    objective: objective2
+    domain: serous-retinal-detachment
+    expectation: must_equal
+    type: workbook
+    path: uveal_full/02_Safety/d_serous_retinal_detachment/03_effect_summary/full_cohort_serous_retinal_detachment_effect_summary.xlsx
+
+  - id: objective3-pfs2-treatment-summary
+    objective: objective3
+    domain: pfs2
+    expectation: must_equal
+    type: workbook
+    path: uveal_full/03_Repeat_Radiation/a_pfs2/01_cohort_support/full_cohort_pfs2_treatment_summary.xlsx
+  - id: objective3-pfs2-survival-rates
+    objective: objective3
+    domain: pfs2
+    expectation: must_equal
+    type: workbook
+    path: uveal_full/03_Repeat_Radiation/a_pfs2/05_summary_tables/full_cohort_pfs_2_probability_freedom_from_2nd_recurrence_survival_rates.xlsx
+  - id: objective3-pfs2-rmst-skip
+    objective: objective3
+    domain: pfs2
+    expectation: must_equal
+    type: text
+    path: uveal_full/03_Repeat_Radiation/a_pfs2/04_rmst_analysis/full_cohort_pfs_2_probability_freedom_from_2nd_recurrence_rmst_summary_skipped.txt
+
+  - id: objective4-no-gep-validation
+    objective: objective4
+    domain: no-gep-prediction
+    expectation: must_change
+    type: workbook
+    path: uveal_full/04_GEP_Validation/d_exploratory_no_gep/full_cohort_exploratory_no_gep_report.xlsx
+  - id: objective4-mfs-sensitivity
+    objective: objective4
+    domain: metastasis-free-survival
+    expectation: must_change
+    type: workbook
+    path: uveal_full/04_GEP_Validation/unified_summary/full_cohort_mfs_sensitivity_summary.xlsx
+  - id: objective4-mfs-consolidated
+    objective: objective4
+    domain: metastasis-free-survival
+    expectation: may_change
+    type: workbook
+    path: uveal_full/04_GEP_Validation/a_metastasis_free_survival/05_summary_tables/full_cohort_MFS_consolidated_summary.xlsx
+  - id: objective4-mss-consolidated
+    objective: objective4
+    domain: melanoma-specific-survival
+    expectation: may_change
+    type: workbook
+    path: uveal_full/04_GEP_Validation/b_melanoma_specific_survival/03_summary_tables/full_cohort_MSS_consolidated_summary.xlsx
+  - id: objective4-gep-distribution
+    objective: objective4
+    domain: imported-gep-facts
+    expectation: must_equal
+    type: workbook
+    path: uveal_full/04_GEP_Validation/a_metastasis_free_survival/05_summary_tables/full_cohort_gep_validation_distribution.xlsx
