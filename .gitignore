@@ -9,6 +9,10 @@ Analysis/
 Analytic Dataset/
 docs/poster_mockups/
 
+# Keep maintainer-only planning and validation notes out of the public repository.
+docs/superpowers/
+docs/validation/
+
 # ignore unwanted R output files
 Rplots.pdf
 
@@ -22,6 +26,7 @@ scripts/old/*
 # Keep repository CI visible while ignoring editor-specific GitHub helpers.
 .github/*
 !.github/workflows/
+!.github/pull_request_template.md
 .github/workflows/*
 !.github/workflows/portable-tests.yml
 .cursor/

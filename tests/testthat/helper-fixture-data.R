@@ -95,6 +95,12 @@ create_test_dataset <- function() {
       mets_event == 1 ~ base_date + sample(30:180, 20, replace = TRUE),
       TRUE ~ as.Date(NA)
     ),
+    # Objective 4 fixtures use the same post-treatment MFS contract as the
+    # analytic dataset. All synthetic metastases occur after treatment.
+    mets_at_or_before_treatment = rep(FALSE, 20),
+    mets_free_at_baseline = rep(TRUE, 20),
+    mets_event_analysis = mets_event,
+    tt_mets_months_analysis = tt_mets_months,
 
     # Death variables needed by create_derived_variables
     dod = case_when(

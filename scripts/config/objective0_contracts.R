@@ -30,7 +30,8 @@ OBJECTIVE0_DERIVED_OUTPUT_MANIFEST <- c(
     "last_vision_followup_months_explicit", "last_vision_followup_months_proxy",
     "last_vision_followup_timing_source", "last_vision_followup_months",
     "exploratory_gep_group", "no_gep_group", "ciliary_involvement",
-    "optic_nerve_involvement"
+    "optic_nerve_involvement", "mets_at_or_before_treatment",
+    "mets_free_at_baseline", "mets_event_analysis"
 )
 
 # Compatibility aliases preserve existing callers while tests/docs use the
@@ -66,7 +67,10 @@ OBJECTIVE0_DOWNSTREAM_INPUT_CONTRACT <- tibble::tribble(
     "objective1", "tt_recurrence_months_analysis", "local recurrence analysis follow-up time", "nonnegative_numeric", "optional", "hard_error",
     "objective1", "mets_progression", "metastasis source endpoint", "yn_display", "complete", "hard_error",
     "objective1", "mets_event", "metastasis binary endpoint", "binary_01", "complete", "hard_error",
-    "objective1", "tt_mets_months", "metastasis follow-up time", "nonnegative_numeric", "optional", "hard_error",
+    "objective1", "mets_at_or_before_treatment", "baseline metastatic disease flag", "logical", "complete", "hard_error",
+    "objective1", "mets_free_at_baseline", "incident MFS baseline eligibility flag", "logical", "complete", "hard_error",
+    "objective1", "mets_event_analysis", "incident MFS event indicator", "binary_01", "optional", "hard_error",
+    "objective1", "tt_mets_months", "metastasis follow-up time", "numeric", "optional", "hard_error",
     "objective1", "tt_mets_months_analysis", "metastasis analysis follow-up time", "nonnegative_numeric", "optional", "hard_error",
     "objective1", "death_event", "overall survival binary endpoint", "binary_01", "complete", "hard_error",
     "objective1", "tt_death_months", "overall survival follow-up time", "nonnegative_numeric", "optional", "hard_error",
@@ -137,15 +141,15 @@ OBJECTIVE0_DOWNSTREAM_INPUT_CONTRACT <- tibble::tribble(
     "objective4", "expected_mss_5yr", "5-year expected MSS probability", "probability", "optional", "hard_error",
     "objective4", "expected_mss_7yr", "7-year expected MSS probability", "probability", "optional", "hard_error",
     "objective4", "expected_mss_10yr", "10-year expected MSS probability", "probability", "optional", "hard_error",
-    "objective4", "mfs_event_5yr", "5-year MFS event endpoint", "binary_01", "complete", "hard_error",
-    "objective4", "mfs_event_7yr", "7-year MFS event endpoint", "binary_01", "complete", "hard_error",
-    "objective4", "mfs_event_10yr", "10-year MFS event endpoint", "binary_01", "complete", "hard_error",
+    "objective4", "mfs_event_5yr", "5-year MFS event endpoint", "binary_01", "optional", "hard_error",
+    "objective4", "mfs_event_7yr", "7-year MFS event endpoint", "binary_01", "optional", "hard_error",
+    "objective4", "mfs_event_10yr", "10-year MFS event endpoint", "binary_01", "optional", "hard_error",
     "objective4", "mss_event_5yr", "5-year MSS event endpoint", "binary_01", "complete", "hard_error",
     "objective4", "mss_event_7yr", "7-year MSS event endpoint", "binary_01", "complete", "hard_error",
     "objective4", "mss_event_10yr", "10-year MSS event endpoint", "binary_01", "complete", "hard_error",
-    "objective4", "event_type_mfs_5yr", "5-year MFS competing-risk type", "event_type_012", "complete", "hard_error",
-    "objective4", "event_type_mfs_7yr", "7-year MFS competing-risk type", "event_type_012", "complete", "hard_error",
-    "objective4", "event_type_mfs_10yr", "10-year MFS competing-risk type", "event_type_012", "complete", "hard_error",
+    "objective4", "event_type_mfs_5yr", "5-year MFS competing-risk type", "event_type_012", "optional", "hard_error",
+    "objective4", "event_type_mfs_7yr", "7-year MFS competing-risk type", "event_type_012", "optional", "hard_error",
+    "objective4", "event_type_mfs_10yr", "10-year MFS competing-risk type", "event_type_012", "optional", "hard_error",
     "objective4", "event_type_mss_5yr", "5-year MSS competing-risk type", "event_type_012", "complete", "hard_error",
     "objective4", "event_type_mss_7yr", "7-year MSS competing-risk type", "event_type_012", "complete", "hard_error",
     "objective4", "event_type_mss_10yr", "10-year MSS competing-risk type", "event_type_012", "complete", "hard_error",

@@ -21,6 +21,105 @@ extract_survival_probabilities <- function(surv_fit, requested_times) {
     survival_probabilities
 }
 
+#' Summarize fixed-horizon out-of-fold performance by target population
+#'
+#' Uses one keyed OOF prediction table and its unchanged outer-training-fold
+#' IPCW weights to report the overall complete-predictor validation population
+#' and the prespecified no-GEP target population. The two operational no-GEP
+#' groups are counted descriptively; they are not promoted to separate AUC
+#' scopes.
+#'
+#' @param oof_predictions Row-level OOF predictions containing `stable_id`,
+#'   `repeat_id`, `prediction`, `horizon_event`, and `ipcw_weight`.
+#' @param group_var Column identifying exploratory GEP groups.
+#' @return One row per repeat and performance scope with support counts, method
+#'   identifiers, and IPCW-weighted AUC, Brier, and calibration results.
+summarize_scoped_ipcw_oof_performance <- function(
+    oof_predictions,
+    group_var = "exploratory_gep_group"
+) {
+    required <- c(
+        "stable_id", "repeat_id", "prediction", "horizon_event",
+        "ipcw_weight", group_var
+    )
+    if (!is.data.frame(oof_predictions) || any(!required %in% names(oof_predictions))) {
+        stop(
+            "OOF predictions must contain stable keys, repeat IDs, predictions, horizon outcomes, weights, and the declared group.",
+            call. = FALSE
+        )
+    }
+    if (anyNA(oof_predictions$stable_id) ||
+        anyDuplicated(oof_predictions[c("repeat_id", "stable_id")])) {
+        stop("OOF predictions must be uniquely keyed by repeat_id and stable_id.", call. = FALSE)
+    }
+    if (anyNA(oof_predictions$repeat_id) || anyNA(oof_predictions[[group_var]])) {
+        stop("OOF repeat IDs and performance-scope groups must be observed.", call. = FALSE)
+    }
+
+    no_gep_levels <- c("GEP Failed/Indeterminate", "GEP Not Tested")
+    repeat_values <- sort(unique(oof_predictions$repeat_id))
+    scopes <- list(
+        Overall = rep(TRUE, nrow(oof_predictions)),
+        `No GEP` = as.character(oof_predictions[[group_var]]) %in% no_gep_levels
+    )
+
+    purrr::imap_dfr(scopes, function(in_scope, scope_name) {
+        scope_data <- oof_predictions[in_scope, , drop = FALSE]
+        purrr::map_dfr(repeat_values, function(repeat_value) {
+            repeat_data <- scope_data[scope_data$repeat_id == repeat_value, , drop = FALSE]
+            auc <- calculate_ipcw_auc(
+                repeat_data$horizon_event,
+                repeat_data$prediction,
+                repeat_data$ipcw_weight
+            )
+            brier <- calculate_ipcw_brier(
+                repeat_data$horizon_event,
+                repeat_data$prediction,
+                repeat_data$ipcw_weight
+            )
+            calibration <- summarize_ipcw_calibration(
+                repeat_data$horizon_event,
+                pmin(pmax(repeat_data$prediction, 1e-6), 1 - 1e-6),
+                repeat_data$ipcw_weight
+            )
+            group_value <- as.character(repeat_data[[group_var]])
+            positive_weight <- repeat_data$ipcw_weight > 0
+
+            tibble::tibble(
+                repeat_id = as.integer(repeat_value),
+                performance_scope = scope_name,
+                scope_n = as.integer(length(unique(repeat_data$stable_id))),
+                positive_weight_n = as.integer(auc$n_positive_weight),
+                case_n = as.integer(sum(
+                    positive_weight & repeat_data$horizon_event == 1L,
+                    na.rm = TRUE
+                )),
+                control_n = as.integer(sum(
+                    positive_weight & repeat_data$horizon_event == 0L,
+                    na.rm = TRUE
+                )),
+                weighted_cases = as.numeric(auc$weighted_cases),
+                weighted_controls = as.numeric(auc$weighted_controls),
+                failed_indeterminate_n = as.integer(length(unique(
+                    repeat_data$stable_id[group_value == "GEP Failed/Indeterminate"]
+                ))),
+                not_tested_n = as.integer(length(unique(
+                    repeat_data$stable_id[group_value == "GEP Not Tested"]
+                ))),
+                auc_status = auc$status,
+                cv_auc = auc$auc,
+                brier_status = brier$status,
+                cv_brier = brier$brier,
+                calibration_status = calibration$status,
+                cv_calibration_intercept = calibration$intercept,
+                cv_calibration_slope = calibration$slope,
+                evaluation_method = "outer-training-fold IPCW weighted OOF AUC/Brier/calibration",
+                censoring_method = "outer-training-fold Kaplan-Meier IPCW"
+            )
+        })
+    })
+}
+
 #' Calculate IPCW weights at a fixed horizon
 #'
 #' Derive inverse-probability-of-censoring weights for horizon-specific

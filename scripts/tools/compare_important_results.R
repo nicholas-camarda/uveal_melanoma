@@ -2,6 +2,7 @@
 
 COMPARATOR_VERSION <- 1L
 SUPPORTED_TYPES <- c("json", "text", "cohort", "plot_metadata", "workbook")
+SUPPORTED_EXPECTATIONS <- c("must_equal", "must_change", "may_change")
 
 #' Parse the command-line options accepted by the protected-results comparator.
 #'
@@ -81,6 +82,19 @@ load_contract <- function(path) {
         stop("Contract version is unsupported", call. = FALSE)
     }
 
+    if (!is.null(contract$contract_kind) &&
+        (!is.character(contract$contract_kind) ||
+            length(contract$contract_kind) != 1L ||
+            !contract$contract_kind %in% c("synthetic", "production"))) {
+        stop("Contract kind is invalid", call. = FALSE)
+    }
+    if (identical(contract$contract_kind, "production") &&
+        (!is.character(contract$runtime_root_subdir) ||
+            length(contract$runtime_root_subdir) != 1L ||
+            !is_safe_relative_path(contract$runtime_root_subdir))) {
+        stop("Production runtime root subdirectory is invalid", call. = FALSE)
+    }
+
     tolerance <- contract$numeric_tolerance
     if (!is.list(tolerance) ||
         !is.numeric(tolerance$absolute) ||
@@ -105,7 +119,17 @@ load_contract <- function(path) {
             !is.character(item$id) || length(item$id) != 1L || !nzchar(item$id) ||
             !is.character(item$type) || length(item$type) != 1L ||
             !item$type %in% SUPPORTED_TYPES ||
-            !is_safe_relative_path(item$path)) {
+            !is_safe_relative_path(item$path) ||
+            (!is.null(item$expectation) &&
+                (!is.character(item$expectation) ||
+                    length(item$expectation) != 1L ||
+                    !item$expectation %in% SUPPORTED_EXPECTATIONS)) ||
+            (!is.null(item$objective) &&
+                (!is.character(item$objective) || length(item$objective) != 1L || !nzchar(item$objective))) ||
+            (!is.null(item$domain) &&
+                (!is.character(item$domain) || length(item$domain) != 1L || !nzchar(item$domain))) ||
+            (identical(contract$contract_kind, "production") &&
+                !startsWith(item$path, paste0(contract$runtime_root_subdir, "/")))) {
             stop("Contract comparison entry is invalid", call. = FALSE)
         }
         ids[[index]] <- item$id
@@ -630,21 +654,33 @@ compare_workbooks <- function(base_path, candidate_path, absolute, relative) {
 #' @param candidate_root Candidate runtime root.
 #' @param absolute Absolute numeric tolerance.
 #' @param relative Relative numeric tolerance.
-#' @return Named list containing only the item ID, type, status, and reason.
+#' @return Named list containing sanitized item metadata, status, and reason.
 #' @noRd
 compare_one <- function(item, base_root, candidate_root, absolute, relative) {
     base_path <- resolve_artifact(base_root, item$path)
     candidate_path <- resolve_artifact(candidate_root, item$path)
+    expectation <- if (is.null(item$expectation)) "must_equal" else item$expectation
+    has_metadata <- any(c("expectation", "objective", "domain") %in% names(item))
     result <- list(
         id = item$id,
         type = item$type,
         status = "fail",
         reason = "required artifact missing"
     )
+    if (isTRUE(has_metadata)) {
+        result$expectation <- expectation
+        if (!is.null(item$objective)) {
+            result$objective <- item$objective
+        }
+        if (!is.null(item$domain)) {
+            result$domain <- item$domain
+        }
+    }
     if (!file.exists(base_path) || !file.exists(candidate_path)) {
         return(result)
     }
 
+    comparison_failed <- FALSE
     matches <- tryCatch({
         switch(
             item$type,
@@ -671,19 +707,43 @@ compare_one <- function(item, base_root, candidate_root, absolute, relative) {
             workbook = compare_workbooks(base_path, candidate_path, absolute, relative),
             FALSE
         )
-    }, error = function(error) FALSE)
+    }, error = function(error) {
+        comparison_failed <<- TRUE
+        FALSE
+    })
 
-    if (isTRUE(matches)) {
-        result$status <- "pass"
-        result$reason <- "artifacts match"
-    } else if (identical(item$type, "cohort")) {
+    if (isTRUE(comparison_failed)) {
+        result$reason <- "artifact could not be compared"
+        return(result)
+    }
+
+    matches <- isTRUE(matches)
+    if (matches && identical(expectation, "must_change")) {
+        result$reason <- "expected artifact difference absent"
+    } else if (!matches && identical(item$type, "cohort")) {
         result$reason <- "ordered cohort membership differs"
-    } else if (identical(item$type, "text")) {
+    } else if (!matches && identical(item$type, "text")) {
         result$reason <- "displayed text differs"
-    } else if (identical(item$type, "workbook")) {
+    } else if (!matches && identical(item$type, "workbook")) {
         result$reason <- "workbook sheets, dimensions, formulas, or cells differ"
-    } else {
+    } else if (!matches) {
         result$reason <- "artifact values or metadata differ"
+    } else {
+        result$reason <- "artifacts match"
+    }
+
+    if (matches) {
+        result$status <- if (identical(expectation, "must_change")) "fail" else "pass"
+        if (identical(expectation, "may_change")) {
+            result$reason <- "artifacts match (permitted)"
+        }
+    } else {
+        result$status <- if (identical(expectation, "must_equal")) "fail" else "pass"
+        if (identical(expectation, "must_change")) {
+            result$reason <- "expected artifact difference observed"
+        } else if (identical(expectation, "may_change")) {
+            result$reason <- "artifact difference permitted"
+        }
     }
     result
 }
@@ -693,16 +753,21 @@ compare_one <- function(item, base_root, candidate_root, absolute, relative) {
 #' @param path Output JSON report path.
 #' @param status Overall `pass` or `fail` status.
 #' @param comparisons Per-artifact sanitized comparison records.
+#' @param contract_version Optional contract version to include in the report.
 #' @return Invisibly returns `NULL` after writing the report.
 #' @noRd
-write_report <- function(path, status, comparisons) {
+write_report <- function(path, status, comparisons, contract_version = NULL) {
     dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+    report <- list(
+        comparator_version = COMPARATOR_VERSION,
+        status = status,
+        comparisons = comparisons
+    )
+    if (!is.null(contract_version)) {
+        report$contract_version <- contract_version
+    }
     jsonlite::write_json(
-        list(
-            comparator_version = COMPARATOR_VERSION,
-            status = status,
-            comparisons = comparisons
-        ),
+        report,
         path,
         auto_unbox = TRUE,
         pretty = TRUE
@@ -718,7 +783,7 @@ run_comparison <- function(options) {
     contract <- load_contract(options$contract)
     comparisons <- lapply(contract$comparisons, compare_one, options$`base-runtime`, options$`candidate-runtime`, contract$numeric_tolerance$absolute, contract$numeric_tolerance$relative)
     passed <- all(vapply(comparisons, function(item) identical(item$status, "pass"), logical(1)))
-    write_report(options$report, if (passed) "pass" else "fail", comparisons)
+    write_report(options$report, if (passed) "pass" else "fail", comparisons, contract$version)
     if (passed) 0L else 1L
 }
 

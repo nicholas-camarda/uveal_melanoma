@@ -22,6 +22,6 @@ None.
 
 ## Impact
 
-- Affected workflow: [objective_1_primary_outcomes.R](/Users/ncamarda/Projects/uveal_melanoma/scripts/workflow/objective_1_primary_outcomes.R)
-- Affected analysis modules: [binary_outcomes.R](/Users/ncamarda/Projects/uveal_melanoma/scripts/analysis/binary_outcomes.R), [survival_outcomes.R](/Users/ncamarda/Projects/uveal_melanoma/scripts/analysis/survival_outcomes.R), [tumor_height_analysis.R](/Users/ncamarda/Projects/uveal_melanoma/scripts/analysis/tumor_height_analysis.R)
+- Affected workflow: `scripts/workflow/objective_1_primary_outcomes.R`
+- Affected analysis modules: `scripts/analysis/binary_outcomes.R`, `scripts/analysis/survival_outcomes.R`, `scripts/analysis/tumor_height_analysis.R`
 - Affected runtime outputs, subgroup formatting, and efficacy documentation

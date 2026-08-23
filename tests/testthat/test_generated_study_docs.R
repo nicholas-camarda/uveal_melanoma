@@ -43,6 +43,8 @@ test_that("figure counts audit generator renders current-state runtime summary l
     expect_match(doc_text, "current-state cohort and figure-count audit", fixed = TRUE)
     expect_match(doc_text, "Total exclusions: **4**", fixed = TRUE)
     expect_match(doc_text, "Stage IV exclusions: **3**", fixed = TRUE)
+    expect_match(doc_text, "Row-level exclusion details remain in the private runtime audit workbook", fixed = TRUE)
+    expect_no_match(doc_text, "| ID |", fixed = TRUE)
     expect_no_match(doc_text, "legacy figure")
     expect_no_match(doc_text, "5 replacements")
 })

@@ -21,6 +21,6 @@ None.
 
 ## Impact
 
-- Affected analysis module: [vision_safety_analysis.R](/Users/ncamarda/Projects/uveal_melanoma/scripts/analysis/vision_safety_analysis.R)
-- Affected validation/prep code and methods docs: [objective0_validation_engine.R](/Users/ncamarda/Projects/uveal_melanoma/scripts/utils/objective0_validation_engine.R), [data_derivation.R](/Users/ncamarda/Projects/uveal_melanoma/scripts/data_helper/data_derivation.R), [STATISTICAL_METHODS.md](/Users/ncamarda/Projects/uveal_melanoma/docs/STATISTICAL_METHODS.md)
+- Affected analysis module: `scripts/analysis/vision_safety_analysis.R`
+- Affected validation/prep code and methods docs: `scripts/utils/objective0_validation_engine.R`, `scripts/data_helper/data_derivation.R`, `docs/STATISTICAL_METHODS.md`
 - Affected Objective 2 runtime narratives, summaries, and tests

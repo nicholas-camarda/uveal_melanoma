@@ -15,14 +15,7 @@ This file is generated from canonical runtime artifacts and centralized config c
 - Stage IV exclusions: **3**
 - Manual exclusions: **1**
 
-### Removed patients
-
-| ID | Reason | Step | Consort group | Treatment |
-|---:|---|---|---|---|
-| 116 | Stage IV disease excluded per protocol | stage_iv_exclusion | gksrs_only | GKSRS |
-| 262 | Stage IV disease excluded per protocol | stage_iv_exclusion | eligible_both | PBT |
-| 271 | Excluded per SPECIFIC_PATIENTS_TO_EXCLUDE configuration | manual_exclusion | unclassified_cohort_fields | PBT |
-|   7 | Stage IV disease excluded per protocol | stage_iv_exclusion | eligible_both | GKSRS |
+Row-level exclusion details remain in the private runtime audit workbook and are not included in this public document.
 
 ## Current cohort counts used for figure-facing summaries
 

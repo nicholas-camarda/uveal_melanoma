@@ -223,6 +223,13 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
         data_type = "logical",
         units = "boolean"
     ),
+    mets_at_or_before_treatment = list(
+        description = "Flag for metastatic disease detected on or before treatment",
+        calculation = "mets_progression == 'Y' & !is.na(mets_progression_date) & mets_progression_date <= treatment_date",
+        purpose = "Defines baseline metastatic disease for incident metastasis-free survival",
+        data_type = "logical",
+        units = "boolean"
+    ),
     recurrence_before_treatment = list(
         description = "Flag for patients with recurrence before treatment",
         calculation = "tt_recurrence_months < 0",
@@ -240,9 +247,9 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
 
     # ===== ANALYSIS-READY TIME VARIABLES =====
     tt_mets_months_analysis = list(
-        description = "Time to metastasis for analysis (negative values preserved for Objective 0 hard-error validation)",
-        calculation = "tt_mets_months",
-        purpose = "Analysis-ready variable for post-treatment survival models after Objective 0 chronology validation passes",
+        description = "Incident-MFS metastasis time, missing for metastatic disease on or before treatment",
+        calculation = "if_else(mets_at_or_before_treatment, NA_real_, tt_mets_months)",
+        purpose = "Analysis-ready incident metastasis time after baseline-disease adjudication and chronology validation",
         data_type = "numeric",
         units = "months"
     ),
@@ -262,7 +269,7 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
     ),
     tt_pfs_months_analysis = list(
         description = "Progression-free survival for analysis (negative values preserved for Objective 0 hard-error validation)",
-        calculation = "pmin(tt_recurrence_months_analysis, tt_mets_months_analysis, tt_death_months_analysis, na.rm = FALSE)",
+        calculation = "pmin(tt_recurrence_months_analysis, tt_mets_months, tt_death_months_analysis, na.rm = FALSE)",
         purpose = "Analysis-ready variable for post-treatment survival models after Objective 0 chronology validation passes",
         data_type = "numeric",
         units = "months"
@@ -279,7 +286,14 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
     mets_event = list(
         description = "Binary indicator for metastatic progression (1 = occurred, 0 = censored)",
         calculation = "if_else(mets_progression == 'Y', 1, 0, missing = 0)",
-        purpose = "Event indicator for metastasis-free survival analysis",
+        purpose = "Raw metastatic progression indicator retained for audit",
+        data_type = "numeric",
+        units = "binary"
+    ),
+    mets_event_analysis = list(
+        description = "Incident-MFS event indicator, missing for metastatic disease on or before treatment",
+        calculation = "if_else(mets_at_or_before_treatment, NA_integer_, mets_event)",
+        purpose = "Event indicator for incident metastasis-free survival analysis",
         data_type = "numeric",
         units = "binary"
     ),
@@ -317,7 +331,7 @@ DERIVED_VARIABLE_DOCUMENTATION <- list(
     # ===== BASELINE STATUS VARIABLES =====
     mets_free_at_baseline = list(
         description = "Flag for patients without metastatic disease at baseline",
-        calculation = "!(mets_progression == 'Y' & mets_progression_date < treatment_date)",
+        calculation = "!mets_at_or_before_treatment",
         purpose = "Inclusion criteria for metastasis-free survival analysis",
         data_type = "logical",
         units = "boolean"
