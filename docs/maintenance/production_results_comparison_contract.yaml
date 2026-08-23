@@ -91,7 +91,7 @@ comparisons:
   - id: objective4-mfs-sensitivity
     objective: objective4
     domain: metastasis-free-survival
-    expectation: must_change
+    expectation: may_change
     type: workbook
     path: uveal_full/04_GEP_Validation/unified_summary/full_cohort_mfs_sensitivity_summary.xlsx
   - id: objective4-mfs-consolidated

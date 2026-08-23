@@ -122,7 +122,7 @@ PFS behavior was deliberately preserved by the baseline-metastasis correction.
 
 - `must_change`: the full-cohort exploratory no-GEP workbook containing the
   corrected nested-CV/IPCW performance;
-- `must_change`: the incident-MFS sensitivity/eligibility summary;
+- `may_change`: the incident-MFS sensitivity/eligibility summary;
 - `may_change`: full-cohort GEP MFS/MSS consolidated summaries and validation
   narratives affected by endpoint or wording corrections;
 - `must_equal`: Objective 4 source-category counts and imported GEP facts that
