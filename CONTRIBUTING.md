@@ -46,6 +46,12 @@ GitHub check is green for the current head SHA. If CI fails, retrieve the
 failed-job log, reproduce that exact stage locally, fix the root cause, rerun
 the complete portable gate, push, and watch the replacement check to green.
 
+When intentionally changing an objective's scientific behavior, review that
+objective's production-comparison entries and regression fixtures. Update them
+only when the intended design change justifies new expected results, document
+why in the pull request, and never regenerate expected results merely to make
+tests pass.
+
 ### Function documentation
 
 Every new or materially changed function must include a language-appropriate
