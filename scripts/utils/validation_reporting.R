@@ -106,6 +106,85 @@ severity_rank <- function(severity) {
     )
 }
 
+#' Return the remediation lines for a stale cached-data validation failure
+#'
+#' @param dataset_mode Objective 0 data-loading mode.
+#' @param check_ids Hard-error check identifiers.
+#' @return Character vector containing the remediation, or empty when it does
+#'   not apply.
+validation_rebuild_recommendation <- function(dataset_mode, check_ids) {
+    stale_cache_checks <- c(
+        "derived_variables_present",
+        "downstream_objective_inputs_present",
+        "baseline_metastasis_source_complete",
+        "objective4_gep_derivation_contract"
+    )
+
+    if (!isTRUE(length(dataset_mode) == 1L) ||
+        !isTRUE(as.character(dataset_mode[[1]]) == "reload_existing_processed") ||
+        !any(check_ids %in% stale_cache_checks)) {
+        return(character())
+    }
+
+    c(
+        "Next action: cached analytic datasets do not satisfy the current derivation contract.",
+        "Rebuild the cached analytic datasets from raw input with RECREATE_ANALYTIC_DATASETS <- TRUE, then rerun the pipeline."
+    )
+}
+
+#' Format the small, actionable failure summary used by run-level logging
+#'
+#' The detailed validation bundle remains the audit record.  This helper keeps
+#' the console/log output useful when Objective 0 blocks downstream analyses by
+#' reporting each distinct hard-error check and, for stale cached data, the
+#' one supported remediation.
+#'
+#' @param validation_result Structured validation result.
+#' @return Character vector of concise log lines.
+format_validation_failure_summary <- function(validation_result) {
+    findings <- validation_result$validation_findings %||% empty_validation_findings()
+    hard_errors <- findings %>%
+        dplyr::filter(.data$severity == "hard_error", .data$status == "fail") %>%
+        dplyr::distinct(.data$check_id, .data$message, .keep_all = TRUE)
+
+    if (nrow(hard_errors) == 0L) {
+        return(character())
+    }
+
+    lines <- c(
+        sprintf(
+            "Objective 0 blocked downstream analyses with %d distinct hard-error check(s):",
+            nrow(hard_errors)
+        ),
+        hard_errors %>%
+            dplyr::mutate(
+                affected_text = dplyr::if_else(
+                    !is.na(.data$affected_n) & .data$affected_n > 0L,
+                    sprintf(" (affected rows: %d)", .data$affected_n),
+                    ""
+                ),
+                line = sprintf(
+                    "  - %s: %s%s",
+                    .data$check_id,
+                    .data$message,
+                    .data$affected_text
+                )
+            ) %>%
+            dplyr::pull(.data$line)
+    )
+
+    metadata <- validation_result$metadata %||% list()
+    lines <- c(
+        lines,
+        validation_rebuild_recommendation(
+            dataset_mode = metadata$objective0_dataset_mode,
+            check_ids = hard_errors$check_id
+        )
+    )
+
+    lines
+}
+
 build_validation_result <- function(findings,
                                     detail_tables = NULL,
                                     validated_cohorts = character(),
@@ -129,7 +208,7 @@ build_validation_result <- function(findings,
         dplyr::pull(.data$check_id) %>%
         unique()
 
-    list(
+    result <- list(
         success = !has_hard_errors,
         has_hard_errors = has_hard_errors,
         validated_cohorts = unique(validated_cohorts),
@@ -142,6 +221,9 @@ build_validation_result <- function(findings,
         detail_tables = normalized_details,
         metadata = metadata
     )
+
+    result$failure_summary <- format_validation_failure_summary(result)
+    result
 }
 
 #' Append findings and detail tables to a structured validation result
@@ -443,6 +525,22 @@ render_validation_summary_text <- function(cohort_label,
                 dplyr::mutate(line = sprintf("  - %s: %s", .data$check_id, .data$message)) %>%
                 dplyr::pull(.data$line),
             ""
+        )
+
+        dataset_mode <- if (!is.null(provenance_table) && nrow(provenance_table) > 0) {
+            provenance_table %>%
+                dplyr::filter(.data$field == "objective0_dataset_mode") %>%
+                dplyr::pull(.data$value) %>%
+                dplyr::first()
+        } else {
+            NA_character_
+        }
+        summary_lines <- c(
+            summary_lines,
+            validation_rebuild_recommendation(
+                dataset_mode = dataset_mode,
+                check_ids = hard_errors$check_id
+            )
         )
     }
 

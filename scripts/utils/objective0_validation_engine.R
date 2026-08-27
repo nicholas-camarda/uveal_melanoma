@@ -2222,6 +2222,11 @@ validate_processing_pipeline <- function(data,
         logger::log_info("=== ALL DATA PROCESSING VALIDATIONS PASSED ===")
     } else {
         logger::log_error("=== DATA PROCESSING VALIDATION FAILED - SEE OBJECTIVE 0 ARTIFACTS ===")
+        failure_summary <- validation_result$failure_summary %||%
+            format_validation_failure_summary(validation_result)
+        if (length(failure_summary) > 0L) {
+            logger::log_error(paste(failure_summary, collapse = "\n"))
+        }
         if (isTRUE(stop_on_failure)) {
             stop("Data processing validation failed. Please inspect the Objective 0 validation bundle before proceeding.")
         }

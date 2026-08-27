@@ -251,6 +251,14 @@ RECREATE_ANALYTIC_DATASETS <- FALSE
 USE_LOGS <- TRUE
 ```
 
+The default reuses the processed cache. If Objective 0 reports that required
+derived fields are missing, rebuild that cache from the current raw workbook
+before rerunning downstream objectives:
+
+```sh
+Rscript -e "source('scripts/load_all.R'); RECREATE_ANALYTIC_DATASETS <- TRUE; main_execution()"
+```
+
 `INPUT_FILENAME` is maintained in the data-processing policy. If the shared spreadsheet has a different name, provide it at the configured raw-data location under that expected name, or make a deliberate local configuration change before recreating analytic datasets.
 
 Objective 4 grouping and display settings are also centralized there through `GEP_GROUPING_SPECS` and `GEP_OBJECTIVE4_GROUPING`.
