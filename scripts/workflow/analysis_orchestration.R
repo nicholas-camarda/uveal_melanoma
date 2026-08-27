@@ -591,6 +591,10 @@ main_execution <- function() {
     )
 
     if (!isTRUE(preflight_result$success)) {
+        failure_summary <- preflight_result$failure_summary %||% character()
+        if (length(failure_summary) > 0L) {
+            logger::log_error(paste(failure_summary, collapse = "\n"))
+        }
         fatal_issues <- append_issue(
             fatal_issues,
             sprintf(
@@ -611,7 +615,7 @@ main_execution <- function() {
         logger::log_error(">>> ANALYSES COMPLETED WITH ERRORS. Objective 0 preflight failed.")
         logger::log_info(formatted(sprintf(">>> Total execution time: %.1f minutes", as.numeric(difftime(Sys.time(), main_start_time, units = "mins")))))
         logger::log_info(formatted(sprintf(">>> Datasets analyzed: %d", 0)))
-        logger::log_info("Check the logs above for detailed validation failures.")
+        logger::log_info("The detailed Objective 0 summary and workbook are in each cohort's Analysis/00_General directory.")
         logger::log_info(sprintf(">>> COMPLETED %s (Duration: %.1f seconds)",
             "MAIN EXECUTION PHASE",
             as.numeric(difftime(Sys.time(), main_start_time, units = "secs"))

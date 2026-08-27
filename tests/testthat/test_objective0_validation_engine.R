@@ -153,6 +153,40 @@ test_that("structured validation result treats warnings as non-blocking", {
     expect_true(any(validation_result$validation_findings$severity == "warning"))
 })
 
+test_that("validation failure summary explains stale cached analytic data", {
+    stale_data <- make_objective0_validation_dataset() %>%
+        dplyr::select(-dplyr::any_of(c("mets_at_or_before_treatment", "mets_event_analysis")))
+
+    validation_result <- validate_processing_pipeline(
+        stale_data,
+        stop_on_failure = FALSE
+    )
+    validation_result$metadata$objective0_dataset_mode <- "reload_existing_processed"
+
+    summary_lines <- format_validation_failure_summary(validation_result)
+
+    expect_true(validation_result$has_hard_errors)
+    expect_true(any(grepl("Objective 0 blocked downstream analyses", summary_lines, fixed = TRUE)))
+    expect_true(any(grepl("derived_variables_present", summary_lines, fixed = TRUE)))
+    expect_true(any(grepl("downstream_objective_inputs_present", summary_lines, fixed = TRUE)))
+    expect_true(any(grepl("Rebuild the cached analytic datasets from raw input", summary_lines, fixed = TRUE)))
+
+    rendered_text <- render_validation_summary_text(
+        cohort_label = "single",
+        cohort_dataset_name = "single_dataset",
+        findings = validation_result$validation_findings,
+        summary_table = build_validation_summary_table(
+            validation_result$validation_findings,
+            "single_dataset"
+        ),
+        provenance_table = tibble::tibble(
+            field = "objective0_dataset_mode",
+            value = "reload_existing_processed"
+        )
+    )
+    expect_true(any(grepl("Rebuild the cached analytic datasets from raw input", rendered_text, fixed = TRUE)))
+})
+
 test_that("Objective 1 PFS invariant uses recurrence, metastasis, or death as first event", {
     pfs_contract_data <- make_objective0_validation_dataset()
     pfs_contract_data$recurrence1 <- c("Yes", "No", "No")

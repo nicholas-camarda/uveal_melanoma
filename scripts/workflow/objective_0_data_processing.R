@@ -208,6 +208,11 @@ run_objective_0 <- function() {
             success = isTRUE(validation_result$success),
             validated_cohorts = validation_result$validated_cohorts %||% character(),
             validation_errors = validation_result$validation_errors %||% character(),
+            warning_issues = validation_result$warning_issues %||% character(),
+            has_hard_errors = isTRUE(validation_result$has_hard_errors),
+            validation_findings = validation_result$validation_findings %||% empty_validation_findings(),
+            failure_summary = validation_result$failure_summary %||% character(),
+            metadata = validation_result$metadata %||% list(),
             created_datasets = names(analytic_result$analytic_data %||% list()),
             analytic_result = analytic_result,
             documentation_refresh = documentation_refresh
@@ -295,6 +300,11 @@ run_objective_0 <- function() {
             success = length(validation_errors) == 0 && isTRUE(validation_result$success),
             validated_cohorts = validation_result$validated_cohorts %||% names(existing_data$cohort_data),
             validation_errors = validation_errors,
+            warning_issues = validation_result$warning_issues %||% character(),
+            has_hard_errors = isTRUE(validation_result$has_hard_errors),
+            validation_findings = validation_result$validation_findings %||% empty_validation_findings(),
+            failure_summary = validation_result$failure_summary %||% character(),
+            metadata = validation_result$metadata %||% list(),
             created_datasets = character(),
             documentation_refresh = documentation_refresh
         ))

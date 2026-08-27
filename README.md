@@ -242,6 +242,13 @@ Rscript scripts/workflow/publish_outputs.R --execute --snapshot-id YYYY-MM-DD
 
 Use `--cohorts cohort1,cohort2` to limit the copy and `--no-merged-tables` to omit merged tables. `--execute` performs the copy and writes `publish_manifest.csv`; review the dry-run report first.
 
+`runtime/Analysis/` is the active canonical output tree and
+`runtime/Analytic Dataset/` is the active processed-data cache. A protected
+comparison may write to `runtime/runs/<task>/` while it is being reviewed, but
+that directory is transient: after the approved snapshot is published and
+verified, remove the staging run. The dated Project Vault snapshot is the
+durable versioned record.
+
 ## Configuration
 
 Analysis settings live in `scripts/utils/config_constants.R`; canonical filesystem roots and supported path overrides live in `scripts/config/project_paths.R`. Typical execution settings to review before a fresh run are:
@@ -249,6 +256,14 @@ Analysis settings live in `scripts/utils/config_constants.R`; canonical filesyst
 ```r
 RECREATE_ANALYTIC_DATASETS <- FALSE
 USE_LOGS <- TRUE
+```
+
+The default reuses the processed cache. If Objective 0 reports that required
+derived fields are missing, rebuild that cache from the current raw workbook
+before rerunning downstream objectives:
+
+```sh
+Rscript -e "source('scripts/load_all.R'); RECREATE_ANALYTIC_DATASETS <- TRUE; main_execution()"
 ```
 
 `INPUT_FILENAME` is maintained in the data-processing policy. If the shared spreadsheet has a different name, provide it at the configured raw-data location under that expected name, or make a deliberate local configuration change before recreating analytic datasets.
