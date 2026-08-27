@@ -16,12 +16,12 @@ run_portable_suite <- function() {
     stages <- list(
         list(
             label = "Complete portable testthat suite",
-            args = c("scripts/tools/run_testthat.R", "tests/testthat"),
+            args = c("scripts/ci/run_testthat.R", "tests/testthat"),
             env = "OCULAR_PORTABLE_SUITE=true"
         ),
         list(
             label = "Synthetic integration suite",
-            args = c("scripts/tools/run_testthat.R", "tests/portable"),
+            args = c("scripts/ci/run_testthat.R", "tests/portable"),
             env = character()
         ),
         list(

@@ -1,8 +1,8 @@
 test_that("PR 18 and PR 19 named functions retain complete documentation", {
     contract_files <- c(
         "scripts/tools/compare_important_results.R",
-        "scripts/tools/run_portable_suite.R",
-        "scripts/tools/run_testthat.R",
+        "scripts/ci/run_portable_suite.R",
+        "scripts/ci/run_testthat.R",
         "scripts/workflow/objective_1_primary_outcomes.R",
         "tests/integration/helper-bootstrap.R",
         "tests/testthat/helper-fixture-data.R",

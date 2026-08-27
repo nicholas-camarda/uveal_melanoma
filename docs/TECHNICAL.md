@@ -687,10 +687,14 @@ environment.
 Run tests with the shell entry points used elsewhere in the repository:
 
 ```sh
-Rscript scripts/tools/run_portable_suite.R
+# Standard testthat-only entrypoint
+Rscript tests/testthat.R
+
+# Complete portable suite used by CI
+Rscript scripts/ci/run_portable_suite.R
 OCULAR_INTEGRATION_RAW_DATA_DIR='/absolute/path/to/raw-data' \
 OCULAR_INTEGRATION_PROCESSED_DATA_DIR='/absolute/path/to/processed-data' \
-Rscript scripts/tools/run_testthat.R tests/integration
+Rscript scripts/ci/run_testthat.R tests/integration
 ```
 
 The actual-data lane fails before test execution unless both explicit input

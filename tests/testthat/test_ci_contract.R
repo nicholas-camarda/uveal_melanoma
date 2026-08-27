@@ -5,7 +5,7 @@
 #' @param env Optional environment assignments for the child process.
 #' @return A list containing combined child output and its integer exit status.
 run_testthat_subprocess <- function(test_dir, filter = NULL, env = character()) {
-    args <- c(here::here("scripts", "tools", "run_testthat.R"), test_dir)
+    args <- c(here::here("scripts", "ci", "run_testthat.R"), test_dir)
     if (!is.null(filter)) {
         args <- c(args, "--filter", filter)
     }
@@ -119,7 +119,7 @@ test_that("expected warnings remain valid when the lifecycle gate is active", {
 
 test_that("runner manifests replace static case counting and detect file drift", {
     runner <- new.env(parent = globalenv())
-    sys.source(here::here("scripts", "tools", "run_testthat.R"), envir = runner)
+    sys.source(here::here("scripts", "ci", "run_testthat.R"), envir = runner)
 
     test_dir <- withr::local_tempdir()
     writeLines("testthat::test_that('one', testthat::succeed())", file.path(test_dir, "test_one.R"))
@@ -226,7 +226,7 @@ test_that("portable CI runs only the canonical complete command", {
         collapse = "\n"
     )
 
-    canonical_command <- "Rscript scripts/tools/run_portable_suite.R"
+    canonical_command <- "Rscript scripts/ci/run_portable_suite.R"
     expect_equal(stringr::str_count(workflow_text, fixed(canonical_command)), 1L)
     expect_false(grepl("--filter", workflow_text, fixed = TRUE))
     expect_false(grepl("FAST_TEST_FILTER", workflow_text, fixed = TRUE))
@@ -235,7 +235,7 @@ test_that("portable CI runs only the canonical complete command", {
 })
 
 test_that("canonical portable command owns every portable stage", {
-    command_path <- here::here("scripts", "tools", "run_portable_suite.R")
+    command_path <- here::here("scripts", "ci", "run_portable_suite.R")
     expect_true(file.exists(command_path))
     command_text <- paste(readLines(command_path, warn = FALSE), collapse = "\n")
 
@@ -262,7 +262,7 @@ test_that("actual-data integration inventory is checked in and complete", {
     expect_identical(required_files, discovered_files)
 
     runner_text <- paste(
-        readLines(here::here("scripts", "tools", "run_testthat.R"), warn = FALSE),
+        readLines(here::here("scripts", "ci", "run_testthat.R"), warn = FALSE),
         collapse = "\n"
     )
     expect_match(
@@ -305,7 +305,7 @@ test_that("bootstrap and runner are lockfile- and failure-sensitive", {
         collapse = "\n"
     )
     runner_text <- paste(
-        readLines(here::here("scripts", "tools", "run_testthat.R"), warn = FALSE),
+        readLines(here::here("scripts", "ci", "run_testthat.R"), warn = FALSE),
         collapse = "\n"
     )
 
@@ -345,8 +345,8 @@ test_that("documented test commands use the fail-sensitive runner", {
     readme_text <- paste(readLines(here::here("README.md"), warn = FALSE), collapse = "\n")
 
     expect_match(readme_text, "Rscript scripts/bootstrap_packages.R", fixed = TRUE)
-    expect_match(readme_text, "Rscript scripts/tools/run_portable_suite.R", fixed = TRUE)
-    expect_match(readme_text, "Rscript scripts/tools/run_testthat.R tests/integration", fixed = TRUE)
+    expect_match(readme_text, "Rscript scripts/ci/run_portable_suite.R", fixed = TRUE)
+    expect_match(readme_text, "Rscript scripts/ci/run_testthat.R tests/integration", fixed = TRUE)
 })
 
 test_that("pull request protocol requires complete local and remote validation", {
@@ -368,15 +368,25 @@ test_that("pull request protocol requires complete local and remote validation",
     template_text <- paste(readLines(template_path, warn = FALSE), collapse = "\n")
     expect_match(
         template_text,
-        "Rscript scripts/tools/run_portable_suite.R",
+        "Rscript scripts/ci/run_portable_suite.R",
         fixed = TRUE
     )
     expect_match(template_text, "required GitHub check is green", fixed = TRUE)
 })
 
-test_that("standard testthat entrypoint delegates to the canonical portable suite", {
+test_that("CI runners live under scripts/ci", {
+    expect_true(file.exists(here::here("scripts", "ci", "run_testthat.R")))
+    expect_true(file.exists(here::here("scripts", "ci", "run_portable_suite.R")))
+    expect_false(file.exists(here::here("scripts", "tools", "run_testthat.R")))
+    expect_false(file.exists(here::here("scripts", "tools", "run_portable_suite.R")))
+})
+
+test_that("standard testthat entrypoint runs only the testthat suite", {
     entrypoint_text <- paste(readLines(here::here("tests", "testthat.R"), warn = FALSE), collapse = "\n")
 
-    expect_match(entrypoint_text, "run_portable_suite", fixed = TRUE)
-    expect_false(grepl("testthat::test_dir", entrypoint_text, fixed = TRUE))
+    expect_match(entrypoint_text, "scripts/ci/run_testthat.R", fixed = TRUE)
+    expect_match(entrypoint_text, "run_testthat_directory", fixed = TRUE)
+    expect_match(entrypoint_text, "tests/testthat", fixed = TRUE)
+    expect_false(grepl("run_portable_suite", entrypoint_text, fixed = TRUE))
+    expect_false(grepl("tests/portable", entrypoint_text, fixed = TRUE))
 })

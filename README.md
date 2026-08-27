@@ -110,13 +110,16 @@ another checkout's library with `.libPaths()` or install packages into a
 checkout-specific library.
 
 ```sh
+# Standard testthat-only entrypoint
+Rscript tests/testthat.R
+
 # Complete portable suite required for pull requests and master pushes
-Rscript scripts/tools/run_portable_suite.R
+Rscript scripts/ci/run_portable_suite.R
 
 # Local read-only actual-data integration suite
 OCULAR_INTEGRATION_RAW_DATA_DIR='/absolute/path/to/raw-data' \
 OCULAR_INTEGRATION_PROCESSED_DATA_DIR='/absolute/path/to/processed-data' \
-Rscript scripts/tools/run_testthat.R tests/integration
+Rscript scripts/ci/run_testthat.R tests/integration
 ```
 
 The synthetic fixture exercises portable schema, missingness, censoring, GEP,
@@ -241,6 +244,13 @@ Rscript scripts/workflow/publish_outputs.R --execute --snapshot-id YYYY-MM-DD
 ```
 
 Use `--cohorts cohort1,cohort2` to limit the copy and `--no-merged-tables` to omit merged tables. `--execute` performs the copy and writes `publish_manifest.csv`; review the dry-run report first.
+
+`runtime/Analysis/` is the active canonical output tree and
+`runtime/Analytic Dataset/` is the active processed-data cache. A protected
+comparison may write to `runtime/runs/<task>/` while it is being reviewed, but
+that directory is transient: after the approved snapshot is published and
+verified, remove the staging run. The dated Project Vault snapshot is the
+durable versioned record.
 
 ## Configuration
 
