@@ -106,7 +106,7 @@ test_that("active Objective 4 docs and code-facing outputs do not revive split-r
     split_contract_paths <- c(
         here::here("docs", "STATISTICAL_METHODS.md"),
         here::here("docs", "GEP_OBJECTIVE4_GOAL_IMPLEMENTATION_MAP.md"),
-        here::here("scripts", "config", "gep_policy.R"),
+        here::here("scripts", "config", "objective4_policy.R"),
         here::here("scripts", "gep", "orchestration", "gep_exploratory_no_gep_report.R"),
         here::here("tests", "integration", "test_exploratory_no_gep_report.R"),
         here::here("tests", "testthat", "test_exploratory_no_gep_followup_context.R")

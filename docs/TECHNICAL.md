@@ -550,7 +550,7 @@ Objective 2a latest-VA reviewer-predictor sensitivity uses `last_vision` as the 
 
 For readability, the reader-facing MSS CIF PNG now uses `gep_class_simple` and shows only definitive `Class 1` versus `Class 2` strata. This does not change the technical MSS competing-risk tables or model fits, which still use the more granular `biopsy1_gep` grouping in the companion outputs.
 
-The grouping choices for Objective 4 are centralized in `scripts/utils/config_constants.R` via `GEP_GROUPING_SPECS` and `GEP_OBJECTIVE4_GROUPING`. Change grouping there first so updates propagate through orchestration, reporting, and visualization.
+The grouping choices for Objective 4 are centralized in `scripts/config/objective4_policy.R` via `GEP_GROUPING_SPECS` and `OBJECTIVE4_GEP_GROUPING`, loaded through `scripts/utils/config_constants.R`. Change grouping there first so updates propagate through orchestration, reporting, and visualization.
 
 **Important layout note:** cross-cutting cohort outputs such as baseline characteristics and treatment-duration summaries belong in `00_General/` inside each cohort folder, not in a shared top-level `Analysis/General/` directory.
 
@@ -607,22 +607,28 @@ Filtering logic implemented in `subgroup_data_prep.R`:
 **`scripts/utils/config_constants.R`**
 - Public configuration entry point sourced by `scripts/load_all.R`
 - Deterministically sources private modules under `scripts/config/`
-- Exposes paths, data-processing policy, modeling policy, Objective 0 contracts, display labels, and GEP policy as the same global objects consumed by downstream code
+- Exposes paths, shared policies, objective contracts/policy, and display labels as the same global objects consumed by downstream code
 
 Private config modules under `scripts/config/`:
 - `project_paths.R`: project roots, runtime/export paths, publish artifact registry, and path helpers
 - `data_processing_policy.R`: source workbook filename, manual exclusions, date/time constants, and data-quality thresholds
-- `modeling_policy.R`: treatment/factor levels, confounders, subgroup variables, sparse-level policy, and model feasibility thresholds
-- `gep_policy.R`: Objective 4 GEP constants, definitive-label policy, and grouping specifications
-- `objective0_contracts.R`: Objective 0 structural requirements, derived-output manifest, downstream input contract, Objective 2 toxicity mapping, Objective 3 PFS-2 contract, and Objective 4 GEP derivation contract
+- `modeling_policy.R`: treatment/factor levels, confounders, stage exclusions, sparse-level policy, and shared model settings
+- `objective0_contracts.R`: Objective 0 structural requirements, derived-output manifest, and centrally enforced downstream input contract for Objectives 1-4
+- `objective1_contracts.R`: Objective 1 population fingerprints, propensity-overlap settings, subgroup policy, and subgroup outcome contracts
+- `objective2_contracts.R`: Objective 2 toxicity source-to-burden mapping and reproducibility seed
+- `objective3_contracts.R`: Objective 3 PFS-2 derivation contract and PFS-2 feasibility/censoring thresholds
+- `objective4_policy.R`: Objective 4 GEP settings, definitive-label policy, and grouping specifications
+- `objective4_contracts.R`: Objective 4 imported-probability and horizon-field derivation contract
 - `labels_display.R`: table labels, display labels, baseline table variables, plot dimensions, and vision line-change display policy
 
-Objective 0 contract responsibilities:
+### Contract ownership
+
+Objective 0 enforces readiness centrally, while each objective module owns the source-derived or analysis-policy contract for that objective:
 - `OBJECTIVE0_GLOBAL_REQUIRED_VARIABLES` checks global structural fields that must exist before objective-specific validation.
 - `OBJECTIVE0_DERIVED_OUTPUT_MANIFEST` checks fields created by Objective 0 data derivation.
 - `OBJECTIVE0_DOWNSTREAM_INPUT_CONTRACT` checks important Objective 1-4 endpoint, eligibility, adjustment, and prediction inputs before downstream scripts consume them.
-- `OBJECTIVE2_TOXICITY_ENDPOINTS` maps toxicity source fields to Objective 0 burden fields consumed by Objective 2.
-- `OBJECTIVE3_PFS2_DERIVATION_CONTRACT` and `OBJECTIVE4_GEP_DERIVATION_CONTRACT` protect row-wise source-derived endpoint logic that presence/domain checks alone cannot prove.
+- `OBJECTIVE2_TOXICITY_ENDPOINT_MAP` maps toxicity source fields to Objective 0 burden fields consumed by Objective 2.
+- `OBJECTIVE3_PFS2_DERIVATION_CONTRACT` and `OBJECTIVE4_GEP_DERIVATION_CONTRACT` protect row-wise source-derived endpoint logic that presence/domain checks alone cannot prove; their definitions live in `objective3_contracts.R` and `objective4_contracts.R`.
 
 **Key Settings:**
 ```r

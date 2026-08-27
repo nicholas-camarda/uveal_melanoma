@@ -271,7 +271,7 @@ Rscript -e "source('scripts/load_all.R'); RECREATE_ANALYTIC_DATASETS <- TRUE; ma
 
 `INPUT_FILENAME` is maintained in the data-processing policy. If the shared spreadsheet has a different name, provide it at the configured raw-data location under that expected name, or make a deliberate local configuration change before recreating analytic datasets.
 
-Objective 4 grouping and display settings are also centralized there through `GEP_GROUPING_SPECS` and `GEP_OBJECTIVE4_GROUPING`.
+Objective 4 grouping and display settings are centralized in `scripts/config/objective4_policy.R` through `GEP_GROUPING_SPECS` and `OBJECTIVE4_GEP_GROUPING`.
 
 ## Documentation
 

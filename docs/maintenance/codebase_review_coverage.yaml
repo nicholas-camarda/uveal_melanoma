@@ -19,6 +19,9 @@ units:
     scope:
       - scripts/config/objective0_contracts.R
       - scripts/config/objective1_contracts.R
+      - scripts/config/objective2_contracts.R
+      - scripts/config/objective3_contracts.R
+      - scripts/config/objective4_contracts.R
       - scripts/workflow/objective_0_data_processing.R
     downstream:
       - objective-0
@@ -31,6 +34,7 @@ units:
   - id: modeling-policy
     scope:
       - scripts/config/modeling_policy.R
+      - scripts/config/objective1_contracts.R
       - scripts/utils/model_utilities.R
       - scripts/tables/table_model_fitting.R
     downstream:
@@ -55,6 +59,7 @@ units:
     evidence: []
   - id: gep-analysis
     scope:
+      - scripts/config/objective4_policy.R
       - scripts/gep/cores
       - scripts/gep/orchestration
       - scripts/gep/reporting

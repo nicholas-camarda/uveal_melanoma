@@ -492,7 +492,7 @@ Evaluate whether treatment effects differ across patient subgroups defined by:
 
 **Method:** Stratified analysis with interaction testing
 
-The exploratory Objective 1 age subgroup uses the 63-year split. Age remains continuous in the adjusted treatment-effect models outside this subgroup display. The selected age representation is controlled by `OBJECTIVE1_AGE_SUBGROUP_VAR` in `scripts/config/modeling_policy.R`. Local recurrence, metastatic progression, overall survival, and progression-free survival subgroup effects are all estimated with Cox proportional-hazards models and reported as hazard ratios.
+The exploratory Objective 1 age subgroup uses the 63-year split. Age remains continuous in the adjusted treatment-effect models outside this subgroup display. The selected age representation is controlled by `OBJECTIVE1_AGE_SUBGROUP_VAR` in `scripts/config/objective1_contracts.R`. Local recurrence, metastatic progression, overall survival, and progression-free survival subgroup effects are all estimated with Cox proportional-hazards models and reported as hazard ratios.
 
 **Steps:**
 1. Fit model within each subgroup

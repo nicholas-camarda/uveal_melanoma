@@ -1,5 +1,5 @@
 # =============================================================================
-# GEP VALIDATION CONFIGURATION (OBJECTIVE 4)
+# OBJECTIVE 4 GEP VALIDATION POLICY
 # =============================================================================
 # CRITICAL: These settings control the GEP validation analysis (Objective 4)
 # - GEP_VALIDATION_TIMEPOINTS: Years for validation (5, 7, 10 years)
@@ -132,7 +132,7 @@ GEP_GROUPING_SPECS <- list(
     )
 )
 
-GEP_OBJECTIVE4_GROUPING <- list(
+OBJECTIVE4_GEP_GROUPING <- list(
     mfs = list(
         observed_expected = "biopsy1_gep",
         visuals = "biopsy1_gep",
@@ -155,11 +155,11 @@ get_gep_grouping_spec <- function(grouping_key) {
 }
 
 get_gep_grouping_for_context <- function(outcome, context) {
-    if (!outcome %in% names(GEP_OBJECTIVE4_GROUPING)) {
+    if (!outcome %in% names(OBJECTIVE4_GEP_GROUPING)) {
         stop(sprintf("Unknown Objective 4 outcome grouping scope: %s", outcome))
     }
 
-    outcome_grouping <- GEP_OBJECTIVE4_GROUPING[[outcome]]
+    outcome_grouping <- OBJECTIVE4_GEP_GROUPING[[outcome]]
     if (!context %in% names(outcome_grouping)) {
         stop(sprintf("Unknown Objective 4 grouping context '%s' for outcome '%s'", context, outcome))
     }

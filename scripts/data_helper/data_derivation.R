@@ -46,7 +46,7 @@ normalize_recurrence_indicator_columns <- function(data) {
 #' @param data Data frame that may contain Objective 2 toxicity source fields.
 #' @return Data frame with available toxicity indicator columns normalized.
 normalize_objective2_toxicity_indicator_columns <- function(data) {
-    toxicity_columns <- intersect(OBJECTIVE2_TOXICITY_ENDPOINTS$source_field, names(data))
+    toxicity_columns <- intersect(OBJECTIVE2_TOXICITY_ENDPOINT_MAP$source_field, names(data))
     if (length(toxicity_columns) == 0) {
         return(data)
     }
@@ -67,9 +67,9 @@ normalize_objective2_toxicity_indicator_columns <- function(data) {
 #' @param data Data frame containing normalized toxicity source fields.
 #' @return Data frame with available Objective 2 toxicity burden fields added.
 derive_objective2_toxicity_burden_fields <- function(data) {
-    for (endpoint_index in seq_len(nrow(OBJECTIVE2_TOXICITY_ENDPOINTS))) {
-        source_field <- OBJECTIVE2_TOXICITY_ENDPOINTS$source_field[[endpoint_index]]
-        analysis_field <- OBJECTIVE2_TOXICITY_ENDPOINTS$analysis_field[[endpoint_index]]
+    for (endpoint_index in seq_len(nrow(OBJECTIVE2_TOXICITY_ENDPOINT_MAP))) {
+        source_field <- OBJECTIVE2_TOXICITY_ENDPOINT_MAP$source_field[[endpoint_index]]
+        analysis_field <- OBJECTIVE2_TOXICITY_ENDPOINT_MAP$analysis_field[[endpoint_index]]
 
         if (!source_field %in% names(data)) {
             next
@@ -634,12 +634,12 @@ create_binned_continuous_variables <- function(data) {
             age_at_diagnosis_general_pop_median = factor(
                 case_when(
                     is.na(age_at_diagnosis) ~ NA_character_,
-                    age_at_diagnosis < GENERAL_POP_MEDIAN_AGE_CUTOFF ~ paste0("< ", GENERAL_POP_MEDIAN_AGE_CUTOFF, " years"),
-                    TRUE ~ paste0("≥ ", GENERAL_POP_MEDIAN_AGE_CUTOFF, " years")
+                    age_at_diagnosis < OBJECTIVE1_GENERAL_POP_MEDIAN_AGE_CUTOFF ~ paste0("< ", OBJECTIVE1_GENERAL_POP_MEDIAN_AGE_CUTOFF, " years"),
+                    TRUE ~ paste0("≥ ", OBJECTIVE1_GENERAL_POP_MEDIAN_AGE_CUTOFF, " years")
                 ),
                 levels = c(
-                    paste0("< ", GENERAL_POP_MEDIAN_AGE_CUTOFF, " years"),
-                    paste0("≥ ", GENERAL_POP_MEDIAN_AGE_CUTOFF, " years")
+                    paste0("< ", OBJECTIVE1_GENERAL_POP_MEDIAN_AGE_CUTOFF, " years"),
+                    paste0("≥ ", OBJECTIVE1_GENERAL_POP_MEDIAN_AGE_CUTOFF, " years")
                 )
             ),
             initial_tumor_height_binned = if (USE_CLINICAL_BINNING_CONTINUOUS) {

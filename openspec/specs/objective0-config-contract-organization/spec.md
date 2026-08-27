@@ -24,7 +24,7 @@ Objective 0 validation policy MUST NOT require maintainers to update overlapping
 - **AND** they are not forced into the downstream objective-input contract unless a downstream objective requires them for endpoint definition, cohort eligibility, core adjustment, or required prognostic/prediction logic
 
 ### Requirement: Objective-specific source-derived contracts SHALL prevent endpoint drift
-Objective 0 validation hardening MUST include source-derived consistency coverage where presence, domain, and missingness checks are insufficient to prove endpoint validity. The coverage MAY use invariant tests, mapping tables, or compact derivation manifests depending on the objective's endpoint structure.
+Objective 0 validation hardening MUST include source-derived consistency coverage where presence, domain, and missingness checks are insufficient to prove endpoint validity. The coverage MAY use invariant tests, mapping tables, or compact derivation manifests depending on the objective's endpoint structure. Definitions belong in the contract module for the owning objective.
 
 These contracts MUST remain data-readiness checks. They MUST NOT create per-objective raw-data audit workbook families, replace downstream model feasibility diagnostics, or duplicate full derivation logic when a smaller invariant test is sufficient.
 
@@ -85,7 +85,7 @@ The special case MUST be explicit and auditable through existing Objective 0 val
 - **AND** the row is not silently assigned to an analytic catch-all `other` cohort
 
 ### Requirement: Objective 3 PFS-2 SHALL have a compact derivation contract
-Objective 0 MUST maintain a compact Objective 3 PFS-2 derivation contract linking `recurrence1`, `recurrence1_treatment`, `recurrence1_treatment_date`, `recurrence2`, `recurrence2_date`, `dod`, and `last_known_alive_date` to `pfs2_event`, `tt_pfs2_months`, `tt_pfs2_years`, and `recurrence1_treatment_clean`.
+The repository MUST maintain a compact Objective 3 PFS-2 derivation contract in the Objective 3 contract module, linking `recurrence1`, `recurrence1_treatment`, `recurrence1_treatment_date`, `recurrence2`, `recurrence2_date`, `dod`, and `last_known_alive_date` to `pfs2_event`, `tt_pfs2_months`, `tt_pfs2_years`, and `recurrence1_treatment_clean`. Objective 0 consumes this contract during centralized validation.
 
 The contract MUST validate row-wise source-to-derived consistency before Objective 3 consumes PFS-2 fields. Death before second local recurrence MUST be treated as censoring, not a PFS-2 event.
 
@@ -111,7 +111,7 @@ The contract MUST validate row-wise source-to-derived consistency before Objecti
 ### Requirement: Objective 4 GEP SHALL have a compact derivation contract
 Objective 0 MUST maintain a compact Objective 4 GEP derivation contract for imported GEP probabilities and horizon endpoints. General presence/domain registry checks are necessary but insufficient for Objective 4 endpoint validity.
 
-The contract MUST cover 5-, 7-, and 10-year MFS and MSS expected survival probabilities, predicted risk complements, horizon event indicators, competing-risk event types, clipped horizon times, endpoint-specific eligibility flags, and `gep_validation_set`.
+The contract MUST cover 5-, 7-, and 10-year MFS and MSS expected survival probabilities, predicted risk complements, horizon event indicators, competing-risk event types, clipped horizon times, endpoint-specific eligibility flags, and `gep_validation_set`. Its definition belongs in the Objective 4 contract module while Objective 0 consumes it during centralized validation.
 
 #### Scenario: GEP expected survival and predicted risks match source probabilities
 - **WHEN** Objective 0 derives GEP expected survival and predicted risk fields
@@ -131,11 +131,11 @@ The contract MUST cover 5-, 7-, and 10-year MFS and MSS expected survival probab
 - **AND** retired Training/Testing split labels are not reintroduced
 
 ### Requirement: Config constants SHALL be modularized behind one public entry point
-The oversized `scripts/utils/config_constants.R` file MUST be split into focused private config modules under `scripts/config/` while preserving `scripts/utils/config_constants.R` as the single public config entry point sourced by `scripts/load_all.R`.
+The oversized `scripts/utils/config_constants.R` file MUST be split into focused private config modules under `scripts/config/` while preserving `scripts/utils/config_constants.R` as the single public config entry point sourced by `scripts/load_all.R`. Objective-specific contracts and policy MUST use filenames prefixed with their owning objective, including `objective0_contracts.R` through `objective4_contracts.R` and `objective4_policy.R`.
 
 Downstream workflow, analysis, table, visualization, GEP, and test code MUST NOT source individual config modules directly. After `config_constants.R` is sourced, existing public config objects MUST remain available under their established names unless a rename is explicitly part of the Objective 0 contract cleanup and tests/docs are updated accordingly.
 
-The private module folder MUST NOT live under `scripts/utils/`. `scripts/utils/config_constants.R` may remain in `utils` only as the compatibility entry point because existing workflow, docs, and tests already treat it as the public config source.
+The private module folder MUST NOT live under `scripts/utils/`. `scripts/utils/config_constants.R` may remain in `utils` only as the public config entry point because existing workflow, docs, and tests already treat it as the public config source.
 
 #### Scenario: Workflow still sources one config entry point
 - **WHEN** `scripts/load_all.R` loads project configuration

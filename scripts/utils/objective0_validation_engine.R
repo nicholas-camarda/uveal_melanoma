@@ -252,8 +252,8 @@ validate_objective2_toxicity_endpoint_contract <- function(data, cohort_name) {
         )
     }
 
-    for (endpoint_index in seq_len(nrow(OBJECTIVE2_TOXICITY_ENDPOINTS))) {
-        endpoint <- OBJECTIVE2_TOXICITY_ENDPOINTS[endpoint_index, ]
+    for (endpoint_index in seq_len(nrow(OBJECTIVE2_TOXICITY_ENDPOINT_MAP))) {
+        endpoint <- OBJECTIVE2_TOXICITY_ENDPOINT_MAP[endpoint_index, ]
         source_field <- endpoint$source_field[[1]]
         analysis_field <- endpoint$analysis_field[[1]]
         endpoint_label <- endpoint$endpoint_label[[1]]

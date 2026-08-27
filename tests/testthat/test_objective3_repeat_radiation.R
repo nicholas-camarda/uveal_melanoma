@@ -115,7 +115,7 @@ test_that("PFS-2 precheck requires the configured minimum analyzable patient cou
     prefix = "test_"
   )
 
-  expect_equal(nrow(result$pfs2_data), MINIMUM_PFS2_PATIENTS - 1L)
+  expect_equal(nrow(result$pfs2_data), OBJECTIVE3_MINIMUM_PFS2_PATIENTS - 1L)
   expect_false(is.null(result$survival_analysis))
   expect_null(result$survival_analysis$cox_model)
   expect_null(result$summary_table)

@@ -414,19 +414,19 @@ age_at_diagnosis_binned = case_when(
 age_at_diagnosis_general_pop_median = factor(
   case_when(
     is.na(age_at_diagnosis) ~ NA_character_,
-    age_at_diagnosis < GENERAL_POP_MEDIAN_AGE_CUTOFF ~ paste0("< ", GENERAL_POP_MEDIAN_AGE_CUTOFF, " years"),
-    TRUE ~ paste0("≥ ", GENERAL_POP_MEDIAN_AGE_CUTOFF, " years")
+    age_at_diagnosis < OBJECTIVE1_GENERAL_POP_MEDIAN_AGE_CUTOFF ~ paste0("< ", OBJECTIVE1_GENERAL_POP_MEDIAN_AGE_CUTOFF, " years"),
+    TRUE ~ paste0("≥ ", OBJECTIVE1_GENERAL_POP_MEDIAN_AGE_CUTOFF, " years")
   ),
   levels = c(
-    paste0("< ", GENERAL_POP_MEDIAN_AGE_CUTOFF, " years"),
-    paste0("≥ ", GENERAL_POP_MEDIAN_AGE_CUTOFF, " years")
+    paste0("< ", OBJECTIVE1_GENERAL_POP_MEDIAN_AGE_CUTOFF, " years"),
+    paste0("≥ ", OBJECTIVE1_GENERAL_POP_MEDIAN_AGE_CUTOFF, " years")
   )
 )
 ```
 
 **Key Details:**
 
-- `GENERAL_POP_MEDIAN_AGE_CUTOFF` currently equals **63** and controls this descriptive field.
+- `OBJECTIVE1_GENERAL_POP_MEDIAN_AGE_CUTOFF` currently equals **63** and controls this descriptive field.
 - Output labels render as “< 63 years” and “≥ 63 years.”
 - Adjusted treatment-effect models use continuous `age_at_diagnosis`.
 - Objective 1 subgroup analyses use `age_at_diagnosis_general_pop_median`, producing separate treatment-effect estimates for the two age strata and one treatment-by-age interaction p-value.

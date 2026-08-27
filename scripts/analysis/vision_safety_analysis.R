@@ -177,7 +177,7 @@ safe_add_p_to_summary <- function(summary_table, context_label, test = NULL, tes
 #' @param sequela_type Character scalar toxicity endpoint source field.
 #' @return Character scalar prepared burden field name.
 resolve_objective2_toxicity_burden_field <- function(sequela_type) {
-    endpoint <- OBJECTIVE2_TOXICITY_ENDPOINTS %>%
+    endpoint <- OBJECTIVE2_TOXICITY_ENDPOINT_MAP %>%
         dplyr::filter(.data$source_field == sequela_type)
 
     if (nrow(endpoint) != 1) {

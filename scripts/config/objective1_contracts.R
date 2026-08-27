@@ -5,6 +5,53 @@
 # fingerprint is an approval action: first inspect the KM risk-set audit and
 # document why the patient-level OS records changed.
 
+# Restricted-cohort propensity-overlap sensitivity specification.
+OBJECTIVE1_PROPENSITY_DATASET <- "uveal_melanoma_restricted_cohort"
+OBJECTIVE1_PROPENSITY_COVARIATES <- c(
+    "age_at_diagnosis", "sex", "location", "initial_tumor_height",
+    "initial_tumor_diameter", "srf", "treatment_year"
+)
+OBJECTIVE1_PROPENSITY_ESTIMAND <- "ATO"
+OBJECTIVE1_PROPENSITY_BALANCE_THRESHOLD <- 0.10
+
+# Objective 1 subgroup variables are exploratory display surfaces. They are not
+# the default adjusted-model covariate set for the reviewer-response analyses.
+OBJECTIVE1_GENERAL_POP_MEDIAN_AGE_CUTOFF <- 63
+OBJECTIVE1_AGE_REFERENCE_VALUE <- OBJECTIVE1_GENERAL_POP_MEDIAN_AGE_CUTOFF
+OBJECTIVE1_AGE_SUBGROUP_OPTIONS <- c(
+    "age_at_diagnosis",
+    "age_at_diagnosis_binned",
+    "age_at_diagnosis_general_pop_median"
+)
+OBJECTIVE1_AGE_SUBGROUP_VAR <- "age_at_diagnosis_general_pop_median"
+if (!OBJECTIVE1_AGE_SUBGROUP_VAR %in% OBJECTIVE1_AGE_SUBGROUP_OPTIONS) {
+    stop("OBJECTIVE1_AGE_SUBGROUP_VAR must name a supported age representation")
+}
+
+subgroup_vars <- c(
+    OBJECTIVE1_AGE_SUBGROUP_VAR, "sex", "location", "initial_t_stage_simple",
+    #"initial_t_stage",
+    "initial_tumor_height", "initial_tumor_diameter",
+    "initial_overall_stage", "biopsy1_gep", "gep_class_simple", "gep12_prame_status", "optic_nerve"
+)
+
+continuous_subgroup_vars <- c("initial_tumor_height", "initial_tumor_diameter")
+
+# The continuous interaction path is enabled automatically when continuous age
+# is selected as the Objective 1 age subgroup representation.
+CONTINUOUS_INTERACTION_SUBGROUP_VARS <- intersect(
+    "age_at_diagnosis",
+    OBJECTIVE1_AGE_SUBGROUP_VAR
+)
+
+# Variables constant within a cohort are excluded from Objective 1 subgroup
+# analysis because they cannot support an interaction estimate.
+COHORT_CONSTANT_VARIABLES <- list(
+    uveal_melanoma_restricted_cohort = c("optic_nerve"),
+    uveal_melanoma_gksrs_only_cohort = c(),
+    uveal_melanoma_full_cohort = c()
+)
+
 OBJECTIVE1_OS_POPULATION_CONTRACTS <- tibble::tribble(
     ~dataset_name,                            ~time_var,          ~event_var,    ~group_var,          ~n_patients, ~n_events, ~population_fingerprint,                                           ~approval_note,
     "uveal_melanoma_restricted_cohort",      "tt_death_months", "death_event", "treatment_group", 167L,         39L,       "27c6c7e097e14ef6714ff4e1a2d9338f274b56fea4fb8ec5982a38c32cd695e4", "Approved after audited source-date corrections for IDs 125 and 211.",

@@ -39,18 +39,6 @@ OBJECTIVE0_DERIVED_OUTPUT_MANIFEST <- c(
 CRITICAL_VARIABLES <- OBJECTIVE0_GLOBAL_REQUIRED_VARIABLES
 DERIVED_VARIABLES <- OBJECTIVE0_DERIVED_OUTPUT_MANIFEST
 
-# Objective 2 toxicity burden endpoints prepared during Objective 0 data derivation.
-OBJECTIVE2_TOXICITY_ENDPOINTS <- tibble::tribble(
-    ~source_field, ~analysis_field, ~endpoint_label,
-    "retinopathy", "retinopathy_burden_event", "Radiation Retinopathy",
-    "nvg", "nvg_burden_event", "Neovascular Glaucoma",
-    "srd", "srd_burden_event", "Serous Retinal Detachment"
-)
-
-# Objective 2 simulated Fisher p-values use a local seed so displayed
-# descriptive p-values are reproducible without perturbing unrelated RNG state.
-OBJECTIVE2_SIMULATED_FISHER_SEED <- 20260422L
-
 # Downstream objective input contract enforced centrally during Objective 0.
 # Domains are checked on non-missing values unless `missing_policy` is
 # `complete`, which requires a value for every analytic row.
@@ -169,37 +157,6 @@ OBJECTIVE0_DOWNSTREAM_INPUT_CONTRACT <- tibble::tribble(
     "objective4", "predicted_mss_risk_5yr", "5-year predicted MSS risk", "probability", "optional", "hard_error",
     "objective4", "predicted_mss_risk_7yr", "7-year predicted MSS risk", "probability", "optional", "hard_error",
     "objective4", "predicted_mss_risk_10yr", "10-year predicted MSS risk", "probability", "optional", "hard_error"
-)
-
-# Compact PFS-2 derivation contract. Death before second recurrence censors
-# PFS-2 because the event of interest is second local recurrence.
-OBJECTIVE3_PFS2_DERIVATION_CONTRACT <- list(
-    source_fields = c(
-        "recurrence1", "recurrence1_treatment", "recurrence1_treatment_date",
-        "recurrence2", "recurrence2_date", "dod", "last_known_alive_date"
-    ),
-    derived_fields = c(
-        "recurrence1_treatment_clean", "pfs2_event",
-        "tt_pfs2_months", "tt_pfs2_years"
-    ),
-    time_origin = "recurrence1_treatment_date",
-    event_date = "recurrence2_date",
-    censor_dates = c("dod", "last_known_alive_date"),
-    event_description = "second local recurrence after first-recurrence treatment",
-    death_handling = "death before second local recurrence is censoring"
-)
-
-# Compact GEP derivation contract for imported probabilities and horizon fields.
-# The time-unit convention is intentional: MFS horizons are in months, MSS
-# horizons are in years.
-OBJECTIVE4_GEP_DERIVATION_CONTRACT <- tibble::tribble(
-    ~outcome, ~horizon_years, ~horizon_months, ~source_probability_field, ~expected_survival_field, ~predicted_risk_field, ~event_field, ~event_type_field, ~time_field, ~time_unit, ~eligibility_field,
-    "mfs", 5, 60, "biopsy1_gep_mfs", "expected_mfs_5yr", "predicted_mfs_risk_5yr", "mfs_event_5yr", "event_type_mfs_5yr", "tt_mfs_5yr", "months", "mfs_analysis_eligible",
-    "mfs", 7, 84, "biopsy1_gep_mfs", "expected_mfs_7yr", "predicted_mfs_risk_7yr", "mfs_event_7yr", "event_type_mfs_7yr", "tt_mfs_7yr", "months", "mfs_analysis_eligible",
-    "mfs", 10, 120, "biopsy1_gep_mfs", "expected_mfs_10yr", "predicted_mfs_risk_10yr", "mfs_event_10yr", "event_type_mfs_10yr", "tt_mfs_10yr", "months", "mfs_analysis_eligible",
-    "mss", 5, 60, "biopsy1_gep_mss", "expected_mss_5yr", "predicted_mss_risk_5yr", "mss_event_5yr", "event_type_mss_5yr", "tt_mss_5yr", "years", "mss_analysis_eligible",
-    "mss", 7, 84, "biopsy1_gep_mss", "expected_mss_7yr", "predicted_mss_risk_7yr", "mss_event_7yr", "event_type_mss_7yr", "tt_mss_7yr", "years", "mss_analysis_eligible",
-    "mss", 10, 120, "biopsy1_gep_mss", "expected_mss_10yr", "predicted_mss_risk_10yr", "mss_event_10yr", "event_type_mss_10yr", "tt_mss_10yr", "years", "mss_analysis_eligible"
 )
 
 # Factor variables that must have proper levels

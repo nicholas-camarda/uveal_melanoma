@@ -710,7 +710,7 @@ build_survival_censoring_support <- function(data,
 #' @return List with `status`, `notes`, and `guardrail_table` for diagnostics
 #'   and narrative interpretation.
 assess_pfs2_censoring_support <- function(censoring_support,
-                                          horizon_months = PFS2_REPORT_HORIZON_MONTHS) {
+                                          horizon_months = OBJECTIVE3_PFS2_REPORT_HORIZON_MONTHS) {
     if (is.null(censoring_support) || nrow(censoring_support) == 0) {
         return(list(
             status = "unavailable",
@@ -731,12 +731,12 @@ assess_pfs2_censoring_support <- function(censoring_support,
 
     heavy_censoring <- nrow(overall) > 0 &&
         !is.na(overall$censoring_percent[[1]]) &&
-        overall$censoring_percent[[1]] >= 100 * PFS2_HEAVY_CENSORING_THRESHOLD
+        overall$censoring_percent[[1]] >= 100 * OBJECTIVE3_PFS2_HEAVY_CENSORING_THRESHOLD
     short_follow_up <- nrow(overall) > 0 &&
         !is.na(overall$median_follow_up_months[[1]]) &&
         overall$median_follow_up_months[[1]] < horizon_months
     censoring_imbalance <- nrow(by_treatment) >= 2 &&
-        diff(range(by_treatment$censoring_percent, na.rm = TRUE)) >= 100 * PFS2_CENSORING_IMBALANCE_THRESHOLD
+        diff(range(by_treatment$censoring_percent, na.rm = TRUE)) >= 100 * OBJECTIVE3_PFS2_CENSORING_IMBALANCE_THRESHOLD
     overall_censoring_percent <- if (nrow(overall) > 0) overall$censoring_percent[[1]] else NA_real_
     overall_median_follow_up <- if (nrow(overall) > 0) overall$median_follow_up_months[[1]] else NA_real_
 
@@ -753,7 +753,7 @@ assess_pfs2_censoring_support <- function(censoring_support,
             sprintf(
                 "Overall censoring is %s%%; downgrade threshold is %s%%.",
                 overall_censoring_percent,
-                100 * PFS2_HEAVY_CENSORING_THRESHOLD
+                100 * OBJECTIVE3_PFS2_HEAVY_CENSORING_THRESHOLD
             ),
             sprintf(
                 "Median follow-up is %s months; reported PFS-2 horizon is %s months.",
@@ -2538,7 +2538,7 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_d
         time_var = "tt_pfs2_months",
         event_var = "pfs2_event",
         group_var = "recurrence1_treatment_clean",
-        horizon_months = PFS2_REPORT_HORIZON_MONTHS
+        horizon_months = OBJECTIVE3_PFS2_REPORT_HORIZON_MONTHS
     )
     pfs2_interpretation_guardrails <- assess_pfs2_censoring_support(pfs2_censoring_support)
     pfs2_treatment_estimability <- assess_pfs2_treatment_estimability(
@@ -2610,10 +2610,10 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_d
     }
 
     # Check if we have enough patients and events for analysis
-    if (nrow(pfs2_data) < MINIMUM_PFS2_PATIENTS) {
+    if (nrow(pfs2_data) < OBJECTIVE3_MINIMUM_PFS2_PATIENTS) {
         logger::log_info(sprintf(
             "Insufficient patients for PFS-2 analysis (minimum %d required)",
-            MINIMUM_PFS2_PATIENTS
+            OBJECTIVE3_MINIMUM_PFS2_PATIENTS
         ))
         explanation_text <- sprintf(
             "PFS-2 Analysis Skipped - Insufficient Patients
@@ -2629,13 +2629,13 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_d
             tools::toTitleCase(gsub("_", " ", gsub("uveal_melanoma_|_cohort", "", dataset_name))),
             nrow(data),
             nrow(pfs2_data),
-            MINIMUM_PFS2_PATIENTS
+            OBJECTIVE3_MINIMUM_PFS2_PATIENTS
         )
         pfs2_skip_diagnostics <- write_pfs2_skip_outputs(
             reason = sprintf(
                 "PFS-2 survival analysis was skipped because only %d analyzable patients were available; at least %d are required.",
                 nrow(pfs2_data),
-                MINIMUM_PFS2_PATIENTS
+                OBJECTIVE3_MINIMUM_PFS2_PATIENTS
             ),
             narrative_lines = c(
                 sprintf(
@@ -2647,7 +2647,7 @@ analyze_pfs2 <- function(data, confounders = NULL, dataset_name = NULL, output_d
                 sprintf(
                     "Only %d analyzable PFS-2 patients were available; the minimum requirement is %d.",
                     nrow(pfs2_data),
-                    MINIMUM_PFS2_PATIENTS
+                OBJECTIVE3_MINIMUM_PFS2_PATIENTS
                 )
             ),
             explanation_text = explanation_text

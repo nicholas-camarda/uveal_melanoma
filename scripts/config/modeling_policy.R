@@ -13,14 +13,6 @@ TREATMENT_FACTOR_LEVELS <- c("PBT", "GKSRS") # PBT is reference group
 TREATMENT_REFERENCE_LEVEL <- TREATMENT_FACTOR_LEVELS[1] # Explicitly define reference
 TREATMENT_COMPARISON_LEVEL <- TREATMENT_FACTOR_LEVELS[2] # Explicitly define comparison
 
-# Restricted-cohort propensity-overlap sensitivity specification
-OBJECTIVE1_PROPENSITY_DATASET <- "uveal_melanoma_restricted_cohort"
-OBJECTIVE1_PROPENSITY_COVARIATES <- c(
-    "age_at_diagnosis", "sex", "location", "initial_tumor_height",
-    "initial_tumor_diameter", "srf", "treatment_year"
-)
-OBJECTIVE1_PROPENSITY_ESTIMAND <- "ATO"
-OBJECTIVE1_PROPENSITY_BALANCE_THRESHOLD <- 0.10
 TREATMENT_LABELS <- c("PBT", "GKSRS") # For display/plotting (matches factor levels order)
 FAVOURS_LABELS <- c("Favors GKSRS", "Favors PBT") # Left/right for GKSRS-versus-PBT contrasts: lower adverse-event hazards or more-negative tumor-height change favor GKSRS
 
@@ -67,44 +59,6 @@ confounders <- c(
 # 4. Individual coefficient p-values (2A, 2B, 3A) are valid and may be used for significance assessment but unclear how to do this
 # 5. Factor label p-value will show as NA in diagnostic files - this appears to be correct behavior
 
-# These subgroup variables are exploratory display surfaces. They are not the
-# default adjusted-model covariate set for the reviewer-response analyses.
-GENERAL_POP_MEDIAN_AGE_CUTOFF <- 63
-OBJECTIVE1_AGE_REFERENCE_VALUE <- GENERAL_POP_MEDIAN_AGE_CUTOFF
-OBJECTIVE1_AGE_SUBGROUP_OPTIONS <- c(
-    "age_at_diagnosis",
-    "age_at_diagnosis_binned",
-    "age_at_diagnosis_general_pop_median"
-)
-OBJECTIVE1_AGE_SUBGROUP_VAR <- "age_at_diagnosis_general_pop_median"
-if (!OBJECTIVE1_AGE_SUBGROUP_VAR %in% OBJECTIVE1_AGE_SUBGROUP_OPTIONS) {
-    stop("OBJECTIVE1_AGE_SUBGROUP_VAR must name a supported age representation")
-}
-
-subgroup_vars <- c(
-    OBJECTIVE1_AGE_SUBGROUP_VAR, "sex", "location", "initial_t_stage_simple",
-    #"initial_t_stage",
-    "initial_tumor_height", "initial_tumor_diameter",
-    "initial_overall_stage", "biopsy1_gep", "gep_class_simple", "gep12_prame_status", "optic_nerve"
-)
-
-# Define which subgroup variables are continuous and need binning
-continuous_subgroup_vars <- c("initial_tumor_height", "initial_tumor_diameter")
-
-# The continuous interaction path is enabled automatically when continuous age
-# is selected as the Objective 1 age subgroup representation.
-CONTINUOUS_INTERACTION_SUBGROUP_VARS <- intersect(
-    "age_at_diagnosis",
-    OBJECTIVE1_AGE_SUBGROUP_VAR
-)
-
-# Define variables that are constant within specific cohorts and should be excluded from subgroup analysis
-# These variables have no variation within the specified cohort and cannot be used for subgroup analysis
-COHORT_CONSTANT_VARIABLES <- list(
-    uveal_melanoma_restricted_cohort = c("optic_nerve"), # All restricted patients have optic_nerve == "N"
-    uveal_melanoma_gksrs_only_cohort = c(), # No constant variables in GKSRS-only cohort
-    uveal_melanoma_full_cohort = c() # No constant variables in full cohort
-)
 
 # =============================================================================
 # STAGE AND COHORT CONFIGURATION

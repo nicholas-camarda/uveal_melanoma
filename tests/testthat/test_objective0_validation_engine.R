@@ -698,8 +698,8 @@ test_that("Objective 0 contract registries do not drift from endpoint mappings",
         dplyr::select("objective_id", "variable_name")
 
     expect_equal(nrow(contract_pairs), nrow(dplyr::distinct(contract_pairs)))
-    expect_true(all(OBJECTIVE2_TOXICITY_ENDPOINTS$source_field %in% contract_pairs$variable_name[contract_pairs$objective_id == "objective2"]))
-    expect_true(all(OBJECTIVE2_TOXICITY_ENDPOINTS$analysis_field %in% contract_pairs$variable_name[contract_pairs$objective_id == "objective2"]))
+    expect_true(all(OBJECTIVE2_TOXICITY_ENDPOINT_MAP$source_field %in% contract_pairs$variable_name[contract_pairs$objective_id == "objective2"]))
+    expect_true(all(OBJECTIVE2_TOXICITY_ENDPOINT_MAP$analysis_field %in% contract_pairs$variable_name[contract_pairs$objective_id == "objective2"]))
     expect_true(all(OBJECTIVE3_PFS2_DERIVATION_CONTRACT$source_fields %in% contract_pairs$variable_name[contract_pairs$objective_id == "objective3"]))
     expect_true(all(OBJECTIVE3_PFS2_DERIVATION_CONTRACT$derived_fields %in% contract_pairs$variable_name[contract_pairs$objective_id == "objective3"]))
 
@@ -764,7 +764,7 @@ test_that("config_constants remains the only public config source entry point", 
     required_objects <- c(
         "PROJECT_ROOT", "INPUT_FILENAME", "OBJECTIVE0_GLOBAL_REQUIRED_VARIABLES",
         "OBJECTIVE0_DERIVED_OUTPUT_MANIFEST", "OBJECTIVE0_DOWNSTREAM_INPUT_CONTRACT",
-        "OBJECTIVE2_TOXICITY_ENDPOINTS", "OBJECTIVE3_PFS2_DERIVATION_CONTRACT",
+        "OBJECTIVE2_TOXICITY_ENDPOINT_MAP", "OBJECTIVE3_PFS2_DERIVATION_CONTRACT",
         "OBJECTIVE4_GEP_DERIVATION_CONTRACT", "GEP_VALIDATION_TIMEPOINTS",
         "STANDARD_TABLE_LABELS"
     )

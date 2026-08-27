@@ -1,6 +1,7 @@
 test_binary_event_counting.R
 test_ci_contract.R
 test_codebase_review_contract.R
+test_config_contract_organization.R
 test_cohort_summary_export.R
 test_doc_contract_alignment.R
 test_effect_summary_audit.R

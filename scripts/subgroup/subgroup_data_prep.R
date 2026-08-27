@@ -167,7 +167,7 @@ process_subgroup_data <- function(data, subgroup_var, confounders, include_basel
         attr(processed_data[[subgroup_var_to_use]], "continuous_reference_unit") <- "years"
         attr(processed_data[[subgroup_var_to_use]], "continuous_reference_label") <- if (
             identical(subgroup_var, "age_at_diagnosis") &&
-                identical(continuous_reference_value, GENERAL_POP_MEDIAN_AGE_CUTOFF)
+                identical(continuous_reference_value, OBJECTIVE1_GENERAL_POP_MEDIAN_AGE_CUTOFF)
         ) {
             "general-population median"
         } else {
