@@ -1,6 +1,6 @@
 # Figure Counts Audit
 
-This file is generated from canonical runtime artifacts and centralized config constants. It is a current-state cohort and figure-count audit; it does **not** validate the rendered flowchart image itself.
+This file is generated from canonical runtime artifacts and centralized configuration. It is a current-state cohort and figure-count audit; it does **not** validate the rendered flowchart image itself.
 
 ## Canonical sources
 

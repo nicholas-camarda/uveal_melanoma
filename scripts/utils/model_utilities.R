@@ -156,7 +156,7 @@ coerce_to_factor_preserving_levels <- function(values, ordered = FALSE) {
 #' Get Variable Labels for Display
 #'
 #' Returns a named vector of human-readable labels for variables.
-#' Uses centralized STANDARD_TABLE_LABELS from config_constants.R for consistency.
+#' Uses centralized STANDARD_TABLE_LABELS from scripts/config/labels_display.R for consistency.
 #'
 #' @return Named character vector of variable labels
 get_variable_labels <- function() {

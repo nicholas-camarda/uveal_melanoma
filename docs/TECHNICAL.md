@@ -166,7 +166,7 @@ Patients are classified into three vital status categories for summary reporting
 - Lost to follow-up does not indicate missing data; these patients contributed valid follow-up time
 - Total person-years of follow-up includes all patients up to their last documented contact
 
-**Implementation:** `scripts/utils/cohort_summary_export.R` with cutoff constants centralized in `scripts/utils/config_constants.R`
+**Implementation:** `scripts/utils/cohort_summary_export.R` with cutoff constants centralized in `scripts/config/data_processing_policy.R`
 
 **See also:** [Lost to Follow-up Classification](CALCULATIONS.md#lost-to-follow-up-classification) for detailed calculation methodology
 
@@ -358,7 +358,7 @@ See [README.md](../README.md) for the top-level execution entry points and outpu
 
 **Factor Level Management:**
 - Consistent handling of categorical variables
-- Centralized level labels in `config_constants.R`
+- Centralized level labels in `scripts/config/labels_display.R`
 - Objective 0 owns canonical factor construction; downstream code may preserve, restore, or drop levels for display, but model-facing ad hoc factor coercion is rejected by the factor-level audit
 - Pre-collapse data preservation for baseline tables
 

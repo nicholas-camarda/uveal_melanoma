@@ -28,7 +28,7 @@ repository does not use npm or maintain a Node dependency lockfile.
 
 Canonical source, runtime, raw-data, and publish paths are defined in `scripts/config/project_paths.R`. Keep the shared spreadsheet outside the repository; see the [path model](#path-model) for the default layout and configuration options.
 
-The expected filename is the value of `INPUT_FILENAME` in `scripts/utils/config_constants.R`.
+The expected filename is the value of `INPUT_FILENAME` in `scripts/config/data_processing_policy.R`.
 
 On another machine, use the supported absolute-path overrides described in the [path model](#path-model) rather than editing tracked configuration.
 
@@ -254,7 +254,7 @@ durable versioned record.
 
 ## Configuration
 
-Analysis settings live in `scripts/utils/config_constants.R`; canonical filesystem roots and supported path overrides live in `scripts/config/project_paths.R`. Typical execution settings to review before a fresh run are:
+Configuration is loaded through `scripts/utils/config_constants.R`; shared and objective-specific settings live in the focused modules under `scripts/config/`. Canonical filesystem roots and supported path overrides live in `scripts/config/project_paths.R`. Typical execution settings to review before a fresh run are:
 
 ```r
 RECREATE_ANALYTIC_DATASETS <- FALSE

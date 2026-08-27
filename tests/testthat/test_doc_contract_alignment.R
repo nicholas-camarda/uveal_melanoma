@@ -129,3 +129,64 @@ test_that("active Objective 4 docs and code-facing outputs do not revive split-r
         paste("Files reviving split-role vocabulary:", paste(revived_split_hits, collapse = ", "))
     )
 })
+
+test_that("documentation and maintenance hints name normalized config modules", {
+    documentation_paths <- c(
+        here::here("README.md"),
+        list.files(
+            path = here::here("docs"),
+            pattern = "\\.(md|qmd|Rmd)$",
+            recursive = TRUE,
+            full.names = TRUE
+        )
+    )
+    documentation_paths <- documentation_paths[file.exists(documentation_paths)]
+    documentation_text <- paste(
+        unlist(lapply(documentation_paths, readLines, warn = FALSE)),
+        collapse = "\n"
+    )
+    confounder_analysis_text <- paste(
+        readLines(here::here("scripts", "tools", "confounder_analysis.R"), warn = FALSE),
+        collapse = "\n"
+    )
+    model_utilities_text <- paste(
+        readLines(here::here("scripts", "utils", "model_utilities.R"), warn = FALSE),
+        collapse = "\n"
+    )
+
+    expect_false(grepl("scripts/config/gep_policy\\.R", documentation_text))
+    expect_false(grepl(
+        "INPUT_FILENAME` in `scripts/utils/config_constants.R",
+        documentation_text,
+        fixed = TRUE
+    ))
+    expect_false(grepl(
+        "cutoff constants centralized in `scripts/utils/config_constants.R`",
+        documentation_text,
+        fixed = TRUE
+    ))
+    expect_false(grepl(
+        "Centralized level labels in `config_constants.R`",
+        documentation_text,
+        fixed = TRUE
+    ))
+    expect_false(grepl("updating config_constants.R", confounder_analysis_text, fixed = TRUE))
+    expect_false(grepl("confounders line in config_constants.R", confounder_analysis_text, fixed = TRUE))
+    expect_false(grepl("from config_constants.R", model_utilities_text, fixed = TRUE))
+
+    readme_text <- paste(readLines(here::here("README.md"), warn = FALSE), collapse = "\n")
+    technical_text <- paste(readLines(here::here("docs", "TECHNICAL.md"), warn = FALSE), collapse = "\n")
+    expect_match(
+        readme_text,
+        "`INPUT_FILENAME` in `scripts/config/data_processing_policy.R`",
+        fixed = TRUE
+    )
+    expect_match(
+        technical_text,
+        "cutoff constants centralized in `scripts/config/data_processing_policy.R`",
+        fixed = TRUE
+    )
+    expect_match(technical_text, "Centralized level labels in `scripts/config/labels_display.R`", fixed = TRUE)
+    expect_match(confounder_analysis_text, "scripts/config/modeling_policy.R", fixed = TRUE)
+    expect_match(model_utilities_text, "scripts/config/labels_display.R", fixed = TRUE)
+})

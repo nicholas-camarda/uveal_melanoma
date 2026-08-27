@@ -355,9 +355,9 @@ if (length(significant_vars) > 0) {
         cat(sprintf("  %d. %s\n", i, updated_confounders[i]))
     }
 
-    # Generate R code for updating config_constants.R
-    cat("\n=== R CODE TO UPDATE config_constants.R ===\n")
-    cat("# Replace the confounders line in config_constants.R with:\n")
+    # Generate R code for updating the shared modeling policy module.
+    cat("\n=== R CODE TO UPDATE scripts/config/modeling_policy.R ===\n")
+    cat("# Replace the confounders line in scripts/config/modeling_policy.R with:\n")
     cat("confounders <- c(\n")
     for (i in seq_along(updated_confounders)) {
         comma <- if (i < length(updated_confounders)) "," else ""
