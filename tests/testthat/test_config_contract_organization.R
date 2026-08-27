@@ -86,3 +86,35 @@ test_that("normalized objective contracts remain available through the public lo
     expect_false(exists("OBJECTIVE2_TOXICITY_ENDPOINTS", inherits = TRUE))
     expect_false(exists("GEP_OBJECTIVE4_GROUPING", inherits = TRUE))
 })
+
+test_that("Objective 3 thresholds retain their established values", {
+    expect_identical(OBJECTIVE3_MINIMUM_PFS2_PATIENTS, 10L)
+    expect_identical(OBJECTIVE3_PFS2_REPORT_HORIZON_MONTHS, 36)
+    expect_identical(OBJECTIVE3_PFS2_HEAVY_CENSORING_THRESHOLD, 0.70)
+    expect_identical(OBJECTIVE3_PFS2_CENSORING_IMBALANCE_THRESHOLD, 0.30)
+})
+
+test_that("private configuration modules are only sourced by the public loader", {
+    tracked_r_files <- system2(
+        "git", c("ls-files", "--", "*.R"), stdout = TRUE
+    )
+    tracked_r_files <- tracked_r_files[
+        !grepl("test_config_contract_organization\\.R$", tracked_r_files)
+    ]
+    tracked_r_files <- tracked_r_files[
+        file.exists(here::here(tracked_r_files))
+    ]
+    private_source_pattern <- "source\\s*\\([^\\n]*(scripts[^\\n]*config|[\\\"']config[\\\"'])"
+    private_sources <- unlist(lapply(tracked_r_files, function(path) {
+        grep(
+            private_source_pattern,
+            readLines(here::here(path), warn = FALSE),
+            value = TRUE,
+            perl = TRUE
+        )
+    }))
+    private_sources <- private_sources[
+        !grepl("config_constants\\.R", private_sources)
+    ]
+    expect_length(private_sources, 0L)
+})

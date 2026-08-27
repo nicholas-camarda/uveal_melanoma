@@ -26,6 +26,7 @@ units:
     downstream:
       - objective-0
       - objective-1
+      - objective-2
       - objective-3
       - objective-4
     status: not_reviewed

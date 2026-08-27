@@ -109,7 +109,7 @@ The contract MUST validate row-wise source-to-derived consistency before Objecti
 - **THEN** Objective 0 validation or regression tests fail with row-level detail
 
 ### Requirement: Objective 4 GEP SHALL have a compact derivation contract
-Objective 0 MUST maintain a compact Objective 4 GEP derivation contract for imported GEP probabilities and horizon endpoints. General presence/domain registry checks are necessary but insufficient for Objective 4 endpoint validity.
+The Objective 4 contract module MUST maintain a compact GEP derivation contract for imported GEP probabilities and horizon endpoints. Objective 0 MUST consume and centrally enforce that contract because general presence/domain registry checks are necessary but insufficient for Objective 4 endpoint validity.
 
 The contract MUST cover 5-, 7-, and 10-year MFS and MSS expected survival probabilities, predicted risk complements, horizon event indicators, competing-risk event types, clipped horizon times, endpoint-specific eligibility flags, and `gep_validation_set`. Its definition belongs in the Objective 4 contract module while Objective 0 consumes it during centralized validation.
 
