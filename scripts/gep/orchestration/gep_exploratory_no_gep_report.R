@@ -3137,8 +3137,10 @@ create_exploratory_mss_cif_plot <- function(data, output_path) {
 #'
 #' @return Invisibly returns the saved plot path.
 create_probability_density_plot <- function(data, probability_col, plot_title, output_path) {
+    plot_data <- data %>%
+        dplyr::filter(is.finite(.data[[probability_col]]), !is.na(.data$no_gep_group))
     plot <- ggplot2::ggplot(
-        data,
+        plot_data,
         ggplot2::aes(
             x = .data[[probability_col]],
             color = .data$no_gep_group,
@@ -3147,8 +3149,8 @@ create_probability_density_plot <- function(data, probability_col, plot_title, o
     ) +
         ggplot2::geom_density(alpha = 0.2, adjust = 1.1) +
         ggplot2::scale_x_continuous(labels = function(x) sprintf("%.0f%%", 100 * x), limits = c(0, 1)) +
-        ggplot2::scale_color_manual(values = get_palette_by_variable("biopsy1_gep", unique(data$no_gep_group))) +
-        ggplot2::scale_fill_manual(values = get_palette_by_variable("biopsy1_gep", unique(data$no_gep_group))) +
+        ggplot2::scale_color_manual(values = get_palette_by_variable("biopsy1_gep", unique(plot_data$no_gep_group))) +
+        ggplot2::scale_fill_manual(values = get_palette_by_variable("biopsy1_gep", unique(plot_data$no_gep_group))) +
         ggplot2::labs(
             title = plot_title,
             x = "Predicted probability",
@@ -3245,7 +3247,10 @@ build_exploratory_no_gep_presentation_data <- function(analysis_results) {
     }
     numeric_row <- function(semantic_id, section, group, label, value, unit, reader_role) {
         if (!is.finite(value)) {
-            return(empty_rows())
+            stop(sprintf(
+                "Presentation data required aggregate is non-finite: %s",
+                semantic_id
+            ), call. = FALSE)
         }
         tibble::tibble(
             semantic_id = semantic_id, section = section, group = group,
@@ -3280,7 +3285,8 @@ build_exploratory_no_gep_presentation_data <- function(analysis_results) {
         numeric_row("gep_usable_count", "cohort_counts", "Usable GEP", "Usable GEP", class1_n + class2_n, "count", "cohort denominator"),
         numeric_row("gep_not_tested_count", "cohort_counts", "GEP Not Tested", "GEP not tested", not_tested_n, "count", "cohort denominator"),
         numeric_row("gep_failed_indeterminate_count", "cohort_counts", "GEP Failed/Indeterminate", "GEP failed or indeterminate", failed_n, "count", "cohort denominator"),
-        numeric_row("no_gep_scoreable_count", "cohort_counts", "No usable GEP", "Scoreable no-GEP cohort", failed_n + not_tested_n, "count", "cohort denominator")
+        numeric_row("no_gep_without_usable_count", "cohort_counts", "No usable GEP", "No usable GEP before scoreability screening", failed_n + not_tested_n, "count", "cohort denominator"),
+        numeric_row("no_gep_scoreable_count", "cohort_counts", "No usable GEP", "Scoreable no-GEP cohort", nrow(analysis_results$prepared_data$no_gep_scoring), "count", "cohort denominator")
     )
 
     followup_data <- analysis_results$prepared_data$no_gep_scoring
@@ -3330,7 +3336,14 @@ build_exploratory_no_gep_presentation_data <- function(analysis_results) {
         "observed_mss_5yr_event_rate"
     ) %in% names(analysis_results$sensitivity_summary))) {
         analysis_results$sensitivity_summary %>%
-            dplyr::filter(.data$analysis %in% c("Direct_MFS_5yr_Risk", "Direct_60mo_Melanoma_Death_Cumulative_Incidence_Risk")) %>%
+            dplyr::filter(
+                .data$analysis %in% c("Direct_MFS_5yr_Risk", "Direct_60mo_Melanoma_Death_Cumulative_Incidence_Risk"),
+                !is.na(.data$bin),
+                is.finite(.data$n),
+                is.finite(.data$mean_predicted),
+                is.finite(.data$observed_mfs_5yr_event_rate),
+                is.finite(.data$observed_mss_5yr_event_rate)
+            ) %>%
             purrr::pmap_dfr(function(analysis, bin, n, mean_predicted, observed_mfs_5yr_event_rate,
                                     observed_mss_5yr_event_rate, ...) {
             outcome <- if (identical(analysis, "Direct_MFS_5yr_Risk")) "mfs_5yr" else "mss_60mo"
@@ -3363,25 +3376,77 @@ build_exploratory_no_gep_presentation_data <- function(analysis_results) {
         }
     )
 
-    baseline_rows <- analysis_results$baseline_comparisons %>%
-        dplyr::filter(is.finite(.data$p_value)) %>%
-        dplyr::slice_min(.data$p_value, n = 3, with_ties = FALSE) %>%
+    baseline_contrast_variables <- c(
+        "initial_tumor_diameter",
+        "initial_tumor_height",
+        "ciliary_involvement"
+    )
+    selected_baseline_contrasts <- analysis_results$baseline_comparisons %>%
+        dplyr::filter(.data$variable %in% baseline_contrast_variables)
+    if (anyDuplicated(selected_baseline_contrasts$variable)) {
+        stop("Presentation data selected baseline contrast variables must be unique.", call. = FALSE)
+    }
+    baseline_rows <- selected_baseline_contrasts %>%
         purrr::pmap_dfr(function(variable, test, p_value, ...) {
-            numeric_row(paste0("baseline_contrast_", key_part(variable), "_p_value"), "baseline_contrasts", "Four GEP groups", paste("Selected baseline contrast:", variable), p_value, "p_value", paste("descriptive", test, "contrast"))
+            numeric_row(
+                paste0("baseline_contrast_", key_part(variable), "_p_value"),
+                "baseline_contrasts", "Four GEP groups",
+                paste("Pre-specified baseline descriptive contrast:", variable),
+                p_value, "p_value",
+                paste("pre-specified descriptive", test, "contrast; non-causal and not ranked")
+            )
         })
+
     overlap_rows <- analysis_results$overlap_diagnostics %>%
         dplyr::filter(is.finite(.data$abs_smd)) %>%
         purrr::pmap_dfr(function(predictor, predictor_type, worst_level, abs_smd, overlap_flag, ...) {
             numeric_row(paste0("overlap_", key_part(predictor), "_abs_smd"), "overlap_diagnostics", "Failed versus Not Tested", paste("Direct overlap absolute SMD:", predictor), abs_smd, "absolute_smd", paste("direct overlap diagnostic;", overlap_flag))
         })
+    failed_subgroup <- analysis_results$no_gep_subgroups %>%
+        dplyr::filter(.data$no_gep_group == "GEP Failed/Indeterminate")
+    not_tested_subgroup <- analysis_results$no_gep_subgroups %>%
+        dplyr::filter(.data$no_gep_group == "GEP Not Tested")
+    descriptive_contrast_rows <- if (nrow(failed_subgroup) == 1 && nrow(not_tested_subgroup) == 1) {
+        dplyr::bind_rows(
+            numeric_row(
+                "descriptive_contrast_mfs_5yr_event_rate_difference",
+                "descriptive_contrasts", "Failed versus Not Tested",
+                "Failed minus Not Tested censoring-aware 5-year MFS event-rate difference",
+                failed_subgroup$observed_5yr_mfs_event_rate[[1]] - not_tested_subgroup$observed_5yr_mfs_event_rate[[1]],
+                "probability_difference", "descriptive subgroup contrast; non-causal"
+            ),
+            numeric_row(
+                "descriptive_contrast_mss_60mo_event_rate_difference",
+                "descriptive_contrasts", "Failed versus Not Tested",
+                "Failed minus Not Tested censoring-aware 60-month melanoma-death cumulative-incidence difference",
+                failed_subgroup$observed_5yr_mss_event_rate[[1]] - not_tested_subgroup$observed_5yr_mss_event_rate[[1]],
+                "probability_difference", "descriptive subgroup contrast; non-causal"
+            )
+        )
+    } else {
+        stop("Presentation data requires both no-GEP subgroup summaries.", call. = FALSE)
+    }
 
-    dplyr::bind_rows(
+    presentation_data <- dplyr::bind_rows(
         count_rows, followup_rows, subgroup_rows, risk_third_rows, predictor_rows,
-        baseline_rows, overlap_rows,
+        baseline_rows, overlap_rows, descriptive_contrast_rows,
         text_row("reason_for_missing_gep_available", "missingness_context", "All", "Reason for missing GEP available", "FALSE", "missingness reason unavailable")
     ) %>%
         dplyr::mutate(reason_for_missing_gep_available = FALSE) %>%
         dplyr::arrange(.data$section, .data$semantic_id)
+
+    if (anyDuplicated(presentation_data$semantic_id)) {
+        stop("Presentation data semantic_id values must be unique.", call. = FALSE)
+    }
+    probability_rows <- presentation_data$unit == "probability_0_to_1"
+    if (any(
+        presentation_data$value_numeric[probability_rows] < 0 |
+            presentation_data$value_numeric[probability_rows] > 1
+    )) {
+        stop("Presentation data probability values must remain within the 0-1 interval.", call. = FALSE)
+    }
+
+    presentation_data
 }
 
 #' Build Presentation Narrative Sections From the Aggregate Contract
@@ -3391,7 +3456,7 @@ build_exploratory_no_gep_presentation_data <- function(analysis_results) {
 #' @return Character vector of Markdown narrative sections.
 build_exploratory_no_gep_presentation_narrative <- function(presentation_data) {
     why_rows <- presentation_data %>%
-        dplyr::filter(.data$section %in% c("baseline_contrasts", "overlap_diagnostics"))
+        dplyr::filter(.data$section %in% c("descriptive_contrasts", "overlap_diagnostics"))
     priority_rows <- presentation_data %>%
         dplyr::filter(.data$section %in% c("observed_outcomes", "direct_model_risk", "penalized_predictors"))
     format_rows <- function(rows) {

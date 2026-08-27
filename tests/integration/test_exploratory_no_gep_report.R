@@ -364,12 +364,26 @@ test_that("exploratory no-GEP report writes workbook, summary, and plots", {
             presentation_probability_rows$value_numeric <= 1
     ))
     expect_true(all(presentation_data_sheet$reason_for_missing_gep_available == FALSE))
+    expect_equal(
+        presentation_data_sheet$value_numeric[
+            presentation_data_sheet$semantic_id == "no_gep_scoreable_count"
+        ],
+        164
+    )
+    expect_equal(
+        presentation_data_sheet$value_numeric[
+            presentation_data_sheet$semantic_id == "no_gep_without_usable_count"
+        ],
+        175
+    )
+    expect_false(any(grepl("_na_(count|observed_event_rate)$", presentation_data_sheet$semantic_id)))
     expect_false(any(grepl("patient|record|case|study", names(presentation_data_sheet), ignore.case = TRUE)))
     expect_true(all(c(
         "cohort_total_count",
         "gep_usable_count",
         "gep_not_tested_count",
         "gep_failed_indeterminate_count",
+        "no_gep_without_usable_count",
         "no_gep_scoreable_count",
         "followup_gep_not_tested_median_years",
         "observed_gep_failed_indeterminate_mfs_5yr_event_rate",
@@ -421,6 +435,8 @@ test_that("exploratory no-GEP report writes workbook, summary, and plots", {
     expect_match(summary_text, "overlap diagnostic", ignore.case = TRUE)
     expect_match(summary_text, "## Why the No-GEP Groups May Differ", fixed = TRUE)
     expect_match(summary_text, "## Presentation Narrative and Figure Priorities", fixed = TRUE)
+    expect_match(summary_text, "Direct overlap absolute SMD", fixed = TRUE)
+    expect_false(grepl("Selected baseline contrast", summary_text, fixed = TRUE))
 
     expect_s3_class(results$surrogate_model$model, "cv.glmnet")
     expect_s3_class(results$direct_models$mfs$model, "cv.glmnet")
