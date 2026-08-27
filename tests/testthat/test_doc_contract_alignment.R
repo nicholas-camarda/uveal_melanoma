@@ -131,10 +131,14 @@ test_that("active Objective 4 docs and code-facing outputs do not revive split-r
 })
 
 test_that("documentation and maintenance hints name normalized config modules", {
+    repository_root <- here::here()
     tracked_documentation_paths <- system2(
-        "git", c("ls-files", "--", "README.md", "docs"), stdout = TRUE
+        "git",
+        c("-C", repository_root, "ls-files", "--", "README.md", "docs"),
+        stdout = TRUE
     )
-    documentation_paths <- here::here(tracked_documentation_paths)
+    expect_gt(length(tracked_documentation_paths), 0L)
+    documentation_paths <- file.path(repository_root, tracked_documentation_paths)
     documentation_paths <- documentation_paths[file.exists(documentation_paths)]
     documentation_text <- paste(
         unlist(lapply(documentation_paths, readLines, warn = FALSE)),
