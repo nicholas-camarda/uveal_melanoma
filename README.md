@@ -110,13 +110,16 @@ another checkout's library with `.libPaths()` or install packages into a
 checkout-specific library.
 
 ```sh
+# Standard testthat-only entrypoint
+Rscript tests/testthat.R
+
 # Complete portable suite required for pull requests and master pushes
-Rscript scripts/tools/run_portable_suite.R
+Rscript scripts/ci/run_portable_suite.R
 
 # Local read-only actual-data integration suite
 OCULAR_INTEGRATION_RAW_DATA_DIR='/absolute/path/to/raw-data' \
 OCULAR_INTEGRATION_PROCESSED_DATA_DIR='/absolute/path/to/processed-data' \
-Rscript scripts/tools/run_testthat.R tests/integration
+Rscript scripts/ci/run_testthat.R tests/integration
 ```
 
 The synthetic fixture exercises portable schema, missingness, censoring, GEP,

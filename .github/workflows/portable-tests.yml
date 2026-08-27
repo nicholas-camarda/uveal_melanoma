@@ -60,4 +60,4 @@ jobs:
           }
           RSCRIPT
       - name: Run complete portable suite
-        run: Rscript scripts/tools/run_portable_suite.R
+        run: Rscript scripts/ci/run_portable_suite.R

@@ -217,7 +217,7 @@ run_testthat_directory <- function(args = commandArgs(trailingOnly = TRUE)) {
     if (length(args) < 1L || length(args) > 3L || !nzchar(trimws(args[[1]]))) {
         stop(
             paste(
-                "Usage: Rscript scripts/tools/run_testthat.R <test-directory>",
+                "Usage: Rscript scripts/ci/run_testthat.R <test-directory>",
                 "[--filter <regular-expression>]"
             ),
             call. = FALSE
@@ -229,7 +229,7 @@ run_testthat_directory <- function(args = commandArgs(trailingOnly = TRUE)) {
         if (length(args) != 3L || !identical(args[[2]], "--filter") || !nzchar(trimws(args[[3]]))) {
             stop(
                 paste(
-                    "Usage: Rscript scripts/tools/run_testthat.R <test-directory>",
+                    "Usage: Rscript scripts/ci/run_testthat.R <test-directory>",
                     "[--filter <regular-expression>]"
                 ),
                 call. = FALSE

@@ -76,7 +76,7 @@ test_that("portable path tools do not embed a maintainer home directory", {
 })
 
 test_that("portable test runner propagates testthat failures", {
-    runner <- here::here("scripts", "tools", "run_testthat.R")
+    runner <- here::here("scripts", "ci", "run_testthat.R")
     expect_true(file.exists(runner))
 
     passing_dir <- tempfile("intentional-testthat-pass-")

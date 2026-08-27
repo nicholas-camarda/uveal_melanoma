@@ -30,7 +30,7 @@ Before opening or merging a protected-lane pull request, run the same complete
 portable gate used by CI:
 
 ```sh
-Rscript scripts/tools/run_portable_suite.R
+Rscript scripts/ci/run_portable_suite.R
 ```
 
 Targeted tests do not replace this complete gate. Record the command, exit
