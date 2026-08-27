@@ -128,7 +128,7 @@ validation_rebuild_recommendation <- function(dataset_mode, check_ids) {
 
     c(
         "Next action: cached analytic datasets do not satisfy the current derivation contract.",
-        "Rebuild the cached analytic datasets from raw input with RECREATE_ANALYTIC_DATASETS <- TRUE, then rerun the pipeline."
+        "Rebuild the cached analytic datasets from raw input by running: Rscript -e \"source('scripts/load_all.R'); RECREATE_ANALYTIC_DATASETS <- TRUE; main_execution()\""
     )
 }
 
