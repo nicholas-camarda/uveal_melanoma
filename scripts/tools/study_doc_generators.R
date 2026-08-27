@@ -228,17 +228,22 @@ render_figure_counts_table <- function(cohort_summary, cohort_label) {
     )
 }
 
-abbreviate_user_home_path <- function(path) {
-    home <- path.expand("~")
-    home_prefix <- paste0(home, .Platform$file.sep)
+#' Render a runtime-relative path for public documentation
+#'
+#' Public documentation must not expose the maintainer's local runtime root.
+#' This helper preserves the canonical runtime subdirectory while replacing
+#' machine-specific prefixes with the portable `runtime/` path.
+#'
+#' @param runtime_subpath Character scalar below the canonical runtime root.
+#' @return Character scalar suitable for public documentation.
+#' @examples
+#' portable_runtime_doc_path(file.path("Analytic Dataset", "cohort_summary_statistics.json"))
+portable_runtime_doc_path <- function(runtime_subpath) {
+    if (!is.character(runtime_subpath) || length(runtime_subpath) != 1L || !nzchar(runtime_subpath)) {
+        stop("runtime_subpath must be one non-empty character value.", call. = FALSE)
+    }
 
-    if (identical(path, home)) {
-        return("~")
-    }
-    if (startsWith(path, home_prefix)) {
-        return(paste0("~", substring(path, nchar(home) + 1L)))
-    }
-    path
+    file.path("runtime", runtime_subpath)
 }
 
 render_figure_counts_audit_markdown <- function(summary_data = NULL) {
@@ -254,8 +259,14 @@ render_figure_counts_audit_markdown <- function(summary_data = NULL) {
         "",
         "## Canonical sources",
         "",
-        sprintf("- `%s`", abbreviate_user_home_path(file.path(PROCESSED_DATA_DIR, "cohort_summary_statistics.json"))),
-        sprintf("- `%s`", abbreviate_user_home_path(file.path(OUTPUT_DIR, "uveal_full", "00_General", "removed_patients_summary.tsv"))),
+        sprintf(
+            "- `%s`",
+            portable_runtime_doc_path(file.path("Analytic Dataset", "cohort_summary_statistics.json"))
+        ),
+        sprintf(
+            "- `%s`",
+            portable_runtime_doc_path(file.path("Analysis", "uveal_full", "00_General", "removed_patients_summary.tsv"))
+        ),
         "- `scripts/utils/cohort_summary_export.R`",
         "- `scripts/utils/config_constants.R`",
         "",
