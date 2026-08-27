@@ -324,6 +324,7 @@ test_that("exploratory no-GEP report writes workbook, summary, and plots", {
             "Overlap_Diagnostics",
             "Baseline_Comparisons",
             "Data_Audit",
+            "Presentation_Data",
             "No_GEP_Predictions",
             "Sensitivity_Pooled_No_GEP",
             "KM_Corrected_MFS",
@@ -335,6 +336,7 @@ test_that("exploratory no-GEP report writes workbook, summary, and plots", {
     key_findings_sheet <- openxlsx::read.xlsx(results$output_paths$workbook, sheet = "Key_Findings_5yr")
     risk_ladder_sheet <- openxlsx::read.xlsx(results$output_paths$workbook, sheet = "Risk_Ladder_5yr")
     model_performance_sheet <- openxlsx::read.xlsx(results$output_paths$workbook, sheet = "Model_Performance")
+    presentation_data_sheet <- openxlsx::read.xlsx(results$output_paths$workbook, sheet = "Presentation_Data")
 
     expect_false(any(c("section", "item", "detail", "guide_text") %in% names(key_findings_sheet)))
     expect_false(any(c("section", "item", "detail", "guide_text") %in% names(risk_ladder_sheet)))
@@ -350,6 +352,34 @@ test_that("exploratory no-GEP report writes workbook, summary, and plots", {
     )
     expect_false("median_predicted_5yr_mss_risk" %in% names(key_findings_sheet))
     expect_true(all(c("section", "label", "value") %in% names(start_here_sheet)))
+    expect_true(all(c(
+        "semantic_id", "value_numeric", "value_character", "reason_for_missing_gep_available"
+    ) %in% names(presentation_data_sheet)))
+    expect_identical(anyDuplicated(presentation_data_sheet$semantic_id), 0L)
+    expect_true(all(is.finite(stats::na.omit(presentation_data_sheet$value_numeric))))
+    presentation_probability_rows <- presentation_data_sheet %>%
+        dplyr::filter(.data$unit == "probability_0_to_1")
+    expect_true(all(
+        presentation_probability_rows$value_numeric >= 0 &
+            presentation_probability_rows$value_numeric <= 1
+    ))
+    expect_true(all(presentation_data_sheet$reason_for_missing_gep_available == FALSE))
+    expect_false(any(grepl("patient|record|case|study", names(presentation_data_sheet), ignore.case = TRUE)))
+    expect_true(all(c(
+        "cohort_total_count",
+        "gep_usable_count",
+        "gep_not_tested_count",
+        "gep_failed_indeterminate_count",
+        "no_gep_scoreable_count",
+        "followup_gep_not_tested_median_years",
+        "observed_gep_failed_indeterminate_mfs_5yr_event_rate",
+        "observed_gep_not_tested_mss_60mo_event_rate",
+        "direct_model_gep_not_tested_mfs_5yr_median_risk",
+        "predictor_direct_mfs_1_standardized_coefficient",
+        "baseline_contrast_initial_tumor_diameter_p_value",
+        "overlap_initial_tumor_diameter_abs_smd",
+        "reason_for_missing_gep_available"
+    ) %in% presentation_data_sheet$semantic_id))
     expect_true(all(c("group", "n", "observed_5yr_mfs_event_rate", "median_predicted_5yr_mfs_risk") %in% names(risk_ladder_sheet)))
     expect_true(all(c(
         "model", "model_method", "reported_risk_scale", "cv_auc",
@@ -389,6 +419,8 @@ test_that("exploratory no-GEP report writes workbook, summary, and plots", {
     expect_match(summary_text, "Cilio-Choroidal", fixed = TRUE)
     expect_match(summary_text, "0-1 probability scale", fixed = TRUE)
     expect_match(summary_text, "overlap diagnostic", ignore.case = TRUE)
+    expect_match(summary_text, "## Why the No-GEP Groups May Differ", fixed = TRUE)
+    expect_match(summary_text, "## Presentation Narrative and Figure Priorities", fixed = TRUE)
 
     expect_s3_class(results$surrogate_model$model, "cv.glmnet")
     expect_s3_class(results$direct_models$mfs$model, "cv.glmnet")
@@ -460,6 +492,7 @@ test_that("exploratory no-GEP report writes workbook, summary, and plots", {
     expect_true("risk_ladder" %in% names(results))
     expect_true("overlap_diagnostics" %in% names(results))
     expect_true("parsimonious_sensitivity" %in% names(results))
+    expect_true("presentation_data" %in% names(results))
     expect_true(any(results$predictor_contribution$section == "model_contribution"))
     expect_true(
         "predicted_60mo_melanoma_death_cumulative_incidence_risk" %in%
