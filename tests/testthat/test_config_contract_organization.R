@@ -99,22 +99,24 @@ test_that("private configuration modules are only sourced by the public loader",
         "git", c("ls-files", "--", "*.R"), stdout = TRUE
     )
     tracked_r_files <- tracked_r_files[
-        !grepl("test_config_contract_organization\\.R$", tracked_r_files)
+        !grepl("scripts/utils/config_constants\\.R$", tracked_r_files)
     ]
     tracked_r_files <- tracked_r_files[
         file.exists(here::here(tracked_r_files))
     ]
-    private_source_pattern <- "source\\s*\\([^\\n]*(scripts[^\\n]*config|[\\\"']config[\\\"'])"
-    private_sources <- unlist(lapply(tracked_r_files, function(path) {
-        grep(
-            private_source_pattern,
-            readLines(here::here(path), warn = FALSE),
-            value = TRUE,
-            perl = TRUE
-        )
-    }))
-    private_sources <- private_sources[
-        !grepl("config_constants\\.R", private_sources)
-    ]
-    expect_length(private_sources, 0L)
+    has_private_config_source <- function(node) {
+        if (!is.call(node)) {
+            return(FALSE)
+        }
+        if (identical(node[[1L]], as.name("source"))) {
+            source_call <- paste(deparse(node), collapse = "")
+            return(grepl("scripts.*config|[\\\"']config[\\\"']", source_call))
+        }
+        any(vapply(as.list(node)[-1L], has_private_config_source, logical(1)))
+    }
+    private_source_files <- vapply(tracked_r_files, function(path) {
+        parsed <- parse(here::here(path), keep.source = FALSE)
+        any(vapply(parsed, has_private_config_source, logical(1)))
+    }, logical(1))
+    expect_false(any(private_source_files))
 })
