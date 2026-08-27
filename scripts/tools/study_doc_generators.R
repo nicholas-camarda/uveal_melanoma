@@ -268,7 +268,8 @@ render_figure_counts_audit_markdown <- function(summary_data = NULL) {
             portable_runtime_doc_path(file.path("Analysis", "uveal_full", "00_General", "removed_patients_summary.tsv"))
         ),
         "- `scripts/utils/cohort_summary_export.R`",
-        "- `scripts/utils/config_constants.R`",
+        "- `scripts/config/data_processing_policy.R`",
+        "- `scripts/utils/config_constants.R` (public configuration loader)",
         "",
         "## Current exclusion summary",
         "",

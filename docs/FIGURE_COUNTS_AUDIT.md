@@ -7,7 +7,8 @@ This file is generated from canonical runtime artifacts and centralized configur
 - `runtime/Analytic Dataset/cohort_summary_statistics.json`
 - `runtime/Analysis/uveal_full/00_General/removed_patients_summary.tsv`
 - `scripts/utils/cohort_summary_export.R`
-- `scripts/utils/config_constants.R`
+- `scripts/config/data_processing_policy.R`
+- `scripts/utils/config_constants.R` (public configuration loader)
 
 ## Current exclusion summary
 

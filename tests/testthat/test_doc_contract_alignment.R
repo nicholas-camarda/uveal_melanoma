@@ -131,18 +131,21 @@ test_that("active Objective 4 docs and code-facing outputs do not revive split-r
 })
 
 test_that("documentation and maintenance hints name normalized config modules", {
-    documentation_paths <- c(
-        here::here("README.md"),
-        list.files(
-            path = here::here("docs"),
-            pattern = "\\.(md|qmd|Rmd)$",
-            recursive = TRUE,
-            full.names = TRUE
-        )
+    tracked_documentation_paths <- system2(
+        "git", c("ls-files", "--", "README.md", "docs"), stdout = TRUE
     )
+    documentation_paths <- here::here(tracked_documentation_paths)
     documentation_paths <- documentation_paths[file.exists(documentation_paths)]
     documentation_text <- paste(
         unlist(lapply(documentation_paths, readLines, warn = FALSE)),
+        collapse = "\n"
+    )
+    figure_audit_text <- paste(
+        readLines(here::here("docs", "FIGURE_COUNTS_AUDIT.md"), warn = FALSE),
+        collapse = "\n"
+    )
+    study_doc_generator_text <- paste(
+        readLines(here::here("scripts", "tools", "study_doc_generators.R"), warn = FALSE),
         collapse = "\n"
     )
     confounder_analysis_text <- paste(
@@ -154,7 +157,9 @@ test_that("documentation and maintenance hints name normalized config modules", 
         collapse = "\n"
     )
 
-    expect_false(grepl("scripts/config/gep_policy\\.R", documentation_text))
+    retired_objective4_policy_path <- "(^|[/`])gep_policy\\.R"
+    expect_false(grepl(retired_objective4_policy_path, documentation_text, perl = TRUE))
+    expect_false(grepl(retired_objective4_policy_path, study_doc_generator_text, perl = TRUE))
     expect_false(grepl(
         "INPUT_FILENAME` in `scripts/utils/config_constants.R",
         documentation_text,
@@ -189,4 +194,24 @@ test_that("documentation and maintenance hints name normalized config modules", 
     expect_match(technical_text, "Centralized level labels in `scripts/config/labels_display.R`", fixed = TRUE)
     expect_match(confounder_analysis_text, "scripts/config/modeling_policy.R", fixed = TRUE)
     expect_match(model_utilities_text, "scripts/config/labels_display.R", fixed = TRUE)
+    expect_match(
+        figure_audit_text,
+        "`scripts/config/data_processing_policy.R`",
+        fixed = TRUE
+    )
+    expect_match(
+        figure_audit_text,
+        "`scripts/utils/config_constants.R` (public configuration loader)",
+        fixed = TRUE
+    )
+    expect_match(
+        study_doc_generator_text,
+        "`scripts/config/data_processing_policy.R`",
+        fixed = TRUE
+    )
+    expect_match(
+        study_doc_generator_text,
+        "`scripts/utils/config_constants.R` (public configuration loader)",
+        fixed = TRUE
+    )
 })
