@@ -1,11 +1,18 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import JSZip from "jszip";
-import { Presentation, PresentationFile } from "@oai/artifact-tool";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
+
+const runtimeNodeModules = process.env.RUNTIME_NODE_MODULES;
+if (!runtimeNodeModules) throw new Error("RUNTIME_NODE_MODULES must name the bundled dependency directory");
+const runtimeRequire = createRequire(path.join(runtimeNodeModules, "objective4-aao-deck-loader.cjs"));
+const JSZip = runtimeRequire("jszip");
+const { Presentation, PresentationFile } = await import(pathToFileURL(runtimeRequire.resolve("@oai/artifact-tool")).href);
 
 const REPORT_RELATIVE = path.join("Analysis", "uveal_full", "04_GEP_Validation", "d_exploratory_no_gep");
 const FIGURE_NAMES = ["subgroup_comparison", "observed_risk_thirds", "direct_model_contributors"];
 const REQUIRED_SEMANTIC_IDS = ["cohort_total_count", "gep_not_tested_count", "gep_failed_indeterminate_count", "no_gep_scoreable_count", "followup_no_gep_ge_5yr_count", "direct_model_mfs_5yr_lower_count", "direct_model_mfs_5yr_middle_count", "direct_model_mfs_5yr_higher_count", "direct_model_mss_60mo_lower_count", "direct_model_mss_60mo_middle_count", "direct_model_mss_60mo_higher_count"];
+const REQUIRED_COMPARISON_IDS = ["objective4-no-gep-validation", "objective4-mfs-sensitivity", "objective4-mfs-consolidated", "objective4-mss-consolidated", "objective4-gep-distribution"];
 const BLACK = "#000000";
 const BLUE = "#1F4E79";
 const GRAY = "#5B6573";
@@ -91,6 +98,10 @@ export async function validateRuntime(runtimeRoot) {
         !comparison || comparison.status !== "pass" || typeof comparison.id !== "string" || comparison.id.length === 0
       )
   ) throw new Error("production comparator must pass populated comparison entries");
+  const comparisonIds = new Set(comparator.comparisons.map((comparison) => comparison.id));
+  for (const requiredId of REQUIRED_COMPARISON_IDS) {
+    if (!comparisonIds.has(requiredId)) throw new Error(`required production comparison is missing: ${requiredId}`);
+  }
   const reportDir = path.join(root, REPORT_RELATIVE);
   const workbookPath = path.join(reportDir, "full_cohort_exploratory_no_gep_report.xlsx");
   const summaryPath = path.join(reportDir, "full_cohort_exploratory_no_gep_summary.md");

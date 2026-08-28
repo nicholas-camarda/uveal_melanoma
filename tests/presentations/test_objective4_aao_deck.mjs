@@ -2,21 +2,12 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { createRequire } from "node:module";
 
-const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const runtimeNodeModules = process.env.RUNTIME_NODE_MODULES;
 if (!runtimeNodeModules) throw new Error("RUNTIME_NODE_MODULES must name the bundled dependency directory");
-const localModules = path.join(repoRoot, "scripts", "presentations", "node_modules");
-let createdModuleLink = false;
-try {
-  await fs.lstat(localModules);
-} catch (error) {
-  if (error.code !== "ENOENT") throw error;
-  await fs.symlink(runtimeNodeModules, localModules, "dir");
-  createdModuleLink = true;
-}
-const JSZip = (await import(pathToFileURL(path.join(runtimeNodeModules, "jszip", "lib", "index.js")).href)).default;
+const runtimeRequire = createRequire(path.join(runtimeNodeModules, "contract-test-loader.cjs"));
+const JSZip = runtimeRequire("jszip");
 
 const builderPath = new URL("../../scripts/presentations/build_objective4_aao_deck.mjs", import.meta.url);
 const { buildDeck, validateRuntime } = await import(builderPath.href);
@@ -42,7 +33,8 @@ async function fixtureRoot({ gateStatus = "review", comparatorStatus = "pass", i
   const plots = path.join(report, "plots");
   await fs.mkdir(plots, { recursive: true });
   await fs.writeFile(path.join(root, "objective4-aao-gate.json"), JSON.stringify({ gate_version: 1, status: gateStatus, accepted_abstract_id: "30085896", accepted_submitted_cohort_n: 260, candidate_cohort_n: 260, comparisons: { auc: { molecular_surrogate: { accepted: 0.515, candidate: 0.563, absolute_delta: 0.048 }, direct_mfs: { accepted: 0.686, candidate: 0.656, absolute_delta: 0.03 }, direct_mss: { accepted: 0.663, candidate: 0.603, absolute_delta: 0.06 } } }, reasons: gateStatus === "review" ? [{ id: "auc_delta_review", status: "review", message: "Absolute AUC change requires documented review" }] : [] }));
-  await fs.writeFile(path.join(root, "production-comparison.json"), JSON.stringify({ comparator_version: 1, contract_version: 1, status: comparatorStatus, comparisons: [{ id: "objective4-no-gep-validation", status: "pass" }] }));
+  const comparisons = ["objective4-no-gep-validation", "objective4-mfs-sensitivity", "objective4-mfs-consolidated", "objective4-mss-consolidated", "objective4-gep-distribution"].map((id) => ({ id, status: "pass" }));
+  await fs.writeFile(path.join(root, "production-comparison.json"), JSON.stringify({ comparator_version: 1, contract_version: 1, status: comparatorStatus, comparisons }));
   await writeWorkbook(path.join(report, "full_cohort_exploratory_no_gep_report.xlsx"), includeSheet);
   await fs.writeFile(path.join(report, "full_cohort_exploratory_no_gep_summary.md"), "Aggregate-only validated Objective 4 summary.");
   const pixel = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL9/wAAAABJRU5ErkJggg==", "base64");
@@ -58,6 +50,9 @@ await fs.writeFile(path.join(malformedGateRoot, "objective4-aao-gate.json"), "{n
 await assert.rejects(() => validateRuntime(malformedGateRoot), /gate.*malformed/i);
 const failedComparatorRoot = await fixtureRoot({ comparatorStatus: "fail" });
 await assert.rejects(() => validateRuntime(failedComparatorRoot), /comparator.*pass/i);
+const unrelatedComparatorRoot = await fixtureRoot();
+await fs.writeFile(path.join(unrelatedComparatorRoot, "production-comparison.json"), JSON.stringify({ comparator_version: 1, contract_version: 1, status: "pass", comparisons: [{ id: "unrelated-pass", status: "pass" }] }));
+await assert.rejects(() => validateRuntime(unrelatedComparatorRoot), /required.*comparison/i);
 const emptyComparatorRoot = await fixtureRoot();
 await fs.writeFile(path.join(emptyComparatorRoot, "production-comparison.json"), JSON.stringify({ comparator_version: 1, contract_version: 1, status: "pass", comparisons: [] }));
 await assert.rejects(() => validateRuntime(emptyComparatorRoot), /populated comparison/i);
@@ -92,4 +87,3 @@ assert.equal((allXml.match(/\[Sources\]/g) ?? []).length >= 8, true);
 assert.doesNotMatch(allXml, /significant predictor|patient[_ -]?id|medical record/i);
 assert.doesNotMatch(allXml, /typeface|fontFamily/i);
 console.log("Objective 4 AAO deck builder contract tests passed.");
-if (createdModuleLink) await fs.rm(localModules, { recursive: true, force: true });
