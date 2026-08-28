@@ -6,7 +6,17 @@
 # - Runtime root (local non-synced): RUNTIME_ROOT
 # - Raw input root (synced): RAW_DATA_DIR = EXPORT_ROOT / Original Files
 # - Durable publish root (synced): EXPORT_ANALYSIS_DIR = EXPORT_ROOT / outputs
-# Analysis identifiers use PROJECT_SLUG; filesystem paths use REPOSITORY_SLUG.
+# These two slugs intentionally serve different namespaces; do not substitute
+# one for the other:
+# - PROJECT_SLUG is the analysis/artifact identifier. It uses underscores and
+#   appears in cohort IDs and analytic-data filenames, e.g.
+#   `uveal_melanoma_full_cohort.rds`.
+# - REPOSITORY_SLUG is the repository/filesystem identifier. It uses hyphens
+#   and names the GitHub repository, workspace directory, and Project Vault
+#   root, e.g. `.../Research/uveal-melanoma/...`.
+#
+# In particular, analytic cohort filenames must use PROJECT_SLUG-based IDs;
+# REPOSITORY_SLUG is for enclosing paths, not cohort artifact names.
 PROJECT_ROOT <- here::here()
 PROJECT_SLUG <- "uveal_melanoma"
 REPOSITORY_SLUG <- "uveal-melanoma"
