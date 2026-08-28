@@ -3231,7 +3231,7 @@ create_exploratory_observed_risk_thirds_figure <- function(sensitivity_summary, 
     payload <- dplyr::bind_rows(
         sensitivity_summary %>%
             dplyr::filter(.data$analysis == "Direct_MFS_5yr_Risk") %>%
-            dplyr::transmute(risk_third = as.character(.data$bin), n = .data$n, observed_event_rate = .data$observed_mfs_5yr_event_rate, outcome = "MFS", estimator = "Kaplan-Meier at 60 months"),
+            dplyr::transmute(risk_third = as.character(.data$bin), n = .data$n, observed_event_rate = .data$observed_mfs_5yr_event_rate, outcome = "5-year MFS event risk (1-Kaplan-Meier)", estimator = "Kaplan-Meier at 60 months"),
         sensitivity_summary %>%
             dplyr::filter(.data$analysis == "Direct_60mo_Melanoma_Death_Cumulative_Incidence_Risk") %>%
             dplyr::transmute(risk_third = as.character(.data$bin), n = .data$n, observed_event_rate = .data$observed_mss_5yr_event_rate, outcome = "Melanoma-death cumulative incidence", estimator = "Aalen-Johansen at 60 months")
@@ -3243,8 +3243,22 @@ create_exploratory_observed_risk_thirds_figure <- function(sensitivity_summary, 
             facet_label = paste(.data$outcome, "(", .data$estimator, ")"),
             label = sprintf("n=%d; %.1f%%", .data$n, 100 * .data$observed_event_rate)
         )
-    if (nrow(payload) == 0 || any(is.na(payload$risk_third)) || any(payload$observed_event_rate < 0 | payload$observed_event_rate > 1)) {
-        stop("Observed-risk-third figure requires finite, bounded aggregate risk-third summaries.", call. = FALSE)
+    required_cells <- tidyr::expand_grid(
+        outcome = c("5-year MFS event risk (1-Kaplan-Meier)", "Melanoma-death cumulative incidence"),
+        risk_third = factor(c("Lower", "Middle", "Higher"), levels = c("Lower", "Middle", "Higher"))
+    )
+    payload_cells <- payload %>% dplyr::select("outcome", "risk_third")
+    if (
+        nrow(payload) != 6 ||
+            anyDuplicated(payload_cells) ||
+            !dplyr::setequal(payload_cells, required_cells) ||
+            any(payload$n <= 0) ||
+            any(payload$observed_event_rate < 0 | payload$observed_event_rate > 1)
+    ) {
+        stop(
+            "Observed-risk-third figure requires exactly Lower, Middle, and Higher finite aggregate cells for both outcomes.",
+            call. = FALSE
+        )
     }
     plot <- ggplot2::ggplot(payload, ggplot2::aes(x = .data$risk_third, y = .data$observed_event_rate, fill = .data$risk_third)) +
         ggplot2::geom_col(width = 0.68, show.legend = FALSE) +
@@ -3266,6 +3280,12 @@ create_exploratory_observed_risk_thirds_figure <- function(sensitivity_summary, 
 #' @return Aggregate display payload used for the figure.
 create_exploratory_direct_model_contributors_figure <- function(mfs_model, mss_model, output_path) {
     caption <- "Model weights; not causal effects or conventional significance tests."
+    if (
+        nrow(mfs_model$predictor_contributions) == 0 ||
+            nrow(mss_model$predictor_contributions) == 0
+    ) {
+        stop("Contributor figure requires both direct-model contributor panels.", call. = FALSE)
+    }
     payload <- dplyr::bind_rows(
         mfs_model$predictor_contributions %>% dplyr::mutate(model = "Direct MFS"),
         mss_model$predictor_contributions %>% dplyr::mutate(model = "Direct melanoma-death cumulative incidence")
@@ -3287,12 +3307,18 @@ create_exploratory_direct_model_contributors_figure <- function(mfs_model, mss_m
     if (nrow(payload) == 0 || any(!is.finite(payload$signed_standardized_coefficient))) {
         stop("Contributor figure requires finite signed standardized coefficients.", call. = FALSE)
     }
+    rendered_caption <- if (any(grepl("optic_nerve", payload$predictor, fixed = TRUE))) {
+        paste(caption, "Optic-nerve contributor is counterintuitive/model-dependent; interpret cautiously.")
+    } else {
+        caption
+    }
+    payload$rendered_caption <- rendered_caption
     plot <- ggplot2::ggplot(payload, ggplot2::aes(x = stats::reorder(.data$predictor, .data$signed_standardized_coefficient), y = .data$signed_standardized_coefficient, fill = .data$signed_standardized_coefficient > 0)) +
         ggplot2::geom_col(show.legend = FALSE) +
         ggplot2::coord_flip() +
         ggplot2::geom_hline(yintercept = 0, linewidth = 0.4) +
         ggplot2::facet_wrap(~model, scales = "free_y") +
-        ggplot2::labs(title = "Direct-Model Contributor Weights", subtitle = caption, x = NULL, y = "Signed standardized coefficient") +
+        ggplot2::labs(title = "Direct-Model Contributor Weights", subtitle = rendered_caption, x = NULL, y = "Signed standardized coefficient") +
         ggplot2::theme_minimal(base_size = 12)
     ggplot2::ggsave(output_path, plot, width = 11, height = 7, dpi = PLOT_DPI, bg = "white")
     payload

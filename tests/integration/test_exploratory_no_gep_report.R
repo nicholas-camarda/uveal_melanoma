@@ -534,7 +534,7 @@ test_that("exploratory no-GEP report writes workbook, summary, and plots", {
     expect_true(all(c(
         "outcome", "risk_third", "n", "observed_event_rate", "estimator"
     ) %in% names(risk_thirds_figure)))
-    expect_setequal(risk_thirds_figure$outcome, c("MFS", "Melanoma-death cumulative incidence"))
+    expect_setequal(risk_thirds_figure$outcome, c("5-year MFS event risk (1-Kaplan-Meier)", "Melanoma-death cumulative incidence"))
     expect_false(any(is.na(risk_thirds_figure$risk_third)))
     expect_true(all(risk_thirds_figure$risk_third %in% c("Lower", "Middle", "Higher")))
     expect_true(all(risk_thirds_figure$n > 0))
@@ -552,6 +552,7 @@ test_that("exploratory no-GEP report writes workbook, summary, and plots", {
     expect_true(all(contributor_figure$caption == "Model weights; not causal effects or conventional significance tests."))
     if (any(grepl("optic_nerve", contributor_figure$predictor, fixed = TRUE))) {
         expect_true(any(grepl("counterintuitive/model-dependent", contributor_figure$predictor_note, fixed = TRUE)))
+        expect_true(any(grepl("counterintuitive/model-dependent", contributor_figure$rendered_caption, fixed = TRUE)))
     }
     expect_true(any(results$predictor_contribution$section == "model_contribution"))
     expect_true(
@@ -574,5 +575,35 @@ test_that("exploratory no-GEP report writes workbook, summary, and plots", {
     expect_equal(
         as.character(results$risk_ladder$group),
         c("Class 1", "GEP Not Tested", "GEP Failed/Indeterminate", "Class 2")
+    )
+})
+
+test_that("presentation figure constructors fail closed on incomplete aggregates", {
+    incomplete_risk_thirds <- tibble::tibble(
+        analysis = rep(c("Direct_MFS_5yr_Risk", "Direct_60mo_Melanoma_Death_Cumulative_Incidence_Risk"), each = 3),
+        bin = c("Low", "Intermediate", "High", "Low", "Intermediate", NA_character_),
+        n = c(5L, 5L, 5L, 5L, 5L, 1L),
+        observed_mfs_5yr_event_rate = rep(0.2, 6),
+        observed_mss_5yr_event_rate = rep(0.1, 6)
+    )
+    expect_error(
+        create_exploratory_observed_risk_thirds_figure(
+            incomplete_risk_thirds,
+            tempfile(fileext = ".png")
+        ),
+        "exactly Lower, Middle, and Higher"
+    )
+
+    empty_contributors <- tibble::tibble(
+        predictor = character(),
+        standardized_coefficient = numeric()
+    )
+    expect_error(
+        create_exploratory_direct_model_contributors_figure(
+            list(predictor_contributions = empty_contributors),
+            list(predictor_contributions = empty_contributors),
+            tempfile(fileext = ".png")
+        ),
+        "both direct-model contributor panels"
     )
 })
