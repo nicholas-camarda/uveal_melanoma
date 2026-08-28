@@ -3308,7 +3308,11 @@ create_exploratory_direct_model_contributors_figure <- function(mfs_model, mss_m
         stop("Contributor figure requires finite signed standardized coefficients.", call. = FALSE)
     }
     rendered_caption <- if (any(grepl("optic_nerve", payload$predictor, fixed = TRUE))) {
-        paste(caption, "Optic-nerve contributor is counterintuitive/model-dependent; interpret cautiously.")
+        paste(
+            caption,
+            "Optic-nerve contributor is counterintuitive/model-dependent; interpret cautiously.",
+            sep = "\n"
+        )
     } else {
         caption
     }

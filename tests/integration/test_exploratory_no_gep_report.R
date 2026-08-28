@@ -553,6 +553,8 @@ test_that("exploratory no-GEP report writes workbook, summary, and plots", {
     if (any(grepl("optic_nerve", contributor_figure$predictor, fixed = TRUE))) {
         expect_true(any(grepl("counterintuitive/model-dependent", contributor_figure$predictor_note, fixed = TRUE)))
         expect_true(any(grepl("counterintuitive/model-dependent", contributor_figure$rendered_caption, fixed = TRUE)))
+        expect_true(any(grepl("interpret cautiously", contributor_figure$rendered_caption, fixed = TRUE)))
+        expect_true(any(grepl("\n", contributor_figure$rendered_caption, fixed = TRUE)))
     }
     expect_true(any(results$predictor_contribution$section == "model_contribution"))
     expect_true(
