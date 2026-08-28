@@ -3189,7 +3189,10 @@ create_exploratory_no_gep_subgroup_comparison_figure <- function(no_gep_subgroup
                 semantic_id <- paste0("followup_", gsub("(^_|_$)", "", gsub("[^a-z0-9]+", "_", tolower(group))), "_median_years")
                 presentation_data$value_numeric[match(semantic_id, presentation_data$semantic_id)]
             }, numeric(1)),
-            group_label = sprintf("%s (n=%d; median follow-up %.1f y)", .data$no_gep_group, .data$n, .data$median_followup_years),
+            # Keep the subgroup name and denominator on separate lines so the
+            # long failed/indeterminate label remains fully visible in the
+            # exported figure at presentation scale.
+            group_label = sprintf("%s\nn=%d; median follow-up %.1f y", .data$no_gep_group, .data$n, .data$median_followup_years),
             descriptive_frame = "Descriptive, non-causal subgroup comparison"
         )
     if (nrow(payload) != 2 || any(!is.finite(payload$median_followup_years))) {
@@ -3216,7 +3219,7 @@ create_exploratory_no_gep_subgroup_comparison_figure <- function(no_gep_subgroup
         ggplot2::scale_y_continuous(labels = function(x) sprintf("%.0f%%", 100 * x), limits = c(0, 1), expand = ggplot2::expansion(mult = c(0, 0.12))) +
         ggplot2::labs(title = "Direct No-GEP Subgroup Comparison", subtitle = "Descriptive, non-causal subgroup comparison", x = NULL, y = "Censoring-aware observed event estimate", fill = "No-GEP group") +
         ggplot2::theme_minimal(base_size = 12) +
-        ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 18, hjust = 1), legend.position = "none")
+        ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 0, hjust = 0.5, vjust = 0.5, lineheight = 0.95), legend.position = "none")
     ggplot2::ggsave(output_path, plot, width = 12, height = 7, dpi = PLOT_DPI, bg = "white")
     payload
 }

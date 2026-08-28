@@ -529,6 +529,7 @@ test_that("exploratory no-GEP report writes workbook, summary, and plots", {
     expect_true(all(subgroup_figure$n > 0))
     expect_true(all(is.finite(subgroup_figure$median_followup_years)))
     expect_true(all(subgroup_figure$descriptive_frame == "Descriptive, non-causal subgroup comparison"))
+    expect_true(all(grepl("\n", subgroup_figure$group_label, fixed = TRUE)))
 
     risk_thirds_figure <- results$presentation_figures$observed_risk_thirds
     expect_true(all(c(
