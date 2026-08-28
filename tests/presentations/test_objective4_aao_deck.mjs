@@ -64,6 +64,7 @@ assert.match(presentationXml, /cx="12192000" cy="6858000"/);
 assert.equal((presentationXml.match(/<p:sldId /g) ?? []).length, 10);
 const allXml = (await Promise.all(Object.values(pptx.files).filter((file) => /^ppt\/(slides\/slide|notesSlides\/notesSlide)\d+\.xml$/.test(file.name)).map((file) => file.async("string")))).join("\n");
 for (const title of ["Baseline Clinical Risk Stratification When Gene Expression Profiling Is Unavailable in Uveal Melanoma", "Financial disclosure", "Two in three patients had no usable molecular risk result", "No GEP is not one patient group", "Clinical data answer a different question", "Which clinical features drove risk ordering", "The models identify a higher-risk group", "What the validation can and cannot support", "Bottom line", "References"]) assert.match(allXml, new RegExp(title, "i"));
+for (const metadata of ["Nicholas D. Camarda", "Timothy J. Marquis", "Simon D. Archambault", "Shilpa J. Desai", "Tufts Medical Center"]) assert.match(allXml, new RegExp(metadata, "i"));
 assert.match(allXml, /175\/260/);
 assert.match(allXml, /67\.3%/);
 assert.match(allXml, /0\.563/);
