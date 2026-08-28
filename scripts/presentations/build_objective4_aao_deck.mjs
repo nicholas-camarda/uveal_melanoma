@@ -11,7 +11,7 @@ const { Presentation, PresentationFile } = await import(pathToFileURL(runtimeReq
 
 const REPORT_RELATIVE = path.join("Analysis", "uveal_full", "04_GEP_Validation", "d_exploratory_no_gep");
 const FIGURE_NAMES = ["subgroup_comparison", "observed_risk_thirds", "direct_model_contributors"];
-const REQUIRED_SEMANTIC_IDS = ["cohort_total_count", "gep_not_tested_count", "gep_failed_indeterminate_count", "no_gep_scoreable_count", "followup_no_gep_ge_5yr_count", "direct_model_mfs_5yr_lower_count", "direct_model_mfs_5yr_middle_count", "direct_model_mfs_5yr_higher_count", "direct_model_mss_60mo_lower_count", "direct_model_mss_60mo_middle_count", "direct_model_mss_60mo_higher_count"];
+const REQUIRED_SEMANTIC_IDS = ["cohort_total_count", "gep_not_tested_count", "gep_failed_indeterminate_count", "no_gep_scoreable_count", "followup_no_gep_ge_5yr_count", "direct_model_mfs_5yr_low_count", "direct_model_mfs_5yr_intermediate_count", "direct_model_mfs_5yr_high_count", "direct_model_mss_60mo_low_count", "direct_model_mss_60mo_intermediate_count", "direct_model_mss_60mo_high_count"];
 const REQUIRED_COMPARISON_IDS = ["objective4-no-gep-validation", "objective4-mfs-sensitivity", "objective4-mfs-consolidated", "objective4-mss-consolidated", "objective4-gep-distribution"];
 const BLACK = "#000000";
 const BLUE = "#1F4E79";

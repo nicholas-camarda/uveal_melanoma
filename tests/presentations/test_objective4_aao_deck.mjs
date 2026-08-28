@@ -11,13 +11,13 @@ const JSZip = runtimeRequire("jszip");
 
 const builderPath = new URL("../../scripts/presentations/build_objective4_aao_deck.mjs", import.meta.url);
 const { buildDeck, validateRuntime } = await import(builderPath.href);
-const requiredKeys = ["cohort_total_count", "gep_not_tested_count", "gep_failed_indeterminate_count", "no_gep_scoreable_count", "followup_no_gep_ge_5yr_count", "direct_model_mfs_5yr_lower_count", "direct_model_mfs_5yr_middle_count", "direct_model_mfs_5yr_higher_count", "direct_model_mss_60mo_lower_count", "direct_model_mss_60mo_middle_count", "direct_model_mss_60mo_higher_count"];
+const requiredKeys = ["cohort_total_count", "gep_not_tested_count", "gep_failed_indeterminate_count", "no_gep_scoreable_count", "followup_no_gep_ge_5yr_count", "direct_model_mfs_5yr_low_count", "direct_model_mfs_5yr_intermediate_count", "direct_model_mfs_5yr_high_count", "direct_model_mss_60mo_low_count", "direct_model_mss_60mo_intermediate_count", "direct_model_mss_60mo_high_count"];
 const xml = (value) => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;");
 
 async function writeWorkbook(file, includePresentationData = true) {
   const zip = new JSZip();
   const headers = ["semantic_id", "section", "group", "label", "value_numeric", "value_character", "unit", "reader_role"];
-  const values = { cohort_total_count: 260, gep_not_tested_count: 162, gep_failed_indeterminate_count: 13, no_gep_scoreable_count: 164, followup_no_gep_ge_5yr_count: 83, direct_model_mfs_5yr_lower_count: 55, direct_model_mfs_5yr_middle_count: 55, direct_model_mfs_5yr_higher_count: 54, direct_model_mss_60mo_lower_count: 55, direct_model_mss_60mo_middle_count: 55, direct_model_mss_60mo_higher_count: 54 };
+  const values = { cohort_total_count: 260, gep_not_tested_count: 162, gep_failed_indeterminate_count: 13, no_gep_scoreable_count: 164, followup_no_gep_ge_5yr_count: 83, direct_model_mfs_5yr_low_count: 55, direct_model_mfs_5yr_intermediate_count: 55, direct_model_mfs_5yr_high_count: 54, direct_model_mss_60mo_low_count: 55, direct_model_mss_60mo_intermediate_count: 55, direct_model_mss_60mo_high_count: 54 };
   const rows = requiredKeys.map((id) => [id, "test", "All", id, values[id], "", "count", "reader-safe aggregate"]);
   const sheet = (values) => `<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${values.map((row, r) => `<row r="${r + 1}">${row.map((cell, c) => `<c r="${String.fromCharCode(65 + c)}${r + 1}" t="inlineStr"><is><t>${xml(cell)}</t></is></c>`).join("")}</row>`).join("")}</sheetData></worksheet>`;
   const sheets = includePresentationData ? ["Presentation_Data", "Model_Performance"] : ["Model_Performance"];
@@ -66,7 +66,7 @@ const reportPath = path.join(validRoot, "Analysis", "uveal_full", "04_GEP_Valida
 await writeWorkbook(reportPath, true);
 const workbook = await JSZip.loadAsync(await fs.readFile(reportPath));
 const presentationSheet = workbook.file("xl/worksheets/sheet1.xml");
-workbook.file("xl/worksheets/sheet1.xml", (await presentationSheet.async("string")).replace("direct_model_mss_60mo_higher_count", "missing_semantic_key"));
+workbook.file("xl/worksheets/sheet1.xml", (await presentationSheet.async("string")).replace("direct_model_mss_60mo_high_count", "missing_semantic_key"));
 await fs.writeFile(reportPath, await workbook.generateAsync({ type: "nodebuffer" }));
 await assert.rejects(() => validateRuntime(validRoot), /semantic key/i);
 await writeWorkbook(reportPath, true);
