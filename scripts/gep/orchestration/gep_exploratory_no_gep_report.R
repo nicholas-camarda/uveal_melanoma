@@ -2408,7 +2408,10 @@ create_exploratory_parsimonious_sensitivity <- function(full_no_gep_predictions,
 #' @return A pooled summary data frame.
 summarize_pooled_no_gep_sensitivity <- function(prediction_data) {
     summarize_one <- function(bin_var, predicted_var, analysis_name) {
-        base_summary <- prediction_data %>%
+        binned_prediction_data <- prediction_data %>%
+            dplyr::filter(!is.na(.data[[bin_var]]))
+
+        base_summary <- binned_prediction_data %>%
             dplyr::group_by(.data[[bin_var]]) %>%
             dplyr::summarise(
                 analysis = analysis_name,
@@ -2421,7 +2424,7 @@ summarize_pooled_no_gep_sensitivity <- function(prediction_data) {
             dplyr::rename(bin = !!bin_var)
 
         mfs_summary <- summarize_exploratory_horizon_groups(
-            prediction_data,
+            binned_prediction_data,
             group_vars = bin_var,
             outcome = "mfs"
         ) %>%
@@ -2433,7 +2436,7 @@ summarize_pooled_no_gep_sensitivity <- function(prediction_data) {
             dplyr::select("bin", "observed_mfs_5yr_event_rate", "mfs_observed_method")
 
         mss_summary <- summarize_exploratory_horizon_groups(
-            prediction_data,
+            binned_prediction_data,
             group_vars = bin_var,
             outcome = "mss"
         ) %>%

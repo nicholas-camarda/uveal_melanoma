@@ -246,6 +246,37 @@ test_that("exploratory pooled summaries tolerate bins with no melanoma failures"
     )
 })
 
+test_that("exploratory pooled summaries omit unbinned predictions", {
+    prediction_data <- tibble::tibble(
+        no_gep_group = rep("GEP Not Tested", 3),
+        surrogate_probability_bin = c("Low", "High", "High"),
+        mfs_risk_bin = c("Low", "High", NA_character_),
+        mss_risk_bin = c("Low", "High", "High"),
+        surrogate_class2_probability = c(0.2, 0.8, 0.7),
+        predicted_mfs_5yr_risk = c(0.1, 0.6, NA_real_),
+        predicted_mss_5yr_risk = c(0.05, 0.4, 0.3),
+        tt_mets_months = c(24, 48, NA_real_),
+        tt_mets_months_analysis = c(24, 48, NA_real_),
+        mets_event = c(0, 1, NA_integer_),
+        mets_free_at_baseline = c(TRUE, TRUE, FALSE),
+        objective4_mfs_event_type = c(0L, 1L, NA_integer_),
+        tt_death_months = c(24, 48, 36),
+        melanoma_death_event = c(0, 0, 0),
+        competing_death_event = c(0, 0, 0),
+        mfs_event_5yr = c(0L, 1L, NA_integer_),
+        mss_event_5yr = c(0L, 0L, 0L)
+    )
+
+    pooled_summary <- summarize_pooled_no_gep_sensitivity(prediction_data)
+    direct_mfs_summary <- pooled_summary %>%
+        dplyr::filter(.data$analysis == "Direct_MFS_5yr_Risk")
+
+    expect_false(any(is.na(pooled_summary$bin)))
+    expect_true(all(is.finite(pooled_summary$mean_predicted)))
+    expect_equal(nrow(direct_mfs_summary), 2L)
+    expect_equal(sum(direct_mfs_summary$n), 2L)
+})
+
 test_that("exploratory predictor screening ignores unused Other factor levels", {
     exploratory_data <- tibble::tibble(
         exploratory_gep_group = factor(
