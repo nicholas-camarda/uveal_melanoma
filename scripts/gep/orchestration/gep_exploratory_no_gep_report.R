@@ -3165,6 +3165,139 @@ create_probability_density_plot <- function(data, probability_col, plot_title, o
     invisible(output_path)
 }
 
+#' Create a Direct No-GEP Subgroup Comparison Figure
+#'
+#' @param no_gep_subgroups Existing aggregate no-GEP subgroup summary.
+#' @param presentation_data Existing presentation-data contract.
+#' @param output_path PNG output path.
+#'
+#' @return Aggregate display payload used for the figure.
+create_exploratory_no_gep_subgroup_comparison_figure <- function(no_gep_subgroups,
+                                                                  presentation_data,
+                                                                  output_path) {
+    groups <- c("GEP Failed/Indeterminate", "GEP Not Tested")
+    payload <- no_gep_subgroups %>%
+        dplyr::filter(.data$no_gep_group %in% groups) %>%
+        dplyr::transmute(
+            no_gep_group = as.character(.data$no_gep_group),
+            n = .data$n,
+            observed_5yr_mfs_event_rate = .data$observed_5yr_mfs_event_rate,
+            observed_5yr_mss_event_rate = .data$observed_5yr_mss_event_rate
+        ) %>%
+        dplyr::mutate(
+            median_followup_years = vapply(.data$no_gep_group, function(group) {
+                semantic_id <- paste0("followup_", gsub("(^_|_$)", "", gsub("[^a-z0-9]+", "_", tolower(group))), "_median_years")
+                presentation_data$value_numeric[match(semantic_id, presentation_data$semantic_id)]
+            }, numeric(1)),
+            group_label = sprintf("%s (n=%d; median follow-up %.1f y)", .data$no_gep_group, .data$n, .data$median_followup_years),
+            descriptive_frame = "Descriptive, non-causal subgroup comparison"
+        )
+    if (nrow(payload) != 2 || any(!is.finite(payload$median_followup_years))) {
+        stop("Subgroup comparison figure requires both no-GEP aggregate follow-up summaries.", call. = FALSE)
+    }
+
+    plot_data <- payload %>%
+        tidyr::pivot_longer(
+            cols = c("observed_5yr_mfs_event_rate", "observed_5yr_mss_event_rate"),
+            names_to = "outcome", values_to = "observed_event_rate"
+        ) %>%
+        dplyr::mutate(
+            outcome = dplyr::recode(
+                .data$outcome,
+                observed_5yr_mfs_event_rate = "MFS at 5 years (Kaplan-Meier)",
+                observed_5yr_mss_event_rate = "Melanoma-death cumulative incidence at 60 months (Aalen-Johansen)"
+            ),
+            label = sprintf("%.1f%%", 100 * .data$observed_event_rate)
+        )
+    plot <- ggplot2::ggplot(plot_data, ggplot2::aes(x = .data$group_label, y = .data$observed_event_rate, fill = .data$no_gep_group)) +
+        ggplot2::geom_col(width = 0.7) +
+        ggplot2::geom_text(ggplot2::aes(label = .data$label), vjust = -0.35, size = 3.5) +
+        ggplot2::facet_wrap(~outcome, scales = "free_x") +
+        ggplot2::scale_y_continuous(labels = function(x) sprintf("%.0f%%", 100 * x), limits = c(0, 1), expand = ggplot2::expansion(mult = c(0, 0.12))) +
+        ggplot2::labs(title = "Direct No-GEP Subgroup Comparison", subtitle = "Descriptive, non-causal subgroup comparison", x = NULL, y = "Censoring-aware observed event estimate", fill = "No-GEP group") +
+        ggplot2::theme_minimal(base_size = 12) +
+        ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 18, hjust = 1), legend.position = "none")
+    ggplot2::ggsave(output_path, plot, width = 12, height = 7, dpi = PLOT_DPI, bg = "white")
+    payload
+}
+
+#' Create an Observed-Risk-by-Predicted-Third Figure
+#'
+#' @param sensitivity_summary Existing pooled sensitivity summary.
+#' @param output_path PNG output path.
+#'
+#' @return Aggregate display payload used for the figure.
+create_exploratory_observed_risk_thirds_figure <- function(sensitivity_summary, output_path) {
+    payload <- dplyr::bind_rows(
+        sensitivity_summary %>%
+            dplyr::filter(.data$analysis == "Direct_MFS_5yr_Risk") %>%
+            dplyr::transmute(risk_third = as.character(.data$bin), n = .data$n, observed_event_rate = .data$observed_mfs_5yr_event_rate, outcome = "MFS", estimator = "Kaplan-Meier at 60 months"),
+        sensitivity_summary %>%
+            dplyr::filter(.data$analysis == "Direct_60mo_Melanoma_Death_Cumulative_Incidence_Risk") %>%
+            dplyr::transmute(risk_third = as.character(.data$bin), n = .data$n, observed_event_rate = .data$observed_mss_5yr_event_rate, outcome = "Melanoma-death cumulative incidence", estimator = "Aalen-Johansen at 60 months")
+    ) %>%
+        dplyr::filter(!is.na(.data$risk_third), is.finite(.data$n), is.finite(.data$observed_event_rate)) %>%
+        dplyr::mutate(
+            risk_third = dplyr::recode(.data$risk_third, Low = "Lower", Intermediate = "Middle", High = "Higher"),
+            risk_third = factor(.data$risk_third, levels = c("Lower", "Middle", "Higher")),
+            facet_label = paste(.data$outcome, "(", .data$estimator, ")"),
+            label = sprintf("n=%d; %.1f%%", .data$n, 100 * .data$observed_event_rate)
+        )
+    if (nrow(payload) == 0 || any(is.na(payload$risk_third)) || any(payload$observed_event_rate < 0 | payload$observed_event_rate > 1)) {
+        stop("Observed-risk-third figure requires finite, bounded aggregate risk-third summaries.", call. = FALSE)
+    }
+    plot <- ggplot2::ggplot(payload, ggplot2::aes(x = .data$risk_third, y = .data$observed_event_rate, fill = .data$risk_third)) +
+        ggplot2::geom_col(width = 0.68, show.legend = FALSE) +
+        ggplot2::geom_text(ggplot2::aes(label = .data$label), vjust = -0.35, size = 3.6) +
+        ggplot2::facet_wrap(~facet_label) +
+        ggplot2::scale_y_continuous(labels = function(x) sprintf("%.0f%%", 100 * x), limits = c(0, 1), expand = ggplot2::expansion(mult = c(0, 0.12))) +
+        ggplot2::labs(title = "Observed Risk by Direct-Model Predicted Third", subtitle = "Censoring-aware observed estimates; pooled no-GEP cohort", x = "Predicted-risk third", y = "Observed event estimate") +
+        ggplot2::theme_minimal(base_size = 12)
+    ggplot2::ggsave(output_path, plot, width = 11, height = 6.5, dpi = PLOT_DPI, bg = "white")
+    payload
+}
+
+#' Create a Direct-Model Contributor Figure
+#'
+#' @param mfs_model Existing direct MFS model bundle.
+#' @param mss_model Existing direct melanoma-death model bundle.
+#' @param output_path PNG output path.
+#'
+#' @return Aggregate display payload used for the figure.
+create_exploratory_direct_model_contributors_figure <- function(mfs_model, mss_model, output_path) {
+    caption <- "Model weights; not causal effects or conventional significance tests."
+    payload <- dplyr::bind_rows(
+        mfs_model$predictor_contributions %>% dplyr::mutate(model = "Direct MFS"),
+        mss_model$predictor_contributions %>% dplyr::mutate(model = "Direct melanoma-death cumulative incidence")
+    ) %>%
+        dplyr::group_by(.data$model) %>%
+        dplyr::slice_head(n = 5) %>%
+        dplyr::ungroup() %>%
+        dplyr::transmute(
+            model = .data$model,
+            predictor = .data$predictor,
+            signed_standardized_coefficient = .data$standardized_coefficient,
+            predictor_note = dplyr::if_else(
+                grepl("optic_nerve", .data$predictor, fixed = TRUE),
+                "counterintuitive/model-dependent contributor; interpret cautiously",
+                "penalized model contributor; non-causal"
+            ),
+            caption = caption
+        )
+    if (nrow(payload) == 0 || any(!is.finite(payload$signed_standardized_coefficient))) {
+        stop("Contributor figure requires finite signed standardized coefficients.", call. = FALSE)
+    }
+    plot <- ggplot2::ggplot(payload, ggplot2::aes(x = stats::reorder(.data$predictor, .data$signed_standardized_coefficient), y = .data$signed_standardized_coefficient, fill = .data$signed_standardized_coefficient > 0)) +
+        ggplot2::geom_col(show.legend = FALSE) +
+        ggplot2::coord_flip() +
+        ggplot2::geom_hline(yintercept = 0, linewidth = 0.4) +
+        ggplot2::facet_wrap(~model, scales = "free_y") +
+        ggplot2::labs(title = "Direct-Model Contributor Weights", subtitle = caption, x = NULL, y = "Signed standardized coefficient") +
+        ggplot2::theme_minimal(base_size = 12)
+    ggplot2::ggsave(output_path, plot, width = 11, height = 7, dpi = PLOT_DPI, bg = "white")
+    payload
+}
+
 #' Create an Observed Event-Rate by Bin Plot
 #'
 #' Visualizes observed outcome rates across predicted-risk bins for one of the
@@ -4125,7 +4258,10 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
         mss_density = file.path(plots_dir, "full_cohort_exploratory_no_gep_mss_risk_density.png"),
         surrogate_bins = file.path(plots_dir, "full_cohort_exploratory_no_gep_surrogate_bin_event_rates.png"),
         mfs_bins = file.path(plots_dir, "full_cohort_exploratory_no_gep_mfs_bin_event_rates.png"),
-        mss_bins = file.path(plots_dir, "full_cohort_exploratory_no_gep_mss_bin_event_rates.png")
+        mss_bins = file.path(plots_dir, "full_cohort_exploratory_no_gep_mss_bin_event_rates.png"),
+        presentation_subgroup_comparison = file.path(plots_dir, "full_cohort_exploratory_no_gep_subgroup_comparison.png"),
+        presentation_observed_risk_thirds = file.path(plots_dir, "full_cohort_exploratory_no_gep_observed_risk_thirds.png"),
+        presentation_direct_model_contributors = file.path(plots_dir, "full_cohort_exploratory_no_gep_direct_model_contributors.png")
     )
 
     create_exploratory_mfs_km_plot(
@@ -4176,6 +4312,22 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
         plot_title = "Observed 60-Month Melanoma-Death Cumulative Incidence by Predicted Cumulative-Incidence-Risk Bin",
         output_path = plot_paths$mss_bins
     )
+    presentation_figures <- list(
+        subgroup_comparison = create_exploratory_no_gep_subgroup_comparison_figure(
+            no_gep_subgroups = no_gep_subgroups,
+            presentation_data = presentation_data,
+            output_path = plot_paths$presentation_subgroup_comparison
+        ),
+        observed_risk_thirds = create_exploratory_observed_risk_thirds_figure(
+            sensitivity_summary = sensitivity_summary,
+            output_path = plot_paths$presentation_observed_risk_thirds
+        ),
+        direct_model_contributors = create_exploratory_direct_model_contributors_figure(
+            mfs_model = direct_mfs_model,
+            mss_model = direct_mss_model,
+            output_path = plot_paths$presentation_direct_model_contributors
+        )
+    )
 
     logger::log_info("Exploratory no-GEP risk report completed")
 
@@ -4210,6 +4362,7 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
         risk_ladder = risk_ladder,
         parsimonious_sensitivity = parsimonious_sensitivity,
         presentation_data = presentation_data,
+        presentation_figures = presentation_figures,
         unified_no_gep_overview = analysis_results$unified_no_gep_overview,
         unified_no_gep_model_comparison = analysis_results$unified_no_gep_model_comparison,
         unified_no_gep_risk_strata = analysis_results$unified_no_gep_risk_strata,

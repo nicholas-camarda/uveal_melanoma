@@ -305,6 +305,9 @@ test_that("exploratory no-GEP report writes workbook, summary, and plots", {
     expect_true(file.exists(results$output_paths$mfs_km))
     expect_true(file.exists(results$output_paths$mss_cif))
     expect_true(file.exists(results$output_paths$surrogate_density))
+    expect_true(file.exists(results$output_paths$presentation_subgroup_comparison))
+    expect_true(file.exists(results$output_paths$presentation_observed_risk_thirds))
+    expect_true(file.exists(results$output_paths$presentation_direct_model_contributors))
 
     workbook_sheets <- openxlsx::getSheetNames(results$output_paths$workbook)
     expect_equal(
@@ -509,6 +512,47 @@ test_that("exploratory no-GEP report writes workbook, summary, and plots", {
     expect_true("overlap_diagnostics" %in% names(results))
     expect_true("parsimonious_sensitivity" %in% names(results))
     expect_true("presentation_data" %in% names(results))
+    expect_true("presentation_figures" %in% names(results))
+    expect_setequal(
+        names(results$presentation_figures),
+        c("subgroup_comparison", "observed_risk_thirds", "direct_model_contributors")
+    )
+    subgroup_figure <- results$presentation_figures$subgroup_comparison
+    expect_true(all(c(
+        "no_gep_group", "n", "median_followup_years", "observed_5yr_mfs_event_rate",
+        "observed_5yr_mss_event_rate", "descriptive_frame"
+    ) %in% names(subgroup_figure)))
+    expect_setequal(
+        subgroup_figure$no_gep_group,
+        c("GEP Failed/Indeterminate", "GEP Not Tested")
+    )
+    expect_true(all(subgroup_figure$n > 0))
+    expect_true(all(is.finite(subgroup_figure$median_followup_years)))
+    expect_true(all(subgroup_figure$descriptive_frame == "Descriptive, non-causal subgroup comparison"))
+
+    risk_thirds_figure <- results$presentation_figures$observed_risk_thirds
+    expect_true(all(c(
+        "outcome", "risk_third", "n", "observed_event_rate", "estimator"
+    ) %in% names(risk_thirds_figure)))
+    expect_setequal(risk_thirds_figure$outcome, c("MFS", "Melanoma-death cumulative incidence"))
+    expect_false(any(is.na(risk_thirds_figure$risk_third)))
+    expect_true(all(risk_thirds_figure$risk_third %in% c("Lower", "Middle", "Higher")))
+    expect_true(all(risk_thirds_figure$n > 0))
+    expect_true(all(risk_thirds_figure$observed_event_rate >= 0 & risk_thirds_figure$observed_event_rate <= 1))
+    expect_setequal(
+        unique(risk_thirds_figure$estimator),
+        c("Kaplan-Meier at 60 months", "Aalen-Johansen at 60 months")
+    )
+
+    contributor_figure <- results$presentation_figures$direct_model_contributors
+    expect_true(all(c(
+        "model", "predictor", "signed_standardized_coefficient", "caption"
+    ) %in% names(contributor_figure)))
+    expect_true(all(is.finite(contributor_figure$signed_standardized_coefficient)))
+    expect_true(all(contributor_figure$caption == "Model weights; not causal effects or conventional significance tests."))
+    if (any(grepl("optic_nerve", contributor_figure$predictor, fixed = TRUE))) {
+        expect_true(any(grepl("counterintuitive/model-dependent", contributor_figure$predictor_note, fixed = TRUE)))
+    }
     expect_true(any(results$predictor_contribution$section == "model_contribution"))
     expect_true(
         "predicted_60mo_melanoma_death_cumulative_incidence_risk" %in%
