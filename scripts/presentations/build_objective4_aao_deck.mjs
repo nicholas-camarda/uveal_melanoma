@@ -61,8 +61,36 @@ export async function validateRuntime(runtimeRoot) {
   const root = path.resolve(runtimeRoot);
   const gate = await readJson(path.join(root, "objective4-aao-gate.json"), "Objective 4 AAO gate");
   const comparator = await readJson(path.join(root, "production-comparison.json"), "production comparator");
-  if (gate.gate_version !== 1 || !["pass", "review"].includes(gate.status) || gate.accepted_abstract_id !== "30085896" || !Number.isFinite(gate.comparisons?.auc?.molecular_surrogate?.candidate)) throw new Error("AAO gate is not structurally reviewable");
-  if (comparator.comparator_version !== 1 || comparator.contract_version !== 1 || comparator.status !== "pass" || !Array.isArray(comparator.comparisons)) throw new Error("production comparator must pass");
+  const aucEntries = ["molecular_surrogate", "direct_mfs", "direct_mss"].map((key) => gate.comparisons?.auc?.[key]);
+  const gateAucsAreComplete = aucEntries.every((entry) =>
+    entry && [entry.accepted, entry.candidate, entry.absolute_delta].every(Number.isFinite)
+  );
+  const reviewReasonsAreComplete = gate.status !== "review" || (
+    Array.isArray(gate.reasons) && gate.reasons.length > 0 && gate.reasons.every((reason) =>
+      reason && reason.status === "review" && typeof reason.id === "string" && reason.id.length > 0 &&
+      typeof reason.message === "string" && reason.message.length > 0
+    )
+  );
+  if (
+    gate.gate_version !== 1 ||
+      !["pass", "review"].includes(gate.status) ||
+      gate.accepted_abstract_id !== "30085896" ||
+      !Number.isInteger(gate.accepted_submitted_cohort_n) ||
+      !Number.isInteger(gate.candidate_cohort_n) ||
+      gate.accepted_submitted_cohort_n !== gate.candidate_cohort_n ||
+      !gateAucsAreComplete ||
+      !reviewReasonsAreComplete
+  ) throw new Error("AAO gate is not structurally reviewable");
+  if (
+    comparator.comparator_version !== 1 ||
+      comparator.contract_version !== 1 ||
+      comparator.status !== "pass" ||
+      !Array.isArray(comparator.comparisons) ||
+      comparator.comparisons.length === 0 ||
+      comparator.comparisons.some((comparison) =>
+        !comparison || comparison.status !== "pass" || typeof comparison.id !== "string" || comparison.id.length === 0
+      )
+  ) throw new Error("production comparator must pass populated comparison entries");
   const reportDir = path.join(root, REPORT_RELATIVE);
   const workbookPath = path.join(reportDir, "full_cohort_exploratory_no_gep_report.xlsx");
   const summaryPath = path.join(reportDir, "full_cohort_exploratory_no_gep_summary.md");
