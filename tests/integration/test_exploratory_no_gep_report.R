@@ -336,9 +336,6 @@ test_that("exploratory no-GEP report writes workbook, summary, and plots", {
     expect_true(file.exists(results$output_paths$mfs_km))
     expect_true(file.exists(results$output_paths$mss_cif))
     expect_true(file.exists(results$output_paths$surrogate_density))
-    expect_true(file.exists(results$output_paths$presentation_subgroup_comparison))
-    expect_true(file.exists(results$output_paths$presentation_observed_risk_thirds))
-    expect_true(file.exists(results$output_paths$presentation_direct_model_contributors))
 
     workbook_sheets <- openxlsx::getSheetNames(results$output_paths$workbook)
     expect_equal(
@@ -358,7 +355,6 @@ test_that("exploratory no-GEP report writes workbook, summary, and plots", {
             "Overlap_Diagnostics",
             "Baseline_Comparisons",
             "Data_Audit",
-            "Presentation_Data",
             "No_GEP_Predictions",
             "Sensitivity_Pooled_No_GEP",
             "KM_Corrected_MFS",
@@ -370,7 +366,6 @@ test_that("exploratory no-GEP report writes workbook, summary, and plots", {
     key_findings_sheet <- openxlsx::read.xlsx(results$output_paths$workbook, sheet = "Key_Findings_5yr")
     risk_ladder_sheet <- openxlsx::read.xlsx(results$output_paths$workbook, sheet = "Risk_Ladder_5yr")
     model_performance_sheet <- openxlsx::read.xlsx(results$output_paths$workbook, sheet = "Model_Performance")
-    presentation_data_sheet <- openxlsx::read.xlsx(results$output_paths$workbook, sheet = "Presentation_Data")
 
     expect_false(any(c("section", "item", "detail", "guide_text") %in% names(key_findings_sheet)))
     expect_false(any(c("section", "item", "detail", "guide_text") %in% names(risk_ladder_sheet)))
@@ -386,48 +381,6 @@ test_that("exploratory no-GEP report writes workbook, summary, and plots", {
     )
     expect_false("median_predicted_5yr_mss_risk" %in% names(key_findings_sheet))
     expect_true(all(c("section", "label", "value") %in% names(start_here_sheet)))
-    expect_true(all(c(
-        "semantic_id", "value_numeric", "value_character", "reason_for_missing_gep_available"
-    ) %in% names(presentation_data_sheet)))
-    expect_identical(anyDuplicated(presentation_data_sheet$semantic_id), 0L)
-    expect_true(all(is.finite(stats::na.omit(presentation_data_sheet$value_numeric))))
-    presentation_probability_rows <- presentation_data_sheet %>%
-        dplyr::filter(.data$unit == "probability_0_to_1")
-    expect_true(all(
-        presentation_probability_rows$value_numeric >= 0 &
-            presentation_probability_rows$value_numeric <= 1
-    ))
-    expect_true(all(presentation_data_sheet$reason_for_missing_gep_available == FALSE))
-    expect_equal(
-        presentation_data_sheet$value_numeric[
-            presentation_data_sheet$semantic_id == "no_gep_scoreable_count"
-        ],
-        164
-    )
-    expect_equal(
-        presentation_data_sheet$value_numeric[
-            presentation_data_sheet$semantic_id == "no_gep_without_usable_count"
-        ],
-        175
-    )
-    expect_false(any(grepl("_na_(count|observed_event_rate)$", presentation_data_sheet$semantic_id)))
-    expect_false(any(grepl("patient|record|case|study", names(presentation_data_sheet), ignore.case = TRUE)))
-    expect_true(all(c(
-        "cohort_total_count",
-        "gep_usable_count",
-        "gep_not_tested_count",
-        "gep_failed_indeterminate_count",
-        "no_gep_without_usable_count",
-        "no_gep_scoreable_count",
-        "followup_gep_not_tested_median_years",
-        "observed_gep_failed_indeterminate_mfs_5yr_event_rate",
-        "observed_gep_not_tested_mss_60mo_event_rate",
-        "direct_model_gep_not_tested_mfs_5yr_median_risk",
-        "predictor_direct_mfs_1_standardized_coefficient",
-        "baseline_contrast_initial_tumor_diameter_p_value",
-        "overlap_initial_tumor_diameter_abs_smd",
-        "reason_for_missing_gep_available"
-    ) %in% presentation_data_sheet$semantic_id))
     expect_true(all(c("group", "n", "observed_5yr_mfs_event_rate", "median_predicted_5yr_mfs_risk") %in% names(risk_ladder_sheet)))
     expect_true(all(c(
         "model", "model_method", "reported_risk_scale", "cv_auc",
@@ -467,10 +420,6 @@ test_that("exploratory no-GEP report writes workbook, summary, and plots", {
     expect_match(summary_text, "Cilio-Choroidal", fixed = TRUE)
     expect_match(summary_text, "0-1 probability scale", fixed = TRUE)
     expect_match(summary_text, "overlap diagnostic", ignore.case = TRUE)
-    expect_match(summary_text, "## Why the No-GEP Groups May Differ", fixed = TRUE)
-    expect_match(summary_text, "## Presentation Narrative and Figure Priorities", fixed = TRUE)
-    expect_match(summary_text, "Direct overlap absolute SMD", fixed = TRUE)
-    expect_false(grepl("Selected baseline contrast", summary_text, fixed = TRUE))
 
     expect_s3_class(results$surrogate_model$model, "cv.glmnet")
     expect_s3_class(results$direct_models$mfs$model, "cv.glmnet")
@@ -542,52 +491,6 @@ test_that("exploratory no-GEP report writes workbook, summary, and plots", {
     expect_true("risk_ladder" %in% names(results))
     expect_true("overlap_diagnostics" %in% names(results))
     expect_true("parsimonious_sensitivity" %in% names(results))
-    expect_true("presentation_data" %in% names(results))
-    expect_true("presentation_figures" %in% names(results))
-    expect_setequal(
-        names(results$presentation_figures),
-        c("subgroup_comparison", "observed_risk_thirds", "direct_model_contributors")
-    )
-    subgroup_figure <- results$presentation_figures$subgroup_comparison
-    expect_true(all(c(
-        "no_gep_group", "n", "median_followup_years", "observed_5yr_mfs_event_rate",
-        "observed_5yr_mss_event_rate", "descriptive_frame"
-    ) %in% names(subgroup_figure)))
-    expect_setequal(
-        subgroup_figure$no_gep_group,
-        c("GEP Failed/Indeterminate", "GEP Not Tested")
-    )
-    expect_true(all(subgroup_figure$n > 0))
-    expect_true(all(is.finite(subgroup_figure$median_followup_years)))
-    expect_true(all(subgroup_figure$descriptive_frame == "Descriptive, non-causal subgroup comparison"))
-    expect_true(all(grepl("\n", subgroup_figure$group_label, fixed = TRUE)))
-
-    risk_thirds_figure <- results$presentation_figures$observed_risk_thirds
-    expect_true(all(c(
-        "outcome", "risk_third", "n", "observed_event_rate", "estimator"
-    ) %in% names(risk_thirds_figure)))
-    expect_setequal(risk_thirds_figure$outcome, c("5-year MFS event risk (1-Kaplan-Meier)", "Melanoma-death cumulative incidence"))
-    expect_false(any(is.na(risk_thirds_figure$risk_third)))
-    expect_true(all(risk_thirds_figure$risk_third %in% c("Lower", "Middle", "Higher")))
-    expect_true(all(risk_thirds_figure$n > 0))
-    expect_true(all(risk_thirds_figure$observed_event_rate >= 0 & risk_thirds_figure$observed_event_rate <= 1))
-    expect_setequal(
-        unique(risk_thirds_figure$estimator),
-        c("Kaplan-Meier at 60 months", "Aalen-Johansen at 60 months")
-    )
-
-    contributor_figure <- results$presentation_figures$direct_model_contributors
-    expect_true(all(c(
-        "model", "predictor", "signed_standardized_coefficient", "caption"
-    ) %in% names(contributor_figure)))
-    expect_true(all(is.finite(contributor_figure$signed_standardized_coefficient)))
-    expect_true(all(contributor_figure$caption == "Model weights; not causal effects or conventional significance tests."))
-    if (any(grepl("optic_nerve", contributor_figure$predictor, fixed = TRUE))) {
-        expect_true(any(grepl("counterintuitive/model-dependent", contributor_figure$predictor_note, fixed = TRUE)))
-        expect_true(any(grepl("counterintuitive/model-dependent", contributor_figure$rendered_caption, fixed = TRUE)))
-        expect_true(any(grepl("interpret cautiously", contributor_figure$rendered_caption, fixed = TRUE)))
-        expect_true(any(grepl("\n", contributor_figure$rendered_caption, fixed = TRUE)))
-    }
     expect_true(any(results$predictor_contribution$section == "model_contribution"))
     expect_true(
         "predicted_60mo_melanoma_death_cumulative_incidence_risk" %in%
@@ -609,35 +512,5 @@ test_that("exploratory no-GEP report writes workbook, summary, and plots", {
     expect_equal(
         as.character(results$risk_ladder$group),
         c("Class 1", "GEP Not Tested", "GEP Failed/Indeterminate", "Class 2")
-    )
-})
-
-test_that("presentation figure constructors fail closed on incomplete aggregates", {
-    incomplete_risk_thirds <- tibble::tibble(
-        analysis = rep(c("Direct_MFS_5yr_Risk", "Direct_60mo_Melanoma_Death_Cumulative_Incidence_Risk"), each = 3),
-        bin = c("Low", "Intermediate", "High", "Low", "Intermediate", NA_character_),
-        n = c(5L, 5L, 5L, 5L, 5L, 1L),
-        observed_mfs_5yr_event_rate = rep(0.2, 6),
-        observed_mss_5yr_event_rate = rep(0.1, 6)
-    )
-    expect_error(
-        create_exploratory_observed_risk_thirds_figure(
-            incomplete_risk_thirds,
-            tempfile(fileext = ".png")
-        ),
-        "exactly Lower, Middle, and Higher"
-    )
-
-    empty_contributors <- tibble::tibble(
-        predictor = character(),
-        standardized_coefficient = numeric()
-    )
-    expect_error(
-        create_exploratory_direct_model_contributors_figure(
-            list(predictor_contributions = empty_contributors),
-            list(predictor_contributions = empty_contributors),
-            tempfile(fileext = ".png")
-        ),
-        "both direct-model contributor panels"
     )
 })

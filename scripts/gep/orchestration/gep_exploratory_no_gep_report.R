@@ -2998,7 +2998,6 @@ collect_exploratory_no_gep_analysis <- function(data,
             Reported_Risk_Scale = "probability_0_to_1",
             Interpretation = .data$interpretation
         )
-    analysis_results$presentation_data <- build_exploratory_no_gep_presentation_data(analysis_results)
 
     analysis_results
 }
@@ -3168,172 +3167,6 @@ create_probability_density_plot <- function(data, probability_col, plot_title, o
     invisible(output_path)
 }
 
-#' Create a Direct No-GEP Subgroup Comparison Figure
-#'
-#' @param no_gep_subgroups Existing aggregate no-GEP subgroup summary.
-#' @param presentation_data Existing presentation-data contract.
-#' @param output_path PNG output path.
-#'
-#' @return Aggregate display payload used for the figure.
-create_exploratory_no_gep_subgroup_comparison_figure <- function(no_gep_subgroups,
-                                                                  presentation_data,
-                                                                  output_path) {
-    groups <- c("GEP Failed/Indeterminate", "GEP Not Tested")
-    payload <- no_gep_subgroups %>%
-        dplyr::filter(.data$no_gep_group %in% groups) %>%
-        dplyr::transmute(
-            no_gep_group = as.character(.data$no_gep_group),
-            n = .data$n,
-            observed_5yr_mfs_event_rate = .data$observed_5yr_mfs_event_rate,
-            observed_5yr_mss_event_rate = .data$observed_5yr_mss_event_rate
-        ) %>%
-        dplyr::mutate(
-            median_followup_years = vapply(.data$no_gep_group, function(group) {
-                semantic_id <- paste0("followup_", gsub("(^_|_$)", "", gsub("[^a-z0-9]+", "_", tolower(group))), "_median_years")
-                presentation_data$value_numeric[match(semantic_id, presentation_data$semantic_id)]
-            }, numeric(1)),
-            # Keep the subgroup name and denominator on separate lines so the
-            # long failed/indeterminate label remains fully visible in the
-            # exported figure at presentation scale.
-            group_label = sprintf("%s\nn=%d; median follow-up %.1f y", .data$no_gep_group, .data$n, .data$median_followup_years),
-            descriptive_frame = "Descriptive, non-causal subgroup comparison"
-        )
-    if (nrow(payload) != 2 || any(!is.finite(payload$median_followup_years))) {
-        stop("Subgroup comparison figure requires both no-GEP aggregate follow-up summaries.", call. = FALSE)
-    }
-
-    plot_data <- payload %>%
-        tidyr::pivot_longer(
-            cols = c("observed_5yr_mfs_event_rate", "observed_5yr_mss_event_rate"),
-            names_to = "outcome", values_to = "observed_event_rate"
-        ) %>%
-        dplyr::mutate(
-            outcome = dplyr::recode(
-                .data$outcome,
-                observed_5yr_mfs_event_rate = "MFS at 5 years (Kaplan-Meier)",
-                observed_5yr_mss_event_rate = "Melanoma-death cumulative incidence at 60 months (Aalen-Johansen)"
-            ),
-            label = sprintf("%.1f%%", 100 * .data$observed_event_rate)
-        )
-    plot <- ggplot2::ggplot(plot_data, ggplot2::aes(x = .data$group_label, y = .data$observed_event_rate, fill = .data$no_gep_group)) +
-        ggplot2::geom_col(width = 0.7) +
-        ggplot2::geom_text(ggplot2::aes(label = .data$label), vjust = -0.35, size = 3.5) +
-        ggplot2::facet_wrap(~outcome, scales = "free_x") +
-        ggplot2::scale_y_continuous(labels = function(x) sprintf("%.0f%%", 100 * x), limits = c(0, 1), expand = ggplot2::expansion(mult = c(0, 0.12))) +
-        ggplot2::labs(title = "Direct No-GEP Subgroup Comparison", subtitle = "Descriptive, non-causal subgroup comparison", x = NULL, y = "Censoring-aware observed event estimate", fill = "No-GEP group") +
-        ggplot2::theme_minimal(base_size = 12) +
-        ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 0, hjust = 0.5, vjust = 0.5, lineheight = 0.95), legend.position = "none")
-    ggplot2::ggsave(output_path, plot, width = 12, height = 7, dpi = PLOT_DPI, bg = "white")
-    payload
-}
-
-#' Create an Observed-Risk-by-Predicted-Third Figure
-#'
-#' @param sensitivity_summary Existing pooled sensitivity summary.
-#' @param output_path PNG output path.
-#'
-#' @return Aggregate display payload used for the figure.
-create_exploratory_observed_risk_thirds_figure <- function(sensitivity_summary, output_path) {
-    payload <- dplyr::bind_rows(
-        sensitivity_summary %>%
-            dplyr::filter(.data$analysis == "Direct_MFS_5yr_Risk") %>%
-            dplyr::transmute(risk_third = as.character(.data$bin), n = .data$n, observed_event_rate = .data$observed_mfs_5yr_event_rate, outcome = "5-year MFS event risk (1-Kaplan-Meier)", estimator = "Kaplan-Meier at 60 months"),
-        sensitivity_summary %>%
-            dplyr::filter(.data$analysis == "Direct_60mo_Melanoma_Death_Cumulative_Incidence_Risk") %>%
-            dplyr::transmute(risk_third = as.character(.data$bin), n = .data$n, observed_event_rate = .data$observed_mss_5yr_event_rate, outcome = "Melanoma-death cumulative incidence", estimator = "Aalen-Johansen at 60 months")
-    ) %>%
-        dplyr::filter(!is.na(.data$risk_third), is.finite(.data$n), is.finite(.data$observed_event_rate)) %>%
-        dplyr::mutate(
-            risk_third = dplyr::recode(.data$risk_third, Low = "Lower", Intermediate = "Middle", High = "Higher"),
-            risk_third = factor(.data$risk_third, levels = c("Lower", "Middle", "Higher")),
-            facet_label = paste(.data$outcome, "(", .data$estimator, ")"),
-            label = sprintf("n=%d; %.1f%%", .data$n, 100 * .data$observed_event_rate)
-        )
-    required_cells <- tidyr::expand_grid(
-        outcome = c("5-year MFS event risk (1-Kaplan-Meier)", "Melanoma-death cumulative incidence"),
-        risk_third = factor(c("Lower", "Middle", "Higher"), levels = c("Lower", "Middle", "Higher"))
-    )
-    payload_cells <- payload %>% dplyr::select("outcome", "risk_third")
-    if (
-        nrow(payload) != 6 ||
-            anyDuplicated(payload_cells) ||
-            !dplyr::setequal(payload_cells, required_cells) ||
-            any(payload$n <= 0) ||
-            any(payload$observed_event_rate < 0 | payload$observed_event_rate > 1)
-    ) {
-        stop(
-            "Observed-risk-third figure requires exactly Lower, Middle, and Higher finite aggregate cells for both outcomes.",
-            call. = FALSE
-        )
-    }
-    plot <- ggplot2::ggplot(payload, ggplot2::aes(x = .data$risk_third, y = .data$observed_event_rate, fill = .data$risk_third)) +
-        ggplot2::geom_col(width = 0.68, show.legend = FALSE) +
-        ggplot2::geom_text(ggplot2::aes(label = .data$label), vjust = -0.35, size = 3.6) +
-        ggplot2::facet_wrap(~facet_label) +
-        ggplot2::scale_y_continuous(labels = function(x) sprintf("%.0f%%", 100 * x), limits = c(0, 1), expand = ggplot2::expansion(mult = c(0, 0.12))) +
-        ggplot2::labs(title = "Observed Risk by Direct-Model Predicted Third", subtitle = "Censoring-aware observed estimates; pooled no-GEP cohort", x = "Predicted-risk third", y = "Observed event estimate") +
-        ggplot2::theme_minimal(base_size = 12)
-    ggplot2::ggsave(output_path, plot, width = 11, height = 6.5, dpi = PLOT_DPI, bg = "white")
-    payload
-}
-
-#' Create a Direct-Model Contributor Figure
-#'
-#' @param mfs_model Existing direct MFS model bundle.
-#' @param mss_model Existing direct melanoma-death model bundle.
-#' @param output_path PNG output path.
-#'
-#' @return Aggregate display payload used for the figure.
-create_exploratory_direct_model_contributors_figure <- function(mfs_model, mss_model, output_path) {
-    caption <- "Model weights; not causal effects or conventional significance tests."
-    if (
-        nrow(mfs_model$predictor_contributions) == 0 ||
-            nrow(mss_model$predictor_contributions) == 0
-    ) {
-        stop("Contributor figure requires both direct-model contributor panels.", call. = FALSE)
-    }
-    payload <- dplyr::bind_rows(
-        mfs_model$predictor_contributions %>% dplyr::mutate(model = "Direct MFS"),
-        mss_model$predictor_contributions %>% dplyr::mutate(model = "Direct melanoma-death cumulative incidence")
-    ) %>%
-        dplyr::group_by(.data$model) %>%
-        dplyr::slice_head(n = 5) %>%
-        dplyr::ungroup() %>%
-        dplyr::transmute(
-            model = .data$model,
-            predictor = .data$predictor,
-            signed_standardized_coefficient = .data$standardized_coefficient,
-            predictor_note = dplyr::if_else(
-                grepl("optic_nerve", .data$predictor, fixed = TRUE),
-                "counterintuitive/model-dependent contributor; interpret cautiously",
-                "penalized model contributor; non-causal"
-            ),
-            caption = caption
-        )
-    if (nrow(payload) == 0 || any(!is.finite(payload$signed_standardized_coefficient))) {
-        stop("Contributor figure requires finite signed standardized coefficients.", call. = FALSE)
-    }
-    rendered_caption <- if (any(grepl("optic_nerve", payload$predictor, fixed = TRUE))) {
-        paste(
-            caption,
-            "Optic-nerve contributor is counterintuitive/model-dependent; interpret cautiously.",
-            sep = "\n"
-        )
-    } else {
-        caption
-    }
-    payload$rendered_caption <- rendered_caption
-    plot <- ggplot2::ggplot(payload, ggplot2::aes(x = stats::reorder(.data$predictor, .data$signed_standardized_coefficient), y = .data$signed_standardized_coefficient, fill = .data$signed_standardized_coefficient > 0)) +
-        ggplot2::geom_col(show.legend = FALSE) +
-        ggplot2::coord_flip() +
-        ggplot2::geom_hline(yintercept = 0, linewidth = 0.4) +
-        ggplot2::facet_wrap(~model, scales = "free_y") +
-        ggplot2::labs(title = "Direct-Model Contributor Weights", subtitle = rendered_caption, x = NULL, y = "Signed standardized coefficient") +
-        ggplot2::theme_minimal(base_size = 12)
-    ggplot2::ggsave(output_path, plot, width = 11, height = 7, dpi = PLOT_DPI, bg = "white")
-    payload
-}
-
 #' Create an Observed Event-Rate by Bin Plot
 #'
 #' Visualizes observed outcome rates across predicted-risk bins for one of the
@@ -3394,253 +3227,6 @@ create_predictor_contribution_tab <- function(prepared_data,
         dplyr::mutate(section = "model_contribution")
 
     dplyr::bind_rows(screening_section, contribution_section)
-}
-
-#' Build Reader-Safe Presentation Data for the Exploratory No-GEP Report
-#'
-#' Selects previously calculated aggregate report results into a stable,
-#' presentation-oriented contract. This helper never refits models or derives
-#' outcomes; it labels the report's existing counts, censoring-aware summaries,
-#' risk thirds, and model-contribution tables for downstream presentation use.
-#'
-#' @param analysis_results Output from `collect_exploratory_no_gep_analysis()`.
-#'
-#' @return A tidy aggregate-only data frame keyed by `semantic_id`.
-build_exploratory_no_gep_presentation_data <- function(analysis_results) {
-    empty_rows <- function() {
-        tibble::tibble(
-            semantic_id = character(), section = character(), group = character(),
-            label = character(), value_numeric = numeric(), value_character = character(),
-            unit = character(), reader_role = character()
-        )
-    }
-    numeric_row <- function(semantic_id, section, group, label, value, unit, reader_role) {
-        if (!is.finite(value)) {
-            stop(sprintf(
-                "Presentation data required aggregate is non-finite: %s",
-                semantic_id
-            ), call. = FALSE)
-        }
-        tibble::tibble(
-            semantic_id = semantic_id, section = section, group = group,
-            label = label, value_numeric = as.numeric(value), value_character = NA_character_,
-            unit = unit, reader_role = reader_role
-        )
-    }
-    text_row <- function(semantic_id, section, group, label, value, reader_role) {
-        tibble::tibble(
-            semantic_id = semantic_id, section = section, group = group,
-            label = label, value_numeric = NA_real_, value_character = as.character(value),
-            unit = "text", reader_role = reader_role
-        )
-    }
-    key_part <- function(value) {
-        gsub("(^_|_$)", "", gsub("[^a-z0-9]+", "_", tolower(value)))
-    }
-
-    group_counts <- analysis_results$data_audit %>%
-        dplyr::filter(.data$section == "Group Counts") %>%
-        dplyr::select("group", "n")
-    count_for <- function(group) {
-        group_counts$n[match(group, group_counts$group)] %||% NA_real_
-    }
-    class1_n <- count_for("Class 1")
-    class2_n <- count_for("Class 2")
-    failed_n <- count_for("GEP Failed/Indeterminate")
-    not_tested_n <- count_for("GEP Not Tested")
-
-    count_rows <- dplyr::bind_rows(
-        numeric_row("cohort_total_count", "cohort_counts", "All", "Total cohort", sum(group_counts$n), "count", "cohort denominator"),
-        numeric_row("gep_usable_count", "cohort_counts", "Usable GEP", "Usable GEP", class1_n + class2_n, "count", "cohort denominator"),
-        numeric_row("gep_not_tested_count", "cohort_counts", "GEP Not Tested", "GEP not tested", not_tested_n, "count", "cohort denominator"),
-        numeric_row("gep_failed_indeterminate_count", "cohort_counts", "GEP Failed/Indeterminate", "GEP failed or indeterminate", failed_n, "count", "cohort denominator"),
-        numeric_row("no_gep_without_usable_count", "cohort_counts", "No usable GEP", "No usable GEP before scoreability screening", failed_n + not_tested_n, "count", "cohort denominator"),
-        numeric_row("no_gep_scoreable_count", "cohort_counts", "No usable GEP", "Scoreable no-GEP cohort", nrow(analysis_results$prepared_data$no_gep_scoring), "count", "cohort denominator")
-    )
-
-    followup_data <- analysis_results$prepared_data$no_gep_scoring
-    if (!"follow_up_years" %in% names(followup_data) && "follow_up_days" %in% names(followup_data)) {
-        followup_data$follow_up_years <- followup_data$follow_up_days / DAYS_IN_YEAR
-    }
-    followup_rows <- if ("follow_up_years" %in% names(followup_data)) {
-        valid <- !is.na(followup_data$follow_up_years) & followup_data$follow_up_years >= 0
-        by_group <- followup_data %>%
-            dplyr::filter(.data$no_gep_group %in% c("GEP Failed/Indeterminate", "GEP Not Tested")) %>%
-            dplyr::group_by(.data$no_gep_group) %>%
-            dplyr::summarise(
-                median_followup_years = stats::median(.data$follow_up_years[!is.na(.data$follow_up_years) & .data$follow_up_years >= 0]),
-                .groups = "drop"
-            )
-        dplyr::bind_rows(
-            numeric_row("followup_no_gep_total_count", "followup", "No usable GEP", "No-GEP follow-up cohort", nrow(followup_data), "count", "follow-up context"),
-            numeric_row("followup_no_gep_ge_5yr_count", "followup", "No usable GEP", "No-GEP participants with at least 5 years follow-up", sum(valid & followup_data$follow_up_years >= 5), "count", "follow-up context"),
-            purrr::map_dfr(seq_len(nrow(by_group)), function(i) {
-                group <- by_group$no_gep_group[[i]]
-                numeric_row(
-                    paste0("followup_", key_part(group), "_median_years"), "followup", group,
-                    paste(group, "median follow-up"), by_group$median_followup_years[[i]], "years", "follow-up context"
-                )
-            })
-        )
-    } else {
-        empty_rows()
-    }
-
-    subgroup_rows <- analysis_results$no_gep_subgroups %>%
-        dplyr::filter(.data$no_gep_group %in% c("GEP Failed/Indeterminate", "GEP Not Tested")) %>%
-        purrr::pmap_dfr(function(no_gep_group, n, observed_5yr_mfs_event_rate,
-                                observed_5yr_mss_event_rate, median_predicted_5yr_mfs_risk,
-                                median_predicted_60mo_melanoma_death_cumulative_incidence_risk, ...) {
-            key <- key_part(no_gep_group)
-            dplyr::bind_rows(
-                numeric_row(paste0("observed_", key, "_mfs_5yr_event_rate"), "observed_outcomes", no_gep_group, "Censoring-aware 5-year MFS event rate", observed_5yr_mfs_event_rate, "probability_0_to_1", "censoring-aware descriptive outcome"),
-                numeric_row(paste0("observed_", key, "_mss_60mo_event_rate"), "observed_outcomes", no_gep_group, "Censoring-aware 60-month melanoma-death cumulative-incidence estimate", observed_5yr_mss_event_rate, "probability_0_to_1", "censoring-aware descriptive outcome"),
-                numeric_row(paste0("direct_model_", key, "_mfs_5yr_median_risk"), "direct_model_risk", no_gep_group, "Median direct-model 5-year MFS risk", median_predicted_5yr_mfs_risk, "probability_0_to_1", "exploratory prognostic estimate"),
-                numeric_row(paste0("direct_model_", key, "_mss_60mo_median_risk"), "direct_model_risk", no_gep_group, "Median direct-model 60-month melanoma-death cumulative-incidence risk", median_predicted_60mo_melanoma_death_cumulative_incidence_risk, "probability_0_to_1", "exploratory prognostic estimate")
-            )
-        })
-
-    risk_third_rows <- if (all(c(
-        "analysis", "bin", "n", "mean_predicted", "observed_mfs_5yr_event_rate",
-        "observed_mss_5yr_event_rate"
-    ) %in% names(analysis_results$sensitivity_summary))) {
-        analysis_results$sensitivity_summary %>%
-            dplyr::filter(
-                .data$analysis %in% c("Direct_MFS_5yr_Risk", "Direct_60mo_Melanoma_Death_Cumulative_Incidence_Risk"),
-                !is.na(.data$bin),
-                is.finite(.data$n),
-                is.finite(.data$mean_predicted),
-                is.finite(.data$observed_mfs_5yr_event_rate),
-                is.finite(.data$observed_mss_5yr_event_rate)
-            ) %>%
-            purrr::pmap_dfr(function(analysis, bin, n, mean_predicted, observed_mfs_5yr_event_rate,
-                                    observed_mss_5yr_event_rate, ...) {
-            outcome <- if (identical(analysis, "Direct_MFS_5yr_Risk")) "mfs_5yr" else "mss_60mo"
-            observed <- if (identical(outcome, "mfs_5yr")) observed_mfs_5yr_event_rate else observed_mss_5yr_event_rate
-            key <- paste0("direct_model_", outcome, "_", key_part(as.character(bin)))
-            dplyr::bind_rows(
-                numeric_row(paste0(key, "_count"), "direct_model_risk_thirds", "Pooled no-GEP", paste("Direct-model", outcome, as.character(bin), "third count"), n, "count", "descriptive risk-third size"),
-                numeric_row(paste0(key, "_observed_event_rate"), "direct_model_risk_thirds", "Pooled no-GEP", paste("Direct-model", outcome, as.character(bin), "third observed event rate"), observed, "probability_0_to_1", "censoring-aware descriptive outcome")
-            )
-            })
-    } else {
-        empty_rows()
-    }
-
-    predictor_rows <- purrr::imap_dfr(
-        list(direct_mfs = analysis_results$direct_models$mfs, direct_mss = analysis_results$direct_models$mss),
-        function(model_result, model_key) {
-            model_result$predictor_contributions %>%
-                dplyr::slice_head(n = 3) %>%
-                dplyr::mutate(rank = dplyr::row_number()) %>%
-                purrr::pmap_dfr(function(predictor, dominant_term, standardized_coefficient, direction, rank, ...) {
-                    numeric_row(
-                        paste0("predictor_", model_key, "_", rank, "_standardized_coefficient"),
-                        "penalized_predictors", model_key,
-                        paste("Top", model_key, "penalized contributor:", predictor),
-                        standardized_coefficient, "signed_standardized_coefficient",
-                        paste("non-causal penalized association;", direction, "contribution")
-                    )
-                })
-        }
-    )
-
-    baseline_contrast_variables <- c(
-        "initial_tumor_diameter",
-        "initial_tumor_height",
-        "ciliary_involvement"
-    )
-    selected_baseline_contrasts <- analysis_results$baseline_comparisons %>%
-        dplyr::filter(.data$variable %in% baseline_contrast_variables)
-    if (anyDuplicated(selected_baseline_contrasts$variable)) {
-        stop("Presentation data selected baseline contrast variables must be unique.", call. = FALSE)
-    }
-    baseline_rows <- selected_baseline_contrasts %>%
-        purrr::pmap_dfr(function(variable, test, p_value, ...) {
-            numeric_row(
-                paste0("baseline_contrast_", key_part(variable), "_p_value"),
-                "baseline_contrasts", "Four GEP groups",
-                paste("Pre-specified baseline descriptive contrast:", variable),
-                p_value, "p_value",
-                paste("pre-specified descriptive", test, "contrast; non-causal and not ranked")
-            )
-        })
-
-    overlap_rows <- analysis_results$overlap_diagnostics %>%
-        dplyr::filter(is.finite(.data$abs_smd)) %>%
-        purrr::pmap_dfr(function(predictor, predictor_type, worst_level, abs_smd, overlap_flag, ...) {
-            numeric_row(paste0("overlap_", key_part(predictor), "_abs_smd"), "overlap_diagnostics", "Failed versus Not Tested", paste("Direct overlap absolute SMD:", predictor), abs_smd, "absolute_smd", paste("direct overlap diagnostic;", overlap_flag))
-        })
-    failed_subgroup <- analysis_results$no_gep_subgroups %>%
-        dplyr::filter(.data$no_gep_group == "GEP Failed/Indeterminate")
-    not_tested_subgroup <- analysis_results$no_gep_subgroups %>%
-        dplyr::filter(.data$no_gep_group == "GEP Not Tested")
-    descriptive_contrast_rows <- if (nrow(failed_subgroup) == 1 && nrow(not_tested_subgroup) == 1) {
-        dplyr::bind_rows(
-            numeric_row(
-                "descriptive_contrast_mfs_5yr_event_rate_difference",
-                "descriptive_contrasts", "Failed versus Not Tested",
-                "Failed minus Not Tested censoring-aware 5-year MFS event-rate difference",
-                failed_subgroup$observed_5yr_mfs_event_rate[[1]] - not_tested_subgroup$observed_5yr_mfs_event_rate[[1]],
-                "probability_difference", "descriptive subgroup contrast; non-causal"
-            ),
-            numeric_row(
-                "descriptive_contrast_mss_60mo_event_rate_difference",
-                "descriptive_contrasts", "Failed versus Not Tested",
-                "Failed minus Not Tested censoring-aware 60-month melanoma-death cumulative-incidence difference",
-                failed_subgroup$observed_5yr_mss_event_rate[[1]] - not_tested_subgroup$observed_5yr_mss_event_rate[[1]],
-                "probability_difference", "descriptive subgroup contrast; non-causal"
-            )
-        )
-    } else {
-        stop("Presentation data requires both no-GEP subgroup summaries.", call. = FALSE)
-    }
-
-    presentation_data <- dplyr::bind_rows(
-        count_rows, followup_rows, subgroup_rows, risk_third_rows, predictor_rows,
-        baseline_rows, overlap_rows, descriptive_contrast_rows,
-        text_row("reason_for_missing_gep_available", "missingness_context", "All", "Reason for missing GEP available", "FALSE", "missingness reason unavailable")
-    ) %>%
-        dplyr::mutate(reason_for_missing_gep_available = FALSE) %>%
-        dplyr::arrange(.data$section, .data$semantic_id)
-
-    if (anyDuplicated(presentation_data$semantic_id)) {
-        stop("Presentation data semantic_id values must be unique.", call. = FALSE)
-    }
-    probability_rows <- presentation_data$unit == "probability_0_to_1"
-    if (any(
-        presentation_data$value_numeric[probability_rows] < 0 |
-            presentation_data$value_numeric[probability_rows] > 1
-    )) {
-        stop("Presentation data probability values must remain within the 0-1 interval.", call. = FALSE)
-    }
-
-    presentation_data
-}
-
-#' Build Presentation Narrative Sections From the Aggregate Contract
-#'
-#' @param presentation_data Output from `build_exploratory_no_gep_presentation_data()`.
-#'
-#' @return Character vector of Markdown narrative sections.
-build_exploratory_no_gep_presentation_narrative <- function(presentation_data) {
-    why_rows <- presentation_data %>%
-        dplyr::filter(.data$section %in% c("descriptive_contrasts", "overlap_diagnostics"))
-    priority_rows <- presentation_data %>%
-        dplyr::filter(.data$section %in% c("observed_outcomes", "direct_model_risk", "penalized_predictors"))
-    format_rows <- function(rows) {
-        vapply(seq_len(nrow(rows)), function(i) {
-            value <- if (is.finite(rows$value_numeric[[i]])) sprintf("%.3f", rows$value_numeric[[i]]) else rows$value_character[[i]]
-            md_bullet(sprintf("%s: %s (%s).", rows$label[[i]], value, rows$reader_role[[i]]))
-        }, character(1))
-    }
-    c(
-        md_heading("Why the No-GEP Groups May Differ", 2L),
-        format_rows(why_rows),
-        "",
-        md_heading("Presentation Narrative and Figure Priorities", 2L),
-        format_rows(priority_rows)
-    )
 }
 
 #' Format Group Percentages for Exploratory Text Output
@@ -3945,7 +3531,6 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
                                                    overlap_diagnostics,
                                                    parsimonious_sensitivity,
                                                    sensitivity_summary,
-                                                   presentation_data,
                                                    output_path) {
     failed_row <- no_gep_summary %>% dplyr::filter(.data$no_gep_group == "GEP Failed/Indeterminate")
     not_tested_row <- no_gep_summary %>% dplyr::filter(.data$no_gep_group == "GEP Not Tested")
@@ -4099,8 +3684,6 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
             md_bullet("Failed vs Not Tested overlap diagnostics were unavailable.")
         },
         "",
-        build_exploratory_no_gep_presentation_narrative(presentation_data),
-        "",
         md_heading("Technical Notes", 2L),
         md_bullet("A ridge-penalized surrogate model was fit only on patients with definitive Class 1 or Class 2 GEP results."),
         md_bullet("That surrogate stores P(Class 2-like | baseline features); it is a clinical resemblance score, not a recovered molecular class label."),
@@ -4164,10 +3747,9 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
 
 #' Run the Exploratory No-GEP Report Workflow
 #'
-#' Generates the Objective 4 no-GEP workbook, summary text, and plots for
-#' patients without usable GEP. The workflow reuses the same collected
-#' analysis objects as the production Objective 4 run and writes its outputs
-#' to the scoped no-GEP report directory.
+#' Generates the standalone workbook, summary text, and plots requested for
+#' patients without usable GEP, while keeping the analysis separate from the
+#' routine Objective 4 production pipeline.
 #'
 #' @param dataset_name Dataset identifier. Currently only the full uveal cohort
 #'   is supported.
@@ -4240,8 +3822,6 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
     sensitivity_summary <- analysis_results$sensitivity_summary
     risk_ladder <- analysis_results$risk_ladder
     parsimonious_sensitivity <- analysis_results$parsimonious_sensitivity
-    presentation_data <- analysis_results$presentation_data %||%
-        build_exploratory_no_gep_presentation_data(analysis_results)
 
     workbook_data <- list(
         Start_Here = start_here,
@@ -4258,7 +3838,6 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
         Overlap_Diagnostics = analysis_results$overlap_diagnostics,
         Baseline_Comparisons = baseline_summary,
         Data_Audit = data_audit,
-        Presentation_Data = presentation_data,
         No_GEP_Predictions = no_gep_predictions_sheet,
         Sensitivity_Pooled_No_GEP = sensitivity_summary,
         KM_Corrected_MFS = km_corrected_mfs,
@@ -4283,7 +3862,6 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
         overlap_diagnostics = analysis_results$overlap_diagnostics,
         sensitivity_summary = sensitivity_summary,
         parsimonious_sensitivity = parsimonious_sensitivity,
-        presentation_data = presentation_data,
         output_path = summary_path
     )
 
@@ -4295,10 +3873,7 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
         mss_density = file.path(plots_dir, "full_cohort_exploratory_no_gep_mss_risk_density.png"),
         surrogate_bins = file.path(plots_dir, "full_cohort_exploratory_no_gep_surrogate_bin_event_rates.png"),
         mfs_bins = file.path(plots_dir, "full_cohort_exploratory_no_gep_mfs_bin_event_rates.png"),
-        mss_bins = file.path(plots_dir, "full_cohort_exploratory_no_gep_mss_bin_event_rates.png"),
-        presentation_subgroup_comparison = file.path(plots_dir, "full_cohort_exploratory_no_gep_subgroup_comparison.png"),
-        presentation_observed_risk_thirds = file.path(plots_dir, "full_cohort_exploratory_no_gep_observed_risk_thirds.png"),
-        presentation_direct_model_contributors = file.path(plots_dir, "full_cohort_exploratory_no_gep_direct_model_contributors.png")
+        mss_bins = file.path(plots_dir, "full_cohort_exploratory_no_gep_mss_bin_event_rates.png")
     )
 
     create_exploratory_mfs_km_plot(
@@ -4349,22 +3924,6 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
         plot_title = "Observed 60-Month Melanoma-Death Cumulative Incidence by Predicted Cumulative-Incidence-Risk Bin",
         output_path = plot_paths$mss_bins
     )
-    presentation_figures <- list(
-        subgroup_comparison = create_exploratory_no_gep_subgroup_comparison_figure(
-            no_gep_subgroups = no_gep_subgroups,
-            presentation_data = presentation_data,
-            output_path = plot_paths$presentation_subgroup_comparison
-        ),
-        observed_risk_thirds = create_exploratory_observed_risk_thirds_figure(
-            sensitivity_summary = sensitivity_summary,
-            output_path = plot_paths$presentation_observed_risk_thirds
-        ),
-        direct_model_contributors = create_exploratory_direct_model_contributors_figure(
-            mfs_model = direct_mfs_model,
-            mss_model = direct_mss_model,
-            output_path = plot_paths$presentation_direct_model_contributors
-        )
-    )
 
     logger::log_info("Exploratory no-GEP risk report completed")
 
@@ -4398,8 +3957,6 @@ run_exploratory_no_gep_report <- function(dataset_name = "uveal_melanoma_full_co
         risk_strata_summary = analysis_results$risk_strata_summary,
         risk_ladder = risk_ladder,
         parsimonious_sensitivity = parsimonious_sensitivity,
-        presentation_data = presentation_data,
-        presentation_figures = presentation_figures,
         unified_no_gep_overview = analysis_results$unified_no_gep_overview,
         unified_no_gep_model_comparison = analysis_results$unified_no_gep_model_comparison,
         unified_no_gep_risk_strata = analysis_results$unified_no_gep_risk_strata,
