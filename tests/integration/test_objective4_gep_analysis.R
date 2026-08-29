@@ -1673,8 +1673,9 @@ test_that("Eligibility filters properly exclude invalid data", {
         gep_class_simple = c("Class 1", "Class 2", "Class 1", "GEP Failed/Indeterminate", "GEP Not Tested"),
         biopsy1_gep_mfs = c(0.8, 0.4, 0.6, 0.5, 0.7),
         biopsy1_gep_mss = c(0.9, 0.6, 0.7, 0.8, 0.8),
-        tt_mets_months = c(24, 36, 18, 12, 48),
-        mets_event = c(0, 1, 0, 1, 0),
+        mets_free_at_baseline = rep(TRUE, 5),
+        tt_mets_months_analysis = c(24, 36, 18, 12, 48),
+        mets_event_analysis = c(0L, 1L, 0L, 1L, 0L),
         tt_death_years = c(2, 3, 1.5, 1, 4),
         melanoma_death_event = c(0, 1, 0, 1, 0),
         competing_death_event = c(0, 0, 1, 0, 0),
@@ -1763,8 +1764,9 @@ test_that("Eligibility depends on definitive raw labels even when text raw retai
         gep_class_simple = factor(c("Class 1", "Class 1")),
         biopsy1_gep_mfs = c(0.80, 0.80),
         biopsy1_gep_mss = c(0.85, 0.85),
-        tt_mets_months = c(36, 36),
-        mets_event = c(0, 0),
+        mets_free_at_baseline = c(TRUE, TRUE),
+        tt_mets_months_analysis = c(36, 36),
+        mets_event_analysis = c(0L, 0L),
         tt_death_years = c(3, 3),
         melanoma_death_event = c(0, 0),
         competing_death_event = c(0, 0),
@@ -1777,4 +1779,27 @@ test_that("Eligibility depends on definitive raw labels even when text raw retai
     expect_true(refreshed_data$mfs_analysis_eligible[2])
     expect_false(refreshed_data$mss_analysis_eligible[1])
     expect_true(refreshed_data$mss_analysis_eligible[2])
+})
+
+test_that("MFS eligibility excludes metastasis present at baseline", {
+    test_data <- tibble::tibble(
+        biopsy1_gep = c("Class 1 PRAME Positive", "Class 1 PRAME Positive"),
+        biopsy1_gep_raw = c("Class_1A_PRAME_positive", "Class_1A_PRAME_positive"),
+        gep_class_simple = c("Class 1", "Class 1"),
+        biopsy1_gep_mfs = c(0.80, 0.80),
+        biopsy1_gep_mss = c(0.85, 0.85),
+        mets_free_at_baseline = c(FALSE, TRUE),
+        tt_mets_months_analysis = c(NA_real_, 36),
+        mets_event_analysis = c(NA_integer_, 0L),
+        tt_death_years = c(3, 3),
+        melanoma_death_event = c(0L, 0L),
+        competing_death_event = c(0L, 0L),
+        prame_status = c("Positive", "Positive")
+    )
+
+    refreshed_data <- refresh_gep_analysis_flags(test_data)
+
+    expect_false(refreshed_data$mfs_analysis_eligible[1])
+    expect_true(refreshed_data$mfs_analysis_eligible[2])
+    expect_true(all(refreshed_data$mss_analysis_eligible))
 })
