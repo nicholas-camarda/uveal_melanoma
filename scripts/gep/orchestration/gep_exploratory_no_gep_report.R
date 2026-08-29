@@ -4161,9 +4161,10 @@ create_exploratory_no_gep_summary_text <- function(dataset_name,
 
 #' Run the Exploratory No-GEP Report Workflow
 #'
-#' Generates the standalone workbook, summary text, and plots requested for
-#' patients without usable GEP, while keeping the analysis separate from the
-#' routine Objective 4 production pipeline.
+#' Generates the Objective 4 no-GEP workbook, summary text, and plots for
+#' patients without usable GEP. The workflow reuses the same collected
+#' analysis objects as the production Objective 4 run and writes its outputs
+#' to the scoped no-GEP report directory.
 #'
 #' @param dataset_name Dataset identifier. Currently only the full uveal cohort
 #'   is supported.
