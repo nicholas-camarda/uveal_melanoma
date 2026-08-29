@@ -58,3 +58,4 @@ tests/.DS_Store
 analysis_registry.yaml
 docs/peer_review_revision_response.md
 docs/PR_VS_ORIGINAL_RESULTS_AUDIT.md
+scripts/presentations/node_modules
