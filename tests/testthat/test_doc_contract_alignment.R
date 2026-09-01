@@ -24,6 +24,31 @@ test_that("current contracts do not claim post-baseline event-status survival ou
     expect_false(grepl("post-baseline output bundle", contract_text, ignore.case = TRUE))
 })
 
+test_that("Objective 2 toxicity display and analysis input roles remain explicit", {
+    technical_text <- paste(readLines(here::here("docs", "TECHNICAL.md"), warn = FALSE), collapse = "\n")
+
+    expect_match(
+        technical_text,
+        "The merged adverse-event display reads normalized source Y/N fields (`retinopathy`, `nvg`, and `srd`) from Objective 0-prepared cohort data.",
+        fixed = TRUE
+    )
+    expect_match(
+        technical_text,
+        "The Objective 2 statistical analyses read the corresponding Objective 0-derived 0/1 burden fields (`retinopathy_burden_event`, `nvg_burden_event`, and `srd_burden_event`).",
+        fixed = TRUE
+    )
+    expect_match(
+        technical_text,
+        "Objective 0 normalizes the source fields, derives the burden fields directly from them, and validates that each source/derived pair matches for included analytic rows.",
+        fixed = TRUE
+    )
+    expect_match(
+        technical_text,
+        "The merged display is not a separate estimator and does not redefine the Objective 2 endpoints.",
+        fixed = TRUE
+    )
+})
+
 test_that("README uses the canonical repository identity", {
     readme_text <- paste(readLines(here::here("README.md"), warn = FALSE), collapse = "\n")
 
