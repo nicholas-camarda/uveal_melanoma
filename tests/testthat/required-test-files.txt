@@ -20,6 +20,7 @@ test_integration_routing.R
 test_main_execution_clean_start.R
 test_model_utilities.R
 test_objective0_data_processing_portable.R
+test_objective0_consolidation_contract.R
 test_objective0_validation_engine.R
 test_objective1_age_decade_sensitivity.R
 test_objective1_primary_outcomes.R
