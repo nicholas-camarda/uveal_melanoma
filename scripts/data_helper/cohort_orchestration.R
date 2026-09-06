@@ -127,12 +127,7 @@ create_analytic_dataset <- function(output_dirs = NULL, validate_after_saving = 
     logger::log_info("Creating summary tables")
     summary_tables <- create_summary_tables(factored_filtered_data, output_dirs)
 
-    logger::log_info("Saving processed data")
-    for (cohort_name in names(factored_filtered_data)) {
-        logger::log_info(formatted(sprintf("Saving cohort: %s", cohort_name)))
-        write_readable_xlsx(factored_filtered_data[[cohort_name]], file.path(PROCESSED_DATA_DIR, paste0(cohort_name, ".xlsx")))
-        saveRDS(factored_filtered_data[[cohort_name]], file.path(PROCESSED_DATA_DIR, paste0(cohort_name, ".rds")))
-    }
+    save_cohorts(factored_filtered_data)
 
     logger::log_info("Exporting cohort summary statistics to JSON")
     export_cohort_summary(
