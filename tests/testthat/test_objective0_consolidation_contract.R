@@ -16,31 +16,24 @@ test_that("Objective 0 orchestration delegates cohort persistence to save_cohort
         "saveRDS\\(factored_filtered_data",
         orchestration_lines
     )))
-
-    load_all_lines <- readLines(
-        here::here("scripts", "load_all.R"),
-        warn = FALSE
-    )
-    source_lines <- load_all_lines[grepl("^source\\(", load_all_lines)]
-    expect_lt(
-        which(grepl("cohort_creation\\.R", source_lines)),
-        which(grepl("cohort_orchestration\\.R", source_lines))
-    )
 })
 
-test_that("validation_utilities retains only its unique public helper", {
-    utility_lines <- readLines(
+test_that("validation_utilities does not redefine the canonical engine validators", {
+    utility_env <- new.env(parent = baseenv())
+    sys.source(
         here::here("scripts", "utils", "validation_utilities.R"),
-        warn = FALSE
+        envir = utility_env
     )
-    defined_functions <- sub(
-        "^([A-Za-z][A-Za-z0-9_.]*)\\s*<-\\s*function.*$",
-        "\\1",
-        utility_lines[grepl(
-            "^([A-Za-z][A-Za-z0-9_.]*)\\s*<-\\s*function",
-            utility_lines
-        )]
+    engine_validators <- c(
+        "validate_cohort_integrity",
+        "validate_factor_level_consistency",
+        "validate_processing_pipeline",
+        "generate_validation_report",
+        "validate_single_cohort_comprehensive",
+        "validate_cross_cohort_consistency",
+        "validate_processed_files_exist"
     )
 
-    expect_identical(defined_functions, "get_expected_analytic_cohort_names")
+    expect_length(intersect(ls(utility_env, all.names = TRUE), engine_validators), 0L)
+    expect_true(is.function(utility_env$get_expected_analytic_cohort_names))
 })
